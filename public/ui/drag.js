@@ -1,6 +1,7 @@
-// Drags a session row onto a section or onto another row with pointer events, so a mouse and a finger share the code. A mouse drags
-// after a few pixels, so a click still opens the session. A finger drags after a long press, so a swipe still scrolls the list. A
-// right click, or a long press let go without moving, asks for the row's menu instead.
+// Drags a session row onto a section or onto another row, and a user group's header onto a project or a place among the groups, with
+// pointer events, so a mouse and a finger share the code. A mouse drags after a few pixels, so a click still opens the session or folds
+// the group. A finger drags after a long press, so a swipe still scrolls the list. A right click, or a long press let go without
+// moving, asks for the row's or the header's menu instead.
 const MOUSE_SLOP = 5;
 const HOLD_MS = 350;
 const HOLD_SLOP = 8;
@@ -11,6 +12,13 @@ const SCROLL_STEP = 16;
 export function pointIn(el, e) {
   const r = el.getBoundingClientRect();
   return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom ? { x: e.clientX, y: e.clientY } : null;
+}
+
+const GRIPS = 'a.row[data-id], .bar[data-handle]';
+
+// The target a dragged header has under a point: a project or Home in the sidebar or the Move to strip, else the place among the groups.
+function groupTargetAt(x, y, id, slot) {
+  return document.elementFromPoint(x, y)?.closest('[data-drop^="to:"]')?.dataset.drop ?? slot(x, y, id);
 }
 
 // The drop target under a point. One marked `data-drop-middle` counts only in the middle half of its height, and above and below that
@@ -24,11 +32,13 @@ function targetAt(x, y) {
   return null;
 }
 
-// `box` is the scrolling list. Rows are `a.row[data-id]` and drop targets carry `data-drop`. `onOver` gets the target under
-// the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. `onMenu` gets the row's id and
+// `box` is the scrolling list. Rows are `a.row[data-id]`, a header that can be dragged is `.bar[data-handle]` with the group's id, and
+// drop targets carry `data-drop`. A dragged header has only the targets marked `to:` and `slot(x, y, id)`, which gives the place among
+// the groups under a point or null. The `kind` that `onStart`, `onEnd` and `onMenu` get last is 'row' or 'group'. `onOver` gets the
+// target under the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. `onMenu` gets the id and
 // element, and where the click or the finger was, or null for the menu key.
 // Returns a function that stops it.
-export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
+export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => null }) {
   let press = null;
   let drag = null;
   let stop = null;
@@ -41,15 +51,15 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   };
 
   function down(e) {
-    const row = e.target.closest('a.row[data-id]');
-    if (!row || !e.isPrimary || e.button !== 0) return;
+    const grip = e.target.closest(GRIPS);
+    if (!grip || !e.isPrimary || e.button !== 0) return;
     // On a Mac a Ctrl click is a right click, which asks for the menu, so it must not start a drag.
     if (e.ctrlKey && e.pointerType === 'mouse') return;
     if (stop) lost();
     clearTimeout(quiet);
     swallowing(false);
     const at = { x: e.clientX, y: e.clientY };
-    press = { row, start: at, now: at, touch: e.pointerType !== 'mouse', timer: 0 };
+    press = { grip, start: at, now: at, touch: e.pointerType !== 'mouse', timer: 0 };
     if (press.touch) press.timer = setTimeout(() => lift(press.now.x, press.now.y), HOLD_MS);
     stop = new AbortController();
     const { signal } = stop;
@@ -80,27 +90,32 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   }
 
   function lift(x, y) {
-    const { row, start, touch } = press;
-    const at = row.getBoundingClientRect();
-    const copy = row.cloneNode(true);
+    const { grip, start, touch } = press;
+    const kind = grip.dataset.handle === undefined ? 'row' : 'group';
+    const at = grip.getBoundingClientRect();
+    const copy = grip.cloneNode(true);
     copy.classList.add('lifted');
-    for (const attr of ['href', 'data-id', 'aria-current', 'data-lifted', 'data-picked']) copy.removeAttribute(attr);
+    for (const attr of ['href', 'data-id', 'data-handle', 'aria-current', 'data-lifted', 'data-picked']) copy.removeAttribute(attr);
     copy.setAttribute('aria-hidden', 'true');
+    if (kind === 'group') {
+      copy.setAttribute('inert', '');
+      for (const el of copy.querySelectorAll('[data-key], [aria-controls]')) for (const attr of ['data-key', 'aria-controls']) el.removeAttribute(attr);
+    }
     copy.style.width = `${at.width}px`;
     document.body.append(copy);
     document.body.classList.add('dragging');
     clearTimeout(press.timer);
     press = null;
-    drag = { id: row.dataset.id, row, touch, start, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null, moved: !touch };
+    drag = { id: kind === 'group' ? grip.dataset.handle : grip.dataset.id, kind, grip, touch, start, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null, moved: !touch };
     swallowing(true);
-    onStart(drag.id);
+    onStart(drag.id, kind);
     follow();
     frame = requestAnimationFrame(autoscroll);
   }
 
   function follow() {
     drag.copy.style.transform = `translate(${drag.x - drag.grabX}px, ${drag.y - drag.grabY}px)`;
-    const over = targetAt(drag.x, drag.y);
+    const over = drag.kind === 'group' ? groupTargetAt(drag.x, drag.y, drag.id, slot) : targetAt(drag.x, drag.y);
     if (over !== drag.over) {
       drag.over = over;
       onOver(over);
@@ -112,7 +127,9 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   function autoscroll() {
     if (!drag) return;
     const r = box.getBoundingClientRect();
-    const pull = !drag.moved || drag.x < r.left || drag.x > r.right ? 0 : Math.max(drag.y - (r.bottom - EDGE), 0) - Math.max(r.top + EDGE - drag.y, 0);
+    // A header carried over what sits above or below the list, such as the Move to strip, must not scroll it.
+    const away = drag.x < r.left || drag.x > r.right || (drag.kind === 'group' && (drag.y < r.top || drag.y > r.bottom));
+    const pull = !drag.moved || away ? 0 : Math.max(drag.y - (r.bottom - EDGE), 0) - Math.max(r.top + EDGE - drag.y, 0);
     if (pull) {
       const was = box.scrollTop;
       box.scrollTop += Math.sign(pull) * Math.ceil(SCROLL_STEP * Math.min(Math.abs(pull), EDGE) / EDGE);
@@ -150,23 +167,23 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     const still = dropped && carried.touch && !carried.moved;
     const target = dropped && !still ? carried.over : null;
     release();
-    if (carried) onEnd(carried.id, target);
-    if (still) onMenu(carried.id, carried.row, { x: carried.x, y: carried.y });
+    if (carried) onEnd(carried.id, target, carried.kind);
+    if (still) onMenu(carried.id, carried.grip, { x: carried.x, y: carried.y }, carried.kind);
   }
 
   function escape(e) {
     if (e.key !== 'Escape' || !drag) return;
     e.preventDefault();
     e.stopPropagation();
-    const { id } = drag;
+    const { id, kind } = drag;
     discard();
-    onEnd(id, null);
+    onEnd(id, null, kind);
   }
 
   function lost() {
     const carried = drag;
     release();
-    if (carried) onEnd(carried.id, null);
+    if (carried) onEnd(carried.id, null, carried.kind);
   }
 
   function menu(e) {
@@ -174,7 +191,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     const row = e.target.closest('a.row[data-id]');
     if (!row) return;
     e.preventDefault();
-    onMenu(row.dataset.id, row, pointIn(row, e));
+    onMenu(row.dataset.id, row, pointIn(row, e), 'row');
   }
 
   const life = new AbortController();
@@ -182,6 +199,8 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   box.addEventListener('pointerdown', down, { signal });
   box.addEventListener('dragstart', e => e.preventDefault(), { signal });
   box.addEventListener('contextmenu', menu, { signal });
+  // A long press on Android also sends a context menu, which a header would answer with its menu before the press is over.
+  box.addEventListener('contextmenu', e => { if (press?.touch || drag) swallow(e); }, { signal, capture: true });
   // NOTE: [15 Oct 2026] EK - Keep this touchmove listener non-passive and registered up front, not added at the long press.
   // dnd-kit does the same to stop the list scrolling under a touch drag, and says iOS Safari needs it.
   // See https://github.com/clauderic/dnd-kit/blob/master/packages/core/src/sensors/touch/TouchSensor.ts.
