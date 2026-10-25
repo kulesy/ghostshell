@@ -11,11 +11,13 @@ The list shows one view at a time, which you pick in the [projects sidebar](#the
 - Home shows routines first, then pinned sessions, your groups that are in no project, the sessions started here, ungrouped ones and terminal sessions.
 - A project's view shows pinned sessions, then that project's groups, with no header for the project, because the sidebar already names it.
 
+Each group's header, and each of Home's built-in sections (Routines, Pinned, Started here, Ungrouped and Terminal and other), has a button that opens a chat of its own, which shows the status of its sessions in its [Sub sessions tab](tools.md#group-and-section-sessions). Pinned's button shows in every view. A built-in section has no menu, so its header has the chat button alone, and Routines has it beside the button that manages routines.
+
 ### Order
 
 Every group lists its sessions by title, A to Z, and a family goes by its head's title. The other sections sort as you set them in Claude Desktop: by last turn, by when the session was made or by title, either way round.
 
-A group shows when it is empty, so a new group can be found and filled. A project with no groups says so beside a New group button. The other sections show only when they hold a session.
+A group shows when it is empty, so a new group can be found and filled. A project with no groups says so beside a New group button. The other sections show only when they hold a session, so an empty section has no chat button either.
 
 ### Rows and marks
 

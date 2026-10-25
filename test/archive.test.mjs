@@ -171,7 +171,7 @@ test('a session archived from Capcom keeps its group, pin and routine, and unarc
   for (const id of ['run', 'loose']) await post(s, token, { id, archived: false });
   assert.deepEqual(places(await index(s, token)), placed);
   assert.deepEqual(await archive(s, token), []);
-  assert.deepEqual({ ...onDisk(s), archived: {}, unarchived: [] }, { ...layout, projects: [], retired: [], titles: {}, parents: {}, archived: {}, unarchived: [] }, 'only the two lists changed');
+  assert.deepEqual({ ...onDisk(s), archived: {}, unarchived: [] }, { ...layout, projects: [], retired: [], sections: {}, titles: {}, parents: {}, archived: {}, unarchived: [] }, 'only the two lists changed');
   assert.deepEqual(onDisk(s).unarchived, ['grouped', 'pinned', 'run', 'loose']);
 
   await post(s, token, { id: 'loose', archived: true });

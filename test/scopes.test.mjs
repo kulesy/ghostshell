@@ -275,3 +275,39 @@ test('the view that holds a group\'s own session is the view of its group, and a
   assert.equal(holder(ix, 'chat-c'), NO_VIEW);
   assert.equal(holder(ix, undefined), NO_VIEW);
 });
+
+const withSections = (states, extra) => ({
+  ...list({ routines: [], started: [], ungrouped: [], other: [], groups: [], ...extra }),
+  sections: ['routines', 'pinned', 'started', 'ungrouped', 'other'].map(id => ({ id, session: states[id] ? { id: `chat-${id}`, state: states[id] } : null, archived: 0 })),
+});
+
+test('a built-in section\'s own session is in no list, but it lights Home\'s lamp while it works or waits, and no project\'s', () => {
+  for (const id of ['routines', 'started', 'ungrouped', 'other']) {
+    assert.equal(lampOf(withSections({ [id]: 'waiting' }), HOME_VIEW), 'waiting', id);
+    assert.equal(lampOf(withSections({ [id]: 'working' }), HOME_VIEW), 'working', id);
+    assert.equal(lampOf(withSections({ [id]: 'idle' }), HOME_VIEW), null, id);
+    assert.equal(lampOf(withSections({ [id]: 'waiting' }), WEB), null, `${id} lights no project`);
+    assert.equal(othersWaiting(withSections({ [id]: 'waiting' }), WEB), true, `${id} makes Home another view that is waiting`);
+    assert.equal(othersWaiting(withSections({ [id]: 'waiting' }), HOME_VIEW), false);
+  }
+  assert.equal(lampOf(withSections({ other: 'working', started: 'waiting' }), HOME_VIEW), 'waiting', 'waiting beats working');
+  assert.deepEqual(viewsOf(withSections({ other: 'waiting' })).map(v => [v.name, v.lamp]), [['Home', 'waiting'], ['Website', null], ['Mobile app', null]]);
+});
+
+test('the Pinned chat lights no view, as the pinned sessions do, since they show in all of them', () => {
+  for (const view of [HOME_VIEW, WEB, APP]) assert.equal(lampOf(withSections({ pinned: 'waiting' }), view), null, String(view));
+});
+
+test('a list with no sections, as an older server\'s, lights the lamp as it did', () => {
+  assert.equal(lampOf(list({ routines: [], started: [], ungrouped: [], other: [], groups: [] }), HOME_VIEW), null);
+  assert.equal(lampOf({ ...withSections({ other: 'waiting' }), sections: undefined }, HOME_VIEW), null);
+});
+
+test('the view that holds a built-in section\'s own session is every view for Pinned and Home for the rest, and a section with none holds nothing', () => {
+  const ix = withSections({ routines: 'idle', pinned: 'idle', started: 'idle', other: 'idle' });
+  assert.equal(holder(ix, 'chat-pinned'), EVERY_VIEW);
+  for (const id of ['routines', 'started', 'other']) assert.equal(holder(ix, `chat-${id}`), HOME_VIEW, id);
+  assert.equal(holder(ix, 'chat-ungrouped'), NO_VIEW, 'a section with no chat holds nothing');
+  assert.equal(holder({ ...ix, sections: undefined }, 'chat-pinned'), NO_VIEW);
+});
+

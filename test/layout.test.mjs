@@ -25,8 +25,8 @@ const rewritten = f => fs.statSync(f.file).mtimeMs !== 1000;
 
 test('a layout file from before projects, unarchiving and archiving loads as it was, and a missing file is an empty layout', () => {
   const { layout } = folder(OLD);
-  assert.deepEqual(layout.read(), { ...OLD, projects: [], retired: [], unarchived: [], archived: {}, titles: {}, parents: {} });
-  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], retired: [], pinned: [], assignments: {}, unarchived: [], archived: {}, titles: {}, parents: {} });
+  assert.deepEqual(layout.read(), { ...OLD, projects: [], retired: [], sections: {}, unarchived: [], archived: {}, titles: {}, parents: {} });
+  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], retired: [], sections: {}, pinned: [], assignments: {}, unarchived: [], archived: {}, titles: {}, parents: {} });
 });
 
 test('archiving records when, takes the session out of the unarchived list, and keeps everything else in the file, including keys this version does not know', () => {
@@ -37,7 +37,7 @@ test('archiving records when, takes the session out of the unarchived list, and 
   assert.deepEqual(Object.keys(archived), ['s1']);
   assert.equal(new Date(archived.s1).toISOString(), archived.s1);
   assert.ok(Date.parse(archived.s1) >= before && Date.parse(archived.s1) <= Date.now(), archived.s1);
-  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], retired: [], titles: {}, parents: {}, archived, unarchived: ['s2'] });
+  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], retired: [], sections: {}, titles: {}, parents: {}, archived, unarchived: ['s2'] });
   assert.deepEqual(f.layout.read().archived, archived);
 });
 
@@ -57,7 +57,7 @@ test('unarchiving takes a session out of the archived list, adds it to the unarc
   f.layout.unarchive('s1');
   f.layout.unarchive('s1');
   f.layout.unarchive('s3');
-  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], retired: [], titles: {}, parents: {}, archived: { s2: FIRST }, unarchived: ['s1', 's3'] });
+  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], retired: [], sections: {}, titles: {}, parents: {}, archived: { s2: FIRST }, unarchived: ['s1', 's3'] });
 });
 
 test('unarchiving writes nothing when the session is unarchived already, and a session in both lists leaves the archived one', () => {
@@ -207,7 +207,7 @@ const WITH_PROJECTS = {
   ...OLD,
   projects: [{ id: 'cp-a', name: 'Capcom' }, { id: 'cp-b', name: 'Garden' }],
   groups: [{ id: 'cg-a', name: 'Reviewing', project: 'cp-a', colour: 'blue' }, { id: 'cg-b', name: 'Backlog', project: 'cp-b' }, { id: 'cg-c', name: 'Loose' }],
-  retired: [],
+  retired: [], sections: {},
   unarchived: ['s5'],
   archived: { s6: FIRST },
   titles: { s7: 'Named here' },
@@ -424,7 +424,7 @@ const MEMBERS = {
 test('deleting a group takes it out of the groups and puts every session in it, archived ones too, back to ungrouped, and leaves the others where they are', () => {
   const f = folder(MEMBERS);
   assert.deepEqual(f.layout.removeGroup('cg-a'), { id: 'cg-a', name: 'Reviewing', project: 'cp-a', colour: 'blue' });
-  assert.deepEqual(f.onDisk(), { ...MEMBERS, groups: MEMBERS.groups.filter(g => g.id !== 'cg-a'), assignments: { s2: 'cg-b', s4: 'cg-c' }, retired: [] });
+  assert.deepEqual(f.onDisk(), { ...MEMBERS, groups: MEMBERS.groups.filter(g => g.id !== 'cg-a'), assignments: { s2: 'cg-b', s4: 'cg-c' }, retired: [], sections: {} });
 });
 
 test('deleting a group keeps a family together, since a nested session shows in its holder\'s place, and keeps pins, parents and titles', () => {
@@ -518,7 +518,7 @@ test('a group goes before or after another in its view, and the groups of the ot
   assert.deepEqual(f.layout.orderGroup('h2', { before: 'h1' }), { id: 'h2', name: 'Two', colour: 'blue' }, 'what a group holds comes back with it');
   assert.deepEqual(idsOf(f), ['p1', 'h3', 'h2', 'h1', 'p2']);
   assert.deepEqual(f.onDisk().groups.find(g => g.id === 'h2'), ORDERED.groups[2], 'and nothing about the group changes');
-  assert.deepEqual({ ...f.onDisk(), groups: [] }, { ...ORDERED, groups: [], projects: ORDERED.projects, retired: [], unarchived: [], archived: {}, titles: {}, parents: {} });
+  assert.deepEqual({ ...f.onDisk(), groups: [] }, { ...ORDERED, groups: [], projects: ORDERED.projects, retired: [], sections: {}, unarchived: [], archived: {}, titles: {}, parents: {} });
 });
 
 test('groups in a project are ordered among themselves', () => {
@@ -558,4 +558,85 @@ test('ordering needs exactly one other group in the same view, and a refusal wri
   ]) assert.throws(() => f.layout.orderGroup(id, where), { status: 400, message: what }, `${id} ${JSON.stringify(where)}`);
   assert.equal(fs.readFileSync(f.file, 'utf8'), before);
   assert.deepEqual(f.layout.orderGroup('h1', { before: 'h2', after: null }), { id: 'h1', name: 'One' }, 'a null is no answer');
+});
+
+const THIRD = '5a2f8c61-7d40-4b9e-a3c6-1e94b0d7f258';
+const FOURTH = 'c8b35e07-1f92-4a6d-8e40-72d9a1b6c503';
+
+test('the built-in sections keep their session links when read: only the five sections, only UUIDs, and one holder for each UUID across groups, retired groups and sections', () => {
+  const { layout } = folder({
+    ...OLD,
+    groups: [{ id: 'cg-a', name: 'A', session: SESSION }],
+    retired: [{ id: 'cg-r', name: 'R', session: OTHER }],
+    sections: { routines: THIRD, pinned: SESSION, started: OTHER, ungrouped: FOURTH, other: THIRD, 'cg-a': FOURTH, nope: THIRD },
+  });
+  assert.deepEqual(layout.read().sections, { routines: THIRD, ungrouped: FOURTH }, 'a group or retired group holds the first two, and an earlier section holds the third');
+  for (const bad of ['not-a-uuid', 5, null, '', SESSION.toUpperCase(), ['x']]) assert.deepEqual(folder({ ...OLD, sections: { pinned: bad, started: THIRD } }).layout.read().sections, { started: THIRD }, String(bad));
+});
+
+test('a layout without sections, or with sections that are not an object, loads or is reported as the other objects are', () => {
+  assert.deepEqual(folder(OLD).layout.read().sections, {});
+  const bad = folder({ ...OLD, sections: [SESSION] });
+  assert.match(bad.layout.read().problem, /^layout\.json cannot be read: /);
+  assert.throws(() => bad.layout.claimGroupSession('pinned', () => THIRD), { status: 500, message: /layout\.json cannot be read/ });
+});
+
+test('booking a section\'s session writes a new id once, returns the same one after, and keeps everything else in the file, including keys this version does not know', () => {
+  const f = folder({ ...WITH_PROJECTS, later: { kept: true } });
+  let minted = 0;
+  const mint = () => { minted++; return SESSION; };
+  assert.equal(f.layout.claimGroupSession('pinned', mint), SESSION);
+  assert.equal(f.layout.claimGroupSession('pinned', mint), SESSION);
+  assert.equal(minted, 1, 'the id is made only for a section that has none');
+  assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, later: { kept: true }, sections: { pinned: SESSION } });
+  assert.equal(f.layout.claimGroupSession('other', () => OTHER), OTHER);
+  assert.deepEqual(f.layout.read().sections, { pinned: SESSION, other: OTHER });
+  assert.deepEqual(f.layout.read().groups.map(g => g.session), [undefined, undefined, undefined], 'no group was given one');
+});
+
+test('two bookings of one section in a process give one id, because each is one read and write', async () => {
+  const f = folder(OLD);
+  const ids = [OTHER, THIRD];
+  const books = await Promise.all([0, 1].map(async n => f.layout.claimGroupSession('routines', () => ids[n])));
+  assert.deepEqual(books, [OTHER, OTHER]);
+  assert.deepEqual(f.onDisk().sections, { routines: OTHER });
+});
+
+test('booking a section refuses an id that a group, a retired group or another section holds, and a refusal writes nothing', () => {
+  const f = folder({ ...OLD, groups: [{ id: 'cg-a', name: 'A', session: SESSION }], retired: [{ id: 'cg-r', name: 'R', session: OTHER }], sections: { started: THIRD } });
+  const before = fs.readFileSync(f.file, 'utf8');
+  for (const taken of [SESSION, OTHER, THIRD, 'nope', undefined, 5]) assert.throws(() => f.layout.claimGroupSession('pinned', () => taken), { status: 500 }, String(taken));
+  assert.equal(fs.readFileSync(f.file, 'utf8'), before);
+  assert.throws(() => f.layout.claimGroupSession('Pinned', () => FOURTH), { status: 404, message: 'Unknown group.' }, 'a section is named by its id');
+  assert.equal(f.layout.claimGroupSession('cg-a', () => assert.fail('a group with a session is not booked another')), SESSION);
+  const group = folder({ ...OLD, groups: [{ id: 'cg-b', name: 'B' }], sections: { started: THIRD } });
+  assert.throws(() => group.layout.claimGroupSession('cg-b', () => THIRD), { status: 500 }, 'a group cannot take the id a section holds');
+});
+
+test('every other edit keeps the sections\' sessions, and so does deleting a group', () => {
+  const sections = { pinned: THIRD, other: FOURTH };
+  const f = folder({ ...MEMBERS, sections });
+  f.layout.move('s1', 'cg-b');
+  f.layout.pin('s2', true);
+  f.layout.archive('s4');
+  f.layout.unarchive('s4');
+  f.layout.nest('s3', 's2');
+  f.layout.unnest('s3');
+  f.layout.rename('s1', 'Named');
+  f.layout.addProject('New');
+  f.layout.addGroup('Notes');
+  f.layout.moveGroup('cg-a', 'cp-b');
+  f.layout.orderGroup('cg-a', { before: 'cg-b' });
+  f.layout.removeProject('cp-a');
+  assert.deepEqual(f.layout.read().sections, sections);
+  f.layout.removeGroup('cg-a');
+  assert.deepEqual(f.onDisk().sections, sections);
+  assert.deepEqual(f.layout.seed({ problem: null, groups: [], pinned: [], assignments: {}, sessions: [] }), null, 'a layout that is seeded already is left alone');
+});
+
+test('seeding from Desktop keeps the sections that were booked before the copy', () => {
+  const f = folder({ sections: { pinned: SESSION } });
+  const desk = { groups: [{ id: 'cg-d', name: 'Desk' }], pinned: [], assignments: {}, sessions: [] };
+  assert.ok(f.layout.seed(desk));
+  assert.deepEqual(f.onDisk().sections, { pinned: SESSION });
 });

@@ -1,9 +1,10 @@
-// A group's own session: the normal chat. A server that summarises sessions shows the group's status in the Sub sessions tab of the chat's
+// The own session of a group or of one of the built-in sections: the normal chat. A server that summarises sessions shows the group's status in the Sub sessions tab of the chat's
 // panel. An older one gets it above the transcript, which is the only place this file draws it.
 import { api } from './api.js';
 import { Back, ChatPane } from './chat.js';
 import { enc, GroupStatus } from './group-status.js';
 import { groupById, paneOf } from './group-rules.js';
+import { sectionById } from './sections.js';
 import { useDocumentTitle } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useState } from './html.js';
 import { draw, icons } from './menu.js';
@@ -11,10 +12,10 @@ import { subStatusOn } from './sub-panel-rules.js';
 import { createStore } from './store.js';
 
 // A pane with no chat in it: a way back to the list, and why.
-function Stub({ title, children, action }) {
-  useDocumentTitle('Group session · GhostShell');
+function Stub({ title, children, action, kind }) {
+  useDocumentTitle(`${kind} session · GhostShell`);
   return html`<section class="session" id="session">
-    <header class="chat-head"><${Back} /><div class="chat-title"><h2>Group session</h2></div></header>
+    <header class="chat-head"><${Back} /><div class="chat-title"><h2>${kind} session</h2></div></header>
     <div data-slot="empty">
       <div data-slot="empty-header">
         <div data-slot="empty-icon" data-variant="icon">${draw(icons.messageSquare)}</div>
@@ -26,11 +27,12 @@ function Stub({ title, children, action }) {
   </section>`;
 }
 
-// The chat of the group `id`. A group not yet opened is given its session first, which starts no process and costs no tokens, then the
+// The chat of the group or section `id`. One not yet opened is given its session first, which starts no process and costs no tokens, then the
 // list brings the id and the chat opens. `ix` is the page's list, so a server that cannot run group sessions is told from it.
 export function GroupPane({ id, ix, refreshIndex }) {
   const state = paneOf(ix, id);
   const group = groupById(ix, id);
+  const kind = sectionById(id) ? 'Section' : 'Group';
   const [booked, setBooked] = useState(null);
   const [problem, setProblem] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -52,12 +54,12 @@ export function GroupPane({ id, ix, refreshIndex }) {
     return () => { stale = true; };
   }, [id, booking, attempt]);
 
-  if (state === 'unloaded') return html`<${Stub} title="Sessions did not load">GhostShell could not be reached. This opens when the list does.<//>`;
-  if (state === 'unsupported') return html`<${Stub} title="Restart GhostShell to talk to a group">This GhostShell started before groups had sessions of their own. Restart it to open one.<//>`;
-  if (state === 'missing') return html`<${Stub} title="Group not found">It may have been deleted. Pick another from the list.<//>`;
+  if (state === 'unloaded') return html`<${Stub} kind=${kind} title="Sessions did not load">GhostShell could not be reached. This opens when the list does.<//>`;
+  if (state === 'unsupported') return html`<${Stub} kind=${kind} title=${`Restart GhostShell to talk to a ${kind.toLowerCase()}`}>This GhostShell started before ${kind === 'Group' ? 'groups' : 'sections'} had sessions of their own. Restart it to open one.<//>`;
+  if (state === 'missing') return html`<${Stub} kind=${kind} title=${`${kind} not found`}>${kind === 'Group' ? 'It may have been deleted. ' : ''}Pick another from the list.<//>`;
   if (!session) {
-    return html`<${Stub} title=${problem ? 'Could not open the session' : 'Opening the session'}
+    return html`<${Stub} kind=${kind} title=${problem ? 'Could not open the session' : 'Opening the session'}
       action=${problem ? html`<button class="btn" data-variant="outline" type="button" onClick=${() => setAttempt(n => n + 1)}>Try again</button>` : null}>${problem || `Getting ${group.name} ready.`}<//>`;
   }
-  return html`<${ChatPane} key=${session} id=${session} row=${{ title: group.name, cwd: '', branch: '' }} title=${group.name} refreshIndex=${refreshIndex} meta="Group session" aside=${subStatusOn(ix) ? undefined : panel} />`;
+  return html`<${ChatPane} key=${session} id=${session} row=${{ title: group.name, cwd: '', branch: '' }} title=${group.name} refreshIndex=${refreshIndex} meta=${`${kind} session`} aside=${subStatusOn(ix) ? undefined : panel} />`;
 }

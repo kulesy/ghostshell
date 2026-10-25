@@ -21,7 +21,7 @@ function chromeCard(tool, i) {
 const capitalised = s => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
 
 // Says exactly what is about to happen, so the answer is an informed one.
-function cardParts(p, names) {
+function cardParts(p, names, place) {
   const i = p.input || {};
   if (p.tool === 'Bash') return { title: 'Bash wants to run a command', fields: [['Command', i.command]] };
   if (p.tool === 'Edit') return { title: 'Edit wants to change', path: p.summary, diff: [i.old_string, i.new_string] };
@@ -31,7 +31,7 @@ function cardParts(p, names) {
   if (p.tool === 'WebFetch') return { title: 'WebFetch wants to fetch a page', fields: [['URL', i.url], ['Asks', i.prompt]] };
   if (p.tool === 'WebSearch') return { title: 'WebSearch wants to search the web', fields: [['Query', i.query]] };
   if (p.tool === 'Agent' || p.tool === 'Task') return { title: 'Claude wants to start a subagent', fields: [['Task', i.description], ['Prompt', clip(i.prompt, 12)]] };
-  if (p.tool === 'mcp__capcom__start_group_session') return { title: 'Claude wants to start a session in this group', fields: [['Folder', i.cwd], ['Title', i.title], ['First message', clip(i.prompt, 12)]] };
+  if (p.tool === 'mcp__capcom__start_group_session') return { title: `Claude wants to start a session in this ${place}`, fields: [['Folder', i.cwd], ['Title', i.title], ['First message', clip(i.prompt, 12)]] };
   if (p.tool === 'SendMessage') return { title: 'Claude wants to message another session', fields: [['To', i.to], ['Message', clip(i.message, 12)]] };
   const chrome = chromeTool(p.tool);
   if (chrome !== null) return chromeCard(chrome, i);
@@ -59,9 +59,9 @@ function useDecide(p, onDecide) {
 }
 
 // Always allow shows only where the runner says it sticks. The runner drops it for Chrome, so the page keeps no list of its own.
-function ApprovalCard({ p, names, onDecide }) {
+function ApprovalCard({ p, names, place, onDecide }) {
   const [busy, decide] = useDecide(p, onDecide);
-  const c = cardParts(p, names);
+  const c = cardParts(p, names, place);
   const fields = (c.fields || []).filter(([, v]) => v !== undefined && v !== null && v !== '');
   return html`<article class="approval" data-id=${p.requestId}>
     <h3><span class="lamp" data-state="waiting" aria-hidden="true"></span>${c.title}</h3>
@@ -114,10 +114,11 @@ function QuestionCard({ p, onDecide }) {
     </div></article>`;
 }
 
-export function Approvals({ ctrl }) {
+// `place` is what the chat's session belongs to, a group or a section, for the card that asks to start a session in it.
+export function Approvals({ ctrl, place = 'group' }) {
   const pending = useStore(ctrl.store, s => s.status?.pending);
   const names = useStore(ctrl.store, s => s.session?.connectors);
   return html`<div class="approvals" id="approvals">${(pending || []).map(p => (p.tool === 'AskUserQuestion'
     ? html`<${QuestionCard} key=${p.requestId} p=${p} onDecide=${ctrl.decide} />`
-    : html`<${ApprovalCard} key=${p.requestId} p=${p} names=${names} onDecide=${ctrl.decide} />`))}</div>`;
+    : html`<${ApprovalCard} key=${p.requestId} p=${p} names=${names} place=${place} onDecide=${ctrl.decide} />`))}</div>`;
 }

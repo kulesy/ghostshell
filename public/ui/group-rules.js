@@ -1,5 +1,6 @@
 // How a group's sessions fall into the parts of its status panel and of the list_group_sessions tool, as rules that need no page, so
 // node can test them and the server shares them. The rows are the server's, as they sit in the index.
+import { sectionById, sectionSessions, supportsSections } from './sections.js';
 import { withKids } from './tree.js';
 
 // A session that is not archived, waiting or working counts as recent when it was written to within this long.
@@ -51,15 +52,32 @@ export const supportsGroups = ix => !!ix?.features?.groupSessions;
 // A server that can delete and order groups says so too. Against an older one the group menu keeps only its moves between projects.
 export const supportsGroupEdits = ix => !!ix?.features?.groupEdits;
 
-export const groupById = (ix, id) => ix?.groups.find(g => g.id === id) ?? null;
+// A built-in section as a group-shaped object over the sidebar's own lists, kept per list so renders see the same object. Only a list
+// with `sections` has one, which an older server's does not.
+const made = new WeakMap();
 
-// The group whose own session this is, or null. A link to that session opens the group.
-export const groupOfSession = (ix, id) => (id ? ix?.groups.find(g => g.session?.id === id) ?? null : null);
+function sectionGroup(ix, id) {
+  const entry = ix?.sections?.find(s => s.id === id);
+  if (!entry || !sectionById(id)) return null;
+  if (!made.has(ix)) made.set(ix, new Map());
+  const byId = made.get(ix);
+  if (!byId.has(id)) byId.set(id, { id, name: sectionById(id).name, session: entry.session, archived: entry.archived, sessions: sectionSessions(ix, id), section: true });
+  return byId.get(id);
+}
 
-// What a group's pane shows: its chat when the list has the group, and else why not.
+export const groupById = (ix, id) => (sectionById(id) ? sectionGroup(ix, id) : ix?.groups.find(g => g.id === id) ?? null);
+
+// The group or section whose own session this is, or null. A link to that session opens it.
+export function groupOfSession(ix, id) {
+  if (!id) return null;
+  const entry = ix?.sections?.find(s => s.session?.id === id);
+  return entry ? sectionGroup(ix, entry.id) : ix?.groups.find(g => g.session?.id === id) ?? null;
+}
+
+// What a group's pane shows: its chat when the list has the group, and else why not. A section needs a server that knows them as well.
 export function paneOf(ix, id) {
   if (!ix) return 'unloaded';
-  if (!supportsGroups(ix)) return 'unsupported';
+  if (!supportsGroups(ix) || (sectionById(id) && !supportsSections(ix))) return 'unsupported';
   return groupById(ix, id) ? 'ready' : 'missing';
 }
 

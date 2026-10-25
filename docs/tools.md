@@ -16,21 +16,31 @@ The `mark_chapter` tool makes chapters, which show as titled dividers.
 
 ## Sub sessions
 
-Every chat that is not a group's gets `list_sub_sessions` and `read_sub_session`, which reach the sessions below that chat, at any depth, and no others. `list_sub_sessions` lists them as a tree, the ones that need you first, each with its roll-up and the first sentence of its latest reply. `read_sub_session` reads the end of one of them and what it waits on. Both only read, so they run with no card in every mode. An id outside the chat's family gets the same refusal as an id that is no session.
+Every chat that is not a group's or a section's gets `list_sub_sessions` and `read_sub_session`, which reach the sessions below that chat, at any depth, and no others. `list_sub_sessions` lists them as a tree, the ones that need you first, each with its roll-up and the first sentence of its latest reply. `read_sub_session` reads the end of one of them and what it waits on. Both only read, so they run with no card in every mode. An id outside the chat's family gets the same refusal as an id that is no session.
 
 GhostShell never starts a turn in a parent to pass status up. A parent's model learns what is below it when it calls these tools, and you see the same status in the chat's [Sub sessions tab](session-list.md#sub-session-status).
 
-## Group sessions
+## Group and section sessions
 
-Each group's header has a button that opens the group's own chat at `#/g/<group id>`, and it lights with the chat's mark while that chat works or waits for you. The chat works in a private folder under GhostShell's state folder, shows the group's live status in its side panel, and gets three tools that reach that group alone: `list_group_sessions`, `read_group_session` and `start_group_session`. Starting a session always asks first, in every permission mode. [The decision record](adr/20261023-a-session-for-each-group.md) says what it can and cannot do.
+Each group's header has a button that opens the group's own chat at `#/g/<group id>`, and so does the header of each built-in section of Home: Routines, Pinned, Started here, Ungrouped and Terminal and other. A section's chat opens at `#/g/pinned`, `#/g/started` and so on. The button lights with the chat's mark while that chat works or waits for you. A section has no menu, because none of a group's actions fits it, and a section with no sessions is not drawn, so it has no button.
 
-### The group status
+The chat works in a private folder under GhostShell's state folder, shows the live status of its sessions in its side panel, and gets three tools that reach those sessions alone: `list_group_sessions`, `read_group_session` and `start_group_session`. The tools keep those names in a section's chat, and their descriptions say "section". A section's chat sees exactly the sessions the sidebar lists in that section, the same ones with the same caps, with the sessions nested under each, and lists the section's archived ones when it asks for them. Pinned holds the sessions you pinned, from any app, and Routines holds the runs of every routine, so those chats can read sessions from every app you use. Another section's session, a group's session and any other id all get the same refusal. Starting a session always asks first, in every permission mode, and it needs a folder that is not GhostShell's own.
 
-The page draws the status from the list it already loads, so it costs no tokens. It is the chat's Sub sessions tab, laid out as [a session's](session-list.md#sub-session-status): each line is one of the group's sessions with its whole family under it, placed by the most urgent session in the family, and the line at the top rolls up the whole group, as "5 sessions, 1 waiting on you, 1 working". The panel opens by itself on a wide screen, and the button in the chat's header opens it on a phone.
+Where a session started from a section's chat goes depends on the section:
+
+- **Pinned** pins it, so it shows in Pinned.
+- **Started here** and **Ungrouped** leave it in no group. GhostShell started it, so it shows in Started here, whichever of the two chats started it.
+- **Routines** and **Terminal and other** cannot hold a new session. Their chat refuses `start_group_session` and `spawn_task`, a chip from them refuses Start, and the chat's instructions suggest starting the work from a group's chat, from the chat of Pinned or Started here, or in a new session.
+
+[The decision record](adr/20261023-a-session-for-each-group.md) says what these chats can and cannot do.
+
+### The status in the chat
+
+The page draws the status from the list it already loads, so it costs no tokens. It is the chat's Sub sessions tab, laid out as [a session's](session-list.md#sub-session-status): each line is one of the group's or section's sessions with its whole family under it, placed by the most urgent session in the family, and the line at the top rolls up all of them, as "5 sessions, 1 waiting on you, 1 working". A section rolls up as a group does for the same sessions. The panel opens by itself on a wide screen, and the button in the chat's header opens it on a phone. A section with nothing in it says so in the tab.
 
 Idle sessions show last, under their own heading. Archived sessions stay out of the tab, as they stay out of the list.
 
-A server that started before sub session status draws the group's status above the transcript instead, folded to one line such as "2 need you · 3 working · 12 recent · 140 more", with the idle and archived sessions in a fold of their own. A server that started before groups had sessions has no button, and the group's page says to restart GhostShell.
+A server that started before sub session status draws the status above the transcript instead, folded to one line such as "2 need you · 3 working · 12 recent · 140 more", with the idle and archived sessions in a fold of their own. A server that started before groups had sessions has no button, and the group's page says to restart GhostShell. A server that started before sections had sessions has no section buttons, and a section's page says to restart GhostShell.
 
 ## Widgets
 

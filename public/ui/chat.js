@@ -128,7 +128,7 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     <${Transcript} ctrl=${ctrl} quoting=${quoting} />
     <div class="dock">
       <${QuoteDock} ctrl=${ctrl} quoting=${quoting} />
-      <${Approvals} ctrl=${ctrl} />
+      <${Approvals} ctrl=${ctrl} place=${meta?.startsWith('Section') ? 'section' : 'group'} />
       <${Holds} ctrl=${ctrl} />
       <${Notice} ctrl=${ctrl} />
       <${Composer} ctrl=${ctrl} />

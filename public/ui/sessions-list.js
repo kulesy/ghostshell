@@ -8,7 +8,7 @@ import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatButton } from './group-button.js';
-import { deleteDetail, supportsGroupEdits, supportsGroups } from './group-rules.js';
+import { deleteDetail, groupById, supportsGroupEdits, supportsGroups } from './group-rules.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
@@ -80,12 +80,13 @@ const Empty = ({ paths, title, action, children }) => html`<div data-slot="empty
 
 // The header of a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
 // The same menu opens on a right click, at the pointer, or the menu key, under the button. `chat` is the group, when its header has the
-// button that opens the group's own session, and `extra` another small button of the same kind.
+// button that opens the group's own session, or a built-in section's, and `extra` another small button of the same kind. A built-in section
+// has no menu: none of a group's actions fits it.
 function Head({ id, name, count, open, toggle, menu, chat, extra, current, tree }) {
   const pop = (button, point, entry) => tree.pop(id, menu, button, { point, entry });
   const trigger = opener((button, entry) => pop(button, null, entry));
   const shown = tree.shown?.key === id;
-  return html`<div class=${['bar', menu && 'has-menu', (chat || extra) && 'has-chat'].filter(Boolean).join(' ')} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
+  return html`<div class=${['bar', menu && 'has-menu', (chat || extra) && 'has-chat', chat && extra && 'has-two'].filter(Boolean).join(' ')} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
     <button class="group-head" type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
     ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
     ${chat ? html`<${GroupChatButton} group=${chat} current=${current === chat.session?.id} />` : null}
@@ -158,14 +159,14 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   const groups = groupsIn(ix, view);
   const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;
   const parts = [
-    home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false, extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
-    section('pinned', 'Pinned', ix.pinned, rows(ix.pinned)),
+    home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false, chat: groupById(ix, 'routines'), extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
+    section('pinned', 'Pinned', ix.pinned, rows(ix.pinned), { chat: groupById(ix, 'pinned') }),
     ...groups.map(group),
     adding && tree.groupForm(project),
     project && !groups.length && !adding && html`<${Empty} paths=${icons.folderPlus} title="No groups yet" action=${html`<button class="btn new-group" data-variant="outline" data-size="sm" type="button" onClick=${() => tree.newGroup(project, ['.new-group'])}>New group</button>`}>Make one with New group, or move one here from a group's menu in Home.<//>`,
-    home && section('started', LOOSE_NAMES.started, ix.started, rows(ix.started)),
-    home && section('ungrouped', LOOSE_NAMES.ungrouped, ix.ungrouped, rows(ix.ungrouped)),
-    home && section('other', LOOSE_NAMES.other, ix.other, rows(ix.other)),
+    home && section('started', LOOSE_NAMES.started, ix.started, rows(ix.started), { chat: groupById(ix, 'started') }),
+    home && section('ungrouped', LOOSE_NAMES.ungrouped, ix.ungrouped, rows(ix.ungrouped), { chat: groupById(ix, 'ungrouped') }),
+    home && section('other', LOOSE_NAMES.other, ix.other, rows(ix.other), { chat: groupById(ix, 'other') }),
   ].filter(Boolean);
   return parts.length ? parts : html`<${Empty} paths=${icons.messageSquarePlus} title="No sessions found">Press <kbd>${newKey}</kbd> to start one.<//>`;
 }

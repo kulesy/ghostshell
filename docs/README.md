@@ -6,7 +6,7 @@ The detail behind GhostShell, the browser chat client for Claude Code sessions o
 - [Chat](chat.md): the prompt box, quotes, the model menu, slash commands, the context ring, live work, tool calls, notices and messages between chats.
 - [Attachments](attachments.md): images, files and the image viewer.
 - [Session list](session-list.md): views, rows, new sessions, groups, pins, nesting, sub session status, projects, search, archiving, renaming and keys.
-- [Tools](tools.md): the `capcom` MCP server (chips, chapters, sub sessions, group sessions, widgets, questions) and Claude in Chrome.
+- [Tools](tools.md): the `capcom` MCP server (chips, chapters, sub sessions, group and section sessions, widgets, questions) and Claude in Chrome.
 - [Terminal](terminal.md): the terminal panel and `!` commands.
 - [Routines](routines.md): how GhostShell runs Desktop's routines.
 - [Setup](setup.md): the password, starting the server, tests, sign-in, passkeys and installing the app.

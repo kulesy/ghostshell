@@ -112,6 +112,10 @@ Desktop names a claude.ai connector by an id. In a Desktop session a connector s
 
 A message to another chat reads "to name: summary" and counts as "sent 2 messages", and a look at the other chats reads "looked up other sessions". A send asks for approval only when a permission rule makes the CLI ask, and the approval card then shows who it goes to and the message.
 
+## Group and section chats
+
+A group has a chat of its own, and so does each built-in section of the list: Routines, Pinned, Started here, Ungrouped and Terminal and other. Its header says "Group session" or "Section session", and its Sub sessions tab shows the sessions it covers. It is a normal chat otherwise, with the same prompt box and approvals. [Tools](tools.md#group-and-section-sessions) says what it can reach and start.
+
 ## Notices
 
 The CLI saves some of its own messages as user turns: a background task that finished, failed or was stopped, a line from a monitor, a message from another session or a subagent, and the CLI's report on a message this chat sent to another session. GhostShell shows each as a compact notice instead of a message from you.

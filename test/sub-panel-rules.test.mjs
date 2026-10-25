@@ -244,3 +244,24 @@ test('a card\'s pill says waiting for a waiting or awaiting session, then failed
   assert.deepEqual(pillOf({ state: 'idle', dot: 'ready' }), { label: 'Unread', tone: 'ready' });
   assert.deepEqual(pillOf({ state: 'idle', dot: null }), { label: 'Idle', tone: 'idle' });
 });
+
+// A section's chat rolls up the sessions the sidebar lists in it as a group's rolls up its own, so the same sessions give the same line, button and lines.
+test('the Sub sessions tab of a built-in section says what a group\'s says for the same sessions, in the line, the button and the lines', () => {
+  const sessions = [
+    row('h', null, 'idle', MINUTE, { children: [row('h1', 'h', 'waiting', MINUTE, { dot: 'awaiting' }), row('h2', 'h', 'working', MINUTE, { dot: 'running' }), row('h3', 'h2', 'idle', 3 * RECENT_MS), row('gone', 'h', 'idle', MINUTE, { archived: true })] }),
+    row('z', null, 'working', 2 * MINUTE, { dot: 'running' }),
+  ];
+  const shaped = (id, chat, extra) => ({ ...index(), groups: [{ id: 'cg-work', name: 'Work', session: { id: WORK }, archived: 0, sessions: id === 'cg-work' ? sessions : [] }], ungrouped: [], pinned: [], ...extra, sections: undefined, ...(id !== 'cg-work' && { sections: [{ id, session: { id: chat }, archived: 0 }] }) });
+  const group = shaped('cg-work', WORK);
+  const section = { ...shaped('pinned', 'chat-pinned'), pinned: sessions, features: { subStatus: true, sectionSessions: true } };
+  assert.equal(summaryLine(section, 'chat-pinned', NOW), summaryLine(group, WORK, NOW));
+  assert.equal(summaryLine(section, 'chat-pinned', NOW), '5 sessions, 1 waiting on you, 2 working');
+  assert.deepEqual(subsStatus(section, 'chat-pinned', NOW), subsStatus(group, WORK, NOW));
+  assert.deepEqual(subsStatus(section, 'chat-pinned', NOW), { total: 5, needs: 1 });
+  assert.deepEqual(shape(linesOf(section, 'chat-pinned', NOW)), shape(linesOf(group, WORK, NOW)));
+  assert.equal(subsOffered(section, 'chat-pinned'), subsOffered(group, WORK), 'a section\'s chat has the tab as a group\'s does');
+  const empty = { ...section, pinned: [] };
+  assert.equal(summaryLine(empty, 'chat-pinned', NOW), '', 'a section with nothing in it says nothing, and the tab says so itself');
+  assert.equal(subsOffered(empty, 'chat-pinned'), true);
+});
+

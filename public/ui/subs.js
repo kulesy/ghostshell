@@ -5,7 +5,7 @@ import { md } from '../md.mjs';
 import { api } from './api.js';
 import { DOT_LABEL, STATE_LABEL, when } from './format.js';
 import { flipped, groupOfSession } from './group-rules.js';
-import { chevron, EMPTY, enc, LIVE } from './group-status.js';
+import { chevron, emptyNote, enc, LIVE } from './group-status.js';
 import { useStore } from './hooks.js';
 import { html, useEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { UNTITLED } from './order.js';
@@ -169,7 +169,7 @@ export function SubsTab({ ctrl, active }) {
   return html`<div class="subs">
     ${summary ? html`<p class="subs-sum"><${Words} text=${summary} /></p>` : null}
     ${PARTS.map(([key, label]) => (parts[key].length ? html`<${Section} key=${key} label=${label} nodes=${parts[key]} shared=${shared} />` : null))}
-    ${group && !lines.length ? html`<p class="status-note">${EMPTY}</p>` : null}
+    ${group && !lines.length ? html`<p class="status-note">${emptyNote(group)}</p>` : null}
     ${failed ? html`<p class="status-note" role="status">Could not read what these sessions last said.</p>` : null}
   </div>`;
 }

@@ -1,8 +1,10 @@
 .has-chat .group-head .count { margin-right: 1.75rem; }
 
-.has-chat.has-menu .group-head .count { margin-right: 3.25rem; }
+.has-chat:is(.has-menu, .has-two) .group-head .count { margin-right: 3.25rem; }
 
 .bar.has-menu > .chat-open { right: 3rem; }
+
+.bar.has-two > .chat-open:has(~ .chat-open) { right: 3rem; }
 
 .chat-open { text-decoration: none; }
 
@@ -18,9 +20,11 @@
 }
 
 @media (pointer: coarse) {
-  .has-chat.has-menu .group-head .count { margin-right: 4.25rem; }
+  .has-chat:is(.has-menu, .has-two) .group-head .count { margin-right: 4.25rem; }
 
   .bar.has-menu > .chat-open { right: 4.5rem; }
+
+  .bar.has-two > .chat-open:has(~ .chat-open) { right: 4.5rem; }
 }
 
 .group-status {

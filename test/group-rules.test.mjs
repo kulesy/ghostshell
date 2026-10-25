@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BUCKETS, bucketOf, bucketsOf, deleteDetail, flipped, groupById, groupOfSession, litState, membersOf, paneOf, RECENT_MS, summaryOf, supportsGroupEdits, supportsGroups } from '../public/ui/group-rules.js';
+import { supportsSections } from '../public/ui/sections.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
 const row = (id, state, ago, extra) => ({ id, state, lastActivityAt: NOW - ago, ...extra });
@@ -114,3 +115,71 @@ test('a fold flips on and off by group, and leaves the others as they were', () 
   assert.deepEqual(flipped({ 'cg-a': true }, 'cg-a'), {}, 'a fold that is off is not kept');
   assert.deepEqual(opened, { 'cg-a': true, 'cg-b': true }, 'the stored object is not changed');
 });
+
+const SECTION_LIST = (features = { groupSessions: true, sectionSessions: true }) => ({
+  features,
+  groups: [WORK],
+  pinned: [row('p-1', 'idle', 1, { children: [row('p-kid', 'working', 1)] })],
+  routines: [{ name: 'nightly', latest: row('run-3', 'idle', 1), earlier: [row('run-2', 'idle', 2), row('run-1', 'idle', 3)] }, { name: 'weekly', latest: row('wk-1', 'idle', 1), earlier: [] }],
+  started: [row('st-1', 'idle', 1)],
+  ungrouped: [row('un-1', 'idle', 1)],
+  other: [],
+  sections: [
+    { id: 'routines', session: null, archived: 2 },
+    { id: 'pinned', session: { id: 'chat-pinned', state: 'working' }, archived: 0 },
+    { id: 'started', session: { id: 'chat-started', state: 'idle' }, archived: 1 },
+    { id: 'ungrouped', session: null, archived: 0 },
+    { id: 'other', session: { id: 'chat-other', state: 'waiting' }, archived: 0 },
+  ],
+});
+
+test('a section is a group-shaped object made from the sidebar\'s own lists, the same one for as long as the list is, and no group of the list', () => {
+  const list = SECTION_LIST();
+  const pinned = groupById(list, 'pinned');
+  assert.deepEqual({ ...pinned, sessions: ids(pinned.sessions) }, { id: 'pinned', name: 'Pinned', session: { id: 'chat-pinned', state: 'working' }, archived: 0, sessions: ['p-1'], section: true });
+  assert.equal(groupById(list, 'pinned'), pinned, 'the same object between renders');
+  assert.deepEqual(ids(groupById(list, 'routines').sessions), ['run-3', 'run-2', 'run-1', 'wk-1'], 'a routine\'s runs flattened, the latest first');
+  assert.deepEqual(groupById(list, 'ungrouped').session, null);
+  assert.equal(groupById(list, 'other').name, 'Terminal and other');
+  assert.notEqual(groupById(SECTION_LIST(), 'pinned'), pinned, 'a new list makes new objects');
+  assert.equal(groupById(list, 'cg-work'), WORK, 'a group is found as before');
+  assert.deepEqual(ids(membersOf(pinned)), ['p-1', 'p-kid'], 'the nested sessions are members');
+  assert.equal(list.groups.some(g => g.section), false);
+});
+
+test('an index with no sections, or no such section, finds none, whatever else it has', () => {
+  const older = { ...SECTION_LIST(), sections: undefined };
+  for (const id of ['routines', 'pinned', 'started', 'ungrouped', 'other']) assert.equal(groupById(older, id), null, id);
+  assert.equal(groupById({ ...SECTION_LIST(), sections: [] }, 'pinned'), null);
+  assert.equal(groupById(null, 'pinned'), null);
+  assert.equal(groupById(SECTION_LIST(), 'constructor'), null);
+});
+
+test('the section whose own session an id is is found by that session, beside the groups, and a section with none holds nothing', () => {
+  const list = SECTION_LIST();
+  assert.equal(groupOfSession(list, 'chat-pinned'), groupById(list, 'pinned'));
+  assert.equal(groupOfSession(list, 'chat-other').id, 'other');
+  assert.equal(groupOfSession(list, 's-work'), WORK);
+  assert.equal(groupOfSession(list, 'p-1'), null, 'a member is no chat');
+  assert.equal(groupOfSession({ ...list, sections: undefined }, 'chat-pinned'), null);
+  assert.equal(groupOfSession(list, undefined), null);
+});
+
+test('the pane of a section needs a server that knows sections as well, and is missing when the list has none', () => {
+  assert.equal(paneOf(null, 'pinned'), 'unloaded');
+  assert.equal(paneOf(SECTION_LIST(), 'pinned'), 'ready');
+  assert.equal(paneOf(SECTION_LIST({ groupSessions: true }), 'pinned'), 'unsupported', 'a server of groups only is asked nothing for a section');
+  assert.equal(paneOf(SECTION_LIST({ sectionSessions: true }), 'pinned'), 'unsupported');
+  assert.equal(paneOf(SECTION_LIST({}), 'pinned'), 'unsupported');
+  assert.equal(paneOf({ ...SECTION_LIST(), sections: [] }, 'pinned'), 'missing');
+  assert.equal(paneOf(SECTION_LIST({ groupSessions: true }), 'cg-work'), 'ready', 'a group is as it was');
+  assert.equal(supportsSections(SECTION_LIST()), true);
+  for (const features of [undefined, {}, { sectionSessions: false }, { groupSessions: true }]) assert.equal(supportsSections({ features }), false);
+  assert.equal(supportsSections(null), false);
+});
+
+test('a section\'s button lights as a group\'s does, from its chat\'s state', () => {
+  const list = SECTION_LIST();
+  assert.deepEqual(['pinned', 'started', 'ungrouped', 'other'].map(id => litState(groupById(list, id).session)), ['working', null, null, 'waiting']);
+});
+

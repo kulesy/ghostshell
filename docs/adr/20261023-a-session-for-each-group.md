@@ -1,6 +1,6 @@
 # Give each group a session of its own, with the group's status drawn above its chat
 
-- Status: Accepted, amended 2026-10-23
+- Status: Accepted, amended 2026-10-25
 - Deciders: Eli
 - Date: 2026-10-23
 - Tags: groups, sessions, layout, mcp, tools, widgets, permissions
@@ -50,6 +50,14 @@ Chosen option: "A Capcom chat per group, in a private folder, with group-only to
 
 **Amended 2026-10-23, status in the side panel.** When the server sends `features.subStatus`, the group's status moves from above the transcript to the Sub sessions tab of the chat's right-hand panel, which is the only tab of a group's chat since it has no terminal. The tab lists the group's own sessions, each with its family and the roll-up of the sessions nested under it, placed under Needs you, Working and Recent activity by the most urgent session in the family. A line opens to the session's latest reply in full and to the sessions under it. The idle and archived fold, the archived list read from `api/archived?group=` only when the fold is opened, and the empty-state sentence are kept at the bottom of the tab. The panel opens by itself on a wide screen, and the group header's button opens it on a phone. A server without the flag keeps the status above the transcript exactly as before, and the page falls back to it. See [Roll a session's sub session status up to every parent](20261023-roll-sub-session-status-up.md).
 
+**Amended 2026-10-25, built-in sections.** The five built-in sections of Home get what a group has: Routines (`routines`), Pinned (`pinned`), Started here (`started`), Ungrouped (`ungrouped`) and Terminal and other (`other`). `public/ui/sections.js` holds them, shared by the server and the page as `group-rules.js` is, so the chat sees the sessions the sidebar draws.
+- **Link.** `layout.json` gains `sections`, which maps a section id to the CLI session id of its chat. `layout.read()` keeps an entry only when the id is one of the five and the session is a UUID that no group, retired group or earlier section holds, and drops it otherwise. A file without `sections` loads as before. `POST api/groups/<id>/session` books a section's chat by its id as it books a group's, once, in a folder `groups/<section id>` made with mode 0700, and starts nothing.
+- **Index.** A section's chat is out of `rows` with the groups' chats, so it is in no list, family, count, search, archive or folder, and the layout routes refuse it with the word section. The reply carries `sections`, one `{ id, session, archived }` for each, and `features.sectionSessions`. `api/archived?group=<section id>` lists the archived sessions of that section.
+- **Membership.** A section's sessions are the ones the sidebar lists in it, with the sessions nested under each, and its archived ones. `sectionOf` in `sections.js` names a row's section, with a pinned session first, then a group, then a routine, then Started here, Ungrouped or Terminal and other by the app that started it, and a nested row follows the row it shows under. A test holds it to the lists for every live row and to `api/archived?group=` for every archived row.
+- **Tools and guide.** The tools keep their names. Their descriptions, the list's header and the refusal say "section", and `lib/group-guide.md` is a template that opens by naming the section and what it holds, and says it cannot be renamed or removed. It keeps the owner's rules of a group's chat word for word.
+- **Starting.** The folder check and the owner's card are the group chat's. Pinned pins the session it starts. Started here and Ungrouped leave it in no group, which the sidebar lists in Started here. Routines and Terminal and other cannot hold a new session, so `start_group_session`, `spawn_task` and Start on a chip from them are refused, and the guide says where to start the work instead.
+- **Page.** All five headers get the chat button, with the lamp, only when the list has `sections`, and Pinned's shows in every view. A built-in header has no menu, and Routines keeps its manage button beside the chat's. An empty section stays hidden, so it has no button. The chat opens at `#/g/<section id>`, headed Section session, with the section's roll-up in the Sub sessions tab as a group's. A server without the flag gets a pane that says to restart GhostShell.
+
 ### Consequences
 
 - ✅ The owner talks to one session about a group's work, and sees its status live without spending tokens.
@@ -60,6 +68,13 @@ Chosen option: "A Capcom chat per group, in a private folder, with group-only to
 - ❌ An edit to the guide does not reach a group chat that has already started, until it is compacted.
 - ❌ Moving the state folder strands every group chat, since the CLI keys a transcript by its folder.
 - ❌ A group deleted by hand leaves its chat's transcript to show as an ordinary session in Terminal and other.
+- ✅ The owner talks to a session about Pinned, Routines or the loose lists as about a group, and sees the same status without spending tokens.
+- ❌ A section's chat reads sessions from every app the owner uses, since Pinned and Started here hold Desktop, terminal and routine sessions, which a group's members may also be. It has the group chat's read-only tools, its card on everything that acts and its refusal of any other session, so a transcript that steers it meets the same gates, and no more.
+- ❌ A section's chat sees what the sidebar draws and no more, so the 60 newest sessions of a loose list and the 12 earlier runs of a routine are all it reaches, though the section's archive is listed in full.
+- ❌ A section's members change as the owner pins, moves and archives sessions, so a session the chat read a moment ago can be refused the next time.
+- ❌ A session started from Ungrouped's chat shows in Started here, because GhostShell started it, and not in Ungrouped.
+- ❌ Routines and Terminal and other cannot start a session from their chat, so the owner starts the work in another chat.
+- ❌ Each list or read in a section's chat builds the index twice, once for the lists the sidebar draws and once with the archive, where a group's lookup builds it once. A call is rare next to the page's own refresh every 15 seconds, so it is left as it is.
 
 ## Pros and Cons of the Options
 

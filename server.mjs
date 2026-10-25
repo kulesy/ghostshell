@@ -14,7 +14,7 @@ import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
-import { ensureGroupDir, groupDir, guideFor, workFolder } from './lib/groups.mjs';
+import { chipRefusal, ensureGroupDir, groupDir, guideFor, workFolder } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { pendingLines } from './lib/subs.mjs';
@@ -33,6 +33,8 @@ import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming
 import { esc } from './public/md.mjs';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
 import { titleText } from './public/ui/quote-rules.js';
+import { SECTION_IDS, SECTIONS, sectionById, sectionOf, sectionSessions } from './public/ui/sections.js';
+import { withKids } from './public/ui/tree.js';
 
 const auth = makeAuth(cfg.stateDir);
 const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passkeyOrigins, warn: console.error });
@@ -136,7 +138,9 @@ function buildIndex({ archived = false } = {}) {
   }
   const cutoff = now - cfg.otherDays * 86400_000;
   // A deleted group's chat is kept in `retired` and stays a group's session, so it is out of every list and keeps the group chat's protections.
-  const ownedChats = [...own.groups, ...own.retired].filter(g => g.session);
+  // A built-in section's chat is owned the same way, and is named for the section.
+  const sectionChats = SECTIONS.filter(s => own.sections[s.id]).map(s => ({ id: s.id, name: s.name, session: own.sections[s.id] }));
+  const ownedChats = [...own.groups, ...own.retired, ...sectionChats].filter(g => g.session);
   const groupSessionIds = new Set(ownedChats.map(g => g.session));
   for (const t of files.values()) {
     if (rows.has(t.id) || (t.mtime < cutoff && !started.has(t.id) && !groupSessionIds.has(t.id))) continue;
@@ -170,7 +174,7 @@ function buildIndex({ archived = false } = {}) {
     if (title) { r.title = title; r.renamed = true; }
   }
 
-  // A group's session belongs to its group alone, so its row leaves `rows` here and no list, family, count or search sees it. A session
+  // A group's or section's session belongs to it alone, so its row leaves `rows` here and no list, family, count or search sees it. A session
   // with no transcript yet gets a row from the layout.
   const groupSessions = new Map();
   for (const g of ownedChats) {
@@ -191,6 +195,16 @@ function buildIndex({ archived = false } = {}) {
   // Counted by the place a family gives each row, which is what api/archived?group= lists by.
   const archivedIn = new Map();
   for (const r of rows.values()) if (r.archived && r.group) archivedIn.set(r.group, (archivedIn.get(r.group) ?? 0) + 1);
+  // An archived row is not always linked to its holder in the live index, so its section comes from the holder every build agrees on.
+  const archivedSection = new Map();
+  const archivedInSection = new Map();
+  for (const r of rows.values()) {
+    if (!r.archived) continue;
+    const { holder } = families.get(r.id);
+    const section = sectionOf({ ...r, parent: holder === r.id ? null : holder }, rows);
+    archivedSection.set(r.id, section);
+    if (section) archivedInSection.set(section, (archivedInSection.get(section) ?? 0) + 1);
+  }
 
   // Each list sorts as the Desktop section it comes from does, and Started here, Ungrouped and Terminal and other all sort as Desktop's
   // loose list does. A list Desktop has no section for goes newest first.
@@ -233,9 +247,12 @@ function buildIndex({ archived = false } = {}) {
     started: newest(loose.filter(r => r.source === 'capcom')),
     ungrouped: newest(loose.filter(r => r.source === 'desktop')),
     other: newest(loose.filter(r => r.source === 'cli')),
+    // The five built-in sections of Home are not in `groups`, which the page walks for rows. Each has its chat, if one was booked, and a count of its archived sessions.
+    sections: SECTIONS.map(({ id }) => ({ id, session: own.sections[id] ? { id: own.sections[id], state: groupSessions.get(own.sections[id]).state } : null, archived: archivedInSection.get(id) ?? 0 })),
     sorts,
     rows,
     groupSessions,
+    archivedSection,
   };
 }
 
@@ -329,22 +346,36 @@ function subCtx(sessionId) {
 
 // ---- group sessions ------------------------------------------------------------------------------
 
-// The session is running by now, so a layout that cannot be written is logged and told to the caller as not placed.
-function placeInGroup(id, groupId) {
+// The session is running by now, so a layout that cannot be written is logged and told to the caller as not placed. `home` is a group, which
+// takes it in, or a section: Pinned pins it, and the sections that list loose sessions leave it as it is, where GhostShell's own sessions list.
+function placeStarted(id, home) {
   try {
-    layout.move(id, groupId);
+    if (home === 'pinned') layout.pin(id, true);
+    else if (!sectionById(home)) layout.move(id, home);
     return true;
   } catch (e) {
-    console.error(`Could not put ${id} in group ${groupId}: ${e.message}`);
+    console.error(`Could not place ${id} in ${home}: ${e.message}`);
     return false;
   }
 }
 
-// What a group's chat reaches its group through. Each call looks the group up again, so a group deleted by hand takes its tools with it.
+// The sessions a section's chat reaches: those the sidebar lists in it, with the sessions nested under each, so the cap on a list and the
+// families are the sidebar's, and the archived ones, which no list holds.
+function sectionMembers(section) {
+  const { rows, archivedSection } = buildIndex({ archived: true });
+  const live = withKids(sectionSessions(buildIndex(), section.id));
+  return { name: section.name, section, members: [...live, ...[...rows.values()].filter(r => archivedSection.get(r.id) === section.id)] };
+}
+
+// What a group's chat, or a built-in section's, reaches its sessions through. Each call looks the group up again, so a group deleted by hand
+// takes its tools with it. A section is always there, and its `section` tells the tools where a session it starts goes, if it can start one.
 function groupCtx(groupId) {
+  const section = sectionById(groupId);
   return {
     stateDir: cfg.stateDir,
+    ...(section && { section }),
     lookup() {
+      if (section) return sectionMembers(section);
       const group = layout.read().groups.find(g => g.id === groupId);
       if (!group) return null;
       const { rows } = buildIndex({ archived: true });
@@ -353,7 +384,7 @@ function groupCtx(groupId) {
     pending: pendingOf,
     async start({ cwd, prompt, title }) {
       const id = await newSession({ cwd, text: prompt, title });
-      return { id, placed: placeInGroup(id, groupId) };
+      return { id, placed: placeStarted(id, groupId) };
     },
   };
 }
@@ -362,10 +393,10 @@ function groupCtx(groupId) {
 // once before a no, since a transcript written a moment ago may not be in it yet.
 const hasTranscript = id => !!(transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id)));
 
-// Booked when the owner first opens a group's chat. It makes the folder and writes the id and starts nothing, so it costs no tokens, and it is
-// synchronous, so two tabs opening it together get the same id.
+// Booked when the owner first opens the chat of a group or a built-in section. It makes the folder and writes the id and starts nothing, so it
+// costs no tokens, and it is synchronous, so two tabs opening it together get the same id.
 function bookGroupSession(groupId) {
-  if (!layout.read().groups.some(g => g.id === groupId)) throw refuse(404, 'Unknown group.');
+  if (!sectionById(groupId) && !layout.read().groups.some(g => g.id === groupId)) throw refuse(404, 'Unknown group.');
   try {
     ensureGroupDir(cfg.stateDir, groupId);
   } catch (e) {
@@ -518,11 +549,12 @@ function loginPage(message = '') {
 
 function ensureChat(id, row, { mode } = {}) {
   const groupId = row?.groupSession;
-  // A group's session starts on what a new session in its folder would, and has the group's tools and standing instructions.
+  const section = groupId && sectionById(groupId);
+  // A group's or section's session starts on what a new session in its folder would, and has its tools and standing instructions.
   const s = settingsFor(id, groupId ? { cwd: row.cwd } : row);
   const group = groupId && {
     group: groupCtx(groupId),
-    instructions: () => guideFor(layout.read().groups.find(g => g.id === groupId)?.name ?? row.title),
+    instructions: () => (section ? guideFor(section.name, section.id) : guideFor(layout.read().groups.find(g => g.id === groupId)?.name ?? row.title)),
     fresh: () => !hasTranscript(id),
   };
   const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, ...group, subs: groupId ? undefined : subCtx });
@@ -651,6 +683,8 @@ function events(req, res, id) {
 }
 
 const NO_SESSION = 'No session with that id on this Mac.';
+// The word for what owns a chat that is no session's: a group, or one of the built-in sections.
+const kindOf = row => (SECTION_IDS.includes(row.groupSession) ? 'section' : 'group');
 const refuse = (status, message) => Object.assign(new Error(message), { status });
 
 async function editLayout(req, res, change) {
@@ -662,7 +696,7 @@ async function editLayout(req, res, change) {
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Which session?' });
   const row = findRow(id);
   if (!row) return send(res, 404, { error: NO_SESSION });
-  if (row.groupSession) return send(res, 400, { error: 'A group\'s session stays with its group.' });
+  if (row.groupSession) return send(res, 400, { error: `A ${kindOf(row)}'s session stays with its ${kindOf(row)}.` });
   let extra;
   try {
     extra = change(id, body);
@@ -702,7 +736,7 @@ function nest(id, parent) {
     if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, rows) });
     return { parent: null };
   }
-  if (groupSessions.has(parent)) throw refuse(400, 'A group\'s session cannot hold sessions.');
+  if (groupSessions.has(parent)) throw refuse(400, `A ${kindOf(groupSessions.get(parent))}'s session cannot hold sessions.`);
   const target = rows.get(parent);
   if (!target) throw refuse(404, NO_SESSION);
   if (target.archived) throw refuse(400, 'That session is archived.');
@@ -923,7 +957,7 @@ async function terminalApi(req, res, id, [step, ...extra]) {
   if (step === undefined) {
     if (req.method !== 'GET') return reply(405, { error: 'Method not allowed' }, { allow: 'GET' });
     const row = findRow(id);
-    if (row?.groupSession) return reply(400, { error: 'A group\'s session has no terminal.' });
+    if (row?.groupSession) return reply(400, { error: `A ${kindOf(row)}'s session has no terminal.` });
     return row ? reply(200, terminal.snapshot(id, row.cwd || '')) : reply(404, { error: NO_SESSION });
   }
   if (!TERMINAL_STEPS.includes(step)) return reply(404, { error: 'Not found' });
@@ -936,8 +970,8 @@ async function terminalApi(req, res, id, [step, ...extra]) {
   if (!auth.check(req)) return reply(401, { error: 'Signed out.' });
   const row = findRow(id);
   if (!row) return reply(404, { error: NO_SESSION });
-  // A group's session works in GhostShell's own state folder and asks before every Bash call, so it gets no terminal.
-  if (row.groupSession) return reply(400, { error: 'A group\'s session has no terminal.' });
+  // A group's or section's session works in GhostShell's own state folder and asks before every Bash call, so it gets no terminal.
+  if (row.groupSession) return reply(400, { error: `A ${kindOf(row)}'s session has no terminal.` });
   try {
     if (step === 'run') {
       if (!row.cwd || !isDirectory(row.cwd)) return reply(409, { error: 'This session\'s folder does not exist on this Mac.' });
@@ -980,7 +1014,7 @@ async function api(req, res, u) {
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const withArchived = u.searchParams.get('archived') === '1';
-    const { rows, groupSessions, ...index } = buildIndex({ archived: withArchived });
+    const { rows, groupSessions, archivedSection, ...index } = buildIndex({ archived: withArchived });
     // The turns and the marks go onto the rows here and not in buildIndex, which findRow runs for every request.
     const now = Date.now();
     const shared = { desk: loadDesktop(cfg.desktopDir), mine: marks.read(), now };
@@ -1002,15 +1036,17 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, deleting and ordering groups, adding, editing and deleting routines, and sub session summaries.
-    return send(res, 200, { ...index, features: { groupSessions: true, groupEdits: true, routineEdits: true, subStatus: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, and sub session summaries.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, routineEdits: true, subStatus: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
-  // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's.
+  // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's or built-in section's.
   if (req.method === 'GET' && u.pathname === '/api/archived') {
     const only = u.searchParams.get('group');
-    const archived = [...buildIndex({ archived: true }).rows.values()].filter(r => r.archived && (only === null || r.group === only))
+    const { rows, archivedSection } = buildIndex({ archived: true });
+    // A built-in section is named by its id, and holds the rows the sidebar would list in it.
+    const archived = [...rows.values()].filter(r => r.archived && (only === null || (sectionById(only) ? archivedSection.get(r.id) === only : r.group === only)))
       .map(({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt }) => ({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt, archived: true }))
       .sort((a, b) => b.archivedAt - a.archivedAt);
     return send(res, 200, { archived });
@@ -1070,10 +1106,13 @@ async function api(req, res, u) {
     const from = findRow(sessionId);
     // The chip's own session decides as well as the posted one, so naming another session cannot lift the group's rules.
     const groupId = findRow(known?.sessionId || sessionId)?.groupSession || from?.groupSession;
+    const section = groupId && sectionById(groupId);
+    // A card is drawn from a transcript, so the chat's tool is not the only place a section that cannot hold a new session is refused.
+    if (section && !section.place) return send(res, 400, { error: chipRefusal(section) });
     const home = from?.cwd;
     // A group's session has no folder to fall back on: its own is private, and a chip must never start there.
     const folder = known?.cwd || cwd || (groupId ? '' : home);
-    if (groupId && !folder) return send(res, 400, { error: 'This chip names no folder, and a group\'s session has none of its own. Ask it to suggest the task again with a folder.' });
+    if (groupId && !folder) return send(res, 400, { error: `This chip names no folder, and a ${section ? 'section' : 'group'}'s session has none of its own. Ask it to suggest the task again with a folder.` });
     if (!text || !folder || !fs.existsSync(folder)) return send(res, 400, { error: 'This chip has no prompt or folder to start from.' });
     let start = folder;
     if (groupId) {
@@ -1085,8 +1124,9 @@ async function api(req, res, u) {
     }
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
     const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort });
-    // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead.
-    if (groupId) placeInGroup(id, groupId);
+    // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a
+    // section's chip pins it or leaves it loose, as that section's own chat would.
+    if (groupId) placeStarted(id, groupId);
     return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), status: 'started', startedId: id }) });
   }
   const booking = /^\/api\/groups\/([\w-]+)\/session$/.exec(u.pathname);

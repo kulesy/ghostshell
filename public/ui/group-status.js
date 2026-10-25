@@ -1,4 +1,4 @@
-// The status of a group's sessions: the panel drawn above a group's chat by a server that cannot summarise sessions, and the parts, the
+// The status of a group's or built-in section's sessions: the panel drawn above its chat by a server that cannot summarise sessions, and the parts, the
 // fold for the idle and the lazily loaded archived list that the Sub sessions tab of a group's chat draws too. It is drawn from the list the
 // page already loads, so it costs no tokens, and the archived part is read from the server only when that part is opened.
 import { api } from './api.js';
@@ -77,6 +77,9 @@ export function Rest({ group, label = 'Idle and archived', count, open, onFlip, 
 
 export const EMPTY = 'No sessions in this group yet. Move one in from its menu, or ask here to start one.';
 
+// A section is filled by where its sessions come from, so it has no menu to move one in from.
+export const emptyNote = group => (group.section ? 'No sessions in this section right now.' : EMPTY);
+
 export const LIVE = [['needs', 'Waiting on you'], ['working', 'Working'], ['recent', 'Recent activity']];
 
 // The summary line folds the panel. Both folds are kept for each group in this browser.
@@ -96,7 +99,7 @@ export function GroupStatus({ feed }) {
     ${open ? html`<div class="status-body" id=${body}>
       ${LIVE.map(([key, label]) => (buckets[key].length ? html`<${Part} key=${key} label=${label} rows=${buckets[key]} />` : null))}
       ${buckets.idle.length || group.archived ? html`<${Rest} group=${group} count=${buckets.idle.length} open=${!!opened[group.id]} onFlip=${() => setOpened(all => flipped(all, group.id))}>${buckets.idle.length ? html`<${Part} label="Idle" rows=${buckets.idle} />` : null}<//>` : null}
-      ${empty ? html`<p class="status-note">${EMPTY}</p>` : null}
+      ${empty ? html`<p class="status-note">${emptyNote(group)}</p>` : null}
     </div>` : null}
   </section>`;
 }

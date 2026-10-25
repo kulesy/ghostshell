@@ -57,6 +57,8 @@ Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because i
 
 **Amended 2026-10-23.** Every group lists its sessions by title again, A to Z, whatever Desktop holds for it. It uses Desktop's title comparison, `localeCompare`, so 10 sorts before 2, and there is no emoji rule. A family goes by its head's title. The other lists still follow their Desktop sorts. See [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md).
 
+**Amended 2026-10-25.** `layout.json` gains `sections`, which maps one of the five built-in section ids to the CLI session id of that section's own chat. An unknown id, a session that is not a UUID or one another entry already holds is dropped as the file is read. See [Give each group a session of its own](20261023-a-session-for-each-group.md).
+
 ### Consequences
 
 - ✅ The owner can move and pin sessions from Capcom, on a phone too, and Desktop cannot overwrite the result.
