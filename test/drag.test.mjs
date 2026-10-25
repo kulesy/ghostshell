@@ -59,8 +59,8 @@ async function mount() {
   const at = (clientX, clientY) => ({ isPrimary: true, clientX, clientY });
   return {
     box, log, kinds, drop, place, stop,
-    down: (kind, x, y, grip = row) => box.fire('pointerdown', { ...at(x, y), button: 0, ctrlKey: false, pointerType: kind, target: { closest: () => grip } }),
-    header: (kind, x, y) => box.fire('pointerdown', { ...at(x, y), button: 0, ctrlKey: false, pointerType: kind, target: { closest: () => bar } }),
+    down: (kind, x, y, grip = row) => box.fire('pointerdown', { ...at(x, y), button: 0, ctrlKey: false, pointerType: kind, target: { closest: selector => (selector.includes('aria-haspopup') ? null : grip) } }),
+    header: (kind, x, y, dots = false) => box.fire('pointerdown', { ...at(x, y), button: 0, ctrlKey: false, pointerType: kind, target: { closest: selector => (selector.includes('aria-haspopup') ? dots && {} : bar) } }),
     move: (x, y) => document.fire('pointermove', at(x, y)),
     up: (x, y) => document.fire('pointerup', at(x, y)),
     frame: () => frames.splice(0).forEach(fn => fn()),
@@ -344,4 +344,18 @@ test('a header carried above the list does not scroll it, as a row does, so the 
   assert.ok(t.box.scrollTop < 100, 'a row still scrolls');
   t.up(110, -20);
   t.stop();
+});
+
+test('a press on a header\'s menu button starts no press and lifts nothing, for a mouse and a finger, so the menu can pick on the release', async () => {
+  for (const kind of ['mouse', 'touch']) {
+    const t = await mount();
+    t.header(kind, 100, 300, true);
+    t.move(120, 300);
+    mock.timers.tick(HOLD_MS);
+    t.move(140, 320);
+    t.up(140, 320);
+    assert.deepEqual(t.log, []);
+    t.stop();
+    mock.timers.reset();
+  }
 });

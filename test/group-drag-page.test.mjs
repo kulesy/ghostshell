@@ -1,6 +1,5 @@
-// Run with `npm test`. A group's header dragged in the real page: the line where it would land, the order the server keeps, the Move to strip
-// when the projects sidebar is shut and the sidebar's own rows when it is open, and a plain click that still folds. It needs Playwright's
-// Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
+// Run with `npm test`. A group's header dragged in the real page: the drop line, the saved order, the Move to strip and a plain click.
+// It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -87,7 +86,7 @@ test('a header let go where it already is draws no line and changes nothing, and
 test('with the sidebar shut a Move to strip of the projects shows during the drag and a drop on one moves the group there', { skip, timeout }, async t => {
   const { page, server } = await appPage(t);
   assert.equal(await page.evaluate(`document.querySelectorAll('.move-strip').length`), 0);
-  const release = await page.carry(`.bar:has(.group-head[data-key="cg-a"])`, middleOf('.move-chip'));
+  const release = await page.carry(`.bar:has(.group-head[data-key="cg-a"])`, middleOf('.move-chip'), { after: true });
   assert.equal(await page.evaluate(`document.querySelectorAll('.move-chip').length`), 1);
   assert.equal(await page.evaluate(`document.querySelector('.move-chip').dataset.over`), 'true');
   await release();
@@ -108,5 +107,52 @@ test('with the sidebar open its rows are the targets, and a drop on a project mo
   await page.until(`${NAMES}.join() === 'Backlog,Notes'`);
   assert.equal(onDisk(server).groups.find(g => g.id === 'cg-a').project, 'cp-x');
   assert.equal(await page.evaluate(`document.querySelector('[data-sonner-toast]').textContent`), 'Moved “Reviewing” to Capcom.');
+  assert.deepEqual(page.problems, []);
+});
+
+const HEAD_A = `.bar:has(.group-head[data-key="cg-a"])`;
+const BOX = `JSON.stringify(['.list-head', '.sections', '.group-head[data-key="cg-a"]', '.group-head[data-key="cg-b"]'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }))`;
+
+test('lifting a header with the sidebar shut moves nothing, the strip covering the header\'s own row', { skip, timeout }, async t => {
+  const { page } = await appPage(t);
+  const before = await page.evaluate(BOX);
+  const head = await page.evaluate(`(r => [r.left, r.top, r.width, r.height])(document.querySelector('.list-head').getBoundingClientRect())`);
+  const release = await page.hold(HEAD_A, 12);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.move-chip').length`), 1);
+  assert.equal(await page.evaluate(BOX), before);
+  assert.deepEqual(await page.evaluate(`(r => [r.left, r.top, r.width, r.height])(document.querySelector('.move-strip').getBoundingClientRect())`), head);
+  assert.equal(await page.evaluate(`document.querySelector('.move-strip').parentElement.className`), 'list-head');
+  await release();
+  assert.deepEqual(page.problems, []);
+});
+
+for (const [label, fold, key] of [['the first group', false, 'cg-a'], ['a folded second group', true, 'cg-b']]) {
+  test(`a small drag of ${label} let go with the sidebar shut sends nothing and changes nothing`, { skip, timeout }, async t => {
+    const { page, server } = await appPage(t);
+    if (fold) {
+      await page.click('.group-head[data-key="cg-a"]');
+      await page.until(`document.querySelector('.group-head[data-key="cg-a"]').getAttribute('aria-expanded') === 'false'`);
+    }
+    const groups = JSON.stringify(onDisk(server).groups);
+    for (const dy of [6, 8]) {
+      const release = await page.hold(`.bar:has(.group-head[data-key="${key}"])`, dy);
+      await release();
+      await page.until(`document.querySelectorAll('.bar.lifted').length === 0`);
+    }
+    assert.equal(JSON.stringify(onDisk(server).groups), groups);
+    assert.equal(await page.evaluate(`${NAMES}.join()`), 'Reviewing,Backlog,Notes');
+    assert.equal(await page.evaluate(`document.querySelector('[data-sonner-toast]')`), null);
+    assert.deepEqual(page.problems, []);
+  });
+}
+
+test('pressing a group\'s dots, moving onto Move to a project and letting go picks it, as a press on the plus does', { skip, timeout }, async t => {
+  const { page, server } = await appPage(t);
+  const item = `(el => (r => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 }))(el.getBoundingClientRect()))([...document.querySelectorAll('.menu-item')].find(i => i.textContent.includes('Capcom')))`;
+  const release = await page.carry(`${HEAD_A} .more[aria-haspopup]`, item, { after: true });
+  assert.equal(await page.evaluate(`document.querySelectorAll('.bar.lifted').length`), 0);
+  await release();
+  await page.until(`${NAMES}.join() === 'Backlog,Notes'`);
+  assert.equal(onDisk(server).groups.find(g => g.id === 'cg-a').project, 'cp-x');
   assert.deepEqual(page.problems, []);
 });

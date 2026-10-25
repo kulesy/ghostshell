@@ -205,18 +205,34 @@ export async function launch(chromium) {
       await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...held, button: 'left', clickCount: 1 });
     }
 
-    // Presses the left button on the middle of `from`, nudges it far enough to lift a header, and then moves to the point the expression `to` gives, which
-    // is read once the page has drawn what the lift adds. It leaves the button down for the test to look at the page, and the function it
-    // returns lets go.
-    async function carry(from, to) {
+    // Presses the left button on the middle of `from`, moves `dy` down and leaves the button down, so a test sees the page under a small
+    // drag. The function it returns lets go there.
+    async function hold(from, dy) {
+      await settled();
+      const start = await centre(from);
+      const end = { x: start.x, y: start.y + dy };
+      await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
+      await call('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, button: 'left', clickCount: 1 });
+      await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...end, button: 'left', buttons: 1 });
+      await settled();
+      return async () => {
+        await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...end, button: 'left', clickCount: 1 });
+        await settled();
+      };
+    }
+
+    // Presses the left button on the middle of `from`, nudges it far enough to lift a header, and then moves to the point the expression `to` gives.
+    // That is read before the press, as the page stands, unless `after` is set for a target the lift draws. The function it returns lets go.
+    async function carry(from, to, { after = false } = {}) {
       await settled();
       const start = await centre(from);
       const nudge = { x: start.x, y: start.y + 8 };
+      let end = after ? null : await evaluate(to);
       await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
       await call('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, button: 'left', clickCount: 1 });
       await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...nudge, button: 'left', buttons: 1 });
       await settled();
-      const end = await evaluate(to);
+      end ||= await evaluate(to);
       for (let i = 1; i <= 10; i++) await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nudge.x + (end.x - nudge.x) * i / 10, y: nudge.y + (end.y - nudge.y) * i / 10, button: 'left', buttons: 1 });
       await settled();
       return async () => {
@@ -243,6 +259,7 @@ export async function launch(chromium) {
       hover,
       down,
       up,
+      hold,
       carry,
       wheel,
       close: async () => {

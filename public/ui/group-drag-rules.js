@@ -1,6 +1,5 @@
-// What dragging a group's header can do, as rules that need no page, so node can test them. A group goes to another view, which is a
-// target marked `to:` and the project's id (empty for Home), or to a place among the groups of its own view, which is `before:` or
-// `after:` and the id of the group it lands beside.
+// What dragging a group's header can do, as rules that need no page. A target is `to:` and a project id (empty for Home), or `before:`
+// or `after:` and the id of the group the header lands beside.
 import { HOME_VIEW } from './scopes.js';
 
 export const MOVE = 'to:';
@@ -14,10 +13,8 @@ export const viewTargets = (projects, view) => [
 // Whether a header is a handle: when the group can be ordered among others, or moved to another view.
 export const canGrab = ({ edits, count, targets }) => (edits && count > 1) || targets > 0;
 
-// Where a group carried at `at` would land among the groups of its view. `order` is their ids in order, the carried one included, and
-// `mids` is the vertical middle of each header. The group goes after as many of the others as have their middle above the pointer, so an
-// open group's rows count as below its header. `area` is the list's left and right and the top of the first group and bottom of the
-// last, and the pointer counts only inside it. Returns { side, beside }, or null when there is no place or it is where the group is.
+// The group lands after the others whose header middle is above the pointer, so an open group's rows count as below its header. The
+// pointer counts only inside `area`. Returns { side, beside }, or null when there is no place or it is where the group is.
 export function slotFor({ order, carried, mids, area, at }) {
   const others = order.filter(id => id !== carried);
   if (!area || !others.length || at.x < area.left || at.x > area.right || at.y < area.top || at.y > area.bottom) return null;

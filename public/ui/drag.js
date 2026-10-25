@@ -1,7 +1,5 @@
-// Drags a session row onto a section or onto another row, and a user group's header onto a project or a place among the groups, with
-// pointer events, so a mouse and a finger share the code. A mouse drags after a few pixels, so a click still opens the session or folds
-// the group. A finger drags after a long press, so a swipe still scrolls the list. A right click, or a long press let go without
-// moving, asks for the row's or the header's menu instead.
+// Drags a session row, or a user group's header, with pointer events so a mouse and a finger share the code. A mouse drags after a few
+// pixels and a finger after a long press, so a click or a swipe still works. A right click or a still long press asks for the menu.
 const MOUSE_SLOP = 5;
 const HOLD_MS = 350;
 const HOLD_SLOP = 8;
@@ -15,6 +13,7 @@ export function pointIn(el, e) {
 }
 
 const GRIPS = 'a.row[data-id], .bar[data-handle]';
+const POPUPS = 'button.more, [aria-haspopup]';
 
 // The target a dragged header has under a point: a project or Home in the sidebar or the Move to strip, else the place among the groups.
 function groupTargetAt(x, y, id, slot) {
@@ -32,11 +31,10 @@ function targetAt(x, y) {
   return null;
 }
 
-// `box` is the scrolling list. Rows are `a.row[data-id]`, a header that can be dragged is `.bar[data-handle]` with the group's id, and
-// drop targets carry `data-drop`. A dragged header has only the targets marked `to:` and `slot(x, y, id)`, which gives the place among
-// the groups under a point or null. The `kind` that `onStart`, `onEnd` and `onMenu` get last is 'row' or 'group'. `onOver` gets the
-// target under the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. `onMenu` gets the id and
+// `box` is the scrolling list. Rows are `a.row[data-id]` and drop targets carry `data-drop`. `onOver` gets the target under
+// the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. `onMenu` gets the row's id and
 // element, and where the click or the finger was, or null for the menu key.
+// A header is `.bar[data-handle]` and has only `to:` targets and `slot(x, y, id)`. `onStart`, `onEnd` and `onMenu` get the kind last.
 // Returns a function that stops it.
 export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => null }) {
   let press = null;
@@ -53,6 +51,8 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => nul
   function down(e) {
     const grip = e.target.closest(GRIPS);
     if (!grip || !e.isPrimary || e.button !== 0) return;
+    // A menu button opens its menu on the press and picks an item on the release, which a lift would swallow.
+    if (e.target.closest(POPUPS)) return;
     // On a Mac a Ctrl click is a right click, which asks for the menu, so it must not start a drag.
     if (e.ctrlKey && e.pointerType === 'mouse') return;
     if (stop) lost();

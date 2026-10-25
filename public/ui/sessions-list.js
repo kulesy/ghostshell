@@ -79,7 +79,7 @@ const Empty = ({ paths, title, action, children }) => html`<div data-slot="empty
   ${action ? html`<div data-slot="empty-content">${action}</div>` : null}
 </div>`;
 
-// The places a carried group can go when the projects sidebar is not on screen: Home and each project but the view it is in.
+// The places a carried group can go when the projects sidebar is not on screen. It covers the header, so the list below never moves.
 const MoveStrip = ({ targets, over }) => html`<div class="move-strip" aria-hidden="true">
   <span class="move-label">Move to</span>
   ${targets.map(t => html`<span key=${t.id} class="move-chip" data-drop=${t.id} data-over=${over === t.id || null}>${t.label}</span>`)}
@@ -881,11 +881,11 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         <button class="btn add" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${addMenu.label} data-tip=${addMenu.label} data-tip-key=${keyHint(mod, 'N')} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} aria-controls=${shown?.key === 'add' ? layerId(shown.id) : null} data-state=${shown?.key === 'add' ? 'open' : 'closed'} ...${addTrigger}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         <button class="btn find" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Find a session" data-tip="Find a session" data-tip-key=${keyHint(mod, 'K')} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
+      ${strip.length ? html`<${MoveStrip} targets=${strip} over=${groupDrag.over} />` : null}
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>
     ${banner}
     ${topForm}
-    ${strip.length ? html`<${MoveStrip} targets=${strip} over=${groupDrag.over} />` : null}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt} onClick=${clickRow} onMouseDown=${pressRow} onPointerDown=${e => { pointer.current = e.pointerType; }}>
       ${ix
         ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} folded=${folded} toggleFold=${toggleFold} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} routinesOpen=${routinesOpen} drag=${drag?.kind === 'row' ? drag : null} carry=${groupDrag} tree=${tree} picked=${new Set(pick.ids)} newKey=${keyHint(mod, 'N')} />`
