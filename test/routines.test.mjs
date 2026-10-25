@@ -19,9 +19,13 @@ const T0 = at(2026, 10, 15, 21, 43, 12);
 const FRIDAY = at(2026, 10, 16, 7, 42, 17);
 const MONDAY = at(2026, 10, 19, 7, 42, 17);
 
-const exported = (file, cwd, extra = {}) => ({
-  id: 'demo', title: 'Demo routine', cron: '30 7 * * 1-5', jitterSeconds: 737, file, cwd, model: 'haiku', effort: 'low', mode: 'bypassPermissions', enabledInDesktop: true, ...extra,
+const fixture = (file, cwd, extra = {}) => ({
+  id: 'demo', title: 'Demo routine', cron: '30 7 * * 1-5', jitterSeconds: 737, file, cwd, model: 'haiku', effort: 'low', mode: 'bypassPermissions', ...extra,
 });
+
+// Puts routines in routines.json as a person editing the file would: switched off, with nothing run yet unless the entry says so.
+const BLANK = { enabled: false, armedAt: null, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null };
+const put = (state, list) => fs.writeFileSync(path.join(state, 'routines.json'), `${JSON.stringify({ routines: list.map(x => ({ ...BLANK, ...x })) }, null, 2)}\n`);
 
 // One routine on a real routines.json in a scratch folder, switched on at `armed`, with a scheduler on a clock we move by hand.
 function rig({ cron, jitter, armed = T0, enabled = true, patch = {}, body = 'Check the thing.' } = {}) {
@@ -30,7 +34,7 @@ function rig({ cron, jitter, armed = T0, enabled = true, patch = {}, body = 'Che
   const raw = `---\nname: demo\ndescription: A demo\n---\n\n${body}\n`;
   fs.writeFileSync(file, raw);
   const store = makeRoutines(state);
-  store.seed({ routines: [exported(file, state, { ...(cron && { cron }), ...(jitter !== undefined && { jitterSeconds: jitter }) })] }, T0);
+  put(state, [fixture(file, state, { ...(cron && { cron }), ...(jitter !== undefined && { jitterSeconds: jitter }) })]);
   if (enabled) store.update('demo', { enabled: true, armedAt: localIso(armed) });
   if (Object.keys(patch).length) store.update('demo', patch);
   const r = { state, file, raw, store, clock: { t: T0 }, calls: [], logs: [], warns: [], working: new Set(), waiting: new Set(), stops: [], taken: new Set(), onStart: null };
@@ -114,54 +118,23 @@ test('local times read back, with their offset, in any zone', () => {
 
 // ---- routines.json ---------------------------------------------------------------------------------
 
-test('seeding copies every routine in switched off, whatever the export says, and keeps Desktop\'s own flag', () => {
-  const dir = fs.mkdtempSync(path.join(base, 'seed-'));
-  const store = makeRoutines(dir);
-  assert.deepEqual(store.read(), { seededAt: null, routines: [] });
-  const out = store.seed({ routines: [
-    exported('/x/a/SKILL.md', '/home/x', { id: 'a', enabled: true, enabledInDesktop: true, title: undefined }),
-    exported('/x/b/SKILL.md', '/home/x', { id: 'b', enabledInDesktop: false, title: 'Bee', model: undefined, effort: undefined, mode: undefined }),
-  ] }, T0);
-  assert.deepEqual(out, { added: ['a', 'b'], kept: [] });
-  const { seededAt, routines } = store.read();
-  assert.equal(seededAt, localIso(T0));
-  assert.deepEqual(routines.map(r => [r.id, r.title, r.enabled, r.enabledInDesktop]), [['a', 'a', false, true], ['b', 'Bee', false, false]]);
-  assert.deepEqual(routines[1], {
-    id: 'b', title: 'Bee', cron: '30 7 * * 1-5', jitterSeconds: 737, file: '/x/b/SKILL.md', cwd: '/home/x', model: null, effort: null, mode: null,
-    enabledInDesktop: false, enabled: false, armedAt: null, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null,
-  });
-  assert.deepEqual(fs.readdirSync(dir), ['routines.json'], 'written through a temporary file that is gone');
+test('an old routines.json with enabledInDesktop and seededAt loads with no problem, and neither is in the file after the next write', async () => {
+  const r = rig({ enabled: false });
+  const old = JSON.parse(fs.readFileSync(path.join(r.state, 'routines.json'), 'utf8'));
+  fs.writeFileSync(path.join(r.state, 'routines.json'), JSON.stringify({ seededAt: '2026-10-16T00:00:00+11:00', routines: old.routines.map(x => ({ ...x, enabledInDesktop: true })) }));
+  const listed = r.sched.list();
+  assert.equal(listed.problem, null);
+  assert.deepEqual([listed.routines[0].problem, 'enabledInDesktop' in listed.routines[0], 'enabledInDesktop' in r.demo(), 'seededAt' in r.store.read()], [null, false, false, false]);
+  assert.ok(fs.readFileSync(path.join(r.state, 'routines.json'), 'utf8').includes('enabledInDesktop'), 'reading alone leaves the file as it is');
+  r.sched.setEnabled('demo', true);
+  const text = fs.readFileSync(path.join(r.state, 'routines.json'), 'utf8');
+  assert.ok(!text.includes('enabledInDesktop') && !text.includes('seededAt'), text);
+  assert.equal(JSON.parse(text).routines[0].enabled, true);
+  assert.deepEqual(fs.readdirSync(r.state).filter(f => f.endsWith('.tmp')), [], 'written through a temporary file that is gone');
 });
 
-test('seeding again adds new routines, leaves the rest as Capcom has them, and refreshes only what Desktop reports', () => {
-  const dir = fs.mkdtempSync(path.join(base, 'reseed-'));
-  const store = makeRoutines(dir);
-  store.seed({ routines: [exported('/x/a/SKILL.md', '/home/x', { id: 'a' })] }, T0);
-  store.update('a', { enabled: true, armedAt: localIso(T0), lastRunAt: localIso(T0), lastSessionId: 's9' });
-  const out = store.seed({ routines: [
-    exported('/x/a/SKILL.md', '/elsewhere', { id: 'a', cron: '0 0 * * *', enabledInDesktop: false }),
-    exported('/x/c/SKILL.md', '/home/x', { id: 'c' }),
-  ] }, T0 + HOUR);
-  assert.deepEqual(out, { added: ['c'], kept: ['a'] });
-  const { seededAt, routines } = store.read();
-  assert.equal(seededAt, localIso(T0), 'the first seed stays on record');
-  const a = routines.find(r => r.id === 'a');
-  assert.deepEqual([a.enabled, a.cron, a.cwd, a.lastSessionId, a.enabledInDesktop], [true, '30 7 * * 1-5', '/home/x', 's9', false]);
-  assert.equal(routines.find(r => r.id === 'c').enabled, false);
-});
-
-test('an export with any unusable entry changes nothing', () => {
-  const dir = fs.mkdtempSync(path.join(base, 'bad-seed-'));
-  const store = makeRoutines(dir);
-  for (const [bad, why] of [
-    [{ id: 'a b' }, /id/], [{ cron: 'nonsense' }, /five fields/], [{ cron: '61 * * * *' }, /outside/], [{ jitterSeconds: -1 }, /jitter/], [{ jitterSeconds: 737.5 }, /whole number of seconds/],
-    [{ file: 'SKILL.md' }, /absolute path of its SKILL\.md/], [{ file: '/x/"y"/SKILL.md' }, /absolute path of its SKILL\.md/], [{ cwd: 'home' }, /absolute path of its folder/],
-  ]) {
-    assert.throws(() => store.seed({ routines: [exported('/x/ok/SKILL.md', '/home/x', { id: 'ok' }), exported('/x/a/SKILL.md', '/home/x', { id: 'a', ...bad })] }), why);
-    assert.deepEqual(fs.readdirSync(dir), [], JSON.stringify(bad));
-  }
-  assert.throws(() => store.seed({}), /"routines" list/);
-  assert.throws(() => store.seed(null), /"routines" list/);
+test('a routines.json missing is an empty list', () => {
+  assert.deepEqual(makeRoutines(fs.mkdtempSync(path.join(base, 'empty-'))).read(), { routines: [] });
 });
 
 test('a routines.json that cannot be read is reported and never written over', () => {
@@ -173,7 +146,7 @@ test('a routines.json that cannot be read is reported and never written over', (
     assert.match(store.read().problem, /^routines\.json cannot be read: /);
     assert.deepEqual(store.read().routines, []);
     assert.throws(() => store.update('a', { enabled: true }), e => e.status === 500 && /cannot be read/.test(e.message));
-    assert.throws(() => store.seed({ routines: [exported('/x/SKILL.md', '/home/x')] }), /cannot be read/);
+    assert.throws(() => store.add({ id: 'a' }), /cannot be read/);
     assert.equal(fs.readFileSync(file, 'utf8'), text);
   }
 });
@@ -203,16 +176,6 @@ test('a routine without an id, or an id used twice, is a problem with the file, 
     assert.throws(() => r.store.update('a', { enabled: false }), e => e.status === 500 && why.test(e.message));
     assert.equal(fs.readFileSync(path.join(r.state, 'routines.json'), 'utf8'), text, 'the file is left as it was');
   }
-});
-
-test('the real export, when it is on this machine, seeds all ten routines switched off', { skip: !fs.existsSync('/private/tmp/claude-501/capcom-routines-seed.json') }, () => {
-  const source = JSON.parse(fs.readFileSync('/private/tmp/claude-501/capcom-routines-seed.json', 'utf8'));
-  const store = makeRoutines(fs.mkdtempSync(path.join(base, 'real-')));
-  const { added } = store.seed(source, T0);
-  assert.equal(added.length, source.routines.length);
-  assert.ok(added.length >= 10);
-  assert.ok(store.read().routines.every(r => r.enabled === false && r.lastRunAt === null));
-  assert.equal(store.read().routines.filter(r => r.enabledInDesktop).length, source.routines.filter(r => r.enabledInDesktop).length);
 });
 
 // ---- the rules -------------------------------------------------------------------------------------
@@ -536,11 +499,11 @@ test('one routine that cannot run does not stop the others, and a bad schedule i
   const state = fs.mkdtempSync(path.join(base, 'many-'));
   const store = makeRoutines(state);
   const files = ['a', 'b', 'c'].map(id => { const f = path.join(state, `${id}.md`); fs.writeFileSync(f, `---\nname: ${id}\n---\n\nBody ${id}\n`); return f; });
-  store.seed({ routines: [
-    exported(files[0], state, { id: 'a', cron: '0 7 * * *', jitterSeconds: 0 }),
-    exported(files[1], state, { id: 'b', cron: '0 7 * * *', jitterSeconds: 0 }),
-    exported(files[2], state, { id: 'c', cron: '0 7 * * *', jitterSeconds: 0 }),
-  ] }, T0);
+  put(state, [
+    fixture(files[0], state, { id: 'a', cron: '0 7 * * *', jitterSeconds: 0 }),
+    fixture(files[1], state, { id: 'b', cron: '0 7 * * *', jitterSeconds: 0 }),
+    fixture(files[2], state, { id: 'c', cron: '0 7 * * *', jitterSeconds: 0 }),
+  ]);
   for (const id of ['a', 'b', 'c']) store.update(id, { enabled: true, armedAt: localIso(T0) });
   store.update('b', { cron: 'nonsense' });
   const clock = { t: at(2026, 10, 16, 7, 0, 5) };
@@ -575,8 +538,8 @@ test('a routines.json that cannot be read stops the check without throwing, and 
 test('the list shows each routine with its next fire in local time, whether it is running, and what is wrong with it', () => {
   const r = rig({ enabled: false });
   const [item] = r.sched.list().routines;
-  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'enabled', 'enabledInDesktop', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'running', 'next', 'problem']);
-  assert.deepEqual([item.id, item.title, item.enabled, item.enabledInDesktop, item.running, item.problem], ['demo', 'Demo routine', false, true, false, null]);
+  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'enabled', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'running', 'next', 'problem']);
+  assert.deepEqual([item.id, item.title, item.enabled, item.running, item.problem], ['demo', 'Demo routine', false, false, null]);
   assert.equal(item.next, '2026-10-16T07:42:17+11:00');
   r.store.update('demo', { cron: 'nonsense' });
   const bad = r.sched.list().routines[0];
@@ -608,7 +571,7 @@ test('only a true switches a routine on, so a hand-written "false" or 1 never ru
   const state = fs.mkdtempSync(path.join(base, 'strict-'));
   const file = path.join(state, 'SKILL.md');
   fs.writeFileSync(file, '---\nname: x\n---\n\nBody\n');
-  const entry = (id, enabled) => ({ ...exported(file, state, { id, cron: '0 7 * * *', jitterSeconds: 0 }), enabled, armedAt: localIso(T0), lastRunAt: null });
+  const entry = (id, enabled) => ({ ...fixture(file, state, { id, cron: '0 7 * * *', jitterSeconds: 0 }), enabled, armedAt: localIso(T0), lastRunAt: null });
   fs.writeFileSync(path.join(state, 'routines.json'), JSON.stringify({ routines: [entry('a', 'false'), entry('b', 1), entry('c', 'true'), entry('d', null), entry('e', true)] }));
   const store = makeRoutines(state);
   const started = [];
@@ -630,10 +593,10 @@ test('trouble with one routine in a check does not stop the others', async () =>
   const state = fs.mkdtempSync(path.join(base, 'isolate-'));
   const store = makeRoutines(state);
   const files = ['a', 'b'].map(id => { const f = path.join(state, `${id}.md`); fs.writeFileSync(f, `---\nname: ${id}\n---\n\nBody ${id}\n`); return f; });
-  store.seed({ routines: [
-    exported(files[0], state, { id: 'a', cron: '0 7 * * *', jitterSeconds: 0 }),
-    exported(files[1], state, { id: 'b', cron: '0 20 * * *', jitterSeconds: 0 }),
-  ] }, T0);
+  put(state, [
+    fixture(files[0], state, { id: 'a', cron: '0 7 * * *', jitterSeconds: 0 }),
+    fixture(files[1], state, { id: 'b', cron: '0 20 * * *', jitterSeconds: 0 }),
+  ]);
   store.update('a', { enabled: true, armedAt: localIso(at(2026, 10, 14)) });
   store.update('b', { enabled: true, armedAt: localIso(T0) });
   const failing = { ...store, update: (id, patch) => { if (id === 'a') throw new Error('disk full'); return store.update(id, patch); } };
@@ -754,7 +717,7 @@ function crowd(limit) {
   fs.writeFileSync(file, '---\nname: x\n---\n\nDo it.\n');
   const store = makeRoutines(state);
   const ids = ['a', 'b', 'c', 'd'];
-  store.seed({ routines: ids.map(id => exported(file, state, { id, title: id, cron: '0 7 * * 5', jitterSeconds: 0 })) }, T0);
+  put(state, ids.map(id => fixture(file, state, { id, title: id, cron: '0 7 * * 5', jitterSeconds: 0 })));
   for (const id of ids) store.update(id, { enabled: true, armedAt: localIso(T0) });
   const c = { store, clock: { t: T0 }, started: [], running: new Set(), logs: [] };
   c.sched = makeScheduler({
@@ -869,14 +832,14 @@ test('the next fire times of a schedule are three local times with jitter, none 
   assert.throws(() => upcoming('61 * * * *', 0, T0), /outside/);
 });
 
-test('adding a routine writes its prompt in Capcom\'s own folder, points the routine at it, and starts the schedule from now', async () => {
+test('adding a routine writes its prompt in GhostShell\'s own folder, points the routine at it, and starts the schedule from now', async () => {
   const r = rig({ enabled: false });
   r.clock.t = at(2026, 10, 16, 10);
   const made = r.sched.add({ ...MORNING, cwd: r.state, model: 'haiku', effort: '', mode: null });
   const file = path.join(promptsOf(r), 'morning-check.md');
   assert.equal(made.id, 'morning-check');
   assert.deepEqual([made.file, made.title, made.cron, made.jitterSeconds, made.cwd, made.model, made.effort, made.mode], [file, 'Morning check', '30 7 * * 1-5', 737, r.state, 'haiku', null, null]);
-  assert.deepEqual([made.enabled, made.enabledInDesktop, made.armedAt, made.lastRunAt, made.lastSessionId, made.problem], [true, false, localIso(r.clock.t), null, null, null]);
+  assert.deepEqual([made.enabled, made.armedAt, made.lastRunAt, made.lastSessionId, made.problem], [true, localIso(r.clock.t), null, null, null]);
   assert.equal(made.next, localIso(MONDAY));
   assert.equal(fs.readFileSync(file, 'utf8'), 'Look at the board.\n');
   assert.equal(fs.statSync(promptsOf(r)).mode & 0o777, 0o700);
@@ -976,7 +939,161 @@ test('adding never writes over a kept prompt file', () => {
   assert.equal(fs.readFileSync(path.join(promptsOf(r), 'morning-check.md'), 'utf8'), 'Old prompt.\n');
 });
 
-test('editing the prompt of a Desktop routine copies it to Capcom\'s folder and leaves Desktop\'s file as it was', async () => {
+// ---- a prompt file anywhere on the Mac ---------------------------------------------------------------
+
+const { prompt: _text, ...MORNING_FILELESS } = MORNING;
+const FILE_BODY = '---\nname: elsewhere\n---\n\nRead the board from the file.\n';
+
+// A prompt file in a folder of its own, outside any state folder, with an old mtime so a write would show.
+function outsideFile(name = 'prompt.md', body = FILE_BODY) {
+  const dir = fs.mkdtempSync(path.join(base, 'outside-'));
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, body);
+  const old = new Date(2026, 5, 1, 12);
+  fs.utimesSync(file, old, old);
+  return file;
+}
+const snap = file => ({ bytes: fs.readFileSync(file).toString('hex'), mtime: fs.statSync(file).mtimeMs, listing: fs.readdirSync(path.dirname(file)) });
+
+test('a routine on a prompt file outside GhostShell is added, listed, run, edited, moved to GhostShell\'s text and back, and the file is never touched', async () => {
+  const r = rig({ enabled: false });
+  const file = outsideFile();
+  const before = snap(file);
+  r.clock.t = at(2026, 10, 16, 10);
+  const made = r.sched.add({ ...MORNING_FILELESS, cwd: r.state, file: `  ${path.dirname(file)}/../${path.basename(path.dirname(file))}/prompt.md  ` });
+  assert.deepEqual([made.id, made.file, made.problem, made.enabled], ['morning-check', file, null, true]);
+  assert.equal(fs.existsSync(promptsOf(r)), false, 'nothing is written in GhostShell\'s folder for it');
+  assert.equal(r.sched.list().routines.find(x => x.id === 'morning-check').file, file);
+  assert.deepEqual(r.sched.prompt('morning-check'), { file, text: 'Read the board from the file.', ours: false });
+  await r.tickAt(MONDAY + 5000);
+  assert.deepEqual(r.calls.map(c => c.text), [wrapPrompt('morning-check', file, FILE_BODY)]);
+  assert.match(r.calls[0].text, new RegExp(`^<scheduled-task name="morning-check" file="${file}">\\n`));
+
+  r.sched.edit('morning-check', { title: 'Morning look', cron: '0 8 * * 1-5', mode: 'plan' });
+  assert.deepEqual([r.store.read().routines[1].file, r.store.read().routines[1].title], [file, 'Morning look']);
+  assert.equal(fs.existsSync(promptsOf(r)), false);
+  r.sched.edit('morning-check', { enabled: false });
+  r.sched.edit('morning-check', { enabled: true });
+  await r.sched.runNow('morning-check');
+  assert.equal(r.calls.at(-1).text, wrapPrompt('morning-check', file, FILE_BODY));
+
+  const own = path.join(promptsOf(r), 'morning-check.md');
+  const moved = r.sched.edit('morning-check', { prompt: 'Read the board from the file.' });
+  assert.equal(moved.file, own, 'moving onto GhostShell\'s text writes it even when the text is the same');
+  assert.equal(fs.readFileSync(own, 'utf8'), 'Read the board from the file.\n');
+  r.sched.edit('morning-check', { prompt: 'Now in GhostShell.' });
+  assert.deepEqual(r.sched.prompt('morning-check'), { file: own, text: 'Now in GhostShell.', ours: true });
+  const back = r.sched.edit('morning-check', { file });
+  assert.equal(back.file, file);
+  assert.equal(fs.readFileSync(own, 'utf8'), 'Now in GhostShell.\n', 'GhostShell\'s copy is left on disk');
+  const again = r.sched.edit('morning-check', { prompt: 'Text again.' });
+  assert.equal(again.file, own);
+  assert.equal(fs.readFileSync(own, 'utf8'), 'Text again.\n');
+  r.sched.edit('morning-check', { file });
+  await r.sched.runNow('morning-check');
+  assert.equal(r.calls.at(-1).text, wrapPrompt('morning-check', file, FILE_BODY));
+  assert.deepEqual(snap(file), before, 'bytes, mtime and its folder are as they were');
+  assert.ok(r.logs.includes('Routine morning-check: edited file'));
+});
+
+test('a prompt file outside GhostShell is left alone by an edit that sends the same text, and the store refuses to write it', () => {
+  const r = rig({ enabled: false });
+  const file = outsideFile();
+  const before = snap(file);
+  r.store.update('demo', { file });
+  r.sched.edit('demo', { prompt: 'Read the board from the file.', title: 'Same' });
+  assert.deepEqual(snap(file), before);
+  assert.throws(() => r.store.writePrompt(file, 'x'), /not in GhostShell's prompt folder/);
+  assert.deepEqual(snap(file), before);
+});
+
+test('adding by file or by text takes exactly one of them, and a file must be a full path to a readable file outside GhostShell\'s prompt folder', () => {
+  const r = rig({ enabled: false });
+  const file = outsideFile();
+  const input = { ...MORNING_FILELESS, cwd: r.state };
+  const before = rawOf(r);
+  const reason = (extra, key) => { try { r.sched.add({ ...input, ...extra }); } catch (e) { assert.equal(e.status, 400); assert.deepEqual(Object.keys(e.problems), [key]); return e.problems[key]; } assert.fail(`was added: ${JSON.stringify(extra)}`); };
+
+  assert.equal(reason({}, 'prompt'), 'Write the prompt the routine will run, or give the path of a prompt file.');
+  assert.equal(reason({ prompt: '  ' }, 'prompt'), 'Write the prompt the routine will run, or give the path of a prompt file.');
+  assert.equal(reason({ prompt: 'x', file }, 'prompt'), 'Send the prompt text or the path of a file, not both.');
+  assert.equal(reason({ prompt: '', file }, 'prompt'), 'Send the prompt text or the path of a file, not both.');
+  for (const bad of ['prompt.md', './prompt.md', '~/prompt.md', '', '   ', 7, null, {}]) assert.equal(reason({ file: bad }, 'file'), 'Give the full path, starting with /.', JSON.stringify(bad));
+  assert.equal(reason({ file: '/tmp/a"b.md' }, 'file'), 'The path cannot hold a double quote or a line break.');
+  assert.equal(reason({ file: '/tmp/a\nb.md' }, 'file'), 'The path cannot hold a double quote or a line break.');
+  assert.equal(reason({ file: '/tmp/a\rb.md' }, 'file'), 'The path cannot hold a double quote or a line break.');
+  const missing = path.join(path.dirname(file), 'missing.md');
+  assert.equal(reason({ file: missing }, 'file'), `Cannot read ${missing}.`);
+  assert.equal(reason({ file: path.dirname(file) }, 'file'), `${path.dirname(file)} is a folder, not a file.`);
+  if (process.getuid?.() !== 0) {
+    const locked = outsideFile('locked.md');
+    fs.chmodSync(locked, 0o000);
+    try { assert.equal(reason({ file: locked }, 'file'), `Cannot read ${locked}.`); } finally { fs.chmodSync(locked, 0o600); }
+  }
+  const mine = path.join(promptsOf(r), 'inside.md');
+  fs.mkdirSync(path.join(promptsOf(r), 'sub'), { recursive: true });
+  fs.writeFileSync(mine, 'x');
+  fs.writeFileSync(path.join(promptsOf(r), 'sub', 'deep.md'), 'x');
+  fs.symlinkSync(mine, path.join(path.dirname(file), 'link.md'));
+  const ownFolder = "That file is in GhostShell's own prompt folder. Choose GhostShell's own text instead.";
+  for (const inside of [mine, path.join(promptsOf(r), 'sub', 'deep.md'), path.join(promptsOf(r), 'sub', '..', 'inside.md'), path.join(path.dirname(file), 'link.md')]) assert.equal(reason({ file: inside }, 'file'), ownFolder, inside);
+  assert.equal(rawOf(r), before, 'a refusal writes nothing');
+  assert.deepEqual(fs.readdirSync(promptsOf(r)).sort(), ['inside.md', 'sub']);
+  assert.throws(() => r.sched.add({ ...input, title: '', model: 'bad model', file: 'relative.md' }), e => refused(400, ['title', 'model', 'file'])(e) && /^Nothing was saved\. Check the title, model and prompt file\.$/.test(e.message));
+});
+
+test('editing by file or by text takes at most one of them, and neither leaves the prompt alone', () => {
+  const r = rig();
+  const file = outsideFile();
+  const before = rawOf(r);
+  for (const [patch, key, why] of [
+    [{ prompt: 'x', file }, 'prompt', 'Send the prompt text or the path of a file, not both.'],
+    [{ file: 'relative.md' }, 'file', 'Give the full path, starting with /.'],
+    [{ file: path.join(path.dirname(file), 'nope.md') }, 'file', `Cannot read ${path.join(path.dirname(file), 'nope.md')}.`],
+    [{ file: path.dirname(file) }, 'file', `${path.dirname(file)} is a folder, not a file.`],
+    [{ file: '' }, 'file', 'Give the full path, starting with /.'],
+  ]) {
+    assert.throws(() => r.sched.edit('demo', patch), e => refused(400, [key])(e) && e.problems[key] === why, JSON.stringify(patch));
+  }
+  assert.equal(rawOf(r), before);
+  assert.equal(fs.existsSync(promptsOf(r)), false);
+  const untouched = r.sched.edit('demo', { title: 'Only the title' });
+  assert.deepEqual([untouched.file, untouched.title], [r.file, 'Only the title']);
+  const pointed = r.sched.edit('demo', { file });
+  assert.equal(pointed.file, file);
+  assert.equal(r.store.read().routines[0].file, file);
+  assert.throws(() => r.sched.edit('demo', { file: path.join(promptsOf(r), 'demo.md') }), refused(400, ['file']));
+});
+
+test('a hand-edited prompt file that is not a full path is explained and never run', async () => {
+  for (const bad of ['SKILL.md', './SKILL.md', '~/SKILL.md', '']) {
+    const r = rig();
+    r.store.update('demo', { file: bad });
+    const problem = 'The prompt file needs a full path, starting with /.';
+    assert.equal(r.sched.list().routines[0].problem, problem, JSON.stringify(bad));
+    await r.tickAt(FRIDAY + 3000);
+    assert.equal(r.calls.length, 0);
+    assert.equal(r.demo().lastError, problem);
+    await assert.rejects(r.sched.runNow('demo'), e => e.status === 400 && e.message === problem);
+    r.store.update('demo', { enabled: false });
+    assert.throws(() => r.sched.setEnabled('demo', true), e => e.status === 400 && e.message === `Demo routine cannot be switched on. ${problem}`);
+    assert.equal(r.calls.length, 0);
+  }
+});
+
+test('a hand-edited prompt file path with a double quote or a line break is explained and never run', async () => {
+  for (const bad of ['/tmp/a"b/SKILL.md', '/tmp/a\nb/SKILL.md']) {
+    const r = rig();
+    r.store.update('demo', { file: bad });
+    const problem = 'The prompt file path cannot hold a double quote or a line break.';
+    assert.equal(r.sched.list().routines[0].problem, problem, JSON.stringify(bad));
+    await r.tickAt(FRIDAY + 3000);
+    assert.equal(r.calls.length, 0);
+    assert.equal(r.demo().lastError, problem);
+  }
+});
+
+test('editing the prompt of a routine on a file elsewhere copies it to GhostShell\'s folder and leaves that file as it was', async () => {
   const r = rig({ enabled: false });
   const old = new Date(2026, 5, 1, 12);
   fs.utimesSync(r.file, old, old);
@@ -985,36 +1102,39 @@ test('editing the prompt of a Desktop routine copies it to Capcom\'s folder and 
   const ours = path.join(promptsOf(r), 'demo.md');
   assert.equal(edited.file, ours);
   assert.equal(fs.readFileSync(ours, 'utf8'), 'Check the other thing.\n\nSecond paragraph.\n');
-  assert.equal(fs.readFileSync(r.file, 'utf8'), r.raw, 'Desktop\'s file is byte for byte as it was');
+  assert.equal(fs.readFileSync(r.file, 'utf8'), r.raw, 'the file elsewhere is byte for byte as it was');
   assert.equal(fs.statSync(r.file).mtimeMs, mtime);
   assert.deepEqual(fs.readdirSync(path.dirname(r.file)).sort(), ['SKILL.md', 'routines', 'routines.json']);
-  assert.deepEqual(r.sched.prompt('demo'), { file: ours, text: 'Check the other thing.\n\nSecond paragraph.', ours: true, copyTo: null });
+  assert.deepEqual(r.sched.prompt('demo'), { file: ours, text: 'Check the other thing.\n\nSecond paragraph.', ours: true });
   r.sched.setEnabled('demo', true);
   await r.tickAt(MONDAY + 5000);
   assert.equal(r.calls[0].text, wrapPrompt('demo', ours, 'Check the other thing.\n\nSecond paragraph.'));
 });
 
-test('the prompt of a Desktop routine is its body without the frontmatter, and says where a change would be saved', () => {
+test('the prompt of a routine is its body without the frontmatter, with the file it is read from and whether that is GhostShell\'s own', () => {
   const r = rig();
-  assert.deepEqual(r.sched.prompt('demo'), { file: r.file, text: 'Check the thing.', ours: false, copyTo: path.join(promptsOf(r), 'demo.md') });
+  assert.deepEqual(r.sched.prompt('demo'), { file: r.file, text: 'Check the thing.', ours: false });
   fs.unlinkSync(r.file);
   const gone = r.sched.prompt('demo');
   assert.deepEqual([gone.text, gone.ours, gone.file, gone.error], ['', false, r.file, `Cannot read ${r.file}.`]);
   assert.throws(() => r.sched.prompt('nope'), refused(404));
 });
 
-test('a prompt that has not changed writes nothing, whatever the spacing round it', () => {
+test('a prompt that has not changed writes nothing once the routine is on GhostShell\'s own text, whatever the spacing round it', () => {
   const r = rig();
+  r.sched.edit('demo', { prompt: 'Check the thing.' });
+  const ours = path.join(promptsOf(r), 'demo.md');
+  fs.utimesSync(ours, new Date(2026, 5, 1), new Date(2026, 5, 1));
   for (const same of ['Check the thing.', '\n  Check the thing.\n\n', 'Check the thing.\r\n']) {
     r.sched.edit('demo', { prompt: same, title: 'Same prompt' });
-    assert.equal(fs.existsSync(promptsOf(r)), false, JSON.stringify(same));
+    assert.equal(fs.statSync(ours).mtimeMs, new Date(2026, 5, 1).getTime(), JSON.stringify(same));
   }
-  assert.equal(r.demo().file, r.file);
+  assert.equal(r.demo().file, ours);
   assert.equal(r.demo().title, 'Same prompt');
   assert.equal(fs.readFileSync(r.file, 'utf8'), r.raw);
 });
 
-test('a second prompt edit overwrites Capcom\'s copy in place and leaves no temporary file', () => {
+test('a second prompt edit overwrites GhostShell\'s copy in place and leaves no temporary file', () => {
   const r = rig();
   r.sched.edit('demo', { prompt: 'First.' });
   const ours = path.join(promptsOf(r), 'demo.md');
@@ -1029,12 +1149,12 @@ test('a second prompt edit overwrites Capcom\'s copy in place and leaves no temp
   assert.equal(r.sched.prompt('demo').text, 'Second.');
 });
 
-test('nothing outside Capcom\'s prompt folder is ever written', () => {
+test('nothing outside GhostShell\'s prompt folder is ever written', () => {
   const r = rig();
   const outside = path.join(r.state, 'elsewhere.md');
-  assert.throws(() => r.store.writePrompt(outside, 'x'), /not in Capcom's prompt folder/);
-  assert.throws(() => r.store.writePrompt(path.join(promptsOf(r), '..', 'escape.md'), 'x'), /not in Capcom's prompt folder/);
-  assert.throws(() => r.store.writePrompt(path.join(promptsOf(r), 'a', 'b.md'), 'x'), /not in Capcom's prompt folder/);
+  assert.throws(() => r.store.writePrompt(outside, 'x'), /not in GhostShell's prompt folder/);
+  assert.throws(() => r.store.writePrompt(path.join(promptsOf(r), '..', 'escape.md'), 'x'), /not in GhostShell's prompt folder/);
+  assert.throws(() => r.store.writePrompt(path.join(promptsOf(r), 'a', 'b.md'), 'x'), /not in GhostShell's prompt folder/);
   assert.equal(fs.existsSync(outside), false);
   assert.equal(fs.existsSync(path.join(r.state, 'escape.md')), false);
   assert.throws(() => r.store.promptFile('../escape'), refused(400));
@@ -1212,7 +1332,7 @@ test('adding, editing and deleting keep a hand edit that came in between, becaus
 test('the store adds and removes routines, and refuses an id that is there, one that is not, and a file it cannot read', () => {
   const dir = fs.mkdtempSync(path.join(base, 'store-'));
   const store = makeRoutines(dir);
-  const routine = { id: 'a', title: 'A', cron: '0 0 * * *', jitterSeconds: 0, file: store.promptFile('a'), cwd: dir, model: null, effort: null, mode: null, enabledInDesktop: false, enabled: true, armedAt: localIso(T0) };
+  const routine = { id: 'a', title: 'A', cron: '0 0 * * *', jitterSeconds: 0, file: store.promptFile('a'), cwd: dir, model: null, effort: null, mode: null, enabled: true, armedAt: localIso(T0) };
   assert.deepEqual(store.add(routine), { ...routine, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null });
   assert.throws(() => store.add(routine), refused(409));
   assert.deepEqual(store.read().routines.map(x => x.id), ['a']);

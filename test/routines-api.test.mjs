@@ -1,15 +1,15 @@
 // Run with `npm test`. The routine routes over HTTP against the real server, with its own state folder under a temporary home. Prompt files and
-// folders are in that home, so nothing here reads or writes Desktop's scheduled tasks or Capcom's real state.
+// folders are in that home, so nothing here reads or writes the real state or any real prompt file.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { as, request, restart, signIn, start, until } from './harness.mjs';
 
-const DESKTOP_FILE = '---\nname: desk\ndescription: A routine from Desktop\n---\n\nCheck the board.\n';
+const PROMPT_FILE = '---\nname: desk\ndescription: A routine with a prompt file of its own\n---\n\nCheck the board.\n';
 const NEW = { title: 'Morning check', cron: '30 7 * * 1-5', jitterSeconds: 737, prompt: 'Look at the board.' };
 
-// A signed-in server whose routines.json already holds one routine from Desktop, which reads its prompt from a SKILL.md in the home.
+// A signed-in server whose routines.json already holds one routine, which reads its prompt from a SKILL.md outside the state folder.
 // `sessions` are the runs the session list already holds.
 async function open(sessions) {
   const first = await start({ claude: true, sessions });
@@ -17,10 +17,9 @@ async function open(sessions) {
   const desk = path.join(first.home, 'desktop', 'desk', 'SKILL.md');
   fs.mkdirSync(work);
   fs.mkdirSync(path.dirname(desk), { recursive: true });
-  fs.writeFileSync(desk, DESKTOP_FILE);
+  fs.writeFileSync(desk, PROMPT_FILE);
   fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({
-    seededAt: '2026-10-16T00:00:00+11:00',
-    routines: [{ id: 'desk', title: 'Desktop routine', cron: '30 7 * * 1-5', jitterSeconds: 737, file: desk, cwd: work, model: null, effort: null, mode: null, enabledInDesktop: true, enabled: false }],
+    routines: [{ id: 'desk', title: 'File routine', cron: '30 7 * * 1-5', jitterSeconds: 737, file: desk, cwd: work, model: null, effort: null, mode: null, enabled: false }],
   }, null, 2));
   const s = await restart(first);
   const { token } = await signIn(s);
@@ -38,29 +37,29 @@ const write = (c, method, url, json, headers) => send(c, method, url, { ...as(c.
 const read = (c, url) => send(c, 'GET', url, as(c.token));
 const routinesOf = async c => (await read(c, '/api/routines')).body().routines;
 
-test('a routine is added, read, edited, switched, run-checked and deleted over HTTP, and Desktop\'s file is never written', async () => {
+test('a routine is added, read, edited, switched, run-checked and deleted over HTTP, and a prompt file outside GhostShell is never written', async () => {
   const c = await open();
   const first = (await read(c, '/api/routines')).body();
-  assert.deepEqual([first.problem, first.routines.map(r => [r.id, r.title, r.enabled, r.enabledInDesktop, r.problem])], [null, [['desk', 'Desktop routine', false, true, null]]]);
-  assert.deepEqual((await read(c, '/api/routines/desk/prompt')).body(), { file: c.desk, text: 'Check the board.', ours: false, copyTo: path.join(c.prompts, 'desk.md') });
+  assert.deepEqual([first.problem, first.routines.map(r => [r.id, r.title, r.enabled, r.problem])], [null, [['desk', 'File routine', false, null]]]);
+  assert.deepEqual((await read(c, '/api/routines/desk/prompt')).body(), { file: c.desk, text: 'Check the board.', ours: false });
 
   const added = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, model: 'haiku', effort: 'high', mode: 'plan' });
   assert.equal(added.status, 200, added.text);
   const { routine } = added.body();
   const file = path.join(c.prompts, 'morning-check.md');
-  assert.deepEqual([routine.id, routine.title, routine.file, routine.cwd, routine.model, routine.effort, routine.mode, routine.enabled, routine.enabledInDesktop, routine.problem], ['morning-check', 'Morning check', file, c.work, 'haiku', 'high', 'plan', true, false, null]);
+  assert.deepEqual([routine.id, routine.title, routine.file, routine.cwd, routine.model, routine.effort, routine.mode, routine.enabled, routine.problem], ['morning-check', 'Morning check', file, c.work, 'haiku', 'high', 'plan', true, null]);
   assert.ok(Date.parse(routine.armedAt) <= Date.now() && Date.now() - Date.parse(routine.armedAt) < 60_000, 'armed from now');
   assert.equal(fs.readFileSync(file, 'utf8'), 'Look at the board.\n');
-  assert.deepEqual((await read(c, '/api/routines/morning-check/prompt')).body(), { file, text: 'Look at the board.', ours: true, copyTo: null });
+  assert.deepEqual((await read(c, '/api/routines/morning-check/prompt')).body(), { file, text: 'Look at the board.', ours: true });
   assert.equal((await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work })).body().routine.id, 'morning-check-2');
 
-  const oldDesktop = fs.statSync(c.desk);
+  const oldFile = fs.statSync(c.desk);
   const edited = await write(c, 'PATCH', '/api/routines/desk', { prompt: 'Check the other board.', title: 'Renamed', jitterSeconds: 60 });
   assert.equal(edited.status, 200, edited.text);
   assert.deepEqual([edited.body().routine.title, edited.body().routine.file, edited.body().routine.jitterSeconds, edited.body().routine.id], ['Renamed', path.join(c.prompts, 'desk.md'), 60, 'desk']);
   assert.equal(fs.readFileSync(path.join(c.prompts, 'desk.md'), 'utf8'), 'Check the other board.\n');
-  assert.equal(fs.readFileSync(c.desk, 'utf8'), DESKTOP_FILE);
-  assert.equal(fs.statSync(c.desk).mtimeMs, oldDesktop.mtimeMs);
+  assert.equal(fs.readFileSync(c.desk, 'utf8'), PROMPT_FILE);
+  assert.equal(fs.statSync(c.desk).mtimeMs, oldFile.mtimeMs);
   assert.equal((await read(c, '/api/routines/desk/prompt')).body().text, 'Check the other board.');
 
   const renamed = await write(c, 'PATCH', '/api/routines/morning-check', { title: 'Evening check' });
@@ -81,7 +80,7 @@ test('a routine is added, read, edited, switched, run-checked and deleted over H
   assert.equal((await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work })).body().routine.id, 'morning-check-3', 'the deleted routine\'s kept file still holds morning-check-2');
 });
 
-test('an id is taken while a Desktop task folder or any run in the session list still holds it, and new is never an id', async () => {
+test('an id is taken while any run in the session list still holds it, a Desktop-style task folder holds nothing, and new is never an id', async () => {
   const c = await open([
     { id: 'p1', title: 'Old run', routine: 'past-run', ago: 5 },
     { id: 'p2', title: 'Our run', routine: 'our-run', source: 'capcom', ago: 5 },
@@ -94,14 +93,14 @@ test('an id is taken while a Desktop task folder or any run in the session list 
     assert.equal(res.status, 200, res.text);
     return res.body().routine.id;
   };
-  assert.equal(await idOf('Desktop only'), 'desktop-only-2', 'a Desktop task folder holds its id');
+  assert.equal(await idOf('Desktop only'), 'desktop-only', 'a folder in Desktop\'s task folder holds no id');
   assert.equal(await idOf('Past run'), 'past-run-2', 'the runs of a routine that routines.json no longer holds keep its id');
   assert.equal(await idOf('Our run'), 'our-run-2', 'so do runs GhostShell started');
   assert.equal(await idOf('Archived run'), 'archived-run-2', 'and archived ones');
-  assert.equal(await idOf('Desktop only'), 'desktop-only-3');
+  assert.equal(await idOf('Desktop only'), 'desktop-only-2');
   assert.equal(await idOf('New'), 'new-2', '#/routines/new is the add form');
   assert.equal(await idOf('Fresh'), 'fresh');
-  assert.deepEqual(fs.readdirSync(tasks), ['desktop-only'], 'Desktop\'s folder is only looked for');
+  assert.deepEqual(fs.readdirSync(tasks), ['desktop-only'], 'that folder is not touched');
   assert.deepEqual(fs.readdirSync(path.join(tasks, 'desktop-only')), []);
 });
 
@@ -110,7 +109,7 @@ test('a prompt file that cannot be read comes back empty with the error, still a
   fs.unlinkSync(c.desk);
   const res = await read(c, '/api/routines/desk/prompt');
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body(), { file: c.desk, text: '', ours: false, copyTo: path.join(c.prompts, 'desk.md'), error: `Cannot read ${c.desk}.` });
+  assert.deepEqual(res.body(), { file: c.desk, text: '', ours: false, error: `Cannot read ${c.desk}.` });
 });
 
 test('a refused add or edit names every bad field under problems, with a one-line error, and writes nothing', async () => {
@@ -295,10 +294,85 @@ test('a routine cannot be deleted while its run is starting, and can be once the
   void running;
 });
 
-test('the sessions list tells a page this server can add, edit and delete routines', async () => {
+test('the sessions list tells a page this server can add, edit and delete routines, and run one from a prompt file', async () => {
   const c = await open();
   const res = await read(c, '/api/sessions');
   assert.equal(res.status, 200);
   assert.equal(res.body().features.routineEdits, true);
+  assert.equal(res.body().features.routineFiles, true);
   assert.equal(res.body().features.groupEdits, true);
+});
+
+test('a routine is added on a prompt file anywhere, edited, moved to GhostShell\'s text and back over HTTP, and the file is never written', async () => {
+  const c = await open();
+  const dir = path.join(c.s.home, 'notes');
+  const file = path.join(dir, 'standup.md');
+  const body = '---\nname: standup\n---\n\nSummarise the standup.\n';
+  fs.mkdirSync(dir);
+  fs.writeFileSync(file, body);
+  const old = new Date(2026, 5, 1, 12);
+  fs.utimesSync(file, old, old);
+  const { prompt, ...fileless } = NEW;
+  const snap = () => [fs.readFileSync(file, 'utf8'), fs.statSync(file).mtimeMs, fs.readdirSync(dir)];
+  const before = snap();
+
+  const added = await write(c, 'POST', '/api/routines', { ...fileless, cwd: c.work, file });
+  assert.equal(added.status, 200, added.text);
+  const { routine } = added.body();
+  assert.deepEqual([routine.id, routine.file, routine.problem], ['morning-check', file, null]);
+  assert.equal(fs.existsSync(c.prompts), false, 'no copy is made');
+  assert.deepEqual((await read(c, '/api/routines/morning-check/prompt')).body(), { file, text: 'Summarise the standup.', ours: false });
+
+  const renamed = await write(c, 'PATCH', '/api/routines/morning-check', { title: 'Standup', cron: '0 9 * * 1-5' });
+  assert.deepEqual([renamed.status, renamed.body().routine.file], [200, file]);
+  const own = path.join(c.prompts, 'morning-check.md');
+  const moved = await write(c, 'PATCH', '/api/routines/morning-check', { prompt: 'Summarise the standup.' });
+  assert.deepEqual([moved.status, moved.body().routine.file], [200, own]);
+  assert.equal(fs.readFileSync(own, 'utf8'), 'Summarise the standup.\n');
+  assert.deepEqual((await read(c, '/api/routines/morning-check/prompt')).body(), { file: own, text: 'Summarise the standup.', ours: true });
+  const back = await write(c, 'PATCH', '/api/routines/morning-check', { file });
+  assert.deepEqual([back.status, back.body().routine.file], [200, file]);
+  assert.ok(fs.existsSync(own), 'GhostShell\'s copy stays');
+  assert.deepEqual(snap(), before);
+});
+
+test('a refused file names the prompt file or the prompt under problems over HTTP, and nothing is saved', async () => {
+  const c = await open();
+  const before = c.raw();
+  const { prompt, ...fileless } = NEW;
+  const cases = [
+    [{ file: 'standup.md' }, 'file', 'Give the full path, starting with /.'],
+    [{ file: '~/standup.md' }, 'file', 'Give the full path, starting with /.'],
+    [{ file: path.join(c.s.home, 'missing.md') }, 'file', `Cannot read ${path.join(c.s.home, 'missing.md')}.`],
+    [{ file: c.work }, 'file', `${c.work} is a folder, not a file.`],
+    [{ file: path.join(c.s.state, 'routines', 'x.md') }, 'file', null],
+    [{ file: c.desk, prompt: 'Both.' }, 'prompt', 'Send the prompt text or the path of a file, not both.'],
+    [{}, 'prompt', 'Write the prompt the routine will run, or give the path of a prompt file.'],
+  ];
+  fs.mkdirSync(c.prompts);
+  fs.writeFileSync(path.join(c.prompts, 'x.md'), 'x');
+  for (const [extra, key, why] of cases) {
+    const res = await write(c, 'POST', '/api/routines', { ...fileless, cwd: c.work, ...extra });
+    assert.equal(res.status, 400, res.text);
+    assert.deepEqual(Object.keys(res.body().problems), [key], JSON.stringify(extra));
+    assert.equal(res.body().problems[key], why ?? "That file is in GhostShell's own prompt folder. Choose GhostShell's own text instead.");
+  }
+  const edit = await write(c, 'PATCH', '/api/routines/desk', { file: c.desk, prompt: 'Both.' });
+  assert.deepEqual([edit.status, Object.keys(edit.body().problems)], [400, ['prompt']]);
+  assert.equal(c.raw(), before);
+  assert.deepEqual(fs.readdirSync(c.prompts), ['x.md']);
+});
+
+test('a hand-edited routine whose prompt file or folder is not a full path shows the reason in the list', async () => {
+  const c = await open();
+  const data = JSON.parse(c.raw());
+  data.routines[0].file = 'SKILL.md';
+  fs.writeFileSync(path.join(c.s.state, 'routines.json'), JSON.stringify(data));
+  assert.equal((await routinesOf(c))[0].problem, 'The prompt file needs a full path, starting with /.');
+  data.routines[0].file = c.desk;
+  for (const [cwd, why] of [['work', 'The folder work must be a full path starting with /.'], ['', 'The routine has no folder. Give its full path, starting with /.']]) {
+    data.routines[0].cwd = cwd;
+    fs.writeFileSync(path.join(c.s.state, 'routines.json'), JSON.stringify(data));
+    assert.equal((await routinesOf(c))[0].problem, why);
+  }
 });

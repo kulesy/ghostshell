@@ -406,12 +406,14 @@ function bookGroupSession(groupId) {
 }
 
 // ---- routines ------------------------------------------------------------------------------------
-// Desktop's scheduled tasks, run from here. See docs/adr/20261015-capcom-runs-routines-itself.md.
+// GhostShell is the only home for routines. See docs/adr/20261015-capcom-runs-routines-itself.md and
+// docs/adr/20261025-ghostshell-is-the-only-home-for-routines.md.
 
 // What is wrong with the folder, mode, model and effort of a routine, each under its field, in the order the first of them is told in.
 function routineProblems(r) {
   const found = {};
-  if (typeof r.cwd !== 'string' || !path.isAbsolute(r.cwd)) found.cwd = `The folder ${r.cwd} must be a full path starting with /.`;
+  if (typeof r.cwd !== 'string' || !r.cwd.trim()) found.cwd = 'The routine has no folder. Give its full path, starting with /.';
+  else if (!path.isAbsolute(r.cwd)) found.cwd = `The folder ${r.cwd} must be a full path starting with /.`;
   else if (!fs.existsSync(r.cwd)) found.cwd = `The folder ${r.cwd} does not exist.`;
   else if (!fs.statSync(r.cwd).isDirectory()) found.cwd = `${r.cwd} is not a folder.`;
   if (r.mode && !MODES.includes(r.mode)) found.mode = `Unknown permission mode ${r.mode}.`;
@@ -422,10 +424,8 @@ function routineProblems(r) {
 
 const routineProblem = r => Object.values(routineProblems(r))[0] ?? null;
 
-// An id is kept for Desktop's task folder (looked for, never written) and for any routine whose runs the session list still holds,
-// so a new routine never takes over the runs of a deleted one or of a Desktop routine.
-const desktopTasksDir = path.join(os.homedir(), '.claude', 'scheduled-tasks');
-const routineIdTaken = id => fs.existsSync(path.join(desktopTasksDir, id)) || [...buildIndex().rows.values()].some(r => r.routine === id);
+// An id is kept for any routine whose runs the session list still holds, so a new routine never takes over the runs of a deleted one.
+const routineIdTaken = id => [...buildIndex().rows.values()].some(r => r.routine === id);
 
 // A run is a new session like any other, except that it is never handed to Desktop, whose window it would open at fire time.
 const routines = makeScheduler({
@@ -1036,8 +1036,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, and sub session summaries.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, routineEdits: true, subStatus: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, and sub session summaries.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, routineEdits: true, routineFiles: true, subStatus: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
