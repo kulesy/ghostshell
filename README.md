@@ -43,7 +43,7 @@ GhostShell lists the sessions you start in Claude Desktop, the routine runs and 
   </tr>
   <tr>
     <td width="50%" valign="top"><b>A terminal beside the chat</b><br>Run commands in the session&#39;s folder, or run a code block from a reply with one click. <a href="docs/terminal.md">Terminal</a></td>
-    <td width="50%" valign="top"><b>Routines without Desktop</b><br>GhostShell runs Desktop&#39;s routines on their schedules, so Desktop can stay closed, and you add, edit and delete them on its Routines page. <a href="docs/routines.md">Routines</a></td>
+    <td width="50%" valign="top"><b>Routines on a schedule</b><br>GhostShell runs your routines on their schedules, and you add, edit and delete them on its Routines page. <a href="docs/routines.md">Routines</a></td>
   </tr>
   <tr>
     <td width="50%" valign="top"><b>Desktop-style tools</b><br>Chips, widgets and questions from GhostShell&#39;s own MCP server, a chat for each group and each section of the list, and Claude in Chrome. <a href="docs/tools.md">Tools</a></td>
@@ -87,7 +87,7 @@ GhostShell listens on 127.0.0.1 only. Anyone who signs in can run commands as yo
 | [Session list](docs/session-list.md) | Projects, groups, pins, nesting, search, archiving and the keyboard |
 | [Tools](docs/tools.md) | Chips, chapters, group and section chats, widgets, questions and Claude in Chrome |
 | [Terminal](docs/terminal.md) | The terminal panel and `!` commands |
-| [Routines](docs/routines.md) | Running Desktop's routines on a schedule |
+| [Routines](docs/routines.md) | Running your routines on a schedule, and the Routines page |
 | [Setup](docs/setup.md) | The password, sign-in, passkeys, installing the app and the tests |
 | [Configuration](docs/configuration.md) | `config.json`, `config.local.json` and the environment variables |
 | [Always on](docs/always-on.md) | The launchd agent and the small Capcom app that holds macOS permissions |

@@ -1,6 +1,6 @@
 # Capcom runs routines itself, from Desktop's prompt files
 
-- Status: Accepted
+- Status: Accepted, partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md)
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: routines, scheduler, claude-desktop, launchd

@@ -305,4 +305,6 @@ In the projects sidebar the up and down arrows, Home and End move between the vi
 
 ## Routine rows
 
-Routines open their latest run with a click. The arrow at the end of a routine's row folds its earlier runs out underneath. A routine's right-click and ... menus have Run now, Pause or Resume, Edit and Delete, and the calendar button on the Routines heading opens the [Routines page](routines.md#the-routines-page). Runs that GhostShell starts itself (see [routines](routines.md)) list there with the routine's title, beside Desktop's runs of the same routine.
+Routines open their latest run with a click. The arrow at the end of a routine's row folds its earlier runs out underneath. A routine's right-click and ... menus have Run now, Pause or Resume, Edit and Delete, and the calendar button on the Routines heading opens the [Routines page](routines.md#the-routines-page). A routine's runs list there with the routine's title (see [routines](routines.md)).
+
+A routine that has no row anywhere in the list gets one at the end of the Routines section, so a routine that has never run is still there. Its row opens the routine, says "Hasn't run yet", "Last run" and how long ago when its runs were archived, or "Off" when it is paused, and has the same ... and right-click menus. A routine whose only run is pinned or in a group has that row instead. The section's count counts every routine, and the arrow keys walk onto these rows like any other. They are not sessions, so they cannot be selected, archived, renamed or dragged.
