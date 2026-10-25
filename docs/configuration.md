@@ -1,6 +1,6 @@
 # Configuration
 
-The settings in `config.json` and `config.local.json`, and the three environment variables that override them.
+The settings in `config.json` and `config.local.json`, and the four environment variables that override them.
 
 ## Files
 
@@ -20,6 +20,10 @@ The settings in `config.json` and `config.local.json`, and the three environment
 
 `claude` is the CLI to run. It defaults to `claude`, found on `PATH`.
 
+### `gh`
+
+`gh` is the GitHub CLI that GhostShell asks for the state of the pull requests a session is working on. It defaults to `gh`, found on `PATH`, and the sign-in is whatever `gh auth login` stored. GhostShell never reads the token. Without `gh`, or without a sign-in, a session shows no pull requests.
+
 ### `chrome`
 
 `chrome` is `true` by default. Set it to `false` to start every session without Claude in Chrome (see [Claude in Chrome](tools.md#claude-in-chrome)).
@@ -36,10 +40,11 @@ The settings in `config.json` and `config.local.json`, and the three environment
 
 ## Environment variables
 
-Three environment variables win over both files:
+Four environment variables win over both files:
 
 - `PORT` sets the port.
 - `CAPCOM_CLAUDE` sets the CLI.
+- `CAPCOM_GH` sets the GitHub CLI.
 - `CAPCOM_STATE` points a test instance at its own login, registry and routines.
 
 Two instances that share a state folder both fire its routines, so always give a test instance its own.

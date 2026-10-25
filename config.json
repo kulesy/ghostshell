@@ -1,6 +1,7 @@
 {
   "port": 4310,
   "claude": "claude",
+  "gh": "gh",
   "desktopDir": "~/Library/Application Support/Claude",
   "projectsDir": "~/.claude/projects",
   "stateDir": "~/.config/capcom",

@@ -19,6 +19,7 @@ import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { pendingLines } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
+import { makePulls } from './lib/pulls.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } from './lib/uploads.mjs';
@@ -44,6 +45,7 @@ const marks = makeMarks(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
 const uploads = makeUploads(cfg.stateDir);
 const summaries = makeSummaries({ transcriptFor });
+const pulls = makePulls({ transcriptFor, gh: cfg.gh });
 // A mention of a file in front of /name stops the CLI reading the message as a command.
 const SLASH_WITH_FILES = 'Send a slash command on its own, without files.';
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -992,12 +994,18 @@ async function terminalApi(req, res, id, [step, ...extra]) {
 
 const MAX_SUMMARY_IDS = 60;
 
+// The distinct session ids in ?ids=, or the sentence for a 400 when there are none or too many.
+function askedIds(u) {
+  const ids = [...new Set((u.searchParams.get('ids') ?? '').split(',').map(id => id.trim()).filter(Boolean))];
+  if (!ids.length) return 'Name the sessions in ids.';
+  return ids.length > MAX_SUMMARY_IDS ? `Ask for at most ${MAX_SUMMARY_IDS} sessions at a time.` : ids;
+}
+
 // GET api/summaries?ids=a,b,c answers for each id that is a session: the first sentence of its latest reply, when it was said, and what it waits on.
 // With detail=1 each also has the reply itself. An id that is no session, or is a group's chat, is left out without a word.
 function summariesApi(res, u) {
-  const ids = [...new Set((u.searchParams.get('ids') ?? '').split(',').map(id => id.trim()).filter(Boolean))];
-  if (!ids.length) return send(res, 400, { error: 'Name the sessions in ids.' });
-  if (ids.length > MAX_SUMMARY_IDS) return send(res, 400, { error: `Ask for at most ${MAX_SUMMARY_IDS} sessions at a time.` });
+  const ids = askedIds(u);
+  if (typeof ids === 'string') return send(res, 400, { error: ids });
   const detail = u.searchParams.get('detail') === '1';
   const { rows } = buildIndex({ archived: true });
   const found = ids.filter(id => rows.has(id)).map(id => {
@@ -1005,6 +1013,18 @@ function summariesApi(res, u) {
     return [id, { line: said?.line ?? '', at: said?.at ?? null, pending: pendingLines(pendingOf(id)), ...(detail && { reply: said?.reply ?? '' }) }];
   });
   return send(res, 200, { summaries: Object.fromEntries(found) });
+}
+
+// GET api/pulls?ids=a,b,c answers for each id that is a session: the pull requests it is working on, with their status from GitHub, and
+// whether some are still being read. An id that is no session, or is a group's chat, is left out without a word, and a broken or missing gh gives empty lists.
+async function pullsApi(res, u) {
+  const ids = askedIds(u);
+  if (typeof ids === 'string') return send(res, 400, { error: ids });
+  const { rows } = buildIndex({ archived: true });
+  const urls = new Map(ids.filter(id => rows.has(id)).map(id => [id, pulls.urlsFor(id, rows.get(id).cwd)]));
+  const { found, settling } = await pulls.lookup([...new Set([...urls.values()].flat())]);
+  const answer = Object.fromEntries([...urls].map(([id, list]) => [id, list.filter(url => found.has(url)).map(url => found.get(url))]));
+  return send(res, 200, { pulls: answer, settling });
 }
 
 async function api(req, res, u) {
@@ -1036,10 +1056,11 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, and sub session summaries.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, routineEdits: true, routineFiles: true, subStatus: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, and the status of the pull requests a session works on.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
+  if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
   // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's or built-in section's.
   if (req.method === 'GET' && u.pathname === '/api/archived') {

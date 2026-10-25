@@ -201,18 +201,50 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
   return { cli, log };
 }
 
+// A GitHub CLI that never leaves the machine. It logs its arguments to gh.log in the home, and answers from gh-state.json there: `pulls` is the
+// output of pr view for each address, `threads` the unresolved flags of its review threads, and `fail` makes every call fail. The login is octocat.
+const FAKE_GH = `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const home = process.env.HOME;
+const args = process.argv.slice(2);
+fs.appendFileSync(path.join(home, 'gh.log'), JSON.stringify(args) + '\\n');
+const file = path.join(home, 'gh-state.json');
+const state = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+const fail = message => { process.stderr.write(message + '\\n'); process.exit(1); };
+if (state.fail) fail('The fake gh is broken.');
+const named = key => (args.find(a => a.startsWith(key + '=')) || '').slice(key.length + 1);
+if (args[0] === 'api' && args[1] === 'user') console.log('octocat');
+else if (args[0] === 'pr' && args[1] === 'view') {
+  const pull = (state.pulls || {})[args[2]];
+  if (!pull) fail('Could not resolve to a PullRequest.');
+  console.log(JSON.stringify(pull));
+} else if (args[0] === 'api' && args[1] === 'graphql') {
+  const url = 'https://github.com/' + named('owner') + '/' + named('name') + '/pull/' + named('number');
+  const nodes = ((state.threads || {})[url] || []).map(isResolved => ({ isResolved }));
+  console.log(JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } }));
+} else process.exit(2);
+`;
+
+// `gh` in the session options is true for the fake GitHub CLI, or 'missing' for a path with no CLI at it.
+function furnishGh(home, gh) {
+  const file = path.join(home, gh === 'missing' ? 'no-such-gh' : 'gh');
+  if (gh !== 'missing') fs.writeFileSync(file, FAKE_GH, { mode: 0o755 });
+  return { gh: file, ghLog: path.join(home, 'gh.log') };
+}
+
 export async function start(mac) {
   const home = fs.mkdtempSync(path.join(base, 'home-'));
   const state = path.join(home, 'state');
   fs.mkdirSync(state);
   writePassword(state, PASSWORD);
-  const made = mac ? furnish(home, state, mac) : {};
+  const made = mac ? { ...furnish(home, state, mac), ...(mac.gh && furnishGh(home, mac.gh)) } : {};
   return launch(home, state, made);
 }
 
 async function launch(home, state, made) {
   const port = await freePort();
-  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, ...(made.cli && { CAPCOM_CLAUDE: made.cli }) };
+  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, ...(made.cli && { CAPCOM_CLAUDE: made.cli }), ...(made.gh && { CAPCOM_GH: made.gh }) };
   const child = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });
@@ -223,7 +255,7 @@ async function launch(home, state, made) {
     child.stdout.on('data', chunk => { out += chunk; if (out.includes('Capcom on')) { clearTimeout(timer); resolve(); } });
     child.once('exit', code => { clearTimeout(timer); reject(new Error(`The server exited with ${code}. ${errors}`)); });
   });
-  const server = { port, home, state, origin: `http://localhost:${port}`, tokens: path.join(state, 'tokens.json'), layout: path.join(state, 'layout.json'), cliLog: made.log, errors: () => errors };
+  const server = { port, home, state, origin: `http://localhost:${port}`, tokens: path.join(state, 'tokens.json'), layout: path.join(state, 'layout.json'), cliLog: made.log, ghLog: made.ghLog, errors: () => errors };
   launches.set(server, { child, made });
   return server;
 }
