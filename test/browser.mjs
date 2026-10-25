@@ -205,6 +205,26 @@ export async function launch(chromium) {
       await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...held, button: 'left', clickCount: 1 });
     }
 
+    // Presses the left button on the middle of `from`, nudges it far enough to lift a header, and then moves to the point the expression `to` gives, which
+    // is read once the page has drawn what the lift adds. It leaves the button down for the test to look at the page, and the function it
+    // returns lets go.
+    async function carry(from, to) {
+      await settled();
+      const start = await centre(from);
+      const nudge = { x: start.x, y: start.y + 8 };
+      await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
+      await call('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, button: 'left', clickCount: 1 });
+      await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...nudge, button: 'left', buttons: 1 });
+      await settled();
+      const end = await evaluate(to);
+      for (let i = 1; i <= 10; i++) await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nudge.x + (end.x - nudge.x) * i / 10, y: nudge.y + (end.y - nudge.y) * i / 10, button: 'left', buttons: 1 });
+      await settled();
+      return async () => {
+        await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...end, button: 'left', clickCount: 1 });
+        await settled();
+      };
+    }
+
     // One turn of the wheel over the middle of `selector`, a negative deltaY scrolling up.
     async function wheel(selector, deltaY) {
       await settled();
@@ -223,6 +243,7 @@ export async function launch(chromium) {
       hover,
       down,
       up,
+      carry,
       wheel,
       close: async () => {
         problemsOf.delete(sessionId);

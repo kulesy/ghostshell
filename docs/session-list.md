@@ -151,6 +151,14 @@ A project's menu is on its row in the projects sidebar: New group here, Rename a
 
 The dots on a group's header move it into a project, between projects or back to Home, and show only when there is somewhere to move it. A note then says where the group went, and the list stays on the view it was in. A right click or the menu key on a group's header opens the same menu.
 
+Drag a group's header to move the group with its sessions, folded or open. Only your own groups have a handle: Pinned, Routines, Started here, Ungrouped and Terminal and other do not, and neither does a group with nowhere to go. A mouse drags after a few pixels of movement, so a click still folds the group and the dots still open its menu. A finger drags after a long press, so a swipe still scrolls the list, and a long press let go without moving opens the group's menu.
+
+- Between the groups of the view, a line shows where the group will land, and a drop saves that order. The group lands after the groups whose headers are above the pointer, so there is no gap in a group that is open. A drop where the group already is does nothing, and so does a drop over a fixed section or outside the list.
+- Onto a project or Home moves the group there, as the menu does. With the projects sidebar open its rows are the targets, and the one under the pointer lights up. With it shut, a Move to strip of Home and the projects appears between the list's header and the list while the group is carried. The view the group is in is left out.
+- Esc cancels, and a note says where the group went or why the server refused. After a reorder the focus is on the group's header.
+
+The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project.
+
 ## The projects sidebar
 
 The projects sidebar picks the view the list shows. Home is first, and each project follows it with the number of sessions in its groups. Pinned sessions show in every view.

@@ -91,7 +91,7 @@
   [data-look="ghost"] :where(
     .btn, .badge:is(.count, .scope-count), .input, .input-group, .problem, .routines-banner, [data-sonner-toast][data-styled="true"],
     .group-head, .more, .fold, .menu, .menu-item, [data-slot="dialog-content"], [data-slot="alert-dialog-content"],
-    .row, .group[data-drop], .drop-hint, [data-slot="empty"], [data-slot="empty-icon"][data-variant="icon"], .scope,
+    .row, .bar.lifted, .group[data-drop], .drop-hint, .move-chip, [data-slot="empty"], [data-slot="empty-icon"][data-variant="icon"], .scope,
     .bubble, .thumb, .thumbs .thumb img, .file-card, .file-glyph, .msg code, .tool code, .msg pre.code, .table,
     .tool details, .tool-group details, .think details, .tool summary, .tool-group summary, .think summary,
     .tool-io, .system, .approval, .approval pre, .hold, .dock .notice, .composer-box, .attachment, .quote, .quoted,
