@@ -1,6 +1,6 @@
-// Run with `npm test`. The Routines page in the real browser: the list and its switch, the form with its live schedule preview and its
-// per-field problems, the delete question, the menu of a routine's row in Home, the footer link, Ctrl+K, and what a server without
-// routine edits gets. It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked.
+// Run with `npm test`. The Routines page in the real browser: the list and its switch, the form with its live schedule preview, its
+// choice of GhostShell's own text or a prompt file and its per-field problems, the delete question, the menu of a routine's row in Home,
+// the routines that have no run in Home, the footer link, Ctrl+K, and what a server without routine edits or routine files gets. It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,6 +19,8 @@ const MENU = `.menu:not([data-sub])`;
 const DIALOG = `[data-slot="alert-dialog-content"]`;
 let app;
 let older;
+let plain;
+let lonely;
 let browser;
 
 // A proxy to `target` that leaves `leave` out of the features the list says, as a server that started before they existed does.
@@ -48,38 +50,68 @@ function without(target, leave) {
   })));
 }
 
-// A server with two routines in routines.json: Desktop's, which is off here and on in Desktop, and one of its own that is on. The second
-// has a session in Home. The prompt files are in the temporary home.
+// A server with two routines in routines.json: one whose prompt is a file elsewhere on the Mac, off, and one of GhostShell's own text, on
+// and with a session in Home. The prompt files are in the temporary home.
 async function furnished() {
   const first = await start({ sessions: [{ id: 'r1', title: 'Morning run', routine: 'alpha', ago: 5 }], claude: true });
   const work = path.join(first.home, 'work');
-  const desk = path.join(first.home, 'desktop', 'desk', 'SKILL.md');
+  const prompts = path.join(first.home, 'prompts');
+  const scrum = path.join(prompts, 'daily-scrum.md');
   const alpha = path.join(first.home, 'state', 'routines', 'alpha.md');
   fs.mkdirSync(work);
-  fs.mkdirSync(path.dirname(desk), { recursive: true });
+  fs.mkdirSync(prompts);
   fs.mkdirSync(path.dirname(alpha), { recursive: true });
-  fs.writeFileSync(desk, '---\nname: desk\ndescription: From Desktop\n---\n\nCheck the board.\n');
+  fs.writeFileSync(scrum, '---\nname: scrum\ndescription: Daily scrum\n---\n\nCheck the board.\n');
+  fs.writeFileSync(path.join(prompts, 'weekly.md'), 'Write the weekly notes.\n');
   fs.writeFileSync(alpha, 'Read the morning notes.\n');
   fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({
-    seededAt: '2026-10-16T00:00:00+11:00',
     routines: [
-      { id: 'desk', title: 'Desktop routine', cron: '30 7 * * 1-5', jitterSeconds: 737, file: desk, cwd: work, model: null, effort: null, mode: null, enabledInDesktop: true, enabled: false },
-      { id: 'alpha', title: 'Alpha check', cron: '0 9 * * *', jitterSeconds: 0, file: alpha, cwd: work, model: 'claude-haiku-5-5', effort: 'high', mode: 'plan', enabledInDesktop: false, enabled: false },
+      { id: 'scrum', title: 'Daily scrum', cron: '30 7 * * 1-5', jitterSeconds: 737, file: scrum, cwd: work, model: null, effort: null, mode: null, enabled: false },
+      { id: 'alpha', title: 'Alpha check', cron: '0 9 * * *', jitterSeconds: 0, file: alpha, cwd: work, model: 'claude-haiku-5-5', effort: 'high', mode: 'plan', enabled: false },
     ],
   }, null, 2));
-  return Object.assign(await restart(first), { work });
+  return Object.assign(await restart(first), { work, prompts, scrum });
+}
+
+// A server for the sidebar: a routine with a run, one whose only run is pinned, and three with no run in the list. One of those has run
+// before, its runs since archived, and one is off. They go yearly on 1 January so none of them fires during a test.
+async function unrun() {
+  const first = await start({
+    sessions: [{ id: 'a1', title: 'Alpha run', routine: 'alpha', ago: 5 }, { id: 'k1', title: 'Kept run', routine: 'kept', pinned: true, ago: 6 }],
+    claude: true,
+  });
+  const work = path.join(first.home, 'work');
+  fs.mkdirSync(work);
+  fs.mkdirSync(path.join(first.state, 'routines'));
+  const routine = (id, title, extra = {}) => {
+    fs.writeFileSync(path.join(first.state, 'routines', `${id}.md`), `Do ${title}.\n`);
+    return { id, title, cron: '0 3 1 1 *', jitterSeconds: 0, file: path.join(first.state, 'routines', `${id}.md`), cwd: work, model: null, effort: null, mode: null, enabled: true, ...extra };
+  };
+  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({
+    routines: [
+      routine('alpha', 'Alpha check'),
+      routine('kept', 'Kept check'),
+      routine('idle', 'Idle check'),
+      routine('lapsed', 'Lapsed check', { lastRunAt: new Date(Date.now() - 3 * 86_400_000).toISOString() }),
+      routine('paused', 'Paused check', { enabled: false }),
+    ],
+  }, null, 2));
+  return restart(first);
 }
 
 before(async () => {
   if (skip) return;
   app = await furnished();
   older = await without(app, 'routineEdits');
+  plain = await without(app, 'routineFiles');
+  lonely = await unrun();
   browser = await launch(chromium);
 });
 
 after(async () => {
   await browser?.close();
   await older?.close();
+  await plain?.close();
 });
 
 // Signs the page in through the login page if it is on it, and sends the passkey offer away.
@@ -141,14 +173,14 @@ async function pick(page, selector, label) {
   await page.click(`${MENU} [data-picked]`);
 }
 
-test('the list shows the routines by title with their schedule in words, the next run, the last run and what Desktop does, and a switch for each', { skip, timeout }, async t => {
+test('the list shows the routines by title with their schedule in words, the next run, the last run, and a switch for each', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { hash: '#/routines' });
   await listed(page);
-  assert.deepEqual(await titles(page), ['Alpha check', 'Desktop routine']);
-  assert.deepEqual(await parts(page, `${row('desk')} .routine-schedule`), ['Weekdays at 07:30, plus 12 min 17 s', '30 7 * * 1-5']);
+  assert.deepEqual(await titles(page), ['Alpha check', 'Daily scrum']);
+  assert.deepEqual(await parts(page, `${row('scrum')} .routine-schedule`), ['Weekdays at 07:30, plus 12 min 17 s', '30 7 * * 1-5']);
   assert.deepEqual(await parts(page, `${row('alpha')} .routine-schedule`), ['Every day at 09:00', '0 9 * * *']);
   assert.deepEqual(await parts(page, `${row('alpha')} .routine-times`), ['Off', 'Never run']);
-  assert.equal(await text(page, `${row('desk')} .routine-quiet`), 'Claude Desktop still runs this one.');
+  assert.equal(await page.evaluate(`!!document.querySelector('${row('scrum')} .routine-quiet, ${row('scrum')} .routine-alert')`), false);
   assert.equal(await page.evaluate(`document.querySelector('${row('alpha')} [role=switch]').getAttribute('aria-checked')`), 'false');
   assert.equal(await text(page, '.chat-head h2'), 'Routines');
   assert.equal(await page.evaluate(`document.querySelector('#routine-new').getAttribute('href')`), '#/routines/new');
@@ -175,10 +207,10 @@ test('Run now disables its button while the server answers, then says the sessio
   await page.evaluate(`(of => { window.fetch = (url, init) => (String(url).endsWith('/run')
     ? new Promise(done => setTimeout(done, 400, new Response(JSON.stringify({ sessionId: 'abc', routine: {} }), { status: 200, headers: { 'content-type': 'application/json' } })))
     : of(url, init)); })(window.fetch)`);
-  const button = `${row('desk')} button[aria-label="Run Desktop routine now"]`;
+  const button = `${row('scrum')} button[aria-label="Run Daily scrum now"]`;
   await page.click(button);
   await page.until(`document.querySelector('${button}').disabled`);
-  await page.until(`document.querySelector('[data-sonner-toast] [data-title]')?.textContent === 'Started “Desktop routine”.'`);
+  await page.until(`document.querySelector('[data-sonner-toast] [data-title]')?.textContent === 'Started “Daily scrum”.'`);
   assert.equal(await page.evaluate(`document.querySelector('[data-sonner-toast] button')?.textContent`), 'Open');
   await page.until(`!document.querySelector('${button}').disabled`);
   assert.deepEqual(page.problems, []);
@@ -187,13 +219,13 @@ test('Run now disables its button while the server answers, then says the sessio
 test('the menu of a row has Edit and Delete, Delete asks first with Cancel focused, and Cancel keeps the routine', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { hash: '#/routines' });
   await listed(page);
-  await page.click(`${row('desk')} .routine-more`);
+  await page.click(`${row('scrum')} .routine-more`);
   await page.until(`!!document.querySelector('${MENU}')`);
   assert.deepEqual(await menuOf(page), ['Edit', 'Delete']);
-  assert.equal(await page.evaluate(`document.querySelector('${MENU}').getAttribute('aria-label')`), 'Actions for Desktop routine');
+  assert.equal(await page.evaluate(`document.querySelector('${MENU}').getAttribute('aria-label')`), 'Actions for Daily scrum');
   await pick(page, MENU, 'Delete');
   await page.until(`!!document.querySelector('${DIALOG}')`);
-  assert.equal(await text(page, '#ask-title'), 'Delete routine “Desktop routine”?');
+  assert.equal(await text(page, '#ask-title'), 'Delete routine “Daily scrum”?');
   assert.match(await text(page, '#ask-detail'), /./);
   assert.equal(await page.evaluate(`document.activeElement.getAttribute('data-slot')`), 'alert-dialog-cancel');
   await page.click('[data-slot="alert-dialog-cancel"]');
@@ -208,6 +240,7 @@ test('the form for a new routine previews the schedule as it is typed, and shows
   assert.equal(await text(page, '.chat-head h2'), 'New routine');
   assert.equal(await valueOf(page, '#routine-cwd'), await page.evaluate(`document.querySelector('#root').dataset.home`));
   assert.equal(await text(page, '.routine-default'), "Default follows Claude Desktop's settings for the folder.");
+  assert.equal(await text(page, '.routine-kind > legend'), 'Prompt');
   await type(page, '#routine-cron', '30 7 * * 1-5');
   await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   assert.equal(await text(page, '.routine-words'), 'Weekdays at 07:30');
@@ -258,22 +291,110 @@ test('a new routine is saved with what was typed, the page goes back to the list
   assert.deepEqual(page.problems, []);
 });
 
-test('the form for a routine from Desktop loads its prompt, says where it comes from, sends only what changed, and warns that Desktop still runs it', { skip, timeout }, async t => {
-  const page = await appPage(t, app.origin, { hash: '#/routines/desk' });
-  await page.until(`!!document.querySelector('#routine-form') && document.querySelector('#routine-prompt')?.value !== undefined && document.querySelector('#routine-title')?.value === 'Desktop routine'`);
-  assert.equal(await valueOf(page, '#routine-prompt'), 'Check the board.');
+const readJson = () => JSON.parse(fs.readFileSync(path.join(app.state, 'routines.json'), 'utf8'));
+const routineOf = id => readJson().routines.find(r => r.id === id);
+const kindsOf = page => page.evaluate(`[...document.querySelectorAll('input[name="routine-prompt-kind"]')].map(el => [el.id, el.checked, el.labels[0].textContent])`);
+
+test('the Prompt choice is a labelled radio group that starts on GhostShell\'s own text and moves with the arrow keys', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/routines/new' });
+  await page.until(`!!document.querySelector('#routine-form')`);
+  assert.equal(await text(page, '.routine-kind > legend'), 'Prompt');
+  assert.deepEqual(await kindsOf(page), [['routine-kind-text', true, "GhostShell's own text"], ['routine-kind-file', false, 'A prompt file']]);
+  assert.equal(await text(page, '#routine-prompt-hint'), 'GhostShell keeps the text in its own folder, and you edit it here.');
+  assert.equal(await page.evaluate(`!!document.querySelector('#routine-file')`), false);
+  await page.evaluate(`document.querySelector('#routine-kind-text').focus()`);
+  await page.press('ArrowDown');
+  await page.until(`document.querySelector('#routine-kind-file').checked && !!document.querySelector('#routine-file')`);
+  assert.equal(await focused(page), 'routine-kind-file');
+  assert.equal(await page.evaluate(`!!document.querySelector('#routine-prompt')`), false);
+  assert.equal(await page.evaluate(`document.querySelector('#routine-file').getAttribute('placeholder')`), '/Users/you/prompts/daily-scrum.md');
+  assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('#routine-file')).fontFamily.includes('mono') || document.querySelector('#routine-file').classList.contains('routine-mono')`), true);
+  assert.equal(await text(page, '#routine-file-hint'), 'GhostShell reads the file at each run and never writes it, so you edit it outside GhostShell.');
+  await page.press('ArrowUp');
+  await page.until(`document.querySelector('#routine-kind-text').checked && !!document.querySelector('#routine-prompt')`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a routine is added with the path of a prompt file, which is kept as it is and is not copied into GhostShell\'s folder', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/routines/new' });
+  await page.until(`!!document.querySelector('#routine-form')`);
+  await type(page, '#routine-title', 'Weekly notes');
+  await type(page, '#routine-cron', '0 16 * * 5');
+  await type(page, '#routine-cwd', app.work);
+  await press(page, '#routine-kind-file');
+  await page.until(`!!document.querySelector('#routine-file')`);
+  await type(page, '#routine-file', path.join(app.prompts, 'weekly.md'));
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
+  await press(page, '.routine-buttons button[type=submit]');
+  await page.until(`location.hash === '#/routines' && !!document.querySelector('${row('weekly-notes')}')`);
+  assert.equal(await toast(page), 'Added “Weekly notes”.');
+  assert.equal(routineOf('weekly-notes').file, path.join(app.prompts, 'weekly.md'));
+  assert.equal(fs.existsSync(path.join(app.state, 'routines', 'weekly-notes.md')), false);
+  assert.equal(fs.readFileSync(path.join(app.prompts, 'weekly.md'), 'utf8'), 'Write the weekly notes.\n');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a path that is not a file shows its problem beside the path, keeps the form open on it and saves nothing', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/routines/new' });
+  await page.until(`!!document.querySelector('#routine-form')`);
+  const before = fs.readFileSync(path.join(app.state, 'routines.json'), 'utf8');
+  await type(page, '#routine-title', 'Missing prompt');
+  await type(page, '#routine-cron', '0 16 * * 5');
+  await type(page, '#routine-cwd', app.work);
+  await press(page, '#routine-kind-file');
+  await page.until(`!!document.querySelector('#routine-file')`);
+  await type(page, '#routine-file', path.join(app.prompts, 'missing.md'));
+  await press(page, '.routine-buttons button[type=submit]');
+  await page.until(`!!document.querySelector('#routine-file-error').textContent`);
+  assert.match(await text(page, '#routine-file-error'), /missing\.md/);
+  assert.equal(await page.evaluate(`document.querySelector('#routine-file').getAttribute('aria-invalid')`), 'true');
+  assert.match(await page.evaluate(`document.querySelector('#routine-file').getAttribute('aria-describedby')`), /routine-file-hint routine-file-error/);
+  assert.equal(await focused(page), 'routine-file');
+  assert.equal(await page.evaluate(`location.hash`), '#/routines/new');
+  assert.equal(fs.readFileSync(path.join(app.state, 'routines.json'), 'utf8'), before);
+  assert.equal(fs.existsSync(path.join(app.state, 'routines', 'missing-prompt.md')), false);
+  assert.deepEqual(page.problems, []);
+});
+
+test('the form for a routine on a file elsewhere shows the path and that the file is edited outside GhostShell, and a new title leaves the file and the path alone', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/routines/scrum' });
+  await page.until(`!!document.querySelector('#routine-form') && document.querySelector('#routine-title')?.value === 'Daily scrum' && !!document.querySelector('#routine-file')`);
+  assert.deepEqual(await kindsOf(page), [['routine-kind-text', false, "GhostShell's own text"], ['routine-kind-file', true, 'A prompt file']]);
+  assert.equal(await valueOf(page, '#routine-file'), app.scrum);
+  assert.equal(await text(page, '#routine-file-hint'), 'GhostShell reads the file at each run and never writes it, so you edit it outside GhostShell.');
   assert.equal(await valueOf(page, '#routine-cron'), '30 7 * * 1-5');
   assert.equal(await valueOf(page, '#routine-jitter'), '737');
-  assert.match(await text(page, '#routine-prompt-hint'), /Claude Desktop/);
   assert.equal(await page.evaluate(`document.querySelector('#routine-enabled').getAttribute('aria-checked')`), 'false');
-  await press(page, '#routine-enabled');
-  await page.until(`!!document.querySelector('.routine-on .routine-alert')`);
-  await press(page, '#routine-enabled');
-  await type(page, '#routine-title', 'Desktop routine, renamed');
+  assert.equal(await page.evaluate(`!!document.querySelector('.routine-on .routine-alert')`), false);
+  const outside = fs.readFileSync(app.scrum);
+  await type(page, '#routine-title', 'Daily scrum, renamed');
+  await press(page, '.routine-buttons button[type=submit]');
+  await page.until(`location.hash === '#/routines' && document.querySelector('${row('scrum')} .routine-title')?.textContent === 'Daily scrum, renamed'`);
+  assert.equal(routineOf('scrum').file, app.scrum);
+  assert.equal(fs.existsSync(path.join(app.state, 'routines', 'scrum.md')), false, 'a title change does not copy the prompt');
+  assert.deepEqual(fs.readFileSync(app.scrum), outside);
+  assert.deepEqual(page.problems, []);
+});
+
+test('switching a routine on a file elsewhere to GhostShell\'s own text fills the box with the file\'s text, says the file stays, and writes only GhostShell\'s copy', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/routines/scrum' });
+  await page.until(`!!document.querySelector('#routine-file')`);
+  const outside = fs.readFileSync(app.scrum);
+  await press(page, '#routine-kind-text');
+  await page.until(`!!document.querySelector('#routine-prompt')`);
+  assert.equal(await valueOf(page, '#routine-prompt'), 'Check the board.');
+  assert.equal(await text(page, '#routine-prompt-hint'), 'GhostShell keeps the text in its own folder, and you edit it here. The file stays as it is.');
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`location.hash === '#/routines'`);
-  await page.until(`!!document.querySelector('${row('desk')}') && document.querySelector('${row('desk')} .routine-title').textContent === 'Desktop routine, renamed'`);
-  assert.equal(fs.existsSync(path.join(app.state, 'routines', 'desk.md')), false, 'an unchanged prompt is not copied');
+  const own = path.join(app.state, 'routines', 'scrum.md');
+  assert.equal(routineOf('scrum').file, own);
+  assert.equal(fs.readFileSync(own, 'utf8').trim(), 'Check the board.');
+  assert.deepEqual(fs.readFileSync(app.scrum), outside, 'the file elsewhere is byte for byte as it was');
+  await page.evaluate(`location.hash = '#/routines/scrum'`);
+  await page.until(`!!document.querySelector('#routine-prompt') && document.querySelector('#routine-kind-text').checked`);
+  await press(page, '#routine-kind-file');
+  await page.until(`!!document.querySelector('#routine-file')`);
+  assert.equal(await text(page, '#routine-file-hint'), "GhostShell reads the file at each run and never writes it, so you edit it outside GhostShell. GhostShell's own copy stays in its folder.");
   assert.deepEqual(page.problems, []);
 });
 
@@ -395,7 +516,7 @@ test('a server that does not say it can edit routines gets the list with Run now
   await listed(page);
   assert.equal(await page.evaluate(`!!document.querySelector('#routine-new')`), false);
   assert.equal(await page.evaluate(`document.querySelectorAll('.routine-more').length`), 0);
-  assert.equal(await page.evaluate(`document.querySelectorAll('.routine [role=switch]').length`), 2);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.routine [role=switch]').length`), readJson().routines.length);
   await page.evaluate(`location.hash = '#/routines/new'`);
   await page.until(`!!document.querySelector('.routine-list') && !document.querySelector('#routine-form')`);
   await page.evaluate(`location.hash = '#/'`);
@@ -415,4 +536,100 @@ test('on a phone the rows stack, the form fields are 16 pixels or more so the pa
   await page.until(`!!document.querySelector('#routine-form')`);
   assert.equal(await page.evaluate(`[...document.querySelectorAll('#routine-form .input')].every(el => parseFloat(getComputedStyle(el).fontSize) >= 16)`), true);
   assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('.routine-choice')].every(el => el.getBoundingClientRect().height >= document.querySelector('#routine-title').getBoundingClientRect().height)`), true, 'a choice is as tall as a field');
+  await reveal(page, '#routine-kind-file');
+  await page.tap('#routine-kind-file');
+  await page.until(`!!document.querySelector('#routine-file')`);
+  assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true);
+});
+
+test('a server that does not say it keeps routine files gets the text box alone, with no choice of a prompt file', { skip, timeout }, async t => {
+  const page = await appPage(t, plain.origin, { hash: '#/routines/new' });
+  await page.until(`!!document.querySelector('#routine-form')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('.routine-kind, input[type=radio], #routine-file')`), false);
+  assert.equal(await text(page, '#routine-prompt-hint'), 'GhostShell keeps the prompt in its own folder.');
+  assert.equal(await text(page, '.routine-field label[for="routine-prompt"]'), 'Prompt');
+  await page.evaluate(`location.hash = '#/routines/scrum'`);
+  await page.until(`document.querySelector('#routine-title')?.value === 'Daily scrum, renamed' || document.querySelector('#routine-title')?.value === 'Daily scrum'`);
+  assert.equal(await page.evaluate(`!!document.querySelector('.routine-kind, input[type=radio], #routine-file')`), false);
+  assert.equal(await page.evaluate(`document.querySelector('#routine-prompt').tagName`), 'TEXTAREA');
+  assert.deepEqual(page.problems, []);
+});
+
+const idleRows = page => page.evaluate(`[...document.querySelectorAll('a.row[data-idle]')].map(a => [a.dataset.idle, a.querySelector('.row-title').textContent, a.querySelector('.row-idle').textContent])`);
+const ready = page => page.until(`!!document.querySelector('a.row[data-id="a1"]') && document.querySelectorAll('a.row[data-idle]').length > 0`);
+const contextMenu = (page, selector) => page.evaluate(`(el => { const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.x + 40, clientY: r.y + r.height / 2 })); })(document.querySelector(${JSON.stringify(selector)}))`);
+
+test('Home draws a row for each routine with no run, after the routines that have runs, and none for a routine whose only run is pinned', { skip, timeout }, async t => {
+  const page = await appPage(t, lonely.origin);
+  await ready(page);
+  assert.deepEqual(await idleRows(page), [
+    ['idle', 'Idle check', "Hasn't run yet"],
+    ['lapsed', 'Lapsed check', 'Last run 3 days ago'],
+    ['paused', 'Paused check', 'Off'],
+  ]);
+  assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-idle="kept"], a.row[data-idle="alpha"]')`), false);
+  assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="k1"]')`), true);
+  assert.deepEqual(await page.evaluate(`[...document.querySelector('.group-head[data-key="routines"]').closest('.group').querySelectorAll('a.row')].map(a => a.dataset.id ?? a.dataset.idle)`), ['a1', 'idle', 'lapsed', 'paused']);
+  assert.equal(await text(page, '.group-head[data-key="routines"] .count'), '4');
+  assert.equal(await page.evaluate(`document.querySelector('a.row[data-idle="idle"]').getAttribute('href')`), '#/routines/idle');
+  assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.group').dataset.drop ?? null`), null);
+  assert.deepEqual(page.problems, []);
+});
+
+test('the arrow keys walk onto a routine with no run and on, Enter opens the routine, and the row is no session to select or archive', { skip, timeout }, async t => {
+  const page = await appPage(t, lonely.origin);
+  await ready(page);
+  await page.evaluate(`document.querySelector('a.row[data-id="a1"]').focus()`);
+  await page.press('ArrowDown');
+  await page.until(`document.activeElement === document.querySelector('a.row[data-idle="idle"]')`);
+  await page.press('ArrowDown');
+  await page.until(`document.activeElement === document.querySelector('a.row[data-idle="lapsed"]')`);
+  await page.press('ArrowUp');
+  await page.until(`document.activeElement === document.querySelector('a.row[data-idle="idle"]')`);
+  await page.press('ArrowLeft');
+  await page.until(`document.activeElement === document.querySelector('.group-head[data-key="routines"]')`);
+  await page.evaluate(`document.querySelector('a.row[data-idle="idle"]').focus()`);
+  await page.press('Enter');
+  await page.until(`location.hash === '#/routines/idle' && document.querySelector('#routine-title')?.value === 'Idle check'`);
+  assert.equal(await page.evaluate(`document.querySelector('a.row[data-idle="idle"]').hasAttribute('data-id')`), false);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a routine with no run has the menu a run has for its routine, from its dots button and a right click', { skip, timeout }, async t => {
+  const page = await appPage(t, lonely.origin);
+  await ready(page);
+  await contextMenu(page, 'a.row[data-idle="idle"]');
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  assert.deepEqual(await menuOf(page), ['Run now', 'Pause', 'Edit', 'Delete']);
+  assert.equal(await page.evaluate(`document.querySelector('${MENU}').getAttribute('aria-label')`), 'Actions for Idle check');
+  await page.press('Escape');
+  await page.until(`!document.querySelector('${MENU}')`);
+  await page.click('li:has(> a.row[data-idle="paused"]) > .more');
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  assert.deepEqual(await menuOf(page), ['Run now', 'Resume', 'Edit', 'Delete']);
+  await pick(page, MENU, 'Resume');
+  await page.until(`document.querySelector('a.row[data-idle="paused"] .row-idle')?.textContent === "Hasn't run yet"`);
+  await page.click('li:has(> a.row[data-idle="paused"]) > .more');
+  await page.until(`!!document.querySelector('${MENU}')`);
+  await pick(page, MENU, 'Edit');
+  await page.until(`location.hash === '#/routines/paused' && document.querySelector('#routine-title')?.value === 'Paused check'`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('on a phone a routine with no run is as tall as any row, says its state on a second line, and nothing is wider than the screen', { skip, timeout }, async t => {
+  const page = await appPage(t, lonely.origin, { phone: true });
+  await ready(page);
+  const box = selector => page.evaluate(`(r => ({ top: r.top, bottom: r.bottom, height: r.height }))(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect())`);
+  const run = await box('a.row[data-id="a1"]');
+  const idle = await box('a.row[data-idle="idle"]');
+  assert.equal(idle.height, run.height);
+  const title = await box('a.row[data-idle="idle"] .row-title');
+  const state = await box('a.row[data-idle="idle"] .row-idle');
+  assert.ok(state.top >= title.bottom - 1, 'the state is under the title');
+  assert.ok(state.bottom <= idle.bottom + 1, 'and inside the row');
+  const more = await box('li:has(> a.row[data-idle="idle"]) > .more');
+  assert.ok(more.height >= 20, 'the dots button is the size of the others');
+  assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true);
+  assert.deepEqual(page.problems, []);
 });

@@ -1291,6 +1291,12 @@ body[data-scroll-locked] {
 
 .has-fold > .row { padding-right: 4.25rem; }
 
+.row-nest.row-idle { grid-area: meta; min-width: 0; margin-left: 0; overflow: hidden; text-overflow: ellipsis; }
+
+@media (pointer: fine) {
+  .row-nest.row-idle { grid-area: nest; margin-left: 0.5rem; }
+}
+
 .row:is([aria-current="page"], [aria-selected="true"], [data-menu]) ~ :is(.more, .fold) { color: var(--sidebar-accent-foreground); }
 
 .sub-rows { margin-top: var(--row-gap); margin-left: var(--nest-indent); }
@@ -4092,7 +4098,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .routine-field { display: grid; gap: 0.4rem; min-width: 0; }
 
-.routine-field > label, .routine-on-row > label { font-size: 0.875rem; font-weight: 500; line-height: 1.25rem; }
+.routine-field > :is(label, legend), .routine-on-row > label { font-size: 0.875rem; font-weight: 500; line-height: 1.25rem; }
 
 .routine-hint { margin: 0; font-size: 0.8125rem; color: var(--muted-foreground); }
 
@@ -4109,6 +4115,22 @@ html.viewing, html.viewing body { overflow: hidden; }
 .routine-default { margin-top: -0.75rem; }
 
 .routine-prompt { height: auto; min-height: 16rem; padding-block: 0.5rem; line-height: 1.5; resize: vertical; }
+
+.routine-kind { margin: 0; padding: 0; border: 0; }
+
+.routine-kind > legend { padding: 0; }
+
+.routine-choices { display: flex; flex-wrap: wrap; gap: 0 1.5rem; }
+
+.routine-choice { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.25rem; font-size: 0.875rem; cursor: pointer; }
+
+.routine-choice input { flex: none; width: 1rem; height: 1rem; margin: 0; }
+
+@media (pointer: coarse) {
+  .routine-choice { min-height: 2.75rem; }
+
+  .routine-choice input { width: 1.25rem; height: 1.25rem; }
+}
 
 .routine-preview { display: grid; gap: 0.15rem; }
 

@@ -1,14 +1,23 @@
 // Run with `npm test`. What the Routines page says and sends: a schedule in words, a fire time as the Mac's clock reads it, the list's order, the
-// notes about Claude Desktop, and the form's request, which sends only what changed.
+// words for a prompt on a file, and the form's request, which sends only what changed. Also which routines the sidebar draws with no run.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { byTitle, choices, deleteDetail, desktopNote, effortChoices, fireTime, formOf, jitterOf, jitterWords, modelChoices, newForm, promptSource, refusals, requestOf, routineFor, routineHash, routineRoute, scheduleWords, skippedWords, supportsRoutineEdits } from '../public/ui/routine-rules.js';
+import {
+  ago, byTitle, choices, deleteDetail, effortChoices, FIELDS, fireTime, formOf, idleWords, jitterOf, jitterWords, modelChoices, newForm, promptHint, promptSource, refusals, requestOf, routineFor, routineHash,
+  routineRoute, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, unrunRoutines, wasOf,
+} from '../public/ui/routine-rules.js';
 
 test('a server that does not set routineEdits leaves the page read-only', () => {
   assert.equal(supportsRoutineEdits({ features: { routineEdits: true } }), true);
   assert.equal(supportsRoutineEdits({ features: { groups: true } }), false);
   assert.equal(supportsRoutineEdits({}), false);
   assert.equal(supportsRoutineEdits(null), false);
+});
+
+test('only a server that sets routineFiles offers the choice of a prompt file', () => {
+  assert.equal(supportsRoutineFiles({ features: { routineFiles: true } }), true);
+  assert.equal(supportsRoutineFiles({ features: { routineEdits: true } }), false);
+  assert.equal(supportsRoutineFiles(null), false);
 });
 
 test('the plain schedules are said in words', () => {
@@ -101,14 +110,7 @@ test('the list goes by title, ignoring case and counting numbers as numbers, wit
   assert.deepEqual(byTitle([]), []);
 });
 
-test('a routine that is on in Claude Desktop is warned about when it is on here and noted quietly when it is off', () => {
-  assert.equal(desktopNote({ enabledInDesktop: false, enabled: true }), null);
-  assert.equal(desktopNote({ enabled: true }), null);
-  assert.deepEqual(desktopNote({ enabledInDesktop: true, enabled: true }), { warn: true, text: 'Also on in Claude Desktop, so both apps run it. Switch it off in Desktop.' });
-  assert.deepEqual(desktopNote({ enabledInDesktop: true, enabled: false }), { warn: false, text: 'Claude Desktop still runs this one.' });
-});
-
-test('a delete says the runs stay and where the prompt file is, and a prompt says which file it comes from', () => {
+test('a delete says the runs stay and where the prompt file is, and a server without routineFiles says which file a prompt comes from', () => {
   assert.equal(deleteDetail({ file: '/state/routines/a.md' }), 'It stops running. Its earlier runs stay in the list, and its prompt file stays at /state/routines/a.md.');
   assert.equal(promptSource({ ours: true, file: '/state/routines/a.md', copyTo: null }), 'Read from and saved to /state/routines/a.md');
   assert.equal(promptSource({ ours: false, file: '/desk/a/SKILL.md', copyTo: '/state/routines/a.md' }),
@@ -116,26 +118,59 @@ test('a delete says the runs stay and where the prompt file is, and a prompt say
 });
 
 test('a new form starts in the home folder, switched on, with the defaults and no jitter', () => {
-  assert.deepEqual(newForm('/Users/me'), { title: '', cron: '', jitterSeconds: '0', cwd: '/Users/me', model: '', effort: '', mode: '', prompt: '', enabled: true });
+  assert.deepEqual(newForm('/Users/me'), { title: '', cron: '', jitterSeconds: '0', cwd: '/Users/me', model: '', effort: '', mode: '', promptKind: 'text', file: '', prompt: '', enabled: true });
 });
 
 const ROUTINE = { id: 'morning', title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: 737, cwd: '/work', model: 'claude-opus-5-5', effort: null, mode: 'plan', enabled: false, file: '/state/routines/morning.md' };
 
-test('an edit form is filled from the routine with null as Default', () => {
-  assert.deepEqual(formOf(ROUTINE, 'Do it.'), { title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: '737', cwd: '/work', model: 'claude-opus-5-5', effort: '', mode: 'plan', prompt: 'Do it.', enabled: false });
-  assert.equal(formOf({ ...ROUTINE, jitterSeconds: undefined }, '').jitterSeconds, '0');
+const OWN = { file: '/state/routines/morning.md', text: 'Do it.', ours: true };
+const ELSEWHERE = { file: '/Users/you/prompts/daily-scrum.md', text: 'Run the scrum.', ours: false };
+
+test('an edit form is filled from the routine with null as Default, on the kind of prompt the routine uses', () => {
+  assert.deepEqual(formOf(ROUTINE, OWN), {
+    title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: '737', cwd: '/work', model: 'claude-opus-5-5', effort: '', mode: 'plan', promptKind: 'text', file: '', prompt: 'Do it.', enabled: false,
+  });
+  assert.equal(formOf({ ...ROUTINE, jitterSeconds: undefined }, { text: '', ours: true }).jitterSeconds, '0');
 });
 
-test('a new routine sends every field, with Default as null', () => {
+test('a routine on a file elsewhere opens on its path, with the file\'s text ready for a switch to GhostShell\'s own text', () => {
+  const form = formOf(ROUTINE, ELSEWHERE);
+  assert.equal(form.promptKind, 'file');
+  assert.equal(form.file, '/Users/you/prompts/daily-scrum.md');
+  assert.equal(form.prompt, 'Run the scrum.');
+  assert.deepEqual(wasOf(ROUTINE, ELSEWHERE), { routine: ROUTINE, kind: 'file', file: '/Users/you/prompts/daily-scrum.md', prompt: 'Run the scrum.' });
+  assert.equal(wasOf(ROUTINE, OWN).kind, 'text');
+});
+
+test('a prompt from a server that copies it on save stays a text, so a page on an older server has no file to offer', () => {
+  const old = { ours: false, file: '/somewhere/SKILL.md', text: 'Old.', copyTo: '/state/routines/morning.md' };
+  assert.equal(formOf(ROUTINE, old).promptKind, 'text');
+  assert.equal(wasOf(ROUTINE, old).kind, 'text');
+});
+
+test('the file field is refused before the prompt text, so the first refusal gets the focus', () => {
+  assert.deepEqual(FIELDS.slice(-2), ['file', 'prompt']);
+  const error = Object.assign(new Error('Nothing was saved.'), { status: 400, data: { problems: { file: 'Cannot read /nope.md.' } } });
+  assert.deepEqual(refusals(error), { fields: { file: 'Cannot read /nope.md.' }, first: 'file' });
+});
+
+test('a new routine sends every field, with Default as null, and the text of its prompt', () => {
   const form = { ...newForm('/work'), title: '  Morning  ', cron: '30  7 * * 1-5', prompt: 'Do it.\n' };
   assert.deepEqual(requestOf(form, null), {
     title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: 0, cwd: '/work', model: null, effort: null, mode: null, enabled: true, prompt: 'Do it.\n',
   });
 });
 
+test('a new routine on a file sends the path and no text, even if the box holds some', () => {
+  const form = { ...newForm('/work'), title: 'Morning', cron: '30 7 * * 1-5', promptKind: 'file', file: '  /Users/you/prompts/daily-scrum.md ', prompt: 'left over' };
+  const body = requestOf(form, null);
+  assert.equal(body.file, '/Users/you/prompts/daily-scrum.md');
+  assert.equal('prompt' in body, false);
+});
+
 test('an edit sends only what changed, and the prompt only when its text did', () => {
-  const was = { routine: ROUTINE, prompt: 'Do it.' };
-  const form = formOf(ROUTINE, 'Do it.');
+  const was = wasOf(ROUTINE, OWN);
+  const form = formOf(ROUTINE, OWN);
   assert.deepEqual(requestOf(form, was), {});
   assert.deepEqual(requestOf({ ...form, title: 'Evening' }, was), { title: 'Evening' });
   assert.deepEqual(requestOf({ ...form, title: ' Morning ' }, was), {});
@@ -144,6 +179,52 @@ test('an edit sends only what changed, and the prompt only when its text did', (
   assert.deepEqual(requestOf({ ...form, cwd: '/other', model: '', effort: 'high', mode: '' }, was), { cwd: '/other', model: null, effort: 'high', mode: null });
   assert.deepEqual(requestOf({ ...form, enabled: true }, was), { enabled: true });
   assert.deepEqual(requestOf({ ...form, prompt: 'Do it twice.' }, was), { prompt: 'Do it twice.' });
+});
+
+test('text to text sends the prompt only when it changed, and never a file', () => {
+  const was = wasOf(ROUTINE, OWN);
+  const form = formOf(ROUTINE, OWN);
+  assert.deepEqual(requestOf({ ...form, file: '/Users/you/ignored.md' }, was), {});
+  assert.deepEqual(requestOf({ ...form, prompt: 'Changed.' }, was), { prompt: 'Changed.' });
+});
+
+test('file to file sends the path only when it changed, and never the text', () => {
+  const was = wasOf(ROUTINE, ELSEWHERE);
+  const form = formOf(ROUTINE, ELSEWHERE);
+  assert.deepEqual(requestOf(form, was), {});
+  assert.deepEqual(requestOf({ ...form, title: 'Evening' }, was), { title: 'Evening' });
+  assert.deepEqual(requestOf({ ...form, prompt: 'Typed while it was hidden.' }, was), {});
+  assert.deepEqual(requestOf({ ...form, file: ' /Users/you/prompts/weekly.md ' }, was), { file: '/Users/you/prompts/weekly.md' });
+});
+
+test('file to text always sends the prompt, even when the text is the file\'s own', () => {
+  const was = wasOf(ROUTINE, ELSEWHERE);
+  const form = { ...formOf(ROUTINE, ELSEWHERE), promptKind: 'text' };
+  assert.deepEqual(requestOf(form, was), { prompt: 'Run the scrum.' });
+  assert.deepEqual(requestOf({ ...form, prompt: 'Rewritten.' }, was), { prompt: 'Rewritten.' });
+});
+
+test('text to file always sends the file, even when the path is empty so the server can say why not', () => {
+  const was = wasOf(ROUTINE, OWN);
+  const form = { ...formOf(ROUTINE, OWN), promptKind: 'file', file: '/Users/you/prompts/daily-scrum.md' };
+  assert.deepEqual(requestOf(form, was), { file: '/Users/you/prompts/daily-scrum.md' });
+  assert.deepEqual(requestOf({ ...form, file: '' }, was), { file: '' });
+});
+
+test('no edit sends both a prompt and a file', () => {
+  for (const [prompt, kind] of [[OWN, 'text'], [OWN, 'file'], [ELSEWHERE, 'text'], [ELSEWHERE, 'file']]) {
+    const body = requestOf({ ...formOf(ROUTINE, prompt), promptKind: kind, file: '/Users/you/prompts/other.md', prompt: 'Another.' }, wasOf(ROUTINE, prompt));
+    assert.equal('prompt' in body && 'file' in body, false, `${prompt.ours ? 'text' : 'file'} to ${kind}`);
+  }
+});
+
+test('the hint under each choice says who edits the prompt, and what is left behind by a switch', () => {
+  assert.equal(promptHint('text'), 'GhostShell keeps the text in its own folder, and you edit it here.');
+  assert.equal(promptHint('text', 'text'), promptHint('text'));
+  assert.equal(promptHint('text', 'file'), 'GhostShell keeps the text in its own folder, and you edit it here. The file stays as it is.');
+  assert.equal(promptHint('file'), 'GhostShell reads the file at each run and never writes it, so you edit it outside GhostShell.');
+  assert.equal(promptHint('file', 'file'), promptHint('file'));
+  assert.equal(promptHint('file', 'text'), 'GhostShell reads the file at each run and never writes it, so you edit it outside GhostShell. GhostShell\'s own copy stays in its folder.');
 });
 
 test('a jitter is a whole number of seconds from 0 to 86399, and empty is 0', () => {
@@ -210,4 +291,79 @@ test('only the latest run of a routine that routines.json holds has a routine, a
   assert.equal(routineFor(ix, null, 's2'), undefined);
   assert.equal(routineFor(null, routines, 's2'), undefined);
   assert.equal(routineFor({ routines: [] }, routines, 's2'), undefined);
+});
+
+// ---- routines with no run in the sidebar ---------------------------------------------------------
+
+const row = (id, routine = null) => ({ id, routine });
+const index = (over = {}) => ({ pinned: [], groups: [], routines: [], started: [], ungrouped: [], other: [], ...over });
+const MORNING = { id: 'morning', title: 'Morning', enabled: true, lastRunAt: null };
+const EVENING = { id: 'evening', title: 'Evening', enabled: true, lastRunAt: null };
+
+test('a routine with no run anywhere in the list is one the sidebar draws with no run', () => {
+  const none = index();
+  assert.deepEqual(unrunRoutines(none, { routines: [MORNING, EVENING] }).map(r => r.id), ['evening', 'morning']);
+});
+
+test('a routine whose run is only pinned has a row, so it is not drawn as never run', () => {
+  const ix = index({ pinned: [row('s1', 'morning')] });
+  assert.deepEqual(unrunRoutines(ix, { routines: [MORNING, EVENING] }).map(r => r.id), ['evening']);
+});
+
+test('a routine whose run is only in a group has a row, and so has one whose run is nested under another session', () => {
+  const ix = index({ groups: [{ id: 'g', sessions: [row('s1', 'morning')] }], started: [{ id: 'host', routine: null, children: [row('s2', 'evening')] }] });
+  assert.deepEqual(unrunRoutines(ix, { routines: [MORNING, EVENING] }), []);
+});
+
+test('a routine with runs among the routines, or only earlier runs, has a row', () => {
+  const ix = index({ routines: [{ name: 'morning', latest: row('s2', 'morning'), earlier: [row('s1', 'morning')] }] });
+  assert.deepEqual(unrunRoutines(ix, { routines: [MORNING, EVENING] }).map(r => r.id), ['evening']);
+});
+
+test('a routine whose runs were all archived has no row, and says when it last ran', () => {
+  const archived = { ...MORNING, lastRunAt: '2026-10-24T07:42:00+11:00' };
+  const [found] = unrunRoutines(index(), { routines: [archived] });
+  assert.equal(found.lastRunAt, '2026-10-24T07:42:00+11:00');
+});
+
+test('the routines with no run come in title order and the routines given are left as they were', () => {
+  const list = [{ id: 'c', title: 'weekly report' }, { id: 'a', title: 'Check 10' }, { id: 'b', title: 'check 2' }];
+  assert.deepEqual(unrunRoutines(index(), { routines: list }).map(r => r.id), ['b', 'a', 'c']);
+  assert.deepEqual(list.map(r => r.id), ['c', 'a', 'b']);
+});
+
+test('nothing is drawn with no run when every routine has a row, or the routines or the list have not arrived', () => {
+  const ix = index({ routines: [{ name: 'morning', latest: row('s1', 'morning'), earlier: [] }, { name: 'evening', latest: row('s2', 'evening'), earlier: [] }] });
+  assert.deepEqual(unrunRoutines(ix, { routines: [MORNING, EVENING] }), []);
+  assert.deepEqual(unrunRoutines(ix, null), []);
+  assert.deepEqual(unrunRoutines(index(), { routines: [] }), []);
+  assert.deepEqual(unrunRoutines(null, { routines: [MORNING] }), []);
+});
+
+test('a run row of another kind with no routine does not hide a routine', () => {
+  const ix = index({ started: [row('s1', null), row('s2', undefined)] });
+  assert.deepEqual(unrunRoutines(ix, { routines: [MORNING] }).map(r => r.id), ['morning']);
+});
+
+const SUNDAY = Date.parse('2026-10-25T12:00:00+11:00');
+
+test('a last run is said in minutes, hours and days, then by its date as the Mac wrote it', () => {
+  assert.equal(ago('2026-10-25T11:59:40+11:00', SUNDAY), 'just now');
+  assert.equal(ago('2026-10-25T11:48:00+11:00', SUNDAY), '12 min ago');
+  assert.equal(ago('2026-10-25T09:00:00+11:00', SUNDAY), '3 h ago');
+  assert.equal(ago('2026-10-24T11:00:00+11:00', SUNDAY), '1 day ago');
+  assert.equal(ago('2026-10-21T12:00:00+11:00', SUNDAY), '4 days ago');
+  assert.equal(ago('2026-10-12T07:42:00+11:00', SUNDAY), '12 Oct');
+  assert.equal(ago('2025-10-12T07:42:00+11:00', SUNDAY), '12 Oct 2025');
+  assert.equal(ago('2026-10-26T07:42:00+11:00', SUNDAY), 'just now');
+  for (const bad of [null, undefined, '', 'soon', 12]) assert.equal(ago(bad, SUNDAY), '', String(bad));
+});
+
+test('the quiet part of a routine with no run says Off, when it last ran, or that it has not run yet', () => {
+  assert.equal(idleWords(MORNING, SUNDAY), "Hasn't run yet");
+  assert.equal(idleWords({ ...MORNING, lastRunAt: '2026-10-25T11:48:00+11:00' }, SUNDAY), 'Last run 12 min ago');
+  assert.equal(idleWords({ ...MORNING, lastRunAt: '2026-10-12T07:42:00+11:00' }, SUNDAY), 'Last run 12 Oct');
+  assert.equal(idleWords({ ...MORNING, enabled: false }, SUNDAY), 'Off');
+  assert.equal(idleWords({ ...MORNING, enabled: false, lastRunAt: '2026-10-25T11:48:00+11:00' }, SUNDAY), 'Off');
+  assert.equal(idleWords({ ...MORNING, lastRunAt: 'garbled' }, SUNDAY), "Hasn't run yet");
 });

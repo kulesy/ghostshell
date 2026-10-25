@@ -1,8 +1,12 @@
 // What the Routines page says and sends, as rules that need no page, so node can test them. Times are the Mac's, as the server writes them.
 import { EFFORTS, LONG, MAIN, modelName } from './model-rules.js';
+import { everyRow } from './tree.js';
 
 // A server that cannot say leaves the page read-only: the list, Run now and the switch work on every server, the rest only on this one.
 export const supportsRoutineEdits = ix => !!ix?.features?.routineEdits;
+
+// Without it the form has the text box alone, as a server that only keeps GhostShell's own text offers.
+export const supportsRoutineFiles = ix => !!ix?.features?.routineFiles;
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -115,16 +119,9 @@ const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
 
 export const byTitle = routines => [...routines].sort((a, b) => collator.compare(String(a.title ?? a.id ?? ''), String(b.title ?? b.id ?? '')) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-// Both apps would run a routine that is on in both. Off here it is Desktop's alone, which is a fact and no fault.
-export function desktopNote(r) {
-  if (!r.enabledInDesktop) return null;
-  return r.enabled
-    ? { warn: true, text: 'Also on in Claude Desktop, so both apps run it. Switch it off in Desktop.' }
-    : { warn: false, text: 'Claude Desktop still runs this one.' };
-}
-
 export const deleteDetail = r => `It stops running. Its earlier runs stay in the list, and its prompt file stays at ${r.file}.`;
 
+// What a server without routineFiles says of the prompt it loaded. A text that is not GhostShell's own is copied on the first save.
 export const promptSource = p => (p.ours
   ? `Read from and saved to ${p.file}`
   : `Read from ${p.file}. Saving copies it to ${p.copyTo}, and the file in Claude Desktop stays as it is.`);
@@ -132,16 +129,34 @@ export const promptSource = p => (p.ours
 // ---- the form ------------------------------------------------------------------------------------
 
 // The order the form shows its fields, so the first refused one is the one to focus.
-export const FIELDS = ['title', 'cron', 'jitterSeconds', 'cwd', 'model', 'effort', 'mode', 'prompt'];
+export const FIELDS = ['title', 'cron', 'jitterSeconds', 'cwd', 'model', 'effort', 'mode', 'file', 'prompt'];
 
 export const JITTER_PROBLEM = 'Use a whole number of seconds from 0 to 86399.';
 
-export const newForm = home => ({ title: '', cron: '', jitterSeconds: '0', cwd: home, model: '', effort: '', mode: '', prompt: '', enabled: true });
+export const newForm = home => ({ title: '', cron: '', jitterSeconds: '0', cwd: home, model: '', effort: '', mode: '', promptKind: 'text', file: '', prompt: '', enabled: true });
 
+// A prompt on a file elsewhere is one the server says is not its own. A server that copies it on save says where to, and has no file choice.
+const kindOf = prompt => (prompt.ours === false && !prompt.copyTo ? 'file' : 'text');
+
+// `prompt` is what api/routines/<id>/prompt answered. The text of a file elsewhere fills the box too, for a routine switched to GhostShell's own text.
 export const formOf = (r, prompt) => ({
   title: r.title ?? '', cron: r.cron ?? '', jitterSeconds: String(r.jitterSeconds ?? 0), cwd: r.cwd ?? '',
-  model: r.model ?? '', effort: r.effort ?? '', mode: r.mode ?? '', prompt, enabled: r.enabled === true,
+  model: r.model ?? '', effort: r.effort ?? '', mode: r.mode ?? '', promptKind: kindOf(prompt), file: kindOf(prompt) === 'file' ? prompt.file : '',
+  prompt: prompt.text, enabled: r.enabled === true,
 });
+
+// What the form was loaded with, for requestOf to compare with.
+export const wasOf = (routine, prompt) => ({ routine, kind: kindOf(prompt), file: prompt.file, prompt: prompt.text });
+
+// What the form says under the Prompt choice for the kind picked. `was` is the kind the routine was loaded on, or null for a new routine.
+export function promptHint(kind, was = null) {
+  if (kind === 'file') {
+    const read = 'GhostShell reads the file at each run and never writes it, so you edit it outside GhostShell.';
+    return was === 'text' ? `${read} GhostShell's own copy stays in its folder.` : read;
+  }
+  const own = 'GhostShell keeps the text in its own folder, and you edit it here.';
+  return was === 'file' ? `${own} The file stays as it is.` : own;
+}
 
 // The jitter as a number, or null when the text is not a whole number of seconds in range.
 export function jitterOf(text) {
@@ -154,14 +169,17 @@ export function jitterOf(text) {
 const same = (a, b) => (a || null) === (b || null);
 
 // What to send. A new routine sends every field. An edit sends only what changed, so a folder that has since gone does not refuse a new
-// title, and the prompt only when its text changed. `was` is { routine, prompt } as loaded.
+// title. The prompt goes as the text or as the path, never both, and a switch of kind always sends the new kind, which is what moves the routine.
+// `was` is { routine, kind, file, prompt } as loaded.
 export function requestOf(form, was) {
   const jitter = jitterOf(form.jitterSeconds);
   const all = {
     title: form.title.trim(), cron: form.cron.trim().replace(/\s+/g, ' '), jitterSeconds: jitter ?? form.jitterSeconds, cwd: form.cwd.trim(),
     model: form.model || null, effort: form.effort || null, mode: form.mode || null, enabled: form.enabled,
   };
-  if (!was) return { ...all, prompt: form.prompt };
+  const text = form.promptKind !== 'file';
+  const path = form.file.trim();
+  if (!was) return { ...all, ...(text ? { prompt: form.prompt } : { file: path }) };
   const r = was.routine;
   const changed = {
     ...(all.title !== r.title && { title: all.title }),
@@ -172,7 +190,8 @@ export function requestOf(form, was) {
     ...(!same(all.effort, r.effort) && { effort: all.effort }),
     ...(!same(all.mode, r.mode) && { mode: all.mode }),
     ...(all.enabled !== (r.enabled === true) && { enabled: all.enabled }),
-    ...(form.prompt !== was.prompt && { prompt: form.prompt }),
+    ...(text && (was.kind === 'file' || form.prompt !== was.prompt) && { prompt: form.prompt }),
+    ...(!text && (was.kind === 'text' || path !== was.file) && { file: path }),
   };
   return changed;
 }
@@ -221,4 +240,37 @@ export function routineRoute(hash) {
 export function routineFor(ix, routines, rowId) {
   const group = ix?.routines?.find(g => g.latest?.id === rowId);
   return group && routines?.routines?.find(r => r.id === group.name);
+}
+
+// ---- routines with no run in the sidebar ---------------------------------------------------------
+
+// The routines that have no row anywhere in the list, in title order. A run that is pinned or in a group is still a run, so it counts.
+export function unrunRoutines(ix, routines) {
+  if (!ix) return [];
+  const seen = new Set(everyRow(ix).map(row => row.routine).filter(Boolean));
+  return byTitle((routines?.routines ?? []).filter(r => !seen.has(r.id)));
+}
+
+// How long ago a run was, in a few words: "12 min ago", "3 h ago", "2 days ago", then the date as the Mac wrote it.
+export function ago(iso, now = Date.now()) {
+  const m = typeof iso === 'string' ? WALL.exec(iso) : null;
+  const then = m ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(then)) return '';
+  const minutes = Math.max(0, Math.floor((now - then) / 60_000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)} h ago`;
+  if (minutes < 7 * 1440) {
+    const days = Math.floor(minutes / 1440);
+    return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+  }
+  const [y, mo, d] = m.slice(1, 4).map(Number);
+  return `${d} ${MONTHS[mo - 1]}${y === new Date(now).getFullYear() ? '' : ` ${y}`}`;
+}
+
+// The quiet part of a routine's row in the sidebar: Off wins, then when it last ran, then that it has not.
+export function idleWords(r, now = Date.now()) {
+  if (r.enabled !== true) return 'Off';
+  const last = ago(r.lastRunAt, now);
+  return last ? `Last run ${last}` : "Hasn't run yet";
 }

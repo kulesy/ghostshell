@@ -1,5 +1,5 @@
-// The Routines page: every routine with its schedule, next and last run, and the form that adds or edits one. The prompt is read from
-// and saved to the server, so nothing here touches a file. The actions are shared with the menu of a routine's row in Home.
+// The Routines page: every routine with its schedule, next and last run, and the form that adds or edits one. The prompt text and a
+// prompt file's path go to the server, so nothing here touches a file. The actions are shared with the menu of a routine's row in Home.
 import { api } from './api.js';
 import { ask } from './ask.js';
 import { MODES } from './composer.js';
@@ -8,8 +8,8 @@ import { useDocumentTitle } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import {
-  byTitle, choices, deleteDetail, desktopNote, effortChoices, fireTime, formOf, jitterOf, JITTER_PROBLEM, modelChoices, newForm, NEW_ROUTINE_HASH,
-  promptSource, refusals, requestOf, routineHash, routineRoute, ROUTINES_HASH, scheduleWords, skippedWords, supportsRoutineEdits,
+  byTitle, choices, deleteDetail, effortChoices, fireTime, formOf, jitterOf, JITTER_PROBLEM, modelChoices, newForm, NEW_ROUTINE_HASH,
+  promptHint, promptSource, refusals, requestOf, routineHash, routineRoute, ROUTINES_HASH, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, wasOf,
 } from './routine-rules.js';
 import { say } from './toast.js';
 import { neighbour } from './tree.js';
@@ -92,7 +92,7 @@ export const routineItems = (r, { editable, ...ctx }) => [
 
 // `routines` is what api/routines answered, `error` why it could not, `reload` loads it again and `refresh` loads it and the session list.
 export function RoutinesPane({ ix, route, routines, error, reload, refresh }) {
-  if (route.form && supportsRoutineEdits(ix)) return html`<${RoutineForm} key=${route.id ?? 'new'} id=${route.id} routines=${routines} error=${error} refresh=${refresh} />`;
+  if (route.form && supportsRoutineEdits(ix)) return html`<${RoutineForm} key=${route.id ?? 'new'} id=${route.id} ix=${ix} routines=${routines} error=${error} refresh=${refresh} />`;
   return html`<${RoutineList} ix=${ix} routines=${routines} error=${error} reload=${reload} refresh=${refresh} />`;
 }
 
@@ -105,7 +105,6 @@ const Alert = ({ children, tone }) => html`<p class="routine-alert" data-tone=${
 
 function RoutineRow({ r, now, editable, busy, open, menuId, onSwitch, onRun, onMore }) {
   const words = scheduleWords(r.cron, r.jitterSeconds);
-  const note = desktopNote(r);
   const skipped = skippedWords(r.skipped, now);
   const next = !r.enabled ? 'Off' : r.next ? `Next ${fireTime(r.next, now)}` : 'No upcoming run';
   const lastAt = fireTime(r.lastRunAt, now);
@@ -122,7 +121,6 @@ function RoutineRow({ r, now, editable, busy, open, menuId, onSwitch, onRun, onM
       ${r.problem ? html`<${Alert}>${r.problem}<//>` : null}
       ${r.lastError ? html`<${Alert}>The last run did not start: ${r.lastError}<//>` : null}
       ${skipped ? html`<p class="routine-quiet">${skipped}</p>` : null}
-      ${note ? (note.warn ? html`<${Alert} tone="warning">${note.text}<//>` : html`<p class="routine-quiet">${note.text}</p>`) : null}
     </div>
     <div class="routine-actions">
       <${Switch} on=${r.enabled === true} label=${`Run ${r.title} on its schedule`} busy=${busy} onClick=${onSwitch} />
@@ -201,7 +199,7 @@ function RoutineList({ ix, routines, error, reload, refresh }) {
                 <p>No routines yet.</p>
                 <p class="quiet">${editable
                   ? 'A routine runs a prompt on a schedule, such as weekdays at 07:30. GhostShell starts a session for each run.'
-                  : 'Seed them from Claude Desktop with npm run seed-routines, then reload this page.'}</p>
+                  : 'Routines are listed here once they are in routines.json in the GhostShell folder.'}</p>
                 ${editable ? html`<a class="btn" data-variant="outline" data-size="sm" href=${NEW_ROUTINE_HASH}>New routine</a>` : null}
               </div>`
           : error
@@ -215,7 +213,7 @@ function RoutineList({ ix, routines, error, reload, refresh }) {
 
 // ---- the form ------------------------------------------------------------------------------------
 
-const FIELD_IDS = { title: 'routine-title', cron: 'routine-cron', jitterSeconds: 'routine-jitter', cwd: 'routine-cwd', model: 'routine-model', effort: 'routine-effort', mode: 'routine-mode', prompt: 'routine-prompt' };
+const FIELD_IDS = { title: 'routine-title', cron: 'routine-cron', jitterSeconds: 'routine-jitter', cwd: 'routine-cwd', model: 'routine-model', effort: 'routine-effort', mode: 'routine-mode', file: 'routine-file', prompt: 'routine-prompt' };
 
 const aria = (id, hint, error) => ({
   'aria-invalid': error ? 'true' : null,
@@ -241,8 +239,9 @@ function SchedulePreview({ cron, jitter, preview, now }) {
   </div>`;
 }
 
-function RoutineForm({ id, routines, error, refresh }) {
+function RoutineForm({ id, ix, routines, error, refresh }) {
   const adding = id === null;
+  const files = supportsRoutineFiles(ix);
   const routine = adding ? null : routines?.routines.find(r => r.id === id);
   const [prompt, setPrompt] = useState(adding ? { text: '' } : null);
   const [loadError, setLoadError] = useState('');
@@ -263,8 +262,8 @@ function RoutineForm({ id, routines, error, refresh }) {
 
   useEffect(() => {
     if (form || !routine || !prompt) return;
-    setForm(formOf(routine, prompt.text));
-    setWas({ routine, prompt: prompt.text });
+    setForm(formOf(routine, prompt));
+    setWas(wasOf(routine, prompt));
   }, [routine?.id, prompt]);
 
   const cron = form?.cron ?? '';
@@ -313,6 +312,10 @@ function RoutineForm({ id, routines, error, refresh }) {
   };
 
   const refused = key => problems[key] || '';
+  const pickKind = promptKind => () => {
+    setForm(f => ({ ...f, promptKind }));
+    setProblems(({ file: _file, prompt: _prompt, ...rest }) => rest);
+  };
   const refuse = (fields, first) => {
     setProblems(fields);
     setNotice('');
@@ -355,7 +358,9 @@ function RoutineForm({ id, routines, error, refresh }) {
 
   const cronError = refused('cron') || (cron.trim() && jitter !== null ? preview.problem : '');
   const jitterError = refused('jitterSeconds') || (jitter === null ? JITTER_PROBLEM : '');
-  const note = was && desktopNote({ ...was.routine, enabled: form.enabled });
+  const fileMode = files && form.promptKind === 'file';
+  const textError = refused('prompt') || (fileMode ? '' : prompt.error || '');
+  const fileError = refused('file') || (fileMode ? prompt.error || '' : '');
   const now = Date.now();
 
   return page(html`<form class="routine-form" noValidate onSubmit=${save}>
@@ -384,16 +389,31 @@ function RoutineForm({ id, routines, error, refresh }) {
         <//>`)}
     </div>
     <p class="routine-hint routine-default">Default follows Claude Desktop's settings for the folder.</p>
-    <${Field} id=${FIELD_IDS.prompt} label="Prompt" hint=${adding ? 'GhostShell keeps the prompt in its own folder.' : promptSource(prompt)} error=${refused('prompt') || prompt.error || ''}>
-      <textarea class="input routine-prompt" id=${FIELD_IDS.prompt} rows="14" value=${form.prompt} spellcheck=${true} onInput=${set('prompt')} ...${aria(FIELD_IDS.prompt, true, refused('prompt') || prompt.error)}></textarea>
-    <//>
+    ${files
+      ? html`<fieldset class="routine-field routine-kind">
+          <legend>Prompt</legend>
+          <div class="routine-choices">
+            <label class="routine-choice"><input type="radio" name="routine-prompt-kind" id="routine-kind-text" value="text" checked=${!fileMode} onChange=${pickKind('text')} />GhostShell's own text</label>
+            <label class="routine-choice"><input type="radio" name="routine-prompt-kind" id="routine-kind-file" value="file" checked=${fileMode} onChange=${pickKind('file')} />A prompt file</label>
+          </div>
+          ${fileMode
+            ? html`<input class="input routine-mono" id=${FIELD_IDS.file} type="text" value=${form.file} placeholder="/Users/you/prompts/daily-scrum.md" aria-label="Full path of the prompt file" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck=${false}
+                onInput=${set('file')} ...${aria(FIELD_IDS.file, true, fileError)} />
+              <p class="routine-hint" id=${`${FIELD_IDS.file}-hint`}>${promptHint('file', was?.kind)}</p>
+              <p class="routine-error" id=${`${FIELD_IDS.file}-error`}>${fileError}</p>`
+            : html`<textarea class="input routine-prompt" id=${FIELD_IDS.prompt} rows="14" aria-label="Prompt text" value=${form.prompt} spellcheck=${true} onInput=${set('prompt')} ...${aria(FIELD_IDS.prompt, true, textError)}></textarea>
+              <p class="routine-hint" id=${`${FIELD_IDS.prompt}-hint`}>${promptHint('text', was?.kind)}</p>
+              <p class="routine-error" id=${`${FIELD_IDS.prompt}-error`}>${textError}</p>`}
+        </fieldset>`
+      : html`<${Field} id=${FIELD_IDS.prompt} label="Prompt" hint=${adding ? 'GhostShell keeps the prompt in its own folder.' : promptSource(prompt)} error=${textError}>
+          <textarea class="input routine-prompt" id=${FIELD_IDS.prompt} rows="14" value=${form.prompt} spellcheck=${true} onInput=${set('prompt')} ...${aria(FIELD_IDS.prompt, true, textError)}></textarea>
+        <//>`}
     <div class="routine-field routine-on">
       <div class="routine-on-row">
         <label id="routine-enabled-label" for="routine-enabled">Run on its schedule</label>
         <${Switch} id="routine-enabled" on=${form.enabled} label=${null} onClick=${() => setForm(f => ({ ...f, enabled: !f.enabled }))} />
       </div>
       <p class="routine-hint">${adding ? 'A new routine starts counting from the moment it is on.' : 'Off keeps the routine here without running it.'}</p>
-      ${note?.warn ? html`<${Alert} tone="warning">${note.text}<//>` : null}
     </div>
     <p class="notice" role="alert">${notice}</p>
     <div class="routine-buttons">

@@ -16,7 +16,7 @@ import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
 import { anchorAt, archiveNote, extend, inOrder, NO_PICK, prune, sessions, stayAfter, step, stopDetail, toggle as toggleRow, unarchiveNote } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
-import { routineFor, supportsRoutineEdits } from './routine-rules.js';
+import { idleWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, unrunRoutines } from './routine-rules.js';
 import { ManageRoutines, routineItems } from './routines.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
@@ -125,6 +125,24 @@ function Routine({ g, rowProps, open, onToggle, tree }) {
   </li>`;
 }
 
+// A routine that has no run in the list. Its row opens the routine, and it has the menu a run's row has for its routine, by the dots
+// button or a right click. It is not a session, so it has no data-id and the selecting, archiving and dragging of rows leave it alone.
+function IdleRoutine({ r, editable, tree }) {
+  const key = `routine:${r.id}`;
+  const label = `Actions for ${r.title}`;
+  const open = tree.shown?.key === key;
+  const trigger = opener((button, entry) => tree.pop(key, tree.routineMenu(r), button, { entry }));
+  const popAt = e => {
+    e.preventDefault();
+    tree.pop(key, tree.routineMenu(r), e.currentTarget.querySelector('.more'), { point: pointIn(e.currentTarget, e) });
+  };
+  return html`<li onContextMenu=${popAt}>
+    <a class="row" href=${editable ? routineHash(r.id) : ROUTINES_HASH} data-idle=${r.id} draggable=${false} data-menu=${open || null}>
+      <span class="row-title">${r.title}</span><span class="row-nest row-idle">${idleWords(r)}</span></a>
+    <button class="more" type="button" aria-label=${label} data-tip=${label} aria-haspopup="menu" aria-expanded=${open} aria-controls=${open ? layerId(tree.shown.id) : null} data-state=${open ? 'open' : 'closed'} ...${trigger}>${dots()}</button>
+  </li>`;
+}
+
 // A session with others nested under it. Its row opens it, and the arrow at its end folds the nested ones in and out underneath.
 // While one of them is carried (`holds`), their list takes a drop as a nest under this session, so letting go anywhere in it leaves
 // the carried session where it is, instead of falling through to the section and taking it out.
@@ -146,7 +164,7 @@ function Family({ r, rowProps, holds, open, onToggle, tree }) {
 // A group always shows, empty or not, so one that was just made can be found and filled.
 // Over a row, the row is the target and no section is. The carried row and the ones nested under it dim, and take no drop.
 // `carry` is a group carried by its header instead: it dims, and a line marks the place among the groups it would land in.
-function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, routinesOpen, drag, carry, tree, picked, newKey }) {
+function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, routines, routinesOpen, drag, carry, tree, picked, newKey }) {
   const carried = drag && findRow(ix, drag.id);
   const together = new Set(carried ? [carried.id, ...(carried.children ?? []).map(c => c.id)] : []);
   const nesting = drag?.over?.startsWith(NEST) ? drag.over.slice(NEST.length) : null;
@@ -175,8 +193,12 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
     line: place?.beside === g.id ? place.side : null,
   });
   const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;
+  const idle = home ? unrunRoutines(ix, routines) : [];
   const parts = [
-    home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false, chat: groupById(ix, 'routines'), extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
+    home && section('routines', 'Routines', [...ix.routines, ...idle], [
+      ...ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`),
+      ...idle.map(r => html`<${IdleRoutine} key=${`idle:${r.id}`} r=${r} editable=${supportsRoutineEdits(ix)} tree=${tree} />`),
+    ], { drop: false, chat: groupById(ix, 'routines'), extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned), { chat: groupById(ix, 'pinned') }),
     ...groups.map(group),
     adding && tree.groupForm(project),
@@ -190,7 +212,7 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
 
 // The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a section or the sessions
 // nested under a row. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
-const STOPS = '.group-head, a.row[data-id]';
+const STOPS = '.group-head, a.row[data-id], a.row[data-idle]';
 
 // A header's menu button and a row's menu and fold buttons belong to the header or row beside them, so the arrows carry on from there.
 function stopBeside(el) {
@@ -795,6 +817,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     rowMenu: (id, button, entry) => (shown?.session === id && shown.anchor === button && !entry ? setShown(null) : latestMenu.current(id, button, null, entry)),
     newGroup: (p, back) => { projects.pick(p.id); setForm({ kind: 'group', project: p.id, back }); },
     sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} was=${r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`,
+    routineMenu: r => ({
+      label: `Actions for ${r.title}`,
+      items: routineItems(r, { editable: supportsRoutineEdits(ix), refresh: refreshRoutines, back: () => box.current.querySelector(`a.row[data-idle="${CSS.escape(r.id)}"]`) }),
+    }),
     groupMenu: g => {
       const moves = moveTargets(ix.projects, g).map(t => ({ label: t.label, run: () => moveGroup(g, t.project) }));
       if (!supportsGroupEdits(ix)) return moves.length ? { label: `Move ${g.name}`, items: moves } : null;
@@ -888,7 +914,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     ${topForm}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt} onClick=${clickRow} onMouseDown=${pressRow} onPointerDown=${e => { pointer.current = e.pointerType; }}>
       ${ix
-        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} folded=${folded} toggleFold=${toggleFold} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} routinesOpen=${routinesOpen} drag=${drag?.kind === 'row' ? drag : null} carry=${groupDrag} tree=${tree} picked=${new Set(pick.ids)} newKey=${keyHint(mod, 'N')} />`
+        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} folded=${folded} toggleFold=${toggleFold} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} routines=${routines} routinesOpen=${routinesOpen} drag=${drag?.kind === 'row' ? drag : null} carry=${groupDrag} tree=${tree} picked=${new Set(pick.ids)} newKey=${keyHint(mod, 'N')} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <span class="sr" role="status">${pick.ids.length ? `${pick.ids.length} selected` : ''}</span>
