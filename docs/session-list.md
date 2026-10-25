@@ -113,6 +113,40 @@ The tab lists the sessions under the chat at every depth, so a side chat of a si
 
 GhostShell reads each line's latest reply from the session's transcript, for the lines on show alone, and keeps it until the transcript changes. No model is asked, so the tab costs no tokens. A chat's model can read the same status with two tools of its own ([Sub sessions](tools.md#sub-sessions)). [The decision record](adr/20261023-roll-sub-session-status-up.md) has the detail.
 
+#### Pull requests
+
+A card also shows the GitHub pull requests its session is working on, one line for each, up to 5. A line says in words how the pull request stands, then gives its whole address as a link that opens GitHub in a new tab. The most urgent pull request comes first. A card whose session names no pull request, or whose pull request GhostShell could not read, looks as it did.
+
+GhostShell finds the addresses in the transcript. Those in the session's latest reply come first, then the rest, newest first. An address in a tool result counts only when it is the last line of the output, as `gh pr create` prints it, so a listing of pull requests does not make the session claim all of them.
+
+A line says up to three of these, most urgent first, with dots between them:
+
+- **Needs your review**: GitHub asks you to review it, and you did not write it.
+- **Changes requested**, **Has conflicts**, **Has 2 unresolved comments** (review threads nobody resolved), **Checks failing** and **Checks running**.
+- **Ready to merge**: open, not a draft, approved, with nothing in the way and no checks failing or running. Otherwise an approved pull request says **Approved**.
+- **Waiting for review**: a review is requested from someone, or one is required. A pull request with none of the lines above says **Open**.
+- **Draft** comes last. **Merged** and **Closed** stand alone.
+
+A pull request that waits on you makes its session count as waiting on you. The card gets the Waiting on you pill and moves under Waiting on you, the line at the top of the tab counts it, and so do the number and the amber mark on the header button, which stay right while the panel is closed. A pull request waits on you when:
+
+- someone asked for your review.
+- you wrote it and it is ready to merge.
+- you wrote it, and it has changes requested, conflicts, unresolved comments or failing checks, while its session is not working. A working session is already at work on those, so they do not count until it stops.
+
+A pull request that someone else wrote and did not ask you to review never counts, and neither does a merged or closed one. The line is still shown.
+
+The server reads each pull request by asking `gh`, the GitHub CLI, on the Mac. The page never sees the token and never calls GitHub. GhostShell keeps what `gh` says for 2 minutes (1 minute after a failure), and the page asks again for a session after 60 seconds, so a change on GitHub shows within a few minutes. It makes 2 `gh` calls for each pull request and runs at most 4 at once. When the server needs longer than 8 seconds it answers with what it has, a pull request being read again keeping its last line, and the page asks again 4 seconds later. A server that started before this feature, or has no `gh` signed in, shows no pull request lines and counts nothing extra.
+
+This covers the pull requests of the GitHub account `gh` is signed in as, and review threads. It does not cover:
+
+- the sidebar's rows and marks, a folded family's mark, and the counts in a group's header. These count by session state alone.
+- the two tools a chat's model reads status with, which count by state alone too.
+- comments on a pull request's conversation tab, which are not review threads.
+- a review requested from a team you belong to. Only a request that names you counts.
+- a pull request in a repository that account cannot see.
+
+The route is `GET api/pulls?ids=a,b,c`, with 1 to 60 session ids, signed in like the others. It answers `{ pulls: { <id>: [...] }, settling }` with up to 5 pull requests for each session, in the order the session names them. Each has its address, repository, number, state (`open`, `draft`, `merged` or `closed`), whether you wrote it, whether your review is asked, the review decision, the state of its checks, whether it has conflicts, and how many review threads are unresolved. `settling` is true while some are still being read. A pull request GitHub could not show is left out. `GET api/sessions` lists `pullStatus` in its `features`. [The decision record](adr/20261026-show-pull-request-status-on-session-cards.md) says why the server asks `gh`.
+
 ### Taking a session out
 
 Drop a nested session on a section, the indent beside its family included, or move or pin it from its menu, and it leaves its parent and goes there. Move out of in its menu takes it out, and it stays in its parent's group or in Pinned. A parent in neither sends it to the list for where it started: Started here, Ungrouped or Terminal and other.

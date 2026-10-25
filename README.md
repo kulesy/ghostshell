@@ -34,7 +34,7 @@ GhostShell lists the sessions you start in Claude Desktop, the routine runs and 
 
 <table>
   <tr>
-    <td width="50%" valign="top"><b>One list for every session</b><br>Desktop, terminal and routine runs, sorted into your own projects, groups and pins, with sessions nested under a parent and their status rolled up to it. <a href="docs/session-list.md">Session list</a></td>
+    <td width="50%" valign="top"><b>One list for every session</b><br>Desktop, terminal and routine runs, sorted into your own projects, groups and pins, with sessions nested under a parent and their status, pull requests included, rolled up to it. <a href="docs/session-list.md">Session list</a></td>
     <td width="50%" valign="top"><b>The real CLI behind each chat</b><br>Approvals show as cards, and a chat keeps working when you close the page. <a href="docs/how-it-works.md">How it works</a></td>
   </tr>
   <tr>

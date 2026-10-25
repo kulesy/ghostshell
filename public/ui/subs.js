@@ -9,8 +9,10 @@ import { chevron, emptyNote, enc, LIVE } from './group-status.js';
 import { useStore } from './hooks.js';
 import { html, useEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { UNTITLED } from './order.js';
+import { cardPulls, factsOf } from './pull-rules.js';
+import { pullsOn, pullStore, usePullNeeds } from './pulls.js';
 import { createStore } from './store.js';
-import { batchesOf, drawnRows, KEPT, linesOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, summaryLine, trim } from './sub-panel-rules.js';
+import { batchesOf, drawnRows, KEPT, linesOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, summaryLine, trim, withPulls } from './sub-panel-rules.js';
 import { rollupLine, rollupOf } from './sub-rules.js';
 import { everyRow } from './tree.js';
 
@@ -22,6 +24,7 @@ export const sessionIndex = createStore({ ix: null });
 
 const NOTHING = { line: '', pending: [] };
 const NONE = new Set();
+const NO_PULLS = new Map();
 
 // What the server last said of each session and the reply it last read in full, each with the stamp of the row it was read for.
 const said = new Map();
@@ -108,9 +111,16 @@ function Words({ text }) {
   return html`${before}${words ? html`<span class="sub-need">${words}</span>` : null}${after}`;
 }
 
+function Pulls({ id, pulls }) {
+  return html`<ul class="sub-pulls" aria-label="Pull requests">${pulls.map((pull, place) => html`<li class="sub-pull" key=${pull.url}>
+    <p class="pull-facts" id=${`${id}-pull-${place}`}>${factsOf(pull).map((fact, at) => html`${at ? html`<span aria-hidden="true"> · </span><span class="sr">, </span>` : null}<span class="pull-fact" data-tone=${fact.tone}>${fact.text}</span>`)}</p>
+    <a class="pull-link" href=${pull.url} target="_blank" rel="noopener noreferrer" aria-describedby=${`${id}-pull-${place}`}>${pull.url}</a>
+  </li>`)}</ul>`;
+}
+
 function Line({ node, shared }) {
   const { row, subs } = node;
-  const { rows, opened, active, flip } = shared;
+  const { rows, opened, active, flip, known } = shared;
   const open = !!opened[row.id];
   const heard = said.get(row.id);
   const waits = row.state === 'waiting' ? pendingLine(heard?.pending) : '';
@@ -118,6 +128,7 @@ function Line({ node, shared }) {
   const name = row.title || UNTITLED;
   const state = DOT_LABEL[row.dot] ?? STATE_LABEL[row.state];
   const pill = pillOf(row);
+  const pulls = cardPulls(known.get(row.id)?.pulls);
   const body = `sub-${row.id}`;
   const under = `${body}-subs`;
   const showSubs = open && subs.length > 0;
@@ -130,6 +141,7 @@ function Line({ node, shared }) {
       <span class="sub-pill" data-tone=${pill.tone}>${pill.label}</span>
       ${heard?.line ? html`<p class="sub-said">${heard.line}</p>` : null}
       ${waits ? html`<p class="sub-wait">${waits}</p>` : null}
+      ${pulls.length ? html`<${Pulls} id=${body} pulls=${pulls} />` : null}
       <div class="sub-foot">
         ${roll ? html`<p class="sub-roll"><${Words} text=${roll} /></p>` : null}
         <button class="btn sub-fold" data-variant="ghost" data-size="xs" type="button" aria-expanded=${open} aria-controls=${open ? (showSubs ? `${body} ${under}` : body) : null} aria-label=${`Details of ${name}`} data-tip=${`Details of ${name}`} onClick=${() => flip(row.id)}>Details${chevron()}</button>
@@ -158,14 +170,17 @@ export function SubsTab({ ctrl, active }) {
   const ix = useStore(sessionIndex, s => s.ix);
   const group = groupOfSession(ix, id);
   const [opened, setOpened] = useState({});
-  const lines = useMemo(() => (ix ? linesOf(ix, id) : []), [ix, id]);
-  const rows = useMemo(() => (ix ? everyRow(ix) : []), [ix]);
+  const needs = usePullNeeds(ix);
+  const heard = useStore(pullStore, s => s.known);
+  const known = pullsOn(ix) ? heard : NO_PULLS;
+  const lines = useMemo(() => (ix ? linesOf(ix, id, undefined, needs) : []), [ix, id, needs]);
+  const rows = useMemo(() => (ix ? everyRow(ix).map(row => withPulls(row, needs)) : []), [ix, needs]);
   const parts = useMemo(() => partsOf(lines), [lines]);
   const shown = PARTS.flatMap(([key]) => parts[key]);
   const failed = useSummaries(active ? drawnRows(shown, opened) : [], ix);
   if (!ix) return null;
-  const shared = { rows, opened, active, flip: key => setOpened(all => flipped(all, key)) };
-  const summary = summaryLine(ix, id);
+  const shared = { rows, opened, active, known, flip: key => setOpened(all => flipped(all, key)) };
+  const summary = summaryLine(ix, id, undefined, needs);
   return html`<div class="subs">
     ${summary ? html`<p class="subs-sum"><${Words} text=${summary} /></p>` : null}
     ${PARTS.map(([key, label]) => (parts[key].length ? html`<${Section} key=${key} label=${label} nodes=${parts[key]} shared=${shared} />` : null))}

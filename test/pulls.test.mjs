@@ -106,7 +106,9 @@ test('a pull request has exactly the fields the page is promised', () => {
 const files = new Map();
 const transcriptFor = id => files.get(id) ?? null;
 const prompt = text => ({ type: 'user', message: { role: 'user', content: text } });
-const said = text => ({ type: 'assistant', message: { id: `m${Math.random()}`, role: 'assistant', content: [{ type: 'text', text }] } });
+let sent = 0;
+// A fixed width id, so two files of the same words are the same size, which a test of the kept answers relies on.
+const said = text => ({ type: 'assistant', message: { id: `m${String(++sent).padStart(8, '0')}`, role: 'assistant', content: [{ type: 'text', text }] } });
 const gave = (id, output) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: output }] } });
 const lines = entries => entries.map(e => `${JSON.stringify(e)}\n`).join('');
 
@@ -247,8 +249,8 @@ test('a lookup runs the three fixed gh calls, with the exact argument lists, and
   assert.equal(settling, false);
   assert.equal(f.calls.length, 3);
   assert.deepEqual(f.of('view').map(c => c.args), [['pr', 'view', pr(12), '--json', FIELDS]]);
-  assert.deepEqual(f.of('threads').map(c => c.args), [['api', 'graphql', '-f', `query=${QUERY}`, '-f', 'owner=example-org', '-f', 'name=example-repo', '-F', 'number=12']]);
-  assert.deepEqual(f.of('user').map(c => c.args), [['api', 'user', '--jq', '.login']]);
+  assert.deepEqual(f.of('threads').map(c => c.args), [['api', 'graphql', '-f', `query=${QUERY}`, '-f', 'owner=example-org', '-f', 'name=example-repo', '-F', 'number=12', '--hostname', 'github.com']]);
+  assert.deepEqual(f.of('user').map(c => c.args), [['api', 'user', '--jq', '.login', '--hostname', 'github.com']]);
   assert.deepEqual([...found.keys()], [pr(12)]);
   assert.deepEqual(found.get(pr(12)), {
     url: pr(12), repo: 'example-org/example-repo', number: 12, state: 'open', mine: false, asked: true, requested: 1,
@@ -411,6 +413,52 @@ test('of several addresses, the ones that were ready in time are answered and th
   } };
   const { pulls } = maker({ fake: f, options: { waitMs: 30 } });
   const got = await pulls.lookup([pr(1), pr(2)]);
+  assert.deepEqual([[...got.found.keys()], got.settling], [[pr(1)], true]);
+  held.forEach(go => go());
+});
+
+test('an address that differs only in case is answered for each spelling, from one read', async () => {
+  const { pulls, f } = maker();
+  const upper = pr(7).replace('example-org', 'Example-Org');
+  const { found } = await pulls.lookup([pr(7), upper]);
+  assert.deepEqual([...found.keys()].sort(), [pr(7), upper].sort());
+  assert.equal(found.get(upper), found.get(pr(7)));
+  assert.equal(f.of('view').length, 1);
+});
+
+test('while an expired answer is read again, the last good answer is kept and the lookup says it is settling', async () => {
+  const base = fake();
+  const held = [];
+  let slow = false;
+  const f = { ...base, run: (file, args) => {
+    if (slow && args[0] === 'pr') return new Promise(resolve => held.push(() => resolve(JSON.stringify(raw({ state: 'OPEN' })))));
+    return base.run(file, args);
+  } };
+  const { pulls, clock } = maker({ fake: f, options: { waitMs: 30 } });
+  assert.equal((await pulls.lookup([pr(1)])).found.size, 1);
+  clock.at += 121_000;
+  slow = true;
+  const during = await pulls.lookup([pr(1)]);
+  assert.deepEqual([[...during.found.keys()], during.settling], [[pr(1)], true]);
+  held.forEach(go => go());
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const after = await pulls.lookup([pr(1)]);
+  assert.deepEqual([after.found.size, after.settling], [1, false]);
+});
+
+test('an expired answer left for the queue limit is still given, and the lookup says it is settling', async () => {
+  const base = fake();
+  const held = [];
+  let slow = false;
+  const f = { ...base, run: (file, args) => {
+    if (slow && args[0] === 'pr' && args[2] === pr(2)) return new Promise(resolve => held.push(() => resolve(JSON.stringify(raw()))));
+    return base.run(file, args);
+  } };
+  const { pulls, clock } = maker({ fake: f, options: { slots: 1, queueMax: 0, waitMs: 30 } });
+  assert.equal((await pulls.lookup([pr(1)])).found.size, 1);
+  clock.at += 121_000;
+  slow = true;
+  const got = await pulls.lookup([pr(2), pr(1)]);
   assert.deepEqual([[...got.found.keys()], got.settling], [[pr(1)], true]);
   held.forEach(go => go());
 });

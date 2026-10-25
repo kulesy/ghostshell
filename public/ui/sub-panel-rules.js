@@ -2,7 +2,7 @@
 // The rows are the index's, and `ix` is the page's whole list.
 import { fullToolLabel, plural } from './format.js';
 import { BUCKETS, groupOfSession, membersOf } from './group-rules.js';
-import { familyDot, orderLines, placeOf, rankOf, rollupLine, rollupOf, tally, treeOf } from './sub-rules.js';
+import { descendantsOf, familyDot, orderLines, placeOf, rankOf, rollupLine, rollupOf, tally, treeOf } from './sub-rules.js';
 import { everyRow, withKids } from './tree.js';
 
 // The most ids the server's summaries route answers at once.
@@ -19,12 +19,24 @@ export function subsOffered(ix, id) {
   return !!groupOfSession(ix, id) || everyRow(ix).some(row => row.via === id);
 }
 
+// A session whose pull request waits on the owner counts as waiting on them, which is how a mark that says so reads everywhere. `needs` is a
+// set of session ids, and without one a row is as it came.
+export const withPulls = (row, needs) => (needs?.has(row.id) && !row.archived ? { ...row, dot: 'awaiting' } : row);
+
+const overlaid = (rows, needs) => (needs?.size ? rows.map(row => withPulls(row, needs)) : rows);
+
+// The sessions the header button counts, as the index lists them: all the sessions below the chat, or all of a group's.
+export function countedRows(ix, id, needs) {
+  const group = groupOfSession(ix, id);
+  return overlaid(group ? membersOf(group) : descendantsOf(everyRow(ix), id), needs);
+}
+
 // The lines at the top of the tab, each { row, subs }, the ones that need the owner first. A group's chat lists the group's own sessions,
 // each with its family under it, and any other chat the sessions nested under it.
-export function linesOf(ix, id, now = Date.now()) {
-  const rows = everyRow(ix);
+export function linesOf(ix, id, now = Date.now(), needs) {
+  const rows = overlaid(everyRow(ix), needs);
   const group = groupOfSession(ix, id);
-  return group ? orderLines(group.sessions.map(row => ({ row, subs: treeOf(rows, row.id, now) })), now) : treeOf(rows, id, now);
+  return group ? orderLines(group.sessions.map(row => ({ row: withPulls(row, needs), subs: treeOf(rows, row.id, now) })), now) : treeOf(rows, id, now);
 }
 
 // The part of the tab a line falls in, by the most urgent session in the line and under it.
@@ -38,19 +50,17 @@ export function partsOf(nodes, now = Date.now()) {
 }
 
 // How many sessions the header button counts and how many of those wait on the owner: all the sessions below the chat, or all of a group's.
-export function subsStatus(ix, id, now = Date.now()) {
+export function subsStatus(ix, id, now = Date.now(), needs) {
   if (!ix) return { total: 0, needs: 0 };
-  const group = groupOfSession(ix, id);
-  const { total, needs } = group ? tally(membersOf(group), now) : rollupOf(everyRow(ix), id, now);
-  return { total, needs };
+  const { total, needs: waiting } = tally(countedRows(ix, id, needs), now);
+  return { total, needs: waiting };
 }
 
 export const subsButtonName = ({ total, needs }) => `Sub sessions: ${total}${needs ? `, ${needs} ${WAITING}` : ''}`;
 
 // The line at the top of the tab: the roll-up of the sessions below the chat, or of a group's live sessions at every depth, which it calls "session".
-export function summaryLine(ix, id, now = Date.now()) {
-  const group = groupOfSession(ix, id);
-  return group ? rollupLine(tally(membersOf(group), now), 'session') : rollupLine(rollupOf(everyRow(ix), id, now));
+export function summaryLine(ix, id, now = Date.now(), needs) {
+  return rollupLine(tally(countedRows(ix, id, needs), now), groupOfSession(ix, id) ? 'session' : undefined);
 }
 
 // What a session waits on, from the summaries route's `pending`: "Waiting for you to approve Bash: npm test", or "Waiting for your

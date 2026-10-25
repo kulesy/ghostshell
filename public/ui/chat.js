@@ -14,6 +14,7 @@ import { runFromClick } from './run.js';
 import { QuoteDock, useQuoting } from './quote.js';
 import { createChat } from './session.js';
 import { keyHint, shortcut } from './shortcuts.js';
+import { usePullNeeds, usePullStatus } from './pulls.js';
 import { subsButtonName, subsOffered, subsStatus } from './sub-panel-rules.js';
 import { LIST_TREE, sessionIndex } from './subs.js';
 import { runnableBlock } from './terminal-rules.js';
@@ -27,11 +28,13 @@ function TerminalButton({ ctrl }) {
   return html`<button class="btn" id="terminalButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label="Terminal" aria-expanded=${shown === 'terminal'} aria-controls="panel" data-tip="Terminal" data-tip-key=${keyHint('Ctrl', '`')} onClick=${e => toggleTab(ctrl.id, 'terminal', e.currentTarget, shown)}>${draw(icons.terminal, 'icon')}</button>`;
 }
 
-// Its name carries the count and what waits on the owner, since the mark on it is colour alone.
+// Its name carries the count and what waits on the owner, since the mark on it is colour alone. It also asks for the pull requests of the
+// sessions it counts, so that count is right with the panel closed.
 function SubsButton({ ctrl }) {
   const ix = useStore(sessionIndex, s => s.ix);
   const shown = useShownTab(ctrl);
-  const status = subsStatus(ix, ctrl.id);
+  usePullStatus(ix, ctrl.id);
+  const status = subsStatus(ix, ctrl.id, undefined, usePullNeeds(ix));
   const name = subsButtonName(status);
   return html`<button class="btn" id="subsButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label=${name} aria-expanded=${shown === 'subs'} aria-controls="panel" data-tip=${name} onClick=${e => toggleTab(ctrl.id, 'subs', e.currentTarget, shown)}>${draw(LIST_TREE, 'icon')}${status.needs ? html`<span class="subs-mark" aria-hidden="true"></span>` : null}</button>`;
 }

@@ -83,7 +83,7 @@ test('a session whose transcript names pull requests gets them with their status
   const calls = ghCalls(s);
   const views = calls.filter(a => a[0] === 'pr');
   assert.deepEqual(views.map(a => a[2]).sort(), [pr(1), pr(2), pr(3)], 'an address two sessions share is read once');
-  assert.deepEqual(calls.filter(a => a[1] === 'user'), [['api', 'user', '--jq', '.login']]);
+  assert.deepEqual(calls.filter(a => a[1] === 'user'), [['api', 'user', '--jq', '.login', '--hostname', 'github.com']]);
   assert.equal(calls.some(a => a.includes('auth')), false);
   assert.deepEqual(await pullsOf(s, token, 'kid,top,quiet'), body);
   assert.equal(ghCalls(s).length, calls.length, 'the second ask came from the cache');

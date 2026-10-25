@@ -18,6 +18,8 @@ The `mark_chapter` tool makes chapters, which show as titled dividers.
 
 Every chat that is not a group's or a section's gets `list_sub_sessions` and `read_sub_session`, which reach the sessions below that chat, at any depth, and no others. `list_sub_sessions` lists them as a tree, the ones that need you first, each with its roll-up and the first sentence of its latest reply. `read_sub_session` reads the end of one of them and what it waits on. Both only read, so they run with no card in every mode. An id outside the chat's family gets the same refusal as an id that is no session.
 
+These two tools count by session state alone. A session that waits on you for a pull request counts as waiting in the [tab](session-list.md#pull-requests) and on the header button, and not in what they list.
+
 GhostShell never starts a turn in a parent to pass status up. A parent's model learns what is below it when it calls these tools, and you see the same status in the chat's [Sub sessions tab](session-list.md#sub-session-status).
 
 ## Group and section sessions

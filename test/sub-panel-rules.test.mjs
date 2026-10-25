@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { RECENT_MS } from '../public/ui/group-rules.js';
 import {
   batchesOf, drawnRows, familyNote, KEPT, linesOf, MAX_IDS, partOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, subsButtonName, subsOffered, subsStatus,
-  subStatusOn, summaryLine, trim,
+  subStatusOn, summaryLine, trim, withPulls,
 } from '../public/ui/sub-panel-rules.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -265,3 +265,61 @@ test('the Sub sessions tab of a built-in section says what a group\'s says for t
   assert.equal(subsOffered(empty, 'chat-pinned'), true);
 });
 
+
+test('a session whose pull request waits on the owner has its mark set to awaiting, unless it is archived, and any other row comes back as it was', () => {
+  const idle = row('a', null, 'idle', MINUTE);
+  assert.deepEqual(withPulls(idle, new Set(['a'])), { ...idle, dot: 'awaiting' });
+  assert.equal(idle.dot, null, 'the row given is not changed');
+  assert.equal(withPulls(idle, new Set(['b'])), idle);
+  assert.equal(withPulls(idle, new Set()), idle);
+  assert.equal(withPulls(idle, undefined), idle);
+  const stowed = row('a', null, 'idle', MINUTE, { archived: true });
+  assert.equal(withPulls(stowed, new Set(['a'])), stowed);
+  const running = row('a', null, 'working', MINUTE, { dot: 'running' });
+  assert.equal(withPulls(running, new Set(['a'])).dot, 'awaiting');
+});
+
+test('sessions whose pull requests wait on the owner are lines, parts, counts and a pill that say they wait on the owner, in an ordinary chat', () => {
+  const needs = new Set(['quiet']);
+  const lines = linesOf(index(), 'top', NOW, needs);
+  assert.deepEqual(lines.map(n => [n.row.id, n.row.dot, partOf(n, NOW)]), [['kid', 'awaiting', 'needs'], ['quiet', 'awaiting', 'needs']]);
+  assert.equal(pillOf(lines[1].row).label, 'Waiting on you');
+  assert.deepEqual(subsStatus(index(), 'top', NOW, needs), { total: 3, needs: 2 });
+  assert.equal(subsButtonName(subsStatus(index(), 'top', NOW, needs)), 'Sub sessions: 3, 2 waiting on you');
+  assert.equal(summaryLine(index(), 'top', NOW, needs), '3 sub sessions, 2 waiting on you, 1 working');
+  const deep = new Set(['grand']);
+  assert.deepEqual(subsStatus(index(), 'top', NOW, deep), { total: 3, needs: 2 }, 'a session at any depth counts');
+  assert.deepEqual(partsOf(linesOf(index(), 'top', NOW, deep), NOW).needs.map(n => n.row.id), ['kid']);
+  assert.deepEqual(linesOf(index(), 'top', NOW, deep)[0].subs.map(n => n.row.dot), ['awaiting'], 'the row under a line is overlaid too');
+  assert.deepEqual(subsStatus(index(), 'kid', NOW, new Set(['top'])), { total: 1, needs: 0 }, 'a session above the chat is not counted');
+});
+
+test('a session working on a pull request that waits on the owner still counts as waiting on the owner, and an archived one is not counted at all', () => {
+  const ix = index();
+  assert.deepEqual(subsStatus(ix, 'top', NOW, new Set(['grand'])), { total: 3, needs: 2 });
+  ix.ungrouped[0].children.push(row('old', 'top', 'idle', MINUTE, { archived: true }));
+  assert.deepEqual(subsStatus(ix, 'top', NOW, new Set(['old'])), { total: 3, needs: 1 });
+  assert.equal(summaryLine(ix, 'top', NOW, new Set(['old'])), '3 sub sessions, 1 waiting on you, 1 working');
+});
+
+test('in a group\'s chat the sessions, their families and the roll-ups take the same overlay', () => {
+  const needs = new Set(['w1', 'w1a']);
+  const lines = linesOf(index(), WORK, NOW, needs);
+  assert.deepEqual(lines.map(n => [n.row.id, n.row.dot, n.subs.map(sub => sub.row.dot)]), [['w1', 'awaiting', ['awaiting']], ['w2', 'running', []]]);
+  assert.deepEqual(subsStatus(index(), WORK, NOW, needs), { total: 3, needs: 2 });
+  assert.equal(summaryLine(index(), WORK, NOW, needs), '3 sessions, 2 waiting on you, 1 working');
+  assert.deepEqual(subsStatus(index(), WORK, NOW, new Set(['w2'])), { total: 3, needs: 2 }, 'a working session of the group');
+  assert.deepEqual(partsOf(linesOf(index(), WORK, NOW, new Set(['w2'])), NOW).needs.map(n => n.row.id), ['w2', 'w1']);
+});
+
+test('leaving out the set, or giving an empty one, changes nothing', () => {
+  for (const id of ['top', 'kid', 'loner', WORK]) {
+    for (const none of [undefined, new Set()]) {
+      assert.deepEqual(subsStatus(index(), id, NOW, none), subsStatus(index(), id, NOW), id);
+      assert.equal(summaryLine(index(), id, NOW, none), summaryLine(index(), id, NOW), id);
+      assert.deepEqual(shape(linesOf(index(), id, NOW, none)), shape(linesOf(index(), id, NOW)), id);
+    }
+  }
+  const ix = index();
+  assert.equal(linesOf(ix, 'top', NOW, new Set())[0].row, ix.ungrouped[0].children[0], 'the rows are the index\'s own');
+});
