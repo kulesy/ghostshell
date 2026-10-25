@@ -366,4 +366,8 @@ test('the quiet part of a routine with no run says Off, when it last ran, or tha
   assert.equal(idleWords({ ...MORNING, enabled: false }, SUNDAY), 'Off');
   assert.equal(idleWords({ ...MORNING, enabled: false, lastRunAt: '2026-10-25T11:48:00+11:00' }, SUNDAY), 'Off');
   assert.equal(idleWords({ ...MORNING, lastRunAt: 'garbled' }, SUNDAY), "Hasn't run yet");
+  const failed = { ...MORNING, lastRunAt: '2026-10-25T11:48:00+11:00', lastError: 'Cannot read /tmp/gone.md.' };
+  assert.equal(idleWords(failed, SUNDAY), "Couldn't start 12 min ago");
+  assert.equal(idleWords({ ...failed, lastSessionId: 'abc' }, SUNDAY), 'Last run 12 min ago');
+  assert.equal(idleWords({ ...failed, enabled: false }, SUNDAY), 'Off');
 });

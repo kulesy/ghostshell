@@ -19,7 +19,7 @@ Either way, a run drops any frontmatter at the top of the file and sends the res
 
 The Routines page lists every routine, including those that have never run. Open it from the calendar button on Home's Routines heading, the Routines link in the footer, a routine's row menu, or the Routines chip in Ctrl+K. Each row shows the title, the schedule in words with the cron beside it, the next fire time and the last run, which opens its session. A routine that cannot run says why in red.
 
-Each row has a switch, Run now, and a menu with Edit and Delete. A routine's row on Home has Run now, Pause or Resume, Edit and Delete in its right-click and ... menus. A routine with no runs has the same menus there. Its row says "Hasn't run yet", "Last run" and how long ago if its runs were archived, or "Off" when it is paused.
+Each row has a switch, Run now, and a menu with Edit and Delete. A routine's row on Home has Run now, Pause or Resume, Edit and Delete in its right-click and ... menus. A routine with no runs has the same menus there. Its row says "Hasn't run yet", "Last run" and how long ago if its runs were archived, "Couldn't start" and how long ago if its last try failed, or "Off" when it is paused.
 
 ### Adding and editing
 

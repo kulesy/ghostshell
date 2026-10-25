@@ -268,9 +268,11 @@ export function ago(iso, now = Date.now()) {
   return `${d} ${MONTHS[mo - 1]}${y === new Date(now).getFullYear() ? '' : ` ${y}`}`;
 }
 
-// The quiet part of a routine's row in the sidebar: Off wins, then when it last ran, then that it has not.
+// The quiet part of a routine's row in the sidebar: Off wins, then when it last ran, then that it has not. A try that failed before
+// a session began sets the time too, so an error with no session is a start that failed.
 export function idleWords(r, now = Date.now()) {
   if (r.enabled !== true) return 'Off';
   const last = ago(r.lastRunAt, now);
-  return last ? `Last run ${last}` : "Hasn't run yet";
+  if (!last) return "Hasn't run yet";
+  return r.lastError && !r.lastSessionId ? `Couldn't start ${last}` : `Last run ${last}`;
 }

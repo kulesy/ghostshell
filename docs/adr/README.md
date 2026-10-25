@@ -40,5 +40,5 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-23 | [Run terminal commands on pipes with no PTY, and run `!` commands in GhostShell](20261023-terminal-without-a-pty.md) | Accepted |
 | 2026-10-23 | [Quote selected text into the prompt box, and send each quote as a blockquote](20261023-quote-selected-text.md) | Accepted |
 | 2026-10-23 | [Roll a session's sub session status up to every parent, from the transcripts, with no model calls](20261023-roll-sub-session-status-up.md) | Accepted |
-| 2026-10-24 | [Manage routines from a page, and keep the prompts GhostShell writes in its own folder](20261024-manage-routines-from-a-page.md) | Accepted |
-| 2026-10-25 | [Make GhostShell the only home for routines, with a prompt as its own text or a file at any full path](20261025-ghostshell-is-the-only-home-for-routines.md) | Accepted |
+| 2026-10-24 | [Manage routines from a page, and keep the prompts GhostShell writes in its own folder](20261024-manage-routines-from-a-page.md) | Partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) |
+| 2026-10-25 | [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) | Accepted |

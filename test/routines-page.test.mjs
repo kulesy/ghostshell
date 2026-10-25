@@ -398,6 +398,30 @@ test('switching a routine on a file elsewhere to GhostShell\'s own text fills th
   assert.deepEqual(page.problems, []);
 });
 
+test('a text routine whose prompt cannot be read shows that beside the text, and choosing a prompt file or typing a prompt leaves it behind', { skip, timeout }, async t => {
+  const own = path.join(app.state, 'routines', 'alpha.md');
+  const kept = fs.readFileSync(own);
+  fs.unlinkSync(own);
+  try {
+    const page = await appPage(t, app.origin, { hash: '#/routines/alpha' });
+    await page.until(`!!document.querySelector('#routine-form') && document.querySelector('#routine-title')?.value === 'Alpha check' && !!document.querySelector('#routine-prompt')`);
+    assert.match(await text(page, '#routine-prompt-error'), /Cannot read .*alpha\.md/);
+    await press(page, '#routine-kind-file');
+    await page.until(`!!document.querySelector('#routine-file')`);
+    await type(page, '#routine-file', path.join(app.prompts, 'weekly.md'));
+    assert.equal(await text(page, '#routine-file-error'), '');
+    assert.equal(await page.evaluate(`document.querySelector('#routine-file').getAttribute('aria-invalid')`), null);
+    await press(page, '#routine-kind-text');
+    await page.until(`!!document.querySelector('#routine-prompt')`);
+    assert.match(await text(page, '#routine-prompt-error'), /Cannot read/);
+    await type(page, '#routine-prompt', 'Read the notes again.');
+    assert.equal(await text(page, '#routine-prompt-error'), '');
+    assert.deepEqual(page.problems, []);
+  } finally {
+    fs.writeFileSync(own, kept);
+  }
+});
+
 test('Delete in the form asks first and takes the page back to the list without the routine', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { hash: '#/routines/evening-look' });
   await page.until(`document.querySelector('#routine-title')?.value === 'Evening look'`);

@@ -1093,6 +1093,41 @@ test('a hand-edited prompt file path with a double quote or a line break is expl
   }
 });
 
+test('a hand-added id the routes refuse is explained and never run', async () => {
+  for (const bad of ['daily scrum', 'a"b']) {
+    const r = rig();
+    put(r.state, [fixture(r.file, r.state, { id: bad, enabled: true, armedAt: localIso(T0) })]);
+    const problem = 'The id can only hold letters, digits, dashes and underscores.';
+    assert.equal(r.sched.list().routines[0].problem, problem, JSON.stringify(bad));
+    await r.tickAt(FRIDAY + 3000);
+    assert.equal(r.calls.length, 0);
+    assert.equal(r.store.read().routines[0].lastError, problem);
+  }
+});
+
+test('a path into the prompt folder that differs only in case is the prompt folder where the disk ignores case', () => {
+  const r = rig({ enabled: false });
+  fs.mkdirSync(promptsOf(r), { recursive: true });
+  const own = path.join(promptsOf(r), 'inside.md');
+  fs.writeFileSync(own, 'x');
+  const variant = path.join(r.state, 'ROUTINES', 'inside.md');
+  const caseBlind = fs.existsSync(variant);
+  assert.equal(r.store.inPromptFolder(variant), caseBlind);
+  assert.throws(() => r.sched.add({ ...MORNING_FILELESS, cwd: r.state, file: variant }), e => refused(400, ['file'])(e) && e.problems.file === (caseBlind ? "That file is in GhostShell's own prompt folder. Choose GhostShell's own text instead." : `Cannot read ${variant}.`));
+});
+
+test('an add that fails after the checks leaves a prompt file elsewhere in place and removes only the text GhostShell wrote', () => {
+  const r = rig({ enabled: false });
+  const file = outsideFile();
+  const before = snap(file);
+  r.store.add = () => { throw new Error('disk full'); };
+  assert.throws(() => r.sched.add({ ...MORNING_FILELESS, cwd: r.state, file }), /disk full/);
+  assert.deepEqual(snap(file), before);
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state }), /disk full/);
+  assert.deepEqual(fs.readdirSync(promptsOf(r)), []);
+  assert.deepEqual(snap(file), before);
+});
+
 test('editing the prompt of a routine on a file elsewhere copies it to GhostShell\'s folder and leaves that file as it was', async () => {
   const r = rig({ enabled: false });
   const old = new Date(2026, 5, 1, 12);

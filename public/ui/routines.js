@@ -359,8 +359,9 @@ function RoutineForm({ id, ix, routines, error, refresh }) {
   const cronError = refused('cron') || (cron.trim() && jitter !== null ? preview.problem : '');
   const jitterError = refused('jitterSeconds') || (jitter === null ? JITTER_PROBLEM : '');
   const fileMode = files && form.promptKind === 'file';
-  const textError = refused('prompt') || (fileMode ? '' : prompt.error || '');
-  const fileError = refused('file') || (fileMode ? prompt.error || '' : '');
+  const loadedError = !files || (fileMode ? was?.kind === 'file' && form.file === was.file : was?.kind === 'text' && form.prompt === was.prompt);
+  const textError = refused('prompt') || (!fileMode && loadedError ? prompt.error || '' : '');
+  const fileError = refused('file') || (fileMode && loadedError ? prompt.error || '' : '');
   const now = Date.now();
 
   return page(html`<form class="routine-form" noValidate onSubmit=${save}>
