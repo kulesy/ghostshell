@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import { findChromium, launch, notFound } from './browser.mjs';
-import { PASSWORD, start } from './harness.mjs';
+import { as, PASSWORD, request, signIn, start } from './harness.mjs';
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 const GROUPS = [
@@ -224,7 +224,7 @@ test('Rename puts a box with the name in place of the header, and Enter saves it
   await rightClick(page, 'Backlog');
   await choose(page, 'Rename');
   await page.until(`document.activeElement.matches('.bar > .name-form .input')`);
-  assert.deepEqual(await page.evaluate(`[document.activeElement.getAttribute('aria-label'), document.activeElement.value, document.activeElement.maxLength, document.querySelectorAll('.bar[data-handle="cg-b"]').length]`), ['Rename group', 'Backlog', 80, 0]);
+  assert.deepEqual(await page.evaluate(`[document.activeElement.getAttribute('aria-label'), document.activeElement.value, document.activeElement.maxLength, document.querySelectorAll('.bar[data-handle="cg-b"]').length, getComputedStyle(document.activeElement).userSelect]`), ['Rename group', 'Backlog', 80, 0, 'text']);
   await page.press('Escape');
   await page.until(`!document.querySelector('.name-form')`);
   await page.until(`${FOCUSED} === 'Backlog'`);
@@ -257,6 +257,44 @@ test('a name the server refuses keeps the box open and the old name', { skip, ti
   assert.equal(await page.evaluate(`!!document.querySelector('.bar > .name-form')`), true);
   assert.equal(onDisk(s).groups[2].name, 'Notes');
   assert.deepEqual(page.problems.filter(p => !/400/.test(p)), []);
+});
+
+const startRename = async (page, name) => {
+  await rightClick(page, name);
+  await choose(page, 'Rename');
+  await page.until(`document.activeElement.matches('.bar > .name-form .input')`);
+};
+const typeName = (page, value) => page.evaluate(`(input => { input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event('input', { bubbles: true })); })(document.activeElement)`);
+
+test('clicking away from the rename box saves the name, with the focus left where the click put it', { skip, timeout }, async t => {
+  const s = await furnished();
+  const page = await appPage(t, s.origin);
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
+  await startRename(page, 'Notes');
+  await typeName(page, 'Scratch');
+  await page.evaluate(`document.querySelector('.btn.add').focus()`);
+  await page.until(`!document.querySelector('.name-form')`);
+  assert.deepEqual(await names(page), ['Reviewing', 'Backlog', 'Scratch']);
+  assert.equal(onDisk(s).groups[2].name, 'Scratch');
+  assert.equal(await page.evaluate(`document.activeElement.classList.contains('add')`), true);
+  assert.deepEqual(page.problems, []);
+});
+
+test('the rename box closes when its group is gone after a reload, and when the view changes', { skip, timeout }, async t => {
+  const s = await furnished();
+  const page = await appPage(t, s.origin);
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
+  await startRename(page, 'Notes');
+  const gone = await request(s, 'POST', '/api/layout/group/remove', { headers: as((await signIn(s)).token), json: { id: 'cg-c' } });
+  assert.equal(gone.status, 200);
+  await page.evaluate(`document.dispatchEvent(new Event('visibilitychange'))`);
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 2 && !document.querySelector('.name-form')`);
+
+  await startRename(page, 'Backlog');
+  await page.evaluate(`location.hash = '#/g/cg-p1'`);
+  await page.until(`!document.querySelector('.name-form')`);
+  assert.deepEqual(await names(page), ['Inside one', 'Inside two']);
+  assert.deepEqual(page.problems, []);
 });
 
 test('on a phone the button is there to touch without a hover, and opens the menu', { skip, timeout }, async t => {

@@ -1009,6 +1009,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .rail .name-form { --name-height: 2rem; }
 
 .name-form .input {
+  -webkit-user-select: text;
+  user-select: text;
   display: block;
   height: var(--name-height);
   padding: 0 calc(var(--row-pad) - 1px);

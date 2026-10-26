@@ -91,7 +91,7 @@ The dots at the end of a group's header always open its menu, and so do a right 
 - Move up and Move down put the group above or below the next one in the view.
 - Delete group asks first, with Cancel focused. Its sessions become ungrouped, its chat is hidden with its transcript kept, and no session is deleted.
 
-A group's chat is told the group's name when its session starts, and keeps that name after a rename, so it may still call the group by the old one. See [Give each group a session of its own](adr/20261023-a-session-for-each-group.md).
+A group's chat is told the group's name when its session starts, and its system prompt keeps that name after a rename. Its guide says so, and its tools (`list_group_sessions`, `start_group_session`) carry the current name, so it learns the new name when it uses one. See [Give each group a session of its own](adr/20261023-a-session-for-each-group.md).
 
 ## Nested sessions
 

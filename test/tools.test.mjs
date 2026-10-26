@@ -310,3 +310,8 @@ test('the group guide names every group tool and the rules the owner set, fills 
   assert.equal(guideFor('Work $& {{group}}').includes('Work $& {{group}}'), true, 'a name is put in as it is');
   assert.doesNotMatch(guideFor('Work'), /\{\{group\}\}/);
 });
+
+test('a group\'s guide says the owner can rename it and that the name list_group_sessions opens with wins, and a section\'s guide says neither', () => {
+  assert.match(guideFor('Work'), /^The owner can rename this group, so the name in this prompt may be out of date\. The name list_group_sessions opens with is current, and wins over it\.$/m);
+  for (const id of ['pinned', 'routines', 'started']) assert.doesNotMatch(guideFor('x', id), /can rename this group|\[group\]/, id);
+});

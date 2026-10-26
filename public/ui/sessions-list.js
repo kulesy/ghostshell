@@ -876,9 +876,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   // Where a carried header would land among the groups of the view, from where they are drawn now.
   latestSlot.current = (x, y, id) => {
     if (!supportsGroupEdits(ix)) return null;
-    const order = groupsIn(ix, view).map(g => g.id);
-    const bars = order.map(gid => box.current.querySelector(`.bar[data-handle="${CSS.escape(gid)}"]`));
-    if (!bars.length || bars.some(bar => !bar)) return null;
+    const all = groupsIn(ix, view).map(g => [g.id, box.current.querySelector(`.bar[data-handle="${CSS.escape(g.id)}"]`)]);
+    const order = all.filter(([, bar]) => bar).map(([gid]) => gid);
+    const bars = all.map(([, bar]) => bar).filter(Boolean);
+    if (all.length - bars.length > 1 || !bars.length) return null;
     const list = box.current.getBoundingClientRect();
     const mids = Object.fromEntries(order.map((gid, n) => { const r = bars[n].getBoundingClientRect(); return [gid, r.top + r.height / 2]; }));
     const area = { left: list.left, right: list.right, top: bars[0].closest('.group').getBoundingClientRect().top, bottom: bars.at(-1).closest('.group').getBoundingClientRect().bottom };
