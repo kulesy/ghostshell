@@ -54,6 +54,7 @@ const freePort = () => new Promise(resolve => {
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
 // 'ask to list the group' or 'ask to list the subs' it asks to use the tool of that name. The log has the folder it started in, and the reply to each such request as `mcp`.
+// `autoTitle` turns on naming sessions from their first turn, which is off in the tests unless they ask, since the fake CLI would be asked as well.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
 // edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
 // `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
@@ -150,7 +151,13 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "if (namedId && transcriptOf(namedId)) { process.stderr.write(`Error: Session ID ${namedId} is already in use.\\n`); process.exit(1); }",
     "const held = [];",
     "let begun = false;",
-    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    // A title ask is a one-shot process with plain text on stdin and a JSON answer. It answers 'Fake - generated title' and logs what it was sent as `titled`.
+    "const titling = process.argv[process.argv.indexOf('--output-format') + 1] === 'json';",
+    "if (titling) {",
+    "  let asked = '';",
+    "  process.stdin.on('data', d => { asked += d; }).on('end', () => { note({ titled: asked }); say({ type: 'result', result: 'Fake - generated title', is_error: false }); process.exit(0); });",
+    "}",
+    "if (!titling) readline.createInterface({ input: process.stdin }).on('line', line => {",
     "  try {",
     "    const m = JSON.parse(line);",
     "    if (begun) held.splice(0).forEach(say);",
@@ -238,13 +245,13 @@ export async function start(mac) {
   const state = path.join(home, 'state');
   fs.mkdirSync(state);
   writePassword(state, PASSWORD);
-  const made = mac ? { ...furnish(home, state, mac), ...(mac.gh && furnishGh(home, mac.gh)) } : {};
+  const made = mac ? { ...furnish(home, state, mac), ...(mac.gh && furnishGh(home, mac.gh)), autoTitle: !!mac.autoTitle } : {};
   return launch(home, state, made);
 }
 
 async function launch(home, state, made) {
   const port = await freePort();
-  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, ...(made.cli && { CAPCOM_CLAUDE: made.cli }), ...(made.gh && { CAPCOM_GH: made.gh }) };
+  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, CAPCOM_AUTO_TITLE: made.autoTitle ? '1' : '0', ...(made.cli && { CAPCOM_CLAUDE: made.cli }), ...(made.gh && { CAPCOM_GH: made.gh }) };
   const child = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });

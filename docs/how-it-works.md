@@ -43,6 +43,8 @@ You can change the mode, model, effort and fast mode per chat from the [prompt b
 
 Sessions started in GhostShell stay in GhostShell, under "Started here", and do not appear in Desktop's sidebar.
 
+Each new session gets a short title in GhostShell's own layout: its chip's title when it has one, otherwise one a small Haiku 5.5 call writes after the first reply (see [naming a new session](session-list.md#naming-a-new-session)).
+
 With `desktopHandoff` set to `true` (see [configuration](configuration.md#desktophandoff)), GhostShell hands each new session to Desktop when its first reply finishes. It stops its own process for the session, adds a title to the transcript, and opens Desktop's hand-off link (`claude://resume?session=<id>`). Desktop adds the session to its sidebar and switches its window to it. The next message sent from GhostShell starts the process again.
 
 ## A session open in both apps
