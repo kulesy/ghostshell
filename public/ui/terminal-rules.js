@@ -98,10 +98,11 @@ export function widthByKey(key, shift, width, sessionWidth) {
   return next === undefined ? null : clampWidth(next, sessionWidth);
 }
 
-export const TAB_LABEL = { subs: 'Sub sessions', terminal: 'Terminal', file: 'File' };
+export const TAB_LABEL = { subs: 'Sub sessions', agents: 'Subagents', terminal: 'Terminal', file: 'File' };
 
-// The tabs a panel offers, Sub sessions first: it when the chat has sub sessions to show, the terminal when the server has one, and the file while one is open.
-export const panelTabs = ({ subs, terminal, file }) => [...(subs ? ['subs'] : []), ...(terminal ? ['terminal'] : []), ...(file ? ['file'] : [])];
+// The tabs a panel offers, Sub sessions first: it when the chat has sub sessions to show, Subagents when it has had helpers, the terminal when
+// the server has one, and the file while one is open.
+export const panelTabs = ({ subs, agents, terminal, file }) => [...(subs ? ['subs'] : []), ...(agents ? ['agents'] : []), ...(terminal ? ['terminal'] : []), ...(file ? ['file'] : [])];
 
 // What names the panel to a screen reader: the tabs it holds, as "Sub sessions, terminal and file".
 export function panelName(tabs) {

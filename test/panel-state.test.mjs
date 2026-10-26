@@ -5,12 +5,12 @@ import { CLOSED, closeQuietly, hidePanel, openQuietly, panelNow, panelOf, panels
 
 const now = id => panelOf(panels.get(), id);
 
-test('a saved panel is kept on the sub sessions, terminal or file tab and on no other', () => {
+test('a saved panel is kept on the sub sessions, subagents, terminal or file tab and on no other', () => {
   const kept = valid({
-    a: { open: true, tab: 'subs' }, b: { open: false, tab: 'terminal' }, c: { open: true, tab: 'file' },
+    h: { open: true, tab: 'agents' }, a: { open: true, tab: 'subs' }, b: { open: false, tab: 'terminal' }, c: { open: true, tab: 'file' },
     d: { open: true, tab: 'map' }, e: { open: 'yes', tab: 'subs' }, f: null, g: { tab: 'subs' },
   });
-  assert.deepEqual(kept, { a: { open: true, tab: 'subs' }, b: { open: false, tab: 'terminal' }, c: { open: true, tab: 'file' } });
+  assert.deepEqual(kept, { h: { open: true, tab: 'agents' }, a: { open: true, tab: 'subs' }, b: { open: false, tab: 'terminal' }, c: { open: true, tab: 'file' } });
   assert.deepEqual(valid(null), {});
   assert.deepEqual(valid('subs'), {});
 });

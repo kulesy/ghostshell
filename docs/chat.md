@@ -94,6 +94,10 @@ A prompt from another app, or one that comes more than 10 minutes after the turn
 
 Tool calls are collapsed into one row for each run between Claude's messages, such as "Read 3 files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every call. A thought among the calls folds into the row, as in "Thought, ran 2 commands".
 
+### Subagents
+
+A chat that has started helpers with the Agent tool gets a Subagents tab in its side panel, between Sub sessions and Terminal. It lists each helper with its type, state and latest action, and opens one to its recent steps and reply. [Session list](session-list.md#subagents) has the detail.
+
 ### Pictures from tools
 
 A call that returned pictures to Claude, such as a screenshot, shows them as thumbnails under its row, and under the group's row while the group is folded, so they need no tap to see. A row shows up to four. When there are more, the fourth thumbnail is dimmed with a count such as "+7" for the pictures that have no thumbnail of their own, and a click on it opens the viewer at that picture. Each thumbnail opens the [viewer](attachments.md#the-image-viewer).

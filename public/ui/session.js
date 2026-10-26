@@ -6,6 +6,7 @@ import { HOME } from './env.js';
 import { leadingMentions } from './files.js';
 import { payload } from './images.js';
 import { createStore } from './store.js';
+import { heardAgents } from './subagent-rules.js';
 import { createTerminal } from './terminal-state.js';
 import { absorb, prepend } from './thread.js';
 
@@ -56,7 +57,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
-    live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
+    live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, agents: null, holdsEnded: endedByChat.get(id) || [],
     group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     jump: 0, earlierSeq: 0, context: null,
@@ -133,6 +134,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     // A turn that begins here reloads the list, so its row's time starts with this line. The state cannot tell, as send() sets it first.
     on('work', d => { const begun = d && d.startedAt !== state().work?.startedAt; store.set(s => ({ work: d, turnStart: s.work ? Math.min(s.turnStart, began(d)) : began(d) })); if (begun) refreshIndex(); });
     // Another app's turn beginning or ending reloads the list, so the row's time keeps up with this line.
+    on('subagents', d => store.set(s => ({ agents: heardAgents(s.agents, d?.agents) })));
     on('outside', d => { const turned = (d?.startedAt ?? null) !== (state().outside?.startedAt ?? null); store.set(s => ({ outside: d, outsideStart: !d ? 0 : s.outside?.startedAt === d.startedAt ? Math.min(s.outsideStart, began(d)) : began(d) })); if (turned) refreshIndex(); });
     on('changed', () => { fetchNew(); refreshContext(); });
     on('approval', p => store.set(s => ({ status: { ...s.status, pending: [...(s.status?.pending || []).filter(x => x.requestId !== p.requestId), p] } })));

@@ -399,6 +399,10 @@ test('the panel offers the sub sessions first, the terminal when the server has 
   assert.deepEqual(panelTabs({ terminal: true, file: false }), ['terminal']);
   assert.deepEqual(panelTabs({ terminal: false, file: true }), ['file']);
   assert.deepEqual(panelTabs({ terminal: false, file: false }), []);
+  assert.deepEqual(panelTabs({ subs: true, agents: true, terminal: true, file: true }), ['subs', 'agents', 'terminal', 'file'], 'Subagents sit between the sub sessions and the terminal');
+  assert.deepEqual(panelTabs({ agents: true, terminal: true }), ['agents', 'terminal']);
+  assert.deepEqual(panelTabs({ agents: true }), ['agents']);
+  assert.deepEqual(panelTabs({ agents: false, terminal: true }), ['terminal'], 'a chat with no helper has no tab');
   assert.equal(tabShown('file', ['terminal', 'file']), 'file');
   assert.equal(tabShown('file', ['terminal']), 'terminal', 'a closed file leaves the terminal');
   assert.equal(tabShown('terminal', ['file']), 'file');
@@ -412,6 +416,8 @@ test('the panel is named for the tabs it holds', () => {
   assert.equal(panelName(['subs', 'terminal']), 'Sub sessions and terminal');
   assert.equal(panelName(['terminal', 'file']), 'Terminal and file');
   assert.equal(panelName(['subs']), 'Sub sessions');
+  assert.equal(panelName(['subs', 'agents', 'terminal']), 'Sub sessions, subagents and terminal');
+  assert.equal(panelName(['agents']), 'Subagents');
   assert.equal(panelName(['file']), 'File');
   assert.equal(panelName([]), '');
 });
@@ -443,6 +449,10 @@ test('the arrows move between tabs and wrap, Home and End go to the ends, and an
   assert.equal(tabByKey('End', 'terminal', tabs), 'file');
   assert.equal(tabByKey('Enter', 'terminal', tabs), null);
   assert.equal(tabByKey('ArrowRight', 'gone', tabs), null);
+  const four = ['subs', 'agents', 'terminal', 'file'];
+  assert.deepEqual(four.map(tab => tabByKey('ArrowRight', tab, four)), ['agents', 'terminal', 'file', 'subs'], 'Subagents are one step from each neighbour');
+  assert.equal(tabByKey('ArrowLeft', 'terminal', four), 'agents');
+  assert.equal(opensByDefault({ saved: false, offered: false, mode: 'side' }), false, 'helpers alone never open the panel');
 });
 
 test('a run is running, stopped, ok on exit 0, or failed, and its footer says how long and what became of its result', () => {

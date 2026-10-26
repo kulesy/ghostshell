@@ -147,6 +147,23 @@ This covers the pull requests of the GitHub account `gh` is signed in as, and re
 
 The route is `GET api/pulls?ids=a,b,c`, with 1 to 60 session ids, signed in like the others. It answers `{ pulls: { <id>: [...] }, settling }` with up to 5 pull requests for each session, in the order the session names them. Each has its address, repository, number, state (`open`, `draft`, `merged` or `closed`), whether you wrote it, whether your review is asked, the review decision, the state of its checks, whether it has conflicts, and how many review threads are unresolved. `settling` is true while some are still being read. A pull request GitHub could not show is left out. `GET api/sessions` lists `pullStatus` in its `features`. [The decision record](adr/20261026-show-pull-request-status-on-session-cards.md) says why the server asks `gh`.
 
+### Subagents
+
+A chat that has started helpers with the Agent tool has a Subagents tab in its side panel, after Sub sessions and ahead of Terminal and File. A helper is not a sub session: it has no chat of its own and cannot be messaged, so it is listed here and not in Sub sessions. A chat that never started one has no tab. The panel does not open by itself for helpers. Open it with the Terminal or Sub sessions button in the chat's header and pick the tab. A chat with neither button gets a Subagents button of its own, so a phone can still reach the panel.
+
+The tab starts with a line such as "2 running, 5 finished". The helpers still running come first under Running, the newest start first. The finished ones sit in a fold called Finished, which is closed until you open it, the newest end first. Each helper is a card with:
+
+- its type as a badge, such as Explore or general-purpose, and its description as the title.
+- its state in words: Running, Done, Stopped or Failed. Stopped means its app quit while it ran.
+- its model in short form, such as Sonnet 5.5, and how long it has run, such as 12s, 3m 04s or 1h 02m. A model GhostShell cannot read shows as it came, and a helper with no model yet shows none.
+- its latest action in a few words, such as "Read lib/work.mjs", with a lamp that is lit while it runs and red when it failed. A failed helper shows its error there.
+
+A card is a button. It opens in place to the helper's last 40 steps, each with the time it happened, and once the helper has ended, its reply. The reply is read-only. GhostShell asks for the steps when you open a card, and again every 3 seconds while the helper runs and the tab is on show.
+
+The list comes from the folder the CLI writes beside each transcript, so it covers chats that other apps run and survives a restart. The server pushes it on the chat's event stream when a helper starts, ends or moves to a new action. The running time counts on the page's own clock from the time the server reports, so a Mac and a phone with different clocks agree.
+
+It does not cover the full transcript of a helper, helpers started by helpers, helpers a workflow runs, tokens or cost. You cannot stop or message a helper from here. A server that started before this feature offers no tab. [The decision record](adr/20261026-subagents-in-the-side-panel.md) has the detail.
+
 ### Taking a session out
 
 Drop a nested session on a section, the indent beside its family included, or move or pin it from its menu, and it leaves its parent and goes there. Move out of in its menu takes it out, and it stays in its parent's group or in Pinned. A parent in neither sends it to the list for where it started: Started here, Ungrouped or Terminal and other.

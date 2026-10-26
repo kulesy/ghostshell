@@ -9,7 +9,7 @@ const KEPT = 100;
 
 export const CLOSED = Object.freeze({ open: false, tab: 'terminal' });
 
-const TABS = ['subs', 'terminal', 'file'];
+const TABS = ['subs', 'agents', 'terminal', 'file'];
 
 export const valid = saved => Object.fromEntries(Object.entries(saved && typeof saved === 'object' ? saved : {})
   .filter(([, v]) => v && typeof v.open === 'boolean' && TABS.includes(v.tab))

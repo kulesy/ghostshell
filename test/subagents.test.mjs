@@ -54,7 +54,7 @@ test('a helper still being written reads as running, with when it began, its mod
   const c = chat();
   assert.deepEqual(one(c, 'a1', { meta: { model: 'sonnet' } }), {
     id: 'a1', type: 'Explore', description: 'Find the thing', model: 'sonnet', state: 'running',
-    startedAt: NOW - 60 * SECOND, endedAt: null, action: 'Read lib/work.mjs',
+    startedAt: NOW - 60 * SECOND, endedAt: null, ms: 60 * SECOND, action: 'Read lib/work.mjs',
   });
 });
 
@@ -62,6 +62,7 @@ test('a helper whose meta file says finished is done, ended when its last entry 
   const c = chat();
   const a = one(c, 'a1', { meta: { finished: true }, quiet: 30 * SECOND, entries: [prompt('go', 90 * SECOND), reply([said('Found it.')], { before: 40 * SECOND, reason: null })] });
   assert.deepEqual([a.state, a.startedAt, a.endedAt, a.action], ['done', NOW - 90 * SECOND, NOW - 40 * SECOND, 'Found it.']);
+  assert.equal(a.ms, 50 * SECOND, 'the time it ran is worked out on the server, so the page needs no common clock');
 });
 
 test('a helper whose last reply ended the turn is done though its meta file never says finished, which two thirds of them do not', () => {
@@ -362,7 +363,7 @@ test('the detail route sends the shape the page reads', async () => {
     live(5 * SECOND, { type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-5-5', stop_reason: 'end_turn', content: [said('Tests pass.')] } }),
   ], { agentType: 'Explore', description: 'Run the checks', finished: true, model: 'sonnet' });
   const body = (await get(s, token, `/api/sessions/${SESSION}/subagents/a1`)).body();
-  assert.deepEqual(Object.keys(body).sort(), ['action', 'description', 'endedAt', 'id', 'model', 'reply', 'startedAt', 'state', 'steps', 'type']);
+  assert.deepEqual(Object.keys(body).sort(), ['action', 'description', 'endedAt', 'id', 'model', 'ms', 'reply', 'startedAt', 'state', 'steps', 'type']);
   assert.deepEqual([body.state, body.reply, body.model, body.description], ['done', 'Tests pass.', 'sonnet', 'Run the checks']);
   assert.deepEqual(body.steps.map(({ kind, label }) => [kind, label]), [['tool', 'Ran npm test'], ['text', 'Tests pass.']]);
   assert.ok(body.steps.every(x => Number.isFinite(x.at)));
@@ -376,7 +377,7 @@ test('a viewer hears of the helpers with the first status, and again only when a
   assert.deepEqual(viewer.events.map(e => e.type).slice(0, 2), ['status', 'subagents'], 'sent with the first status');
   const heard = () => viewer.events.filter(e => e.type === 'subagents');
   assert.deepEqual(heard()[0].data.agents.map(a => [a.id, a.state, a.action]), [['a1', 'running', 'Read a.mjs']]);
-  assert.deepEqual(Object.keys(heard()[0].data.agents[0]).sort(), ['action', 'description', 'endedAt', 'id', 'model', 'startedAt', 'state', 'type']);
+  assert.deepEqual(Object.keys(heard()[0].data.agents[0]).sort(), ['action', 'description', 'endedAt', 'id', 'model', 'ms', 'startedAt', 'state', 'type']);
 
   // The file is touched and the clock moves, and nothing the list shows has changed.
   fs.utimesSync(file, new Date(), new Date());
