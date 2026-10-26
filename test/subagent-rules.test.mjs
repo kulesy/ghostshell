@@ -102,9 +102,9 @@ test('running agents come first, the newest start first, then the rest, the newe
   assert.deepEqual(orderAgents([{ id: 'y', state: 'done', endedAt: 1 }, { id: 'x', state: 'done', endedAt: 1 }]).map(a => a.id), ['x', 'y']);
 });
 
-test('the key moves with ids, states and actions and not with the clock', () => {
+test('the key moves with ids, states, actions, type, description and model and not with the clock', () => {
   const a = { id: 'a', state: 'running', action: 'Read x', startedAt: 1, endedAt: null };
-  assert.equal(agentsKey([a]), agentsKey([{ ...a, startedAt: 2, endedAt: 9, model: 'm', type: 't' }]));
-  for (const change of [{ id: 'b' }, { state: 'done' }, { action: 'Ran y' }]) assert.notEqual(agentsKey([a]), agentsKey([{ ...a, ...change }]));
+  assert.equal(agentsKey([a]), agentsKey([{ ...a, startedAt: 2, endedAt: 9 }]));
+  for (const change of [{ id: 'b' }, { state: 'done' }, { action: 'Ran y' }, { type: 't' }, { description: 'd' }, { model: 'm' }]) assert.notEqual(agentsKey([a]), agentsKey([{ ...a, ...change }]));
   assert.notEqual(agentsKey([a]), agentsKey([]));
 });

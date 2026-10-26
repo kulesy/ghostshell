@@ -48,6 +48,15 @@ export function summaryLine(agents) {
   return [running.length && `${running.length} running`, finished.length && `${finished.length} finished`].filter(Boolean).join(', ');
 }
 
+// The ids that stopped running between two lists, which is when a card leaves the Running list for the Finished one.
+export function movedToFinished(before, agents) {
+  const was = new Set(known(before).filter(a => a.state === 'running').map(a => a.id));
+  return known(agents).filter(a => a.state !== 'running' && was.has(a.id)).map(a => a.id);
+}
+
+// The Finished fold has to be open when a card that was open or had focus has just moved into it, or the card would vanish from under the user.
+export const foldMustOpen = (moved, opened, focused) => moved.some(id => !!opened?.[id] || id === focused);
+
 export const finishedLabel = n => `Finished (${n})`;
 
 // "Sonnet 5.5" from claude-sonnet-5-5, "Haiku" from the alias, an id the page cannot read as it came, and nothing for no model.

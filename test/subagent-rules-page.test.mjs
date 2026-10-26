@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agentsOn, DETAIL_POLL_MS, elapsedOf, elapsedText, finishedLabel, heardAgents, metaOf, modelName, partsOf, pollsDetail, summaryLine, tabOffered, titleOf,
+  agentsOn, DETAIL_POLL_MS, elapsedOf, elapsedText, finishedLabel, foldMustOpen, heardAgents, metaOf, modelName, movedToFinished, partsOf, pollsDetail, summaryLine, tabOffered, titleOf,
 } from '../public/ui/subagent-rules.js';
 
 const NOW = Date.parse('2026-10-26T10:00:00.000Z');
@@ -106,4 +106,16 @@ test('an open helper is read again only while it runs and its tab is on show', (
   for (const state of ['done', 'stopped', 'failed']) assert.equal(pollsDetail({ open: true, active: true, state }), false, state);
   assert.equal(pollsDetail({ open: false, active: true, state: 'running' }), false);
   assert.equal(pollsDetail({ open: true, active: false, state: 'running' }), false);
+});
+
+test('a card that stops running is found, and the fold must open for it only when it was open or had focus', () => {
+  const before = [agent('a'), agent('b'), agent('c', { state: 'done' })];
+  const after = [agent('a', { state: 'done' }), agent('b'), agent('c', { state: 'done' }), agent('d', { state: 'failed' })];
+  const moved = movedToFinished(before, after);
+  assert.deepEqual(moved, ['a'], 'a card already finished, or new, did not move');
+  assert.deepEqual(movedToFinished(null, after), []);
+  assert.equal(foldMustOpen(moved, { a: true }, null), true, 'it was open');
+  assert.equal(foldMustOpen(moved, {}, 'a'), true, 'it had focus');
+  assert.equal(foldMustOpen(moved, { b: true }, 'b'), false, 'another card was open');
+  assert.equal(foldMustOpen([], { a: true }, 'a'), false);
 });

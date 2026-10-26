@@ -5,8 +5,8 @@ import { md } from '../md.mjs';
 import { api } from './api.js';
 import { chevron, enc } from './group-status.js';
 import { useClock, useStore } from './hooks.js';
-import { html, useEffect, useMemo, useState } from './html.js';
-import { DETAIL_POLL_MS, finishedLabel, LAMP, metaOf, partsOf, pollsDetail, summaryLine, titleOf } from './subagent-rules.js';
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
+import { DETAIL_POLL_MS, finishedLabel, foldMustOpen, LAMP, metaOf, movedToFinished, partsOf, pollsDetail, summaryLine, titleOf } from './subagent-rules.js';
 
 // Lucide's bot, as the tab draws it.
 export const BOT = ['M12 8V4H8', 'M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2', 'M2 14h2', 'M20 14h2', 'M15 13v2', 'M9 13v2'];
@@ -40,11 +40,11 @@ function Open({ chat, agent, active, id }) {
   </div>`;
 }
 
-function Card({ chat, agent, open, active, flip }) {
+function Card({ chat, agent, open, active, flip, focus }) {
   const body = `agent-${agent.id}`;
   const name = titleOf(agent);
-  return html`<li class=${open ? 'agent open' : 'agent'} data-state=${agent.state}>
-    <button class="agent-card" type="button" aria-expanded=${open} aria-controls=${open ? body : null} onClick=${() => flip(agent.id)}>
+  return html`<li class=${open ? 'agent open' : 'agent'} data-state=${agent.state} data-agent=${agent.id}>
+    <button class="agent-card" type="button" aria-expanded=${open} aria-controls=${open ? body : null} onClick=${() => flip(agent.id)} onFocus=${() => { focus.current = agent.id; }} onBlur=${e => { if (e.currentTarget.isConnected) focus.current = null; }}>
       <span class="agent-head"><span class="badge" data-variant="outline">${agent.type || 'Agent'}</span>${chevron()}</span>
       <span class="agent-title">${name}</span>
       <span class="agent-meta">${metaOf(agent).map((part, n) => html`${n ? html`<span aria-hidden="true"> · </span>` : null}<span class=${n ? undefined : 'agent-state'}>${part}</span>`)}</span>
@@ -55,7 +55,7 @@ function Card({ chat, agent, open, active, flip }) {
 }
 
 function Cards({ chat, agents, shared, label }) {
-  return html`<ul class="agent-list" aria-label=${label}>${agents.map(agent => html`<${Card} key=${agent.id} chat=${chat} agent=${agent} open=${!!shared.opened[agent.id]} active=${shared.active} flip=${shared.flip} />`)}</ul>`;
+  return html`<ul class="agent-list" aria-label=${label}>${agents.map(agent => html`<${Card} key=${agent.id} chat=${chat} agent=${agent} open=${!!shared.opened[agent.id]} active=${shared.active} flip=${shared.flip} focus=${shared.focus} />`)}</ul>`;
 }
 
 // `active` is whether the tab is on show, since the panel keeps its tabs mounted and a tab out of sight draws no clock and asks for nothing.
@@ -64,11 +64,29 @@ export function SubagentsTab({ ctrl, active }) {
   const [opened, setOpened] = useState({});
   const [fold, setFold] = useState(false);
   const { running, finished } = useMemo(() => partsOf(agents), [agents]);
+  const root = useRef(null);
+  const focus = useRef(null);
+  const before = useRef(null);
+  const lost = useRef(null);
+  // A card that changes state moves between lists and is drawn again, so its open state is kept here by id, the fold opens for it and focus returns to its button.
+  useLayoutEffect(() => {
+    const moved = movedToFinished(before.current, agents);
+    before.current = agents;
+    if (moved.length && foldMustOpen(moved, opened, focus.current)) setFold(true);
+    if (moved.includes(focus.current)) lost.current = focus.current;
+  }, [agents]);
+  useLayoutEffect(() => {
+    if (!lost.current) return;
+    const button = root.current?.querySelector(`[data-agent="${CSS.escape(lost.current)}"] .agent-card`);
+    if (!button) return;
+    button.focus();
+    lost.current = null;
+  }, [agents, fold]);
   useClock(active && running.length > 0);
   if (!agents?.length) return null;
-  const shared = { opened, active, flip: key => setOpened(all => ({ ...all, [key]: !all[key] })) };
+  const shared = { opened, active, focus, flip: key => setOpened(all => ({ ...all, [key]: !all[key] })) };
   const body = `agents-finished-${ctrl.id}`;
-  return html`<div class="subs agents">
+  return html`<div class="subs agents" ref=${root}>
     <p class="subs-sum">${summaryLine(agents)}</p>
     ${running.length ? html`<section class="status-part"><h3 class="status-heading">${`Running (${running.length})`}</h3><${Cards} chat=${ctrl.id} agents=${running} shared=${shared} label="Running subagents" /></section>` : null}
     ${finished.length ? html`<section class="status-part">

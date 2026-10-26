@@ -10,7 +10,8 @@ import { findChromium, launch, notFound } from './browser.mjs';
 import { PASSWORD, start } from './harness.mjs';
 
 const WITH = 'with-helpers';
-const SESSIONS = [{ id: WITH, title: 'Fans out', source: 'cli', ago: 1 }, { id: 'plain', title: 'Plain', source: 'cli', ago: 2 }];
+const MOVER = 'mover';
+const SESSIONS = [{ id: WITH, title: 'Fans out', source: 'cli', ago: 1 }, { id: 'plain', title: 'Plain', source: 'cli', ago: 2 }, { id: MOVER, title: 'Moves on', source: 'cli', ago: 3 }];
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const CWD = '/work/demo';
@@ -29,8 +30,8 @@ const call = (name, input, id) => ({ type: 'tool_use', id, name, input });
 const said = text => ({ type: 'text', text });
 
 // Writes one helper into the folder the CLI keeps beside the session's transcript.
-function helper(id, entries, meta) {
-  const dir = path.join(app.home, '.claude', 'projects', '-test-folder', WITH, 'subagents');
+function helper(id, entries, meta, session = WITH) {
+  const dir = path.join(app.home, '.claude', 'projects', '-test-folder', session, 'subagents');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, `agent-${id}.jsonl`), entries.map(e => `${JSON.stringify(e)}\n`).join(''));
   fs.writeFileSync(path.join(dir, `agent-${id}.meta.json`), JSON.stringify(meta));
@@ -67,6 +68,7 @@ before(async () => {
     reply([said('Found it in lib/status.mjs.\n\n- the key is built there')], 3 * MINUTE, { reason: 'end_turn' })], { agentType: 'general-purpose', description: 'Review the diff', model: 'claude-haiku-4-5-20251001', finished: true });
   helper('bad1', [prompt('Try it', 4 * MINUTE), reply([call('Bash', { command: 'npm test' }, 't1')], 3 * MINUTE),
     reply([said('API Error: 500 upstream failed')], 2 * MINUTE, { reason: 'stop_sequence', entry: { isApiErrorMessage: true, error: 'server_error' } })], { agentType: 'Plan', description: 'Plan the change', model: 'opus' });
+  helper('move1', [prompt('Look into it', 95 * SECOND), reply([call('Read', { file_path: `${CWD}/lib/work.mjs` }, 't1')], 2 * SECOND)], { agentType: 'Explore', description: 'Moves soon', model: 'sonnet' }, MOVER);
   older = await through(app, { leave: ['subagents'] });
   browser = await launch(chromium);
 });
@@ -226,5 +228,20 @@ test('a phone is shown the tab in the panel that covers the chat, and a card doe
   await page.tap('#tab-agents');
   await page.until(`!!document.querySelector('#pane-agents:not([hidden]) .agents .agent')`);
   assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth && document.querySelector('.agent').getBoundingClientRect().right <= innerWidth`), true);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a helper that is open and has focus keeps both when it ends and moves to the Finished fold', { skip, timeout }, async t => {
+  const page = await appPage(t, `#/s/${MOVER}`);
+  await agentsTab(page);
+  await page.click('.agent[data-state="running"] .agent-card');
+  await page.until(`!!document.querySelector('.agent[data-state="running"] .agent-steps')`);
+  await page.evaluate(`document.querySelector('.agent-card').focus()`);
+  const file = path.join(app.home, '.claude', 'projects', '-test-folder', MOVER, 'subagents', 'agent-move1.jsonl');
+  fs.appendFileSync(file, `${JSON.stringify(reply([said('All done here.')], 0, { reason: 'end_turn' }))}\n`);
+  await page.until(`!!document.querySelector('.agent[data-state="done"] .agent-card')`, 10_000);
+  await page.until(`document.activeElement === document.querySelector('.agent[data-state="done"] .agent-card')`);
+  assert.equal(await page.evaluate(`document.querySelector('.agents .status-fold').getAttribute('aria-expanded')`), 'true');
+  await page.until(`!!document.querySelector('.agent[data-state="done"] .agent-reply')`);
   assert.deepEqual(page.problems, []);
 });

@@ -184,6 +184,36 @@ test('padding between the first lines and the last is never read, and a repeat r
   assert.equal(more, 0);
 });
 
+test('the head is read in a 64 KB window when the meta file gives the model, and a later window reads only the bytes not yet read', () => {
+  const entries = [prompt('go', 90 * SECOND), ...Array.from({ length: 60 }, () => result(80 * SECOND, 'x'.repeat(4000))), reply([call('Bash', { command: 'npm test' })], { before: 5 * SECOND })];
+  const [withMeta, without] = [chat(), chat()];
+  const file = agent(withMeta, 'm1', { entries, meta: { model: 'sonnet' } });
+  agent(without, 'm2', { entries, meta: {} });
+  const size = fs.statSync(file).size;
+  assert.ok(size > 240 * 1024 && size < 256 * 1024, 'the first reply is past the 64 KB and 128 KB windows');
+  const [a, kept] = counted(() => reader().read(withMeta)[0]);
+  const [b, cold] = counted(() => reader().read(without)[0]);
+  assert.deepEqual([a.model, b.model], ['sonnet', 'claude-sonnet-5-5']);
+  assert.ok(cold - kept < size, `widening read ${cold - kept} bytes more than the 64 KB window, against ${size} in the file`);
+});
+
+test('a second detail call on an unchanged big file reads nothing, and a growing file is read again', () => {
+  const c = chat();
+  const filler = result(80 * SECOND, 'x'.repeat(4000));
+  const entries = [prompt('go', 90 * SECOND), ...Array.from({ length: 600 }, () => filler), reply([call('Bash', { command: 'npm test' })], { before: 5 * SECOND })];
+  const file = agent(c, 'a1', { entries });
+  assert.ok(fs.statSync(file).size > 2 * 1024 * 1024);
+  const r = reader();
+  const [first, bytes] = counted(() => r.detail(c, 'a1'));
+  assert.ok(bytes > 0);
+  const [again, more] = counted(() => r.detail(c, 'a1'));
+  assert.deepEqual(again, first);
+  assert.equal(more, 0);
+  fs.appendFileSync(file, lines([reply([call('Bash', { command: 'npm run lint' })], { before: SECOND })]));
+  touch(file, SECOND);
+  assert.equal(r.detail(c, 'a1').steps.at(-1).label, 'Ran npm run lint');
+});
+
 test('a last entry bigger than a tail chunk is still found, and the state comes from it', () => {
   const c = chat();
   const entries = [prompt('go', 90 * SECOND), reply([call('Read', { file_path: `${CWD}/big.mjs` })], { before: 20 * SECOND }), result(5 * SECOND, 'y'.repeat(1024 * 1024))];
