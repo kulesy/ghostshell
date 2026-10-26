@@ -9,6 +9,7 @@
     "set-password": "node bin/set-password.mjs",
     "build-app": "node bin/build-app.mjs",
     "install-agent": "node bin/install-agent.mjs",
+    "restart": "node bin/restart.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "engines": {

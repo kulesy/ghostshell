@@ -32,3 +32,26 @@ launchctl kickstart -k gui/$(id -u)/local.capcom
 ```
 
 Use `npm run install-agent -- --label com.example.capcom` for a different label. Run the installer again after you move the folder or change Node versions, because the plist stores both paths.
+
+## Restart the service
+
+A restart is only needed after a change to server-side code. Files under `public/` load from disk on each request, so a reload of the page is enough for those.
+
+```bash
+npm run restart
+```
+
+By default the command waits until no chat is running, then restarts the service once. It returns at once with exit code 0 and does the work in one background process, so a failure shows only in the log. This is because a chat that runs it is itself ended by the restart. Progress goes to `restart.log` in the state folder (`~/.config/capcom/` unless you changed `stateDir`), and a `restart.lock` file there stops a second restart starting while one is under way.
+
+1. `--now` restarts without waiting.
+2. `--wait <minutes>` sets how long to wait, 30 by default. When the time is up the worker restarts nothing, exits with an error and logs which chats were still running.
+3. `--label <name>` names the launchd job. By default it is the job that is running the server, found with `launchctl list`, and `local.capcom` when none is found.
+4. `--foreground` runs in the terminal you are in, without the background process.
+
+No chat is running when each chat process under the server is idle. A chat is idle when the last user or assistant entry in its transcript is an assistant message that ended its turn. A chat the user stopped, or one that ended on a limit or an API error, is idle too. A chat in the middle of a tool call, one waiting on a tool result, one with a new message, and one whose transcript cannot be read all count as running. So does a chat that started without a session id on its command line, unless its folder holds exactly one transcript written since it started. An idle chat's process can stay alive for a while, so a process that exists does not make a chat busy. The command checks twice, 5 seconds apart, right before it restarts. It cannot see background work that a chat started before ending its turn, such as a background agent or shell command, so check for that yourself first.
+
+A restart ends every running chat. Chats you resume afterwards come back on the default model and effort.
+
+The command refuses to restart a server that has been up for less than 60 seconds, even with `--now`, and says how long to wait. This limits repeated restarts to one a minute at most. It slows a loop down and does not stop one.
+
+Do not schedule restarts any other way. `launchctl submit` keeps its program alive and relaunches it each time it exits, so a submitted restart script restarts the service in a loop and ends every chat each time.
