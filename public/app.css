@@ -1899,6 +1899,24 @@ body.dragging .rows .more { opacity: 0; }
   text-wrap: balance;
 }
 
+.load-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: var(--chat-column);
+  margin: 1rem auto;
+  padding: 3rem 1.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.load-state p { margin: 0; }
+
+.load-spin { animation: spin 900ms linear infinite; }
+
 .earlier { display: flex; margin: 0 auto 1rem; }
 
 .items { list-style: none; margin: 0 auto; padding: 0; max-width: var(--chat-column); }
@@ -4217,7 +4235,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 
-  .btn.send[data-act="starting"] svg { animation: none; }
+  .btn.send[data-act="starting"] svg, .load-spin { animation: none; }
 
   .viewer, .viewer-note { animation: none; }
 }
