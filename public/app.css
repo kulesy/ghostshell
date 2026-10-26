@@ -1744,6 +1744,26 @@ body.dragging .rows .more { opacity: 0; }
   white-space: nowrap;
 }
 
+.chat-name { display: flex; align-items: center; min-width: 0; }
+
+.chat-name[data-rename] { min-height: 1.75rem; }
+
+.chat-name[data-rename] h2 { cursor: text; }
+
+.chat-name .name-form { flex: 1; min-width: 0; --name-height: 1.75rem; }
+
+.chat-name .name-form .input { box-sizing: border-box; height: 1.75rem; min-height: 0; padding-inline: 0.375rem; margin-left: -0.375rem; }
+
+.chat-rename { position: relative; flex: none; margin-left: 0.25rem; }
+
+.chat-rename::after { content: ""; position: absolute; inset: -0.625rem; }
+
+@media (min-width: 48rem) and (hover: hover) {
+  .chat-rename { opacity: 0; }
+
+  .chat-name:hover .chat-rename, .chat-name:focus-within .chat-rename { opacity: 1; }
+}
+
 .chat-meta {
   margin: 0;
   font: 400 0.75rem/1.35 var(--font-mono);

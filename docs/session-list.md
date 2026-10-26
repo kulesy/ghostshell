@@ -311,6 +311,8 @@ Projects and groups are renamed from their menus (see [A project's menu](#a-proj
 
 GhostShell keeps the title in `layout.json` and shows it in place of every other title, for any session, whichever app started it. It shows in GhostShell only: Desktop's records are read only and a terminal session's title belongs to the CLI, so Desktop and the terminal keep the titles they have. A group lists its sessions by the new title, and the search finds them by it.
 
+The open chat's title can be renamed in place too, which matters on a phone, where the list is hidden while a chat is open. A pencil sits beside the title: always shown on a touch screen, and on desktop shown when the pointer or the focus is on the title. Clicking the title does the same. A box with the title selected replaces it, and Enter saves, Esc cancels and clicking away saves, as in the list. A session's title runs to 120 characters and a group's name to 80. The list, the page title, the Sub sessions tab and the search show the new name at once. A built-in section's chat has no pencil, and neither does a group's chat against a server that cannot rename groups. A chat that is not yet a session, such as a new one, has none either.
+
 With `desktopHandoff` set to `true`, a session renamed here before it is handed to Desktop takes its GhostShell title with it (see [sessions started here](how-it-works.md#sessions-started-here)).
 
 ## Keyboard in the list

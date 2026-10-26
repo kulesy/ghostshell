@@ -4,9 +4,10 @@ import { copyText } from './clipboard.js';
 import { Composer } from './composer.js';
 import { HOME } from './env.js';
 import { folderName, settingsLine } from './format.js';
+import { NameForm } from './forms.js';
 import { Holds } from './holds.js';
 import { useDocumentTitle, useFields, useStore } from './hooks.js';
-import { html, memo, useCallback, useEffect, useLayoutEffect, useRef } from './html.js';
+import { html, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
 import { Panel, useShownTab } from './panel.js';
 import { toggleTab } from './panel-state.js';
@@ -65,8 +66,12 @@ function startOutside() {
   document.getElementById('text')?.focus();
 }
 
-// `kind` names the chat in place of its folder and branch, as a group's session does.
-function ChatHead({ ctrl, kind }) {
+// `kind` names the chat in place of its folder and branch, as a group's session does. `rename` is { label, max, save(text) } when the title
+// can be renamed here, and `save` resolves { problem }.
+function ChatHead({ ctrl, kind, rename }) {
+  const [renaming, setRenaming] = useState(false);
+  const pencil = useRef(null);
+  const refocus = useRef(false);
   const { session, status, outside, terminal, group } = useFields(ctrl.store, 'session', 'status', 'outside', 'terminal', 'group');
   const draft = !!ctrl.draft;
   const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? null : null));
@@ -77,11 +82,30 @@ function ChatHead({ ctrl, kind }) {
   const meta = draft
     ? 'Starts Claude Code in your home folder'
     : session ? [...place, settingsLine(status)].filter(Boolean).join('  ') : '';
+  const title = draft ? 'New session' : session?.title || 'Session';
+  const renamable = !!rename && !draft && !!session;
+  useLayoutEffect(() => { if (!renamable) setRenaming(false); }, [renamable]);
+  useLayoutEffect(() => {
+    if (!renaming && refocus.current) pencil.current?.focus({ preventScroll: true });
+    refocus.current = false;
+  }, [renaming]);
+  const close = away => { refocus.current = !away; setRenaming(false); };
+  const save = async (text, away) => {
+    const { problem } = await rename.save(text);
+    if (problem) toast(problem, { problem: true });
+    else close(away);
+    return !problem;
+  };
   const lamp = html`<span class="lamp" id="chatLamp" data-state=${state === 'idle' && outside ? 'working' : state} aria-hidden="true"></span>`;
   return html`<header class="chat-head">
     <${Back} />
     <div class="chat-title">
-      <h2 id="title">${draft ? 'New session' : session?.title || 'Session'}</h2>
+      <div class="chat-name" data-rename=${renamable || null}>
+        ${renaming
+          ? html`<${NameForm} label=${rename.label} value=${title} max=${rename.max} onCancel=${close} onSubmit=${save} />`
+          : html`<h2 id="title" onClick=${renamable ? () => setRenaming(true) : null}>${title}</h2>
+            ${renamable ? html`<button class="btn chat-rename" type="button" data-variant="ghost" data-size="icon-xs" ref=${pencil} aria-label=${rename.label} data-tip=${rename.label} onClick=${() => setRenaming(true)}>${draw(icons.pencil, 'icon')}</button>` : null}`}
+      </div>
       <p class="chat-meta" id="meta">${meta}</p>
       ${draft && groupName ? html`<span class="start-group">${draw(icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${`Start outside ${groupName}`} data-tip="Start outside the group" onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>
@@ -115,9 +139,10 @@ function Notice({ ctrl }) {
 // fresh copy of the list never redraws the chat. Only `title`, which is passed apart, is followed, so a rename in the list reaches
 // the header and the page title. The list's title wins over the chat's own, including one from a first page of messages that left
 // the server before the rename.
+// `rename` is what the header's pencil renames with, from chat-rename.js, or null for a chat that cannot be renamed there.
 // `meta` stands in the header for the folder and branch, and `aside` is drawn between the header and the transcript. `aside` must be
 // one element that follows a store of its own, because a new element on each render would redraw the whole chat.
-export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside, group = null }) {
+export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside, group = null, rename }) {
   const held = useRef(null);
   const pane = useRef(null);
   if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex, toast });
@@ -137,7 +162,7 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     if (title && session && session.title !== title) ctrl.store.set({ session: { ...session, title } });
   }, [ctrl, title, named]);
   return html`<section class="session" id="session" ref=${pane} data-terminal=${terminal ? '' : undefined} onClick=${onBlock}>
-    <${ChatHead} ctrl=${ctrl} kind=${meta} />
+    <${ChatHead} ctrl=${ctrl} kind=${meta} rename=${rename} />
     ${aside}
     <${Transcript} ctrl=${ctrl} quoting=${quoting} />
     <div class="dock">
@@ -150,4 +175,4 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     <${Panel} ctrl=${ctrl} />
     <${PanelKeys} ctrl=${ctrl} />
   </section>`;
-}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside && a.group === b.group);
+}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside && a.group === b.group && a.rename === b.rename);

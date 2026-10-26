@@ -114,7 +114,7 @@ A message to another chat reads "to name: summary" and counts as "sent 2 message
 
 ## Group and section chats
 
-A group has a chat of its own, and so does each built-in section of the list: Routines, Pinned, Started here, Ungrouped and Terminal and other. Its header says "Group session" or "Section session", and its Sub sessions tab shows the sessions it covers. It is a normal chat otherwise, with the same prompt box and approvals. [Tools](tools.md#group-and-section-sessions) says what it can reach and start.
+A group has a chat of its own, and so does each built-in section of the list: Routines, Pinned, Started here, Ungrouped and Terminal and other. Its header says "Group session" or "Section session", a group's chat title has a pencil that renames the group (a section's has none), and its Sub sessions tab shows the sessions it covers. It is a normal chat otherwise, with the same prompt box and approvals. [Tools](tools.md#group-and-section-sessions) says what it can reach and start.
 
 ## Notices
 

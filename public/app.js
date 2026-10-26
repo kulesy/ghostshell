@@ -1,6 +1,7 @@
 import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
 import { ChatPane } from './ui/chat.js';
+import { renamerFor } from './ui/chat-rename.js';
 import { groupById, groupOfSession, parseNewRoute } from './ui/group-rules.js';
 import { GroupPane } from './ui/group.js';
 import { checkUploads } from './ui/draft.js';
@@ -252,6 +253,7 @@ function App() {
   const view = route.name !== 'list' && (route.name === 'new' || ready || ix) ? 'chat' : 'list';
   const id = route.name === 'session' ? route.id : null;
   const row = findRow(ix, id);
+  const renamer = useMemo(() => renamerFor({ kind: 'session', id, edit }), [id, edit]);
   // A group's session is not a row, but the list and the projects still follow it as the chat on screen.
   const groupSession = route.name === 'group' ? groupById(ix, route.id)?.session?.id ?? null : null;
   const current = view === 'chat' ? id ?? groupSession : null;
@@ -290,8 +292,8 @@ function App() {
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name === 'routines' ? html`<${RoutinesPane} ix=${ix} route=${route} routines=${routines} error=${routinesError} reload=${loadRoutines} refresh=${refreshRoutines} />` : null}
-      ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} />` : null}
-      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} />` : null}
+      ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} edit=${edit} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} rename=${renamer} />` : null}
     </main>
   </div>
   <${Spotlight} open=${finding} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />
