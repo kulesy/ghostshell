@@ -43,6 +43,8 @@ Capcom allows its own tools by exact name, with no approval card.
 
 **Amended 2026-10-23, sub sessions.** Every chat that is no group's own gets two more tools: `list_sub_sessions` and `read_sub_session`. They reach the sessions below that chat at any depth and no others, and both run with no card since they only read (see [Roll a session's sub session status up to every parent](20261023-roll-sub-session-status-up.md)).
 
+**Amended 2026-10-26, sending to a sub session.** That chat gets a third tool, `send_sub_session`, which starts or queues a turn in one session below it. It asks with a card every time, in every mode, with no Always allow, as the group tools that start work do (see the same record).
+
 ### Consequences
 
 - ✅ Chips, chapters and widgets work in Capcom. The owner can also start chips that Desktop sessions made.

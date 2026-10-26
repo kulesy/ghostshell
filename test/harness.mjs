@@ -53,7 +53,7 @@ const freePort = () => new Promise(resolve => {
 // the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
-// 'ask to list the group' or 'ask to list the subs' it asks to use the tool of that name. The log has the folder it started in, and the reply to each such request as `mcp`.
+// 'ask to list the group', 'ask to list the subs' or 'ask to send to a sub' it asks to use the tool of that name, and a message that opens with a <parent-session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
 // edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
 // `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
@@ -186,6 +186,8 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    if (m.message.content === 'ask to start a session') say({ type: 'control_request', request_id: 'perm-start', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__start_group_session', input: { cwd: '/tmp', prompt: 'x' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'mcp__capcom__start_group_session' }], behavior: 'allow', destination: 'localSettings' }] } });",
     "    if (m.message.content === 'ask to list the group') say({ type: 'control_request', request_id: 'perm-list', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__list_group_sessions', input: {} } });",
     "    if (m.message.content === 'ask to list the subs') say({ type: 'control_request', request_id: 'perm-subs', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__list_sub_sessions', input: {} } });",
+    "    if (m.message.content === 'ask to send to a sub') say({ type: 'control_request', request_id: 'perm-send', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__send_sub_session', input: { session_id: 'kid', message: 'Please rebase' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'mcp__capcom__send_sub_session' }], behavior: 'allow', destination: 'localSettings' }] } });",
+    "    if (said.startsWith('<parent-session-message')) say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'finish the turn with fast mode off') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: 'off' });",

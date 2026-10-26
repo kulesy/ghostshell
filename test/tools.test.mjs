@@ -105,6 +105,12 @@ test('chips map each session a chip started to the session that made it, and lea
     assert.deepEqual([...chips.links()], [['a', 'maker'], ['e', 'other']]);
     assert.deepEqual([...makeChips(dir).links()], [['a', 'maker'], ['e', 'other']], 'a restart reads them from chips.json');
     assert.deepEqual(fs.readdirSync(dir), ['chips.json']);
+    assert.deepEqual([...chips.titles()], [], 'a chip with no title names nothing');
+    chips.put({ toolUseId: 'open', title: 'Review - dialogs' });
+    chips.put({ toolUseId: 'second', title: '  ' });
+    chips.put({ toolUseId: 'dismissed', title: 'Dismissed one' });
+    assert.deepEqual([...chips.titles()], [['a', 'Review - dialogs']], 'the title of each started chip, by the session it started');
+    assert.deepEqual([...makeChips(dir).titles()], [['a', 'Review - dialogs']]);
 
     const written = [];
     const write = fs.writeFileSync;
