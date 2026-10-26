@@ -5,6 +5,7 @@ import { duration, tokenCount } from './format.js';
 import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { gapBelow, NEAR_END, useClock, useFields, usePin, useStick, useStore } from './hooks.js';
+import { loadingView } from './load-rules.js';
 import { QuoteFloat } from './quote.js';
 import { isChip, Row, Thought } from './rows.js';
 import { Shell } from './shell.js';
@@ -83,8 +84,8 @@ function Live({ ctrl, box, pin, fileUrl }) {
 export function Transcript({ ctrl, quoting }) {
   const box = useRef(null);
   const fromBottom = useRef(0);
-  const { items, chips, sending, hasEarlier, loadingEarlier, loaded, jump, earlierSeq, session, fileLinks, terminal } = useFields(
-    ctrl.store, 'items', 'chips', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'jump', 'earlierSeq', 'session', 'fileLinks', 'terminal',
+  const { items, chips, sending, hasEarlier, loadingEarlier, loaded, failed, jump, earlierSeq, session, fileLinks, terminal } = useFields(
+    ctrl.store, 'items', 'chips', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'failed', 'jump', 'earlierSeq', 'session', 'fileLinks', 'terminal',
   );
   // Until the server says it serves linked files, a path in a reply stays text.
   const fileUrl = fileLinks ? ctrl.fileUrl : null;
@@ -153,9 +154,12 @@ export function Transcript({ ctrl, quoting }) {
 
   // A message still on its way into the thread begins the next turn, so the group above it belongs to the last one.
   const live = !!turn && !sending.length;
+  const view = loadingView({ draft: !!ctrl.draft, loaded, failed, sending: !!sending.length });
   return html`<div class="scroller">
     <div class="transcript" id="transcript" ref=${box} role="region" aria-label="Messages" tabindex="0" onClick=${openLink}>
       ${ctrl.draft ? html`<p class="new-hint" id="newHint">Say what Claude should do. Your first message starts the session.</p>` : null}
+      ${view === 'loading' ? html`<div class="load-state" role="status"><svg class="load-spin" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="2"/><path d="M10 2.5a7.5 7.5 0 0 1 7.5 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><${Shell} class="shell-spin" /><p>Opening this chat</p></div>` : null}
+      ${view === 'failed' ? html`<div class="load-state" role="alert"><p>Could not open this chat.</p><button class="btn" data-variant="outline" type="button" onClick=${ctrl.retry}>Try again</button></div>` : null}
       <button class="btn earlier" data-variant="outline" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
       <ol class="items" id="items">
         ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} term=${ctrl.term} terminal=${terminal} />`)}
