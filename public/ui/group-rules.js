@@ -67,6 +67,23 @@ function sectionGroup(ix, id) {
 
 export const groupById = (ix, id) => (sectionById(id) ? sectionGroup(ix, id) : ix?.groups.find(g => g.id === id) ?? null);
 
+// The address of the new session page, with the group the session will start in when one is chosen.
+export const newRoute = group => (group ? `#/new/${encodeURIComponent(group)}` : '#/new');
+
+// The new session page an address names, as { group }, or null when it is another page. A group id that cannot be decoded is no group.
+export function parseNewRoute(hash) {
+  if (hash === '#/new') return { group: null };
+  if (!hash.startsWith('#/new/')) return null;
+  try { return { group: decodeURIComponent(hash.slice(6)) || null }; } catch { return { group: null }; }
+}
+
+// The group a new session starts in: the one the address names while it is a group the owner made. Before the list has loaded the
+// address is taken as it stands, and a built-in section never counts.
+export function draftGroup(ix, id) {
+  if (!id || sectionById(id)) return null;
+  return !ix || ix.groups.some(g => g.id === id) ? id : null;
+}
+
 // The group or section whose own session this is, or null. A link to that session opens it.
 export function groupOfSession(ix, id) {
   if (!id) return null;

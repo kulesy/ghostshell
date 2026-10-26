@@ -12,6 +12,7 @@ import { Panel, useShownTab } from './panel.js';
 import { toggleTab } from './panel-state.js';
 import { runFromClick } from './run.js';
 import { QuoteDock, useQuoting } from './quote.js';
+import { draftGroup, groupById } from './group-rules.js';
 import { createChat } from './session.js';
 import { keyHint, shortcut } from './shortcuts.js';
 import { usePullNeeds, usePullStatus } from './pulls.js';
@@ -58,10 +59,17 @@ function PanelKeys({ ctrl }) {
   return null;
 }
 
+// The choice lives in the address, so clearing it is a navigation. The typed text stays because the pane keeps its key.
+function startOutside() {
+  location.hash = '#/new';
+  document.getElementById('text')?.focus();
+}
+
 // `kind` names the chat in place of its folder and branch, as a group's session does.
 function ChatHead({ ctrl, kind }) {
-  const { session, status, outside, terminal } = useFields(ctrl.store, 'session', 'status', 'outside', 'terminal');
+  const { session, status, outside, terminal, group } = useFields(ctrl.store, 'session', 'status', 'outside', 'terminal', 'group');
   const draft = !!ctrl.draft;
+  const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? null : null));
   const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
   const state = status?.state || 'idle';
   useDocumentTitle(draft ? 'New session · GhostShell' : session?.title ? `${session.title} · GhostShell` : 'GhostShell');
@@ -75,6 +83,7 @@ function ChatHead({ ctrl, kind }) {
     <div class="chat-title">
       <h2 id="title">${draft ? 'New session' : session?.title || 'Session'}</h2>
       <p class="chat-meta" id="meta">${meta}</p>
+      ${draft && groupName ? html`<span class="start-group">${draw(icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${`Start outside ${groupName}`} data-tip="Start outside the group" onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>
     ${terminal || subs ? html`<div class="chat-tools">${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
   </header>`;
@@ -108,10 +117,10 @@ function Notice({ ctrl }) {
 // the server before the rename.
 // `meta` stands in the header for the folder and branch, and `aside` is drawn between the header and the transcript. `aside` must be
 // one element that follows a store of its own, because a new element on each render would redraw the whole chat.
-export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside }) {
+export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside, group = null }) {
   const held = useRef(null);
   const pane = useRef(null);
-  if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex });
+  if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex, toast });
   const ctrl = held.current;
   const named = useStore(ctrl.store, s => s.session?.title);
   const terminal = useStore(ctrl.store, s => s.terminal);
@@ -121,6 +130,8 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     ctrl.open();
     return ctrl.close;
   }, [ctrl]);
+  const startIn = useStore(sessionIndex, s => draftGroup(s.ix, group));
+  useLayoutEffect(() => { if (ctrl.draft) ctrl.store.set({ group: startIn }); }, [ctrl, startIn]);
   useLayoutEffect(() => {
     const { session } = ctrl.store.get();
     if (title && session && session.title !== title) ctrl.store.set({ session: { ...session, title } });
@@ -139,4 +150,4 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     <${Panel} ctrl=${ctrl} />
     <${PanelKeys} ctrl=${ctrl} />
   </section>`;
-}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside);
+}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside && a.group === b.group);

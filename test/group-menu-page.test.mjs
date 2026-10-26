@@ -153,9 +153,9 @@ test('a server that can edit groups gives each group in Home Move up and Move do
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
   assert.deepEqual(await names(page), ['Reviewing', 'Backlog', 'Notes']);
   assert.deepEqual(await menusOf(page, 'Reviewing', 'Backlog', 'Notes'), {
-    Reviewing: { label: 'Actions for Reviewing', items: ['Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
-    Backlog: { label: 'Actions for Backlog', items: ['Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
-    Notes: { label: 'Actions for Notes', items: ['Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
+    Reviewing: { label: 'Actions for Reviewing', items: ['New session', SEPARATOR, 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
+    Backlog: { label: 'Actions for Backlog', items: ['New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
+    Notes: { label: 'Actions for Notes', items: ['New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
   });
   assert.deepEqual(page.problems, []);
 });
@@ -167,8 +167,8 @@ test('the button at the end of the header opens the same menu, and Delete group 
   await page.evaluate(`${head('Backlog')}.closest('.bar').querySelector('.more').setAttribute('data-picked', '')`);
   await page.click('.more[data-picked]');
   await page.until(`!!document.querySelector('${MENU}')`);
-  assert.deepEqual(await menuOf(page), ['Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
-  assert.equal(await page.evaluate(`[...document.querySelectorAll('${MENU} [role=menuitem]')].map(el => el.dataset.variant ?? '').join()`), ',,,destructive');
+  assert.deepEqual(await menuOf(page), ['New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('${MENU} [role=menuitem]')].map(el => el.dataset.variant ?? '').join()`), ',,,,destructive');
   assert.deepEqual(page.problems, []);
 });
 
@@ -177,15 +177,15 @@ test('in a project, the groups are ordered among those of the project, and the m
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 2`);
   assert.deepEqual(await names(page), ['Inside one', 'Inside two']);
   assert.deepEqual(await menusOf(page, 'Inside one', 'Inside two'), {
-    'Inside one': { label: 'Actions for Inside one', items: ['Move down', SEPARATOR, 'Move to Home', SEPARATOR, 'Delete group'], bare: [] },
-    'Inside two': { label: 'Actions for Inside two', items: ['Move up', SEPARATOR, 'Move to Home', SEPARATOR, 'Delete group'], bare: [] },
+    'Inside one': { label: 'Actions for Inside one', items: ['New session', SEPARATOR, 'Move down', SEPARATOR, 'Move to Home', SEPARATOR, 'Delete group'], bare: [] },
+    'Inside two': { label: 'Actions for Inside two', items: ['New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Home', SEPARATOR, 'Delete group'], bare: [] },
   });
 });
 
 test('a group alone in its view with nowhere to move to has a menu of Delete group alone, with no separator', { skip, timeout }, async t => {
   const page = await appPage(t, lone.origin);
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 1`);
-  assert.deepEqual(await menusOf(page, 'Only'), { Only: { label: 'Actions for Only', items: ['Delete group'], bare: [] } });
+  assert.deepEqual(await menusOf(page, 'Only'), { Only: { label: 'Actions for Only', items: ['New session', SEPARATOR, 'Delete group'], bare: [] } });
 });
 
 test('a server that does not say it can edit groups gets the menu it had, which is only the moves to a project, and no menu for a group with none', { skip, timeout }, async t => {
@@ -216,7 +216,7 @@ test('on a phone the button is there to touch without a hover, and opens the men
   await page.evaluate(`${head('Notes')}.closest('.bar').querySelector('.more').setAttribute('data-picked', '')`);
   await page.click('.more[data-picked]');
   await page.until(`!!document.querySelector('${MENU}')`);
-  assert.deepEqual(await menuOf(page), ['Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
+  assert.deepEqual(await menuOf(page), ['New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
   assert.deepEqual(page.problems, []);
 });
 
@@ -233,13 +233,103 @@ test('Move down puts the group below the next one and the focus stays on its hea
   assert.deepEqual(onDisk(s).groups.map(g => g.id), ['cg-b', 'cg-a', 'cg-c', 'cg-p1', 'cg-p2']);
 
   await rightClick(page, 'Reviewing');
-  assert.deepEqual(await menuOf(page), ['Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
+  assert.deepEqual(await menuOf(page), ['New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
   await choose(page, 'Move up');
   await page.until(`document.querySelector('${GROUP_HEADS} .name').textContent === 'Reviewing'`);
   assert.deepEqual(await names(page), ['Reviewing', 'Backlog', 'Notes']);
   await page.until(`${FOCUSED} === 'Reviewing'`);
   await page.until(`document.querySelector('[data-sonner-toast] [data-title]')?.textContent === 'Moved “Reviewing” up.'`);
   assert.deepEqual(onDisk(s).groups.map(g => g.id), ['cg-a', 'cg-b', 'cg-c', 'cg-p1', 'cg-p2']);
+  assert.deepEqual(page.problems, []);
+});
+
+const CHIP = '.start-group';
+const typeInto = (page, value) => page.evaluate(`(box => { box.value = ${JSON.stringify(value)}; box.dispatchEvent(new Event('input', { bubbles: true })); })(document.querySelector('#text'))`);
+
+test('New session opens the new session page with the group chosen, shown in a chip that clears it and keeps the typed text', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin);
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
+  await rightClick(page, 'Reviewing');
+  await choose(page, 'New session');
+  await page.until(`location.hash === '#/new/cg-a' && !!document.querySelector('${CHIP}')`);
+  assert.equal(await text(page, `${CHIP} .name`), 'Reviewing');
+  assert.equal(await page.evaluate(`document.querySelector('${CHIP} button').getAttribute('aria-label')`), 'Start outside Reviewing');
+  await gone(page);
+  await typeInto(page, 'half a thought');
+  await page.click(`${CHIP} button`);
+  await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}')`);
+  assert.equal(await page.evaluate(`document.querySelector('#text').value`), 'half a thought');
+  assert.equal(await page.evaluate(`document.activeElement.id`), 'text');
+  assert.deepEqual(page.problems, []);
+});
+
+test('the + menu and its New session start outside any group, and an address naming no group the owner made shows no chip', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/new/cg-a' });
+  await page.until(`!!document.querySelector('${CHIP}')`);
+  await page.evaluate(`document.querySelector('.add').setAttribute('data-picked', '')`);
+  await page.click('.add[data-picked]');
+  await page.until(`!!document.querySelector('${MENU}')`);
+  await choose(page, 'New session');
+  await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}')`);
+  for (const hash of ['#/new/pinned', '#/new/cg-gone']) {
+    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+    await page.until(`document.querySelector('#title')?.textContent === 'New session'`);
+    await new Promise(done => setTimeout(done, 300));
+    assert.equal(await page.evaluate(`!!document.querySelector('${CHIP}')`), false, hash);
+  }
+  assert.deepEqual(page.problems, []);
+});
+
+test('choosing New session while a new session page is open moves the focus to its message box', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/new' });
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3 && !!document.querySelector('#text')`);
+  await rightClick(page, 'Notes');
+  await choose(page, 'New session');
+  await page.until(`location.hash === '#/new/cg-c' && !!document.querySelector('${CHIP}')`);
+  await page.until(`document.activeElement.id === 'text'`);
+  await page.evaluate(`document.querySelector('${CHIP} button').focus()`);
+  await rightClick(page, 'Reviewing');
+  await choose(page, 'New session');
+  await page.until(`location.hash === '#/new/cg-a' && document.activeElement.id === 'text'`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a first message sent after the chip is cleared places the session in no group', { skip, timeout }, async t => {
+  const s = await furnished();
+  const page = await appPage(t, s.origin, { hash: '#/new/cg-c' });
+  await page.until(`!!document.querySelector('${CHIP}')`);
+  await page.click(`${CHIP} button`);
+  await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}')`);
+  await typeInto(page, 'begin a session');
+  await page.click('#send');
+  await page.until(`location.hash === '#/s/begun-by-the-fake'`);
+  assert.equal(onDisk(s).assignments['begun-by-the-fake'], undefined);
+  assert.deepEqual(page.problems, []);
+});
+
+test('on a phone New session from the menu closes it and shows the new session page, with the chip big enough to touch', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { phone: true });
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
+  await page.evaluate(`${head('Notes')}.closest('.bar').querySelector('.more').setAttribute('data-picked', '')`);
+  await page.click('.more[data-picked]');
+  await page.until(`!!document.querySelector('${MENU}')`);
+  await choose(page, 'New session');
+  await gone(page);
+  await page.until(`location.hash === '#/new/cg-c' && !!document.querySelector('${CHIP}')`);
+  const box = await page.evaluate(`(r => [r.width, r.height, r.right <= innerWidth])(document.querySelector('${CHIP} button').getBoundingClientRect())`);
+  assert.deepEqual(box, [32, 32, true]);
+  assert.deepEqual(page.problems, []);
+});
+
+test('the first message from a new session started in a group puts the session in that group', { skip, timeout }, async t => {
+  const s = await furnished();
+  const page = await appPage(t, s.origin, { hash: '#/new/cg-c' });
+  await page.until(`!!document.querySelector('${CHIP}')`);
+  await typeInto(page, 'begin a session');
+  await page.click('#send');
+  await page.until(`location.hash.startsWith('#/s/')`);
+  assert.equal(await page.evaluate('location.hash'), '#/s/begun-by-the-fake');
+  assert.equal(onDisk(s).assignments['begun-by-the-fake'], 'cg-c');
   assert.deepEqual(page.problems, []);
 });
 

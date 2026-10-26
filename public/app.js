@@ -1,7 +1,7 @@
 import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
 import { ChatPane } from './ui/chat.js';
-import { groupById, groupOfSession } from './ui/group-rules.js';
+import { groupById, groupOfSession, parseNewRoute } from './ui/group-rules.js';
 import { GroupPane } from './ui/group.js';
 import { checkUploads } from './ui/draft.js';
 import { useModifier } from './ui/hooks.js';
@@ -21,16 +21,18 @@ import { installTooltips } from './ui/tooltip.js';
 import { findRow, nestRow, placeRow, sortGroups, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
-// #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet,
+// #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in),
 // #/passkeys the passkeys and #/routines the routines, with #/routines/new to add one and #/routines/<id> to edit one.
 function parseRoute(hash) {
   try {
     if (hash.startsWith('#/s/')) return { name: 'session', id: decodeURIComponent(hash.slice(4)) };
     if (hash.startsWith('#/g/')) return { name: 'group', id: decodeURIComponent(hash.slice(4)) };
   } catch {}
+  const fresh = parseNewRoute(hash);
+  if (fresh) return { name: 'new', group: fresh.group };
   const routines = routineRoute(hash);
   if (routines) return { name: 'routines', ...routines };
-  return { name: hash === '#/new' ? 'new' : hash === '#/passkeys' ? 'passkeys' : 'list' };
+  return { name: hash === '#/passkeys' ? 'passkeys' : 'list' };
 }
 
 function App() {
@@ -289,7 +291,7 @@ function App() {
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name === 'routines' ? html`<${RoutinesPane} ix=${ix} route=${route} routines=${routines} error=${routinesError} reload=${loadRoutines} refresh=${refreshRoutines} />` : null}
       ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} />` : null}
-      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} />` : null}
     </main>
   </div>
   <${Spotlight} open=${finding} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />

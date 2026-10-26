@@ -1751,6 +1751,31 @@ body.dragging .rows .more { opacity: 0; }
   white-space: nowrap;
 }
 
+.start-group {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  padding: 0 0.25rem 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.start-group > svg { flex: none; width: 0.75rem; height: 0.75rem; }
+
+.start-group .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
+
+.start-group .btn { flex: none; border-radius: 9999px; }
+
+@media (pointer: coarse) {
+  .start-group .btn[data-size="icon-xs"] { width: 2rem; height: 2rem; margin-block: -0.375rem; }
+}
+
 .scroller {
   position: relative;
   flex: 1;

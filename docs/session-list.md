@@ -191,7 +191,7 @@ Drag a group's header to move the group with its sessions, folded or open. Only 
 - Onto a project or Home moves the group there, as the menu does. With the projects sidebar open its rows are the targets, and the one under the pointer lights up. With it shut, a Move to strip of Home and the projects replaces the header's row while the group is carried, so the list does not move. The view the group is in is left out.
 - Esc cancels, and a note says where the group went or why the server refused. After a reorder the focus is on the group's header.
 
-The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project.
+The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with New session, which opens the new session page with the group chosen (`#/new/<group>`). The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. The + menu and Ctrl+N or Cmd+N start a session with no group, as before.
 
 ## The projects sidebar
 

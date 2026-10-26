@@ -1,7 +1,7 @@
 // Run with `npm test`. How a group's sessions fall into the parts of its panel and of the list tool, and the summary line over them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUCKETS, bucketOf, bucketsOf, deleteDetail, flipped, groupById, groupOfSession, litState, membersOf, paneOf, RECENT_MS, summaryOf, supportsGroupEdits, supportsGroups } from '../public/ui/group-rules.js';
+import { BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newRoute, paneOf, parseNewRoute, RECENT_MS, summaryOf, supportsGroupEdits, supportsGroups } from '../public/ui/group-rules.js';
 import { supportsSections } from '../public/ui/sections.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -183,3 +183,31 @@ test('a section\'s button lights as a group\'s does, from its chat\'s state', ()
   assert.deepEqual(['pinned', 'started', 'ungrouped', 'other'].map(id => litState(groupById(list, id).session)), ['working', null, null, 'waiting']);
 });
 
+
+test('the new session address carries a group id of any characters, and without a group it is #/new as it was', () => {
+  assert.equal(newRoute(null), '#/new');
+  assert.equal(newRoute(undefined), '#/new');
+  assert.equal(newRoute('cg-a'), '#/new/cg-a');
+  for (const id of ['cg-a', 'a/b', 'a b?c#d', '100%', 'ünï', '../s/x']) {
+    assert.deepEqual(parseNewRoute(newRoute(id)), { group: id }, id);
+    assert.ok(!newRoute(id).slice(6).includes('/'), `${id} has no slash to read as a path`);
+  }
+  assert.deepEqual(parseNewRoute('#/new'), { group: null });
+});
+
+test('an address that is not the new session page gives none, and one with a group that cannot be read or is empty gives no group', () => {
+  for (const hash of ['', '#/', '#/s/new', '#/g/x', '#/newer', '#/new2/x', '#/passkeys']) assert.equal(parseNewRoute(hash), null, hash);
+  assert.deepEqual(parseNewRoute('#/new/'), { group: null });
+  assert.deepEqual(parseNewRoute('#/new/%E0%A4%A'), { group: null });
+});
+
+test('a new session starts in the group of the address only while it is a group the owner made, and a section or an unknown id means none', () => {
+  const list = { groups: [{ id: 'cg-a', name: 'A' }] };
+  assert.equal(draftGroup(list, 'cg-a'), 'cg-a');
+  assert.equal(draftGroup(list, 'cg-gone'), null);
+  assert.equal(draftGroup(list, 'pinned'), null);
+  assert.equal(draftGroup(list, null), null);
+  assert.equal(draftGroup(null, 'cg-a'), 'cg-a', 'before the list has loaded the address stands');
+  assert.equal(draftGroup(null, 'pinned'), null);
+  assert.equal(draftGroup(null, null), null);
+});

@@ -9,7 +9,7 @@ import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatButton } from './group-button.js';
 import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } from './group-drag-rules.js';
-import { deleteDetail, groupById, supportsGroupEdits, supportsGroups } from './group-rules.js';
+import { deleteDetail, groupById, newRoute, parseNewRoute, supportsGroupEdits, supportsGroups } from './group-rules.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
@@ -246,8 +246,14 @@ function walk(e, box) {
   }
 }
 
-// Opens a new session. When one is open already the cursor goes to its message box, because setting the same hash does nothing.
-export const newSession = () => { if (location.hash === '#/new') document.getElementById('text')?.focus(); else location.hash = '#/new'; };
+// Opens a new session, in a group when one is given. When a new session page is open already the cursor goes to its message box, because
+// that page is not mounted again and the box only takes the focus when it is.
+export const newSession = group => {
+  const open = !!parseNewRoute(location.hash);
+  const to = newRoute(group);
+  if (location.hash !== to) location.hash = to;
+  if (open) document.getElementById('text')?.focus();
+};
 
 // A note about something that did not work, which shows with a warning. No reason means no note, and clears an older one.
 const problemNote = text => say(text, { problem: true });
@@ -729,7 +735,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const addMenu = {
     label: 'New session or group',
     items: [
-      { label: 'New session', icon: icons.messageSquarePlus, hint: keyHint(mod, 'N'), run: newSession },
+      { label: 'New session', icon: icons.messageSquarePlus, hint: keyHint(mod, 'N'), run: () => newSession() },
       ...(ix ? [{ label: 'New group', icon: icons.folderPlus, run: () => setForm({ kind: 'group', project: view, back: ['.add'] }) }] : []),
     ],
   };
@@ -828,6 +834,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       const at = ids.indexOf(g.id);
       // Each part has its icons so the labels line up, and a part that is empty leaves no separator behind.
       const parts = [
+        [{ label: 'New session', icon: icons.messageSquarePlus, run: () => newSession(g.id) }],
         [
           ...(at > 0 ? [{ label: 'Move up', icon: icons.arrowUp, run: () => orderGroup(g, ids[at - 1], 'before') }] : []),
           ...(at >= 0 && at < ids.length - 1 ? [{ label: 'Move down', icon: icons.arrowDown, run: () => orderGroup(g, ids[at + 1], 'after') }] : []),

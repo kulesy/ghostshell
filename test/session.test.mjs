@@ -833,3 +833,51 @@ test('a slash command with files that the server refuses leaves no bubble, tells
     }
   });
 });
+
+// A new session's controller, started the way the page does: the group is chosen on its store, and `log` lists the calls in order.
+async function startFrom(group, { moveFails = false, changeTo } = {}) {
+  const log = [];
+  const notes = [];
+  const here = { hash: '#/new' };
+  let posted = [];
+  globalThis.location = here;
+  const chat = createChat({ draft: true, refreshIndex: async () => { log.push('refresh'); }, toast: (text, options) => notes.push([text, options]) });
+  chat.store.set({ group });
+  await withChanges(url => (url === 'api/new' && changeTo !== undefined && chat.store.set({ group: changeTo }), url === 'api/layout/move' && moveFails
+    ? { status: 400, ok: false, json: async () => ({ error: 'Unknown group.' }) }
+    : { status: 200, ok: true, json: async () => ({ id: 'made-1' }) }), async sent => {
+    const originalPush = sent.push.bind(sent);
+    sent.push = entry => { log.push(entry[0]); return originalPush(entry); };
+    await chat.startNew('hello', [], () => log.push('cleared'));
+    posted = sent;
+  });
+  return { chat, log, notes, here, posted };
+}
+
+test('a new session started in a group is created, then placed in the group before the list is read and the page moves on', async () => {
+  const { log, here, notes, posted } = await startFrom('cg-a');
+  assert.deepEqual(log, ['api/new', 'cleared', 'api/layout/move', 'refresh']);
+  assert.deepEqual(posted.find(([url]) => url === 'api/layout/move')[1], { id: 'made-1', group: 'cg-a' });
+  assert.equal(here.hash, '#/s/made-1');
+  assert.deepEqual(notes, []);
+});
+
+test('a new session with no group chosen, as when the owner cleared it, is not moved anywhere', async () => {
+  const { log, here } = await startFrom(null);
+  assert.deepEqual(log, ['api/new', 'cleared', 'refresh']);
+  assert.equal(here.hash, '#/s/made-1');
+});
+
+test('when the group will not take the session it still opens, with a note that says so and why', async () => {
+  const { log, here, notes } = await startFrom('cg-gone', { moveFails: true });
+  assert.deepEqual(log, ['api/new', 'cleared', 'api/layout/move', 'refresh']);
+  assert.equal(here.hash, '#/s/made-1');
+  assert.deepEqual(notes, [['Started the session, but could not put it in the group: Unknown group.', { problem: true }]]);
+});
+
+test('the group a new session is placed in is the one at send time, whatever is chosen while the request is in flight', async () => {
+  const { posted } = await startFrom('cg-a', { changeTo: 'cg-b' });
+  assert.deepEqual(posted.find(([url]) => url === 'api/layout/move')[1], { id: 'made-1', group: 'cg-a' });
+  const none = await startFrom(null, { changeTo: 'cg-b' });
+  assert.equal(none.posted.some(([url]) => url === 'api/layout/move'), false, 'a group picked after sending does not attach');
+});

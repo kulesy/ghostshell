@@ -47,7 +47,8 @@ const CONTEXT_EVERY = 5000;
 // A chat's pane is built again each time the owner opens another chat, so the holds that ended undelivered wait here by chat id.
 const endedByChat = new Map();
 
-export function createChat({ id = null, draft = false, row = null, refreshIndex }) {
+// `toast` shows a note on the screen. The page passes it in so this file loads without the page's components.
+export function createChat({ id = null, draft = false, row = null, refreshIndex, toast = () => {} }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
   if (first) startedHere = null;
   // Until a new session starts, the box holds its settings here; the ones left alone follow the home folder's defaults.
@@ -56,7 +57,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
-    sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
+    group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     jump: 0, earlierSeq: 0, context: null,
   });
@@ -371,6 +372,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   async function startNew(text, images, onCreated, files = []) {
     if (state().starting) return;
     const s = state().status;
+    const group = state().group;
     store.set({ starting: true, notice: '' });
     try {
       const { id: created } = await api('api/new', {
@@ -378,9 +380,15 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
         ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('fast') && { fast: s.fast }),
       });
       onCreated();
+      let notPlaced = null;
+      // Placed before this function reads the list; a refresh elsewhere can still draw it ungrouped for a moment. A failure still opens it.
+      if (group) {
+        try { await api('api/layout/move', { id: created, group }); } catch (err) { notPlaced = err; }
+      }
       startedHere = { id: created, text, images, files };
       await refreshIndex();
       location.hash = `#/s/${enc(created)}`;
+      if (notPlaced) toast(`Started the session, but could not put it in the group: ${notPlaced.message}`, { problem: true });
     } catch (err) {
       notice(err.message);
     } finally {
