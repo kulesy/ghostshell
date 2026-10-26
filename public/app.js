@@ -16,7 +16,7 @@ import { newSession, SessionList } from './ui/sessions-list.js';
 import { Shell } from './ui/shell.js';
 import { keyHint, shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
-import { sessionIndex } from './ui/subs.js';
+import { sessionActions, sessionIndex } from './ui/subs.js';
 import { ToastHost } from './ui/toast.js';
 import { installTooltips } from './ui/tooltip.js';
 import { findRow, nestRow, placeRow, sortGroups, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
@@ -165,6 +165,7 @@ function App() {
       await loadIndex();
     }
   }, []);
+  useLayoutEffect(() => { sessionActions.set({ archive }); }, [archive]);
 
   // Archives or unarchives several sessions one after another, one request each, and loads the list once at the end. Archiving takes
   // every row out at once, and the rows the server refused come back at once. It resolves with { done, stopped, failed }: the ids the

@@ -3,6 +3,7 @@
 // onto a section to move it there, or onto another row to nest it under that one, and a group's header can be dragged among the groups
 // or onto a project. Everything else is done from menus, so a phone can do it all.
 import { ask } from './ask.js';
+import { isRunning, STOP_DETAIL } from './close.js';
 import { dragRows, pointIn } from './drag.js';
 import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
@@ -260,9 +261,6 @@ export const newSession = group => {
 
 // A note about something that did not work, which shows with a warning. No reason means no note, and clears an older one.
 const problemNote = text => say(text, { problem: true });
-
-const isRunning = r => r.state === 'working' || r.state === 'waiting';
-const STOP_DETAIL = "Archiving stops Claude's turn and denies any approval it is waiting for. Undo brings the session back, but not the turn.";
 
 // `projects` is the projects sidebar's state, which the app owns because the search changes it as well.
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string. `nest(id, parent)`

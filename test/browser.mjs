@@ -261,7 +261,7 @@ export async function launch(chromium) {
       up,
       hold,
       carry,
-      wheel,
+      wheel, call,
       close: async () => {
         problemsOf.delete(sessionId);
         await send('Target.closeTarget', { targetId });

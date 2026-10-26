@@ -115,33 +115,34 @@ The arrow on a parent's row folds its nested sessions. Every family starts open,
 
 A chat with sessions under it has a Sub sessions tab in its side panel, ahead of Terminal and File. The panel opens on that tab by itself in a window with room for it beside the chat, until you open or close the panel yourself. On a phone or in a narrow window, the list button in the chat's header opens it. That button shows an amber mark while any session below the chat needs you.
 
-The tab lists the sessions under the chat at every depth, so a side chat of a side chat shows there although the list nests one level. The ones that need you come first, then the ones working, the recent ones and the idle ones. Archived sessions stay out of the tab. Each session is a card with its title as a link, when it last moved, its state, the first sentence of its latest reply, what it waits on and a roll-up of the sessions under it, such as "2 sub sessions, 1 waiting on you". Details opens the whole reply in the card, and the sessions under it show below as cards of the same kind. A line at the top of the tab rolls up every level.
+The tab lists the sessions under the chat at every depth, so a side chat of a side chat shows there although the list nests one level. The ones that need you come first, then the ones working, the recent ones and the idle ones. Archived sessions stay out of the tab. Each session is a card with its title as a link, when it last moved, its state, the first sentence of its latest reply, what it waits on and a roll-up of the sessions under it, such as "2 sub sessions, 1 waiting on you". Details opens the whole reply in the card, and the sessions under it show below as cards of the same kind. Archive clears a session from the tab ([below](#archiving-from-a-card)). A line at the top of the tab rolls up every level.
 
 GhostShell reads each line's latest reply from the session's transcript, for the lines on show alone, and keeps it until the transcript changes. No model is asked, so the tab costs no tokens. A chat's model can read the same status with two tools of its own ([Sub sessions](tools.md#sub-sessions)). [The decision record](adr/20261023-roll-sub-session-status-up.md) has the detail.
 
 #### Pull requests
 
-A card also shows the GitHub pull requests its session is working on, one line for each, up to 5. A line says in words how the pull request stands, then gives its whole address as a link that opens GitHub in a new tab. The most urgent pull request comes first. A card whose session names no pull request, or whose pull request GhostShell could not read, looks as it did.
+A card also says what is to be done about its session's main pull request, in one line of words, followed by the pull request's whole address as a link that opens GitHub in a new tab. The line tells you what to do, or who the session is waiting on. A card whose session has no main pull request, or whose pull request GhostShell could not read, looks as it did. A card that already shows what it waits on for an approval shows no pull request line, so a card never has two.
 
-GhostShell finds the addresses in the transcript. Those in the session's latest reply come first, then the rest, newest first. An address in a tool result counts only when it is the last line of the output, as `gh pr create` prints it, so a listing of pull requests does not make the session claim all of them.
+A session has one main pull request. GhostShell finds it in the transcript, newest message first: the newest message that names a pull request decides. If that message names one pull request, that is the main one. If it names several, the session is a sweep over many pull requests and has no main one, so its card shows none of them. An address in a tool result counts only when it is the last line of the output, as `gh pr create` prints it, so a listing of pull requests does not make the session claim all of them.
 
-A line says up to three of these, most urgent first, with dots between them:
+The line is the first of these that fits:
 
-- **Needs your review**: GitHub asks you to review it, and you did not write it.
-- **Changes requested**, **Has conflicts**, **Has 2 unresolved comments** (review threads nobody resolved), **Checks failing** and **Checks running**.
-- **Ready to merge**: open, not a draft, approved, with nothing in the way and no checks failing or running. Otherwise an approved pull request says **Approved**.
-- **Waiting for review**: a review is requested from someone, or one is required. A pull request with none of the lines above says **Open**.
-- **Draft** comes last. **Merged** and **Closed** stand alone.
+- **Merged, nothing to do** and **Closed, nothing to do**.
+- **Review the pull request**: GitHub asks you to review it, and you did not write it.
+- **Merge the pull request**: you wrote it, and it is open, approved, with nothing in the way and no checks failing or running. It is amber, since it waits on you.
+- **Ask the session to deal with** the requested changes, the conflicts, the unresolved comments (review threads nobody resolved) and the failing checks, whichever apply, such as "Ask the session to deal with the conflicts and the failing checks". It is shown in red when checks are failing and in amber otherwise. While the session is working, or active in another app, the line reads **The session is dealing with** the same things, since it is already on them.
+- **Waiting on checks to finish**.
+- **Approved, but it cannot merge yet**: the pull request is approved but is a draft, is not clean or has failing checks.
+- **Approved, nothing asked of you**: someone else's pull request that is approved and ready to merge.
+- **Waiting on a reviewer**: a review is requested from someone, or one is required.
+- **Still a draft**.
+- **Open, no review asked for yet** for your own pull request, and **Open, nothing asked of you** for someone else's.
 
-A pull request that waits on you makes its session count as waiting on you. The card gets the Waiting on you pill and moves under Waiting on you, the line at the top of the tab counts it, and so do the number and the amber mark on the header button, which stay right while the panel is closed. A pull request waits on you when:
+When GitHub will not say who you are, the line never says what is asked of you or not. It reads **Approved**, **Open**, **Waiting on a reviewer** and the like, and no line asks anything of you.
 
-- someone asked for your review.
-- you wrote it and it is ready to merge.
-- you wrote it, and it has changes requested, conflicts, unresolved comments or failing checks, while its session is not working. A working session is already at work on those, so they do not count until it stops.
+A line that starts with an instruction to you (review, merge, ask the session) makes its session count as waiting on you. The card gets the Waiting on you pill and moves under Waiting on you, the line at the top of the tab counts it, and so do the number and the amber mark on the header button, which stay right while the panel is closed. The other lines say the session waits on something else, or on nothing, and add no count. A review asked of you on a pull request that is not its session's main one does not count.
 
-A pull request that someone else wrote and did not ask you to review never counts, and neither does a merged or closed one. The line is still shown.
-
-The server reads each pull request by asking `gh`, the GitHub CLI, on the Mac. The page never sees the token and never calls GitHub. GhostShell keeps what `gh` says for 2 minutes (1 minute after a failure), and the page asks again for a session after 60 seconds, so a change on GitHub shows within a few minutes. It makes 2 `gh` calls for each pull request and runs at most 4 at once. When the server needs longer than 8 seconds it answers with what it has, a pull request being read again keeping its last line, and the page asks again 4 seconds later. A server that started before this feature, or has no `gh` signed in, shows no pull request lines and counts nothing extra.
+The server reads each main pull request by asking `gh`, the GitHub CLI, on the Mac. The page never sees the token and never calls GitHub. GhostShell keeps what `gh` says for 2 minutes (1 minute after a failure), and the page asks again for a session after 60 seconds, so a change on GitHub shows within a few minutes. It makes 2 `gh` calls for each pull request, so the calls follow the number of sessions with a main pull request, and runs at most 4 at once. When the server needs longer than 8 seconds it answers with what it has, a pull request being read again keeping its last line, and the page asks again 4 seconds later. A server that started before this feature, or has no `gh` signed in, shows no pull request lines and counts nothing extra.
 
 This covers the pull requests of the GitHub account `gh` is signed in as, and review threads. It does not cover:
 
@@ -150,8 +151,13 @@ This covers the pull requests of the GitHub account `gh` is signed in as, and re
 - comments on a pull request's conversation tab, which are not review threads.
 - a review requested from a team you belong to. Only a request that names you counts.
 - a pull request in a repository that account cannot see.
+- the other pull requests a session mentions. Only the main one is read and shown.
 
-The route is `GET api/pulls?ids=a,b,c`, with 1 to 60 session ids, signed in like the others. It answers `{ pulls: { <id>: [...] }, settling }` with up to 5 pull requests for each session, in the order the session names them. Each has its address, repository, number, state (`open`, `draft`, `merged` or `closed`), whether you wrote it, whether your review is asked, the review decision, the state of its checks, whether it has conflicts, and how many review threads are unresolved. `settling` is true while some are still being read. A pull request GitHub could not show is left out. `GET api/sessions` lists `pullStatus` in its `features`. [The decision record](adr/20261026-show-pull-request-status-on-session-cards.md) says why the server asks `gh`.
+The route is `GET api/pulls?ids=a,b,c`, with 1 to 60 session ids, signed in like the others. It answers `{ pulls: { <id>: [...] }, settling }` with no pull request or one for each session. The one has its address, repository, number, state (`open`, `draft`, `merged` or `closed`), whether you wrote it, whether your review is asked (both `null` when GitHub would not say who you are), the review decision, the state of its checks, whether it has conflicts, and how many review threads are unresolved. `settling` is true while some are still being read. A pull request GitHub could not show is left out. `GET api/sessions` lists `pullStatus` in its `features`. [The decision record](adr/20261026-show-pull-request-status-on-session-cards.md) says why the server asks `gh` and why only the main pull request shows.
+
+#### Archiving from a card
+
+Each card has an Archive button beside Details, so a session can be cleared from the tab without going to the sidebar. It follows the sidebar's rules. An idle session is archived at once, and a note says "Archived" with an Undo button that brings the card back. A running session, or one waiting on an approval, asks first, because archiving stops its turn and denies the approval it waits on, and its button reads "Stop and archive" to assistive technology. If the server says the session is running after all, the card asks too. If the server refuses, a warning note says why and the card stays. Only one archive goes at a time, so a held Enter or Space, or a double click, archives one card and leaves the Undo note reachable. When a card goes, the keyboard focus moves to the title link of a session that was under it, which takes its place, else the card after it, else the one before it, else the line at the top of the tab, else the tab, or the message box when the tab goes too, so it never falls to the page and never lands on another Archive button. Archiving a session does not archive the sessions under it. They show under the session the archived one showed under.
 
 ### Taking a session out
 

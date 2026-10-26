@@ -3,80 +3,49 @@
 import { isPullUrl } from './pull-url.js';
 import { countedRows, stampOf } from './sub-panel-rules.js';
 
-// The most facts one pull request shows.
-export const SHOWN = 3;
-
 // How long an answer is trusted before the page asks again, and the most sessions the page asks about.
 export const FRESH_MS = 60_000;
 export const MOST_SESSIONS = 120;
 
-// Most urgent first. A fact's place here is its rank, and `ready` and `approved` never both apply, nor do `waiting` and `open`.
-const ORDER = ['review', 'changes', 'conflicts', 'comments', 'failing', 'running', 'ready', 'approved', 'waiting', 'open', 'draft', 'merged', 'closed'];
+// The session's main pull request from its list: the first the page may link to.
+export const mainPull = list => (Array.isArray(list) ? list : []).find(pull => isPullUrl(pull?.url)) ?? null;
 
-export const WORDS = {
-  review: 'Needs your review',
-  changes: 'Changes requested',
-  conflicts: 'Has conflicts',
-  failing: 'Checks failing',
-  running: 'Checks running',
-  ready: 'Ready to merge',
-  approved: 'Approved',
-  waiting: 'Waiting for review',
-  open: 'Open',
-  draft: 'Draft',
-  merged: 'Merged',
-  closed: 'Closed',
-};
+const phrase = n => `the ${n} unresolved comment${n === 1 ? '' : 's'}`;
+const joined = parts => (parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0]);
+const status = (you, text, tone) => ({ you, text, tone });
 
-export const commentsWords = n => `Has ${n} unresolved comment${n === 1 ? '' : 's'}`;
+// A session another app is running its turn in is as busy as one Capcom runs.
+const busy = row => row?.state === 'working' || row?.state === 'active';
 
-const TONES = {
-  review: 'needs', changes: 'needs', conflicts: 'needs', comments: 'needs', failing: 'error', running: 'working', ready: 'ready',
-  approved: 'ready', merged: 'ready', waiting: 'quiet', open: 'quiet', draft: 'quiet', closed: 'quiet',
-};
-
-const fact = (key, text = WORDS[key]) => ({ key, text, tone: TONES[key] });
-
-// The facts of one pull request as [{ key, text, tone }], most urgent first and at most `limit` of them.
-export function factsOf(pull, limit = SHOWN) {
-  if (pull.state === 'merged' || pull.state === 'closed') return [fact(pull.state)];
-  const draft = pull.state === 'draft';
-  const found = [];
-  if (pull.asked) found.push(fact('review'));
-  if (pull.review === 'changes') found.push(fact('changes'));
-  if (pull.conflicts) found.push(fact('conflicts'));
-  if (pull.threads > 0) found.push(fact('comments', commentsWords(pull.threads)));
-  if (pull.checks === 'failing') found.push(fact('failing'));
-  if (pull.checks === 'running') found.push(fact('running'));
-  if (pull.review === 'approved') found.push(fact(!draft && pull.clean && pull.checks !== 'failing' && pull.checks !== 'running' ? 'ready' : 'approved'));
-  if (!found.length) {
-    if (pull.requested > 0 || pull.review === 'required') found.push(fact('waiting'));
-    else if (!draft) found.push(fact('open'));
+// What the owner has to do about a pull request, or who the session waits on, as { you, text, tone }. `row` is the session's, whose state says
+// whether it is working on the pull request itself. The first rule that fits wins. A null `mine` (the viewer is unknown) says nothing of
+// what is asked of them.
+export function statusOf(pull, row) {
+  if (pull.state === 'merged') return status(false, 'Merged, nothing to do', 'ready');
+  if (pull.state === 'closed') return status(false, 'Closed, nothing to do', 'quiet');
+  if (pull.asked) return status(true, 'Review the pull request', 'needs');
+  const mine = typeof pull.mine === 'boolean' ? pull.mine : null;
+  const approved = pull.review === 'approved';
+  const blocked = pull.checks === 'failing';
+  const mergeable = pull.state === 'open' && pull.clean && !blocked && pull.checks !== 'running';
+  if (mine && approved && mergeable) return status(true, 'Merge the pull request', 'needs');
+  const work = [pull.review === 'changes' && 'the requested changes', pull.conflicts && 'the conflicts', pull.threads > 0 && phrase(pull.threads), blocked && 'the failing checks'].filter(Boolean);
+  if (mine && work.length) {
+    const list = joined(work);
+    if (busy(row)) return status(false, `The session is dealing with ${list}`, 'working');
+    return status(true, `Ask the session to deal with ${list}`, blocked ? 'error' : 'needs');
   }
-  if (draft) found.push(fact('draft'));
-  return found.slice(0, limit);
+  if (pull.checks === 'running') return status(false, 'Waiting on checks to finish', 'working');
+  if (approved) {
+    if (!mergeable) return status(false, 'Approved, but it cannot merge yet', 'quiet');
+    return status(false, mine === false ? 'Approved, nothing asked of you' : 'Approved', 'quiet');
+  }
+  if (pull.requested > 0 || pull.review === 'required') return status(false, 'Waiting on a reviewer', 'quiet');
+  if (pull.state === 'draft') return status(false, 'Still a draft', 'quiet');
+  if (mine === null) return status(false, 'Open', 'quiet');
+  return status(false, mine ? 'Open, no review asked for yet' : 'Open, nothing asked of you', 'quiet');
 }
-
-const rankOf = pull => ORDER.indexOf(factsOf(pull, 1)[0]?.key);
-
-// A session's pull requests, the one with the most urgent fact first, and those with the same keeping the order the server gave.
-export const orderPulls = list => list.map((pull, at) => ({ pull, at, rank: rankOf(pull) })).sort((a, b) => (a.rank - b.rank) || (a.at - b.at)).map(entry => entry.pull);
-
-// The pull requests a card draws, in order, leaving out any whose address the page may not link to.
-export const cardPulls = list => orderPulls((Array.isArray(list) ? list : []).filter(pull => isPullUrl(pull?.url)));
-
-const OWN_WORK = new Set(['changes', 'conflicts', 'comments', 'failing']);
-
-// Whether a pull request waits on the owner: a review asked of them, theirs that is ready to merge, or theirs with work to do
-// while the session is idle, since a working session is on its own failing checks and comments.
-export function needsOwner(pulls, row) {
-  return (Array.isArray(pulls) ? pulls : []).some(pull => {
-    const keys = factsOf(pull, Infinity).map(f => f.key);
-    if (keys.includes('review')) return true;
-    if (!pull.mine) return false;
-    return keys.includes('ready') || (row?.state !== 'working' && keys.some(key => OWN_WORK.has(key)));
-  });
-}
+export const needsOwner = (pulls, row) => (Array.isArray(pulls) ? pulls : []).some(pull => statusOf(pull, row).you);
 
 // The ids of the sessions in `rows` that wait on the owner for a pull request, from what the page last heard (a map of id to { pulls }).
 export const needsOf = (rows, known) => new Set(rows.filter(row => needsOwner(known.get(row.id)?.pulls, row)).map(row => row.id));

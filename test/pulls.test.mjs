@@ -44,7 +44,8 @@ test('mine is the viewer being the author, asked is the viewer being asked to re
   const teamOnly = summarise(raw({ reviewRequests: [{ __typename: 'Team', name: 'Core', slug: 'core' }] }), [], 'octocat');
   assert.deepEqual([teamOnly.mine, teamOnly.asked, teamOnly.requested], [false, false, 1]);
   const unknown = summarise(raw({ reviewRequests: requests, author: { login: 'octocat' } }), [], null);
-  assert.deepEqual([unknown.mine, unknown.asked], [false, false], 'with no viewer both are false');
+  assert.deepEqual([unknown.mine, unknown.asked], [null, null], 'with no viewer both are unknown');
+  assert.deepEqual([summarise(raw(), [], undefined).mine, summarise(raw(), [], '').asked], [null, null]);
   assert.deepEqual([summarise(raw(), [], 'octocat').requested, summarise(raw({ reviewRequests: undefined }), [], 'octocat').requested], [0, 0]);
 });
 
@@ -125,32 +126,38 @@ const quiet = () => {
   return { told, log: message => told.push(message) };
 };
 
-test('the addresses in the latest reply come first, then the rest newest first, whatever the source', () => {
-  transcript('order', [
+test('the main pull request is the one the latest reply names, whatever older items name', () => {
+  transcript('latest', [
     prompt(`Please look at ${pr(1)}`),
     said(`I opened ${pr(2)} for it.`),
     gave('t1', `Creating pull request for feature into main\n\n${pr(3)}\n`),
     prompt(`And ${pr(4)} too.`),
-    said(`Now ${pr(5)} and ${pr(6)}.`),
+    said(`Now ${pr(5)}.`),
   ]);
-  const { log } = quiet();
-  const pulls = makePulls({ transcriptFor, log });
-  assert.deepEqual(pulls.urlsFor('order'), [pr(5), pr(6), pr(4), pr(3), pr(2)], 'capped at five');
+  assert.deepEqual(makePulls({ transcriptFor }).urlsFor('latest'), [pr(5)]);
 });
 
-test('a reply that names none leaves the rest in newest first order, and an older reply does not jump the queue', () => {
+test('a latest reply that names none leaves the newest item that names one to decide', () => {
   transcript('plain-reply', [
     said(`Old: ${pr(1)}`),
     prompt(`Mine: ${pr(2)}`),
-    gave('t1', `${pr(3)}\n`),
     said('Nothing to link here.'),
+    said('Still nothing.'),
   ]);
-  assert.deepEqual(makePulls({ transcriptFor }).urlsFor('plain-reply'), [pr(3), pr(2), pr(1)]);
+  assert.deepEqual(makePulls({ transcriptFor }).urlsFor('plain-reply'), [pr(2)]);
 });
 
-test('an address is listed once, at its first place in the order', () => {
-  transcript('twice', [said(`${pr(1)} and ${pr(2)}`), prompt(pr(2)), said(`${pr(2)} then ${pr(3)} then ${pr(2)}`)]);
-  assert.deepEqual(makePulls({ transcriptFor }).urlsFor('twice'), [pr(2), pr(3), pr(1)]);
+test('an item that names several pull requests is a sweep and leaves no main one, even when an older item names one', () => {
+  transcript('sweep', [said(`Opened ${pr(1)}.`), said(`Compared ${pr(2)} and ${pr(3)}.`), said('Done.')]);
+  transcript('sweep-typed', [said(`Opened ${pr(1)}.`), prompt(`Look at ${pr(2)} and ${pr(3)}`)]);
+  const pulls = makePulls({ transcriptFor });
+  assert.deepEqual([pulls.urlsFor('sweep'), pulls.urlsFor('sweep-typed')], [[], []]);
+});
+
+test('an address repeated in one item, in another letter case or not, is one pull request', () => {
+  const upper = pr(2).replace('example-org/example-repo', 'Example-Org/Example-Repo');
+  transcript('twice', [said(`${pr(1)} then ${pr(3)}`), said(`${pr(2)} then ${upper} then ${pr(2)}`)]);
+  assert.deepEqual(makePulls({ transcriptFor }).urlsFor('twice'), [pr(2)]);
 });
 
 test('a tool result counts only when its last line is one bare address, so a listing of pull requests claims nothing', () => {
@@ -165,6 +172,13 @@ test('a tool result counts only when its last line is one bare address, so a lis
     gave('t8', `Warning: 2 uncommitted changes\n\n  ${pr(8)}  \n\n`),
   ]);
   assert.deepEqual(makePulls({ transcriptFor }).urlsFor('results'), [pr(8)]);
+});
+
+test('a bare address that ends a tool result is the deciding item when it is the newest to name one', () => {
+  transcript('created', [said(`Older: ${pr(1)}`), gave('t1', `Creating pull request\n\n${pr(2)}\n`)]);
+  transcript('listed', [said(`Mine: ${pr(1)}`), gave('t1', [20, 21].map(n => `#${n}  A title  ${pr(n)}`).join('\n'))]);
+  const pulls = makePulls({ transcriptFor });
+  assert.deepEqual([pulls.urlsFor('created'), pulls.urlsFor('listed')], [[pr(2)], [pr(1)]], 'a listing names nothing, so the reply before it decides');
 });
 
 test('a prompt the owner typed counts, and a session with no addresses has none', () => {
@@ -197,10 +211,10 @@ test('addresses are kept until the file changes, and read again once it does', (
   fs.utimesSync(file, 1_700_000_000, 1_700_000_000);
   assert.deepEqual(pulls.urlsFor('kept'), [pr(11)], 'the same size and time is not read again');
   fs.appendFileSync(file, lines([said(`Now ${pr(33)}`)]));
-  assert.deepEqual(pulls.urlsFor('kept'), [pr(33), pr(22)], 'an appended line is');
+  assert.deepEqual(pulls.urlsFor('kept'), [pr(33)], 'an appended line is');
   const got = pulls.urlsFor('kept');
   got.push('x');
-  assert.deepEqual(pulls.urlsFor('kept'), [pr(33), pr(22)], 'the kept list cannot be changed by a caller');
+  assert.deepEqual(pulls.urlsFor('kept'), [pr(33)], 'the kept list cannot be changed by a caller');
 });
 
 test('a session with no transcript, or one that cannot be read, has no addresses and never throws, and a problem is told once', () => {
@@ -308,7 +322,7 @@ test('the login is asked for once an hour, and shared by lookups that start toge
   assert.equal(f.of('user').length, 2);
 });
 
-test('a login that cannot be found still gives pull requests, with mine and asked false, and is told once and tried again after the failure time', async () => {
+test('a login that cannot be found still gives pull requests, with mine and asked null, and is told once and tried again after the failure time', async () => {
   const base = fake();
   const f = { ...base, run: async (file, args) => {
     if (args[1] !== 'user') return base.run(file, args);
@@ -317,7 +331,7 @@ test('a login that cannot be found still gives pull requests, with mine and aske
   } };
   const { pulls, clock, told } = maker({ fake: f });
   const { found } = await pulls.lookup([pr(1)]);
-  assert.deepEqual([found.get(pr(1)).mine, found.get(pr(1)).asked], [false, false]);
+  assert.deepEqual([found.get(pr(1)).mine, found.get(pr(1)).asked], [null, null]);
   clock.at += 61_000;
   await pulls.lookup([pr(2)]);
   assert.equal(base.of('user').length, 2);
