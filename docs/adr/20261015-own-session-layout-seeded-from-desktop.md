@@ -66,7 +66,7 @@ Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because i
 - ✅ The owner can archive any session from Capcom, on a phone too, and bring one back without sending it a message.
 - ✅ The owner can rename any session from Capcom, on a phone too, and a rename touches neither Desktop's files nor a transcript.
 - ❌ Desktop's later changes to its groups and pins do not reach Capcom, so the two layouts drift apart from the first start.
-- ❌ Capcom has no screen yet to rename groups. Until it has, the owner edits `layout.json`. It creates, deletes and orders groups, and creates projects, from menus (see the third amendment above).
+- ✅ Groups and projects are made, renamed, deleted and (for groups) ordered from menus, so `layout.json` is no longer edited by hand for them.
 - ❌ Ungrouped, Started here and Terminal and other still show their newest 60 sessions each, so a session moved out of a group that is older than those may not show, unless it was brought back from the archive.
 - ❌ Capcom's archive and Desktop's drift apart. A session archived in Capcom still shows in Desktop, and one Capcom brought back stays archived there.
 - ❌ Undo after Stop and archive brings the session back to the list, but the stopped turn does not resume.

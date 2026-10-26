@@ -1004,7 +1004,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   --name-height: var(--row-height);
 }
 
-.list > .name-form, .sections > .name-form { --name-height: 2rem; margin: 0.5rem; }
+.list > .name-form, .sections > .name-form, .bar > .name-form { --name-height: 2rem; margin: 0.5rem; }
 
 .rail .name-form { --name-height: 2rem; }
 
@@ -1338,9 +1338,9 @@ body[data-scroll-locked] {
 
   .group-head { height: 1.75rem; padding-inline: 0.5rem 0.25rem; }
 
-  .rows .name-form, .list > .name-form, .sections > .name-form { --name-font: 0.8125rem; }
+  .rows .name-form, .list > .name-form, .sections > .name-form, .bar > .name-form { --name-font: 0.8125rem; }
 
-  .list > .name-form, .sections > .name-form { --name-height: 1.75rem; margin-block: 0.3rem; }
+  .list > .name-form, .sections > .name-form, .bar > .name-form { --name-height: 1.75rem; margin-block: 0.3rem; }
 
   .bar > .more { right: 1.5rem; }
 }

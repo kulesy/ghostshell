@@ -766,6 +766,7 @@ function removeGroup(id) {
 const STRUCTURE = new Map([
   ['/api/layout/project/add', b => layout.addProject(b.name)],
   ['/api/layout/project/rename', b => layout.renameProject(b.id, b.name)],
+  ['/api/layout/group/rename', b => layout.renameGroup(b.id, b.name)],
   ['/api/layout/project/remove', b => layout.removeProject(b.id)],
   ['/api/layout/group/add', b => layout.addGroup(b.name, b.project ?? null)],
   ['/api/layout/group/move', b => layout.moveGroup(b.id, b.project ?? null)],
@@ -1057,7 +1058,7 @@ async function api(req, res, u) {
       delete r.sortKey;
     }
     // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, and the status of the pull requests a session works on.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true } });
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);

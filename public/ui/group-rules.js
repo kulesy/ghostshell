@@ -51,6 +51,7 @@ export const supportsGroups = ix => !!ix?.features?.groupSessions;
 
 // A server that can delete and order groups says so too. Against an older one the group menu keeps only its moves between projects.
 export const supportsGroupEdits = ix => !!ix?.features?.groupEdits;
+export const supportsGroupRename = ix => !!ix?.features?.groupRename;
 
 // A built-in section as a group-shaped object over the sidebar's own lists, kept per list so renders see the same object. Only a list
 // with `sections` has one, which an older server's does not.

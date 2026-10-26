@@ -170,6 +170,7 @@ test('a layout file that cannot be read is reported, and no change is written ov
     l => l.rename('s1', 'New title'),
     l => l.addProject('Work'),
     l => l.renameProject('cp-a', 'Home'),
+    l => l.renameGroup('cg-a', 'Home'),
     l => l.removeProject('cp-a'),
     l => l.addGroup('Notes'),
     l => l.moveGroup('cg-a', null),
@@ -230,7 +231,7 @@ test('a name must be text with something in it and no more than 80 characters, a
   const before = fs.readFileSync(f.file, 'utf8');
   const invisible = ['\u200B', ' \u2060 \u00AD ', '\u3164', '\uFEFF', '\u200D', '\uFE0F', '\u2800', '\u202E', '\u2066\u2069'];
   for (const bad of [undefined, null, 5, {}, ['a'], '', '   ', '\n\t', '\u0000\u0007', ...invisible, 'x'.repeat(81), '🙂'.repeat(81)]) {
-    for (const edit of [l => l.addProject(bad), l => l.renameProject('cp-a', bad), l => l.addGroup(bad), l => l.addGroup(bad, 'cp-a')]) {
+    for (const edit of [l => l.addProject(bad), l => l.renameProject('cp-a', bad), l => l.renameGroup('cg-a', bad), l => l.addGroup(bad), l => l.addGroup(bad, 'cp-a')]) {
       assert.throws(() => edit(f.layout), { status: 400 }, JSON.stringify(bad));
     }
   }
@@ -253,6 +254,17 @@ test('renaming a project changes its name and nothing else', () => {
   const renamed = f.layout.renameProject('cp-b', ' Garden plans ');
   assert.deepEqual(renamed, { id: 'cp-b', name: 'Garden plans' });
   assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, projects: [WITH_PROJECTS.projects[0], renamed] });
+});
+
+test('renaming a group changes its name and nothing else, whatever its project, session or colour, and the retired groups stay as they were', () => {
+  const retired = [{ id: 'cg-old', name: 'Gone', session: '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1' }];
+  const f = folder({ ...WITH_PROJECTS, retired, groups: [{ ...WITH_PROJECTS.groups[0], session: '5a1f6c0e-8a2d-4f57-9c14-d27e50a6b8c2' }, ...WITH_PROJECTS.groups.slice(1)] });
+  const before = f.onDisk();
+  const renamed = f.layout.renameGroup('cg-a', ' Code   review\n');
+  assert.deepEqual(renamed, { ...before.groups[0], name: 'Code review' });
+  assert.deepEqual(f.onDisk(), { ...before, groups: [renamed, ...before.groups.slice(1)] });
+  assert.equal(f.layout.renameGroup('cg-c', '\u202Bnotes\u202C').name, 'notes');
+  assert.equal(f.layout.read().groups.map(g => g.id).join(), 'cg-a,cg-b,cg-c', 'the order is kept');
 });
 
 test('renaming a session keeps its title by id as one line of text, replaces an earlier one, and keeps everything else in the file', () => {
@@ -320,6 +332,9 @@ test('a project or group that is not there is refused with a 404, and a refused 
   for (const [edit, what] of [
     [() => l.renameProject('cp-none', 'x'), /Unknown project/],
     [() => l.renameProject('cg-a', 'x'), /Unknown project/],
+    [() => l.renameGroup('cg-none', 'x'), /Unknown group/],
+    [() => l.renameGroup('cp-a', 'x'), /Unknown group/],
+    [() => l.renameGroup(undefined, 'x'), /Unknown group/],
     [() => l.removeProject('cp-none'), /Unknown project/],
     [() => l.removeProject(undefined), /Unknown project/],
     [() => l.addGroup('x', 'cp-none'), /Unknown project/],

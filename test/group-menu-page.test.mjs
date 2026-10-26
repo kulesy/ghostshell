@@ -30,6 +30,7 @@ const timeout = 30_000;
 let app;
 let lone;
 let older;
+let noRename;
 let olderLone;
 let browser;
 
@@ -68,6 +69,7 @@ before(async () => {
   lone = await start({ groups: [{ id: 'cg-only', name: 'Only' }] });
   older = await without(app, 'groupEdits');
   olderLone = await without(lone, 'groupEdits');
+  noRename = await without(app, 'groupRename');
   browser = await launch(chromium);
 });
 
@@ -75,6 +77,7 @@ after(async () => {
   await browser?.close();
   await older?.close();
   await olderLone?.close();
+  await noRename?.close();
 });
 
 const LOGIN = `!!document.querySelector('#password')`;
@@ -153,9 +156,9 @@ test('a server that can edit groups gives each group in Home Move up and Move do
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
   assert.deepEqual(await names(page), ['Reviewing', 'Backlog', 'Notes']);
   assert.deepEqual(await menusOf(page, 'Reviewing', 'Backlog', 'Notes'), {
-    Reviewing: { label: 'Actions for Reviewing', items: ['New session', SEPARATOR, 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
-    Backlog: { label: 'Actions for Backlog', items: ['New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
-    Notes: { label: 'Actions for Notes', items: ['New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
+    Reviewing: { label: 'Actions for Reviewing', items: ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
+    Backlog: { label: 'Actions for Backlog', items: ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
+    Notes: { label: 'Actions for Notes', items: ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group'], bare: [] },
   });
   assert.deepEqual(page.problems, []);
 });
@@ -167,8 +170,8 @@ test('the button at the end of the header opens the same menu, and Delete group 
   await page.evaluate(`${head('Backlog')}.closest('.bar').querySelector('.more').setAttribute('data-picked', '')`);
   await page.click('.more[data-picked]');
   await page.until(`!!document.querySelector('${MENU}')`);
-  assert.deepEqual(await menuOf(page), ['New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
-  assert.equal(await page.evaluate(`[...document.querySelectorAll('${MENU} [role=menuitem]')].map(el => el.dataset.variant ?? '').join()`), ',,,,destructive');
+  assert.deepEqual(await menuOf(page), ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('${MENU} [role=menuitem]')].map(el => el.dataset.variant ?? '').join()`), ',,,,,destructive');
   assert.deepEqual(page.problems, []);
 });
 
@@ -177,15 +180,15 @@ test('in a project, the groups are ordered among those of the project, and the m
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 2`);
   assert.deepEqual(await names(page), ['Inside one', 'Inside two']);
   assert.deepEqual(await menusOf(page, 'Inside one', 'Inside two'), {
-    'Inside one': { label: 'Actions for Inside one', items: ['New session', SEPARATOR, 'Move down', SEPARATOR, 'Move to Home', SEPARATOR, 'Delete group'], bare: [] },
-    'Inside two': { label: 'Actions for Inside two', items: ['New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Home', SEPARATOR, 'Delete group'], bare: [] },
+    'Inside one': { label: 'Actions for Inside one', items: ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move down', SEPARATOR, 'Move to Home', SEPARATOR, 'Delete group'], bare: [] },
+    'Inside two': { label: 'Actions for Inside two', items: ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Home', SEPARATOR, 'Delete group'], bare: [] },
   });
 });
 
-test('a group alone in its view with nowhere to move to has a menu of Delete group alone, with no separator', { skip, timeout }, async t => {
+test('a group alone in its view with nowhere to move to has a menu of Rename, New session and Delete group', { skip, timeout }, async t => {
   const page = await appPage(t, lone.origin);
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 1`);
-  assert.deepEqual(await menusOf(page, 'Only'), { Only: { label: 'Actions for Only', items: ['New session', SEPARATOR, 'Delete group'], bare: [] } });
+  assert.deepEqual(await menusOf(page, 'Only'), { Only: { label: 'Actions for Only', items: ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Delete group'], bare: [] } });
 });
 
 test('a server that does not say it can edit groups gets the menu it had, which is only the moves to a project, and no menu for a group with none', { skip, timeout }, async t => {
@@ -207,6 +210,55 @@ test('a server that does not say it can edit groups gets the menu it had, which 
   assert.deepEqual([...page.problems, ...alone.problems], []);
 });
 
+test('a server that can edit groups but does not say it can rename them gets the menu without Rename', { skip, timeout }, async t => {
+  const page = await appPage(t, noRename.origin);
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
+  assert.deepEqual((await menusOf(page, 'Reviewing')).Reviewing.items, ['New session', SEPARATOR, 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
+  assert.deepEqual(page.problems, []);
+});
+
+test('Rename puts a box with the name in place of the header, and Enter saves it everywhere the name shows, Esc keeps the old one', { skip, timeout }, async t => {
+  const s = await furnished();
+  const page = await appPage(t, s.origin);
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
+  await rightClick(page, 'Backlog');
+  await choose(page, 'Rename');
+  await page.until(`document.activeElement.matches('.bar > .name-form .input')`);
+  assert.deepEqual(await page.evaluate(`[document.activeElement.getAttribute('aria-label'), document.activeElement.value, document.activeElement.maxLength, document.querySelectorAll('.bar[data-handle="cg-b"]').length]`), ['Rename group', 'Backlog', 80, 0]);
+  await page.press('Escape');
+  await page.until(`!document.querySelector('.name-form')`);
+  await page.until(`${FOCUSED} === 'Backlog'`);
+  assert.equal(onDisk(s).groups[1].name, 'Backlog');
+
+  await rightClick(page, 'Backlog');
+  await choose(page, 'Rename');
+  await page.until(`document.activeElement.matches('.bar > .name-form .input')`);
+  await page.evaluate(`(input => { input.value = 'Open tasks'; input.dispatchEvent(new Event('input', { bubbles: true })); })(document.activeElement)`);
+  await page.press('Enter');
+  await page.until(`!document.querySelector('.name-form')`);
+  assert.deepEqual(await names(page), ['Reviewing', 'Open tasks', 'Notes']);
+  await page.until(`${FOCUSED} === 'Open tasks'`);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.bar[data-handle="cg-b"]').length`), 1, 'it can be carried again');
+  assert.equal(onDisk(s).groups[1].name, 'Open tasks');
+  assert.equal(await page.evaluate(`${head('Open tasks')}.closest('.bar').querySelector('.more').getAttribute('aria-label')`), 'Actions for Open tasks');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a name the server refuses keeps the box open and the old name', { skip, timeout }, async t => {
+  const s = await furnished();
+  const page = await appPage(t, s.origin);
+  await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
+  await rightClick(page, 'Notes');
+  await choose(page, 'Rename');
+  await page.until(`document.activeElement.matches('.bar > .name-form .input')`);
+  await page.evaluate(`(input => { input.removeAttribute('maxlength'); input.value = 'x'.repeat(81); input.dispatchEvent(new Event('input', { bubbles: true })); })(document.activeElement)`);
+  await page.press('Enter');
+  await page.until(`/80 characters/.test(document.body.textContent)`);
+  assert.equal(await page.evaluate(`!!document.querySelector('.bar > .name-form')`), true);
+  assert.equal(onDisk(s).groups[2].name, 'Notes');
+  assert.deepEqual(page.problems.filter(p => !/400/.test(p)), []);
+});
+
 test('on a phone the button is there to touch without a hover, and opens the menu', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { phone: true });
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
@@ -216,7 +268,7 @@ test('on a phone the button is there to touch without a hover, and opens the men
   await page.evaluate(`${head('Notes')}.closest('.bar').querySelector('.more').setAttribute('data-picked', '')`);
   await page.click('.more[data-picked]');
   await page.until(`!!document.querySelector('${MENU}')`);
-  assert.deepEqual(await menuOf(page), ['New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
+  assert.deepEqual(await menuOf(page), ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
   assert.deepEqual(page.problems, []);
 });
 
@@ -233,7 +285,7 @@ test('Move down puts the group below the next one and the focus stays on its hea
   assert.deepEqual(onDisk(s).groups.map(g => g.id), ['cg-b', 'cg-a', 'cg-c', 'cg-p1', 'cg-p2']);
 
   await rightClick(page, 'Reviewing');
-  assert.deepEqual(await menuOf(page), ['New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
+  assert.deepEqual(await menuOf(page), ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
   await choose(page, 'Move up');
   await page.until(`document.querySelector('${GROUP_HEADS} .name').textContent === 'Reviewing'`);
   assert.deepEqual(await names(page), ['Reviewing', 'Backlog', 'Notes']);

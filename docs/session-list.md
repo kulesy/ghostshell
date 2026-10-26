@@ -83,9 +83,15 @@ Each result says where it is:
 - A place outside projects shows Home, when a project has places.
 - Pinned and Routines show nothing.
 
-### Renaming and deleting groups
+### A group's menu
 
-There is no screen yet to rename, delete or reorder groups. Edit `layout.json` for those: GhostShell reads it on every refresh, and shows the error at the top of the list if it cannot.
+The dots at the end of a group's header always open its menu, and so do a right click, the menu key or Shift+F10. On a phone a long press on the header opens it too, but only when the header can be dragged, which a group alone in its view with nowhere to move to cannot be, so use the dots there. It has Rename, New session, Move up, Move down, the moves to a project (Move to) and Delete group, in that order, in parts with a line between them. Move up is left out for the first group of the view and Move down for the last, and a part with nothing in it leaves no line.
+
+- Rename puts a name field in the header's place with the name selected. Enter saves, Esc cancels, clicking away saves, and a name runs to 80 characters at most. The new name shows in the header, the search, the Move to menus and the title of the group's chat. While the field is open the header cannot be dragged.
+- Move up and Move down put the group above or below the next one in the view.
+- Delete group asks first, with Cancel focused. Its sessions become ungrouped, its chat is hidden with its transcript kept, and no session is deleted.
+
+A group's chat is told the group's name when its session starts, and keeps that name after a rename, so it may still call the group by the old one. See [Give each group a session of its own](adr/20261023-a-session-for-each-group.md).
 
 ## Nested sessions
 
@@ -183,7 +189,7 @@ A project's menu is on its row in the projects sidebar: New group here, Rename a
 
 ### Moving a group
 
-The dots on a group's header move it into a project, between projects or back to Home, and show only when there is somewhere to move it. A note then says where the group went, and the list stays on the view it was in. A right click or the menu key on a group's header opens the same menu.
+Move to in a group's menu moves it into a project, between projects or back to Home, and shows only when there is somewhere to move it. A note then says where the group went, and the list stays on the view it was in. A right click or the menu key on a group's header opens the same menu.
 
 Drag a group's header to move the group with its sessions, folded or open. Only your own groups have a handle: Pinned, Routines, Started here, Ungrouped and Terminal and other do not, and neither does a group with nowhere to go. A mouse drags after a few pixels of movement, so a click still folds the group and the dots still open its menu. A finger drags after a long press, so a swipe still scrolls the list, and a long press let go without moving opens the group's menu.
 
@@ -191,7 +197,7 @@ Drag a group's header to move the group with its sessions, folded or open. Only 
 - Onto a project or Home moves the group there, as the menu does. With the projects sidebar open its rows are the targets, and the one under the pointer lights up. With it shut, a Move to strip of Home and the projects replaces the header's row while the group is carried, so the list does not move. The view the group is in is left out.
 - Esc cancels, and a note says where the group went or why the server refused. After a reorder the focus is on the group's header.
 
-The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with New session, which opens the new session page with the group chosen (`#/new/<group>`). The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. The + menu and Ctrl+N or Cmd+N start a session with no group, as before.
+The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with Rename and then New session, which opens the new session page with the group chosen (`#/new/<group>`). The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. The + menu and Ctrl+N or Cmd+N start a session with no group, as before.
 
 ## The projects sidebar
 
@@ -301,7 +307,7 @@ Desktop's records are read only, so GhostShell keeps these choices in `layout.js
 
 ## Renaming
 
-Double-click a session's row, or choose Rename in its menu, and a text box takes the row's place with the title selected. Enter saves, Esc cancels, clicking away saves, and a title runs to 120 characters at most. On a phone a double tap opens the session, so rename from the menu.
+Projects and groups are renamed from their menus (see [A project's menu](#a-projects-menu) and [A group's menu](#a-groups-menu)). Double-click a session's row, or choose Rename in its menu, and a text box takes the row's place with the title selected. Enter saves, Esc cancels, clicking away saves, and a title runs to 120 characters at most. On a phone a double tap opens the session, so rename from the menu.
 
 GhostShell keeps the title in `layout.json` and shows it in place of every other title, for any session, whichever app started it. It shows in GhostShell only: Desktop's records are read only and a terminal session's title belongs to the CLI, so Desktop and the terminal keep the titles they have. A group lists its sessions by the new title, and the search finds them by it.
 

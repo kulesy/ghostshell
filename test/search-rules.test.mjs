@@ -225,6 +225,17 @@ const placed = () => {
   return { ix, targets: placesFor(row('s', { source: 'capcom' }), ix) };
 };
 
+test('a renamed group is found by its new name in the search and in Move to, and no longer by the old one', () => {
+  const rename = ix => ({ ...ix, groups: ix.groups.map(g => (g.id === 'cg-store' ? { ...g, name: 'Shop front' } : g)) });
+  const ix = rename(list());
+  const found = words => ids(sectionOf(sectionsFor('all', ix, [], words, NEW), 'group') ?? { items: [] });
+  assert.deepEqual(found('shop front'), ['group:cg-store']);
+  assert.deepEqual(found('store'), []);
+  const targets = placesFor(row('s', { source: 'capcom' }), rename(placed().ix));
+  assert.deepEqual(findPlaces(targets, 'shop front').map(p => p.label), ['Shop front']);
+  assert.deepEqual(findPlaces(targets, 'store'), []);
+});
+
 test('Move to finds a place by its own name or by its project\'s name, and a project\'s name ranks its places ahead of a name that matches only the place', () => {
   const { targets } = placed();
   const found = findPlaces(targets, 'website');
