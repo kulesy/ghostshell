@@ -19,6 +19,7 @@ export function NameForm({ label, placeholder, value = '', was = value, max = 80
   const form = useRef(null);
   const ended = useRef(false);
   const gone = useRef(false);
+  const kept = useRef(value);
   useLayoutEffect(() => {
     input.current.focus({ preventScroll: true });
     input.current.select();
@@ -36,11 +37,23 @@ export function NameForm({ label, placeholder, value = '', was = value, max = 80
     if (!(await onSubmit(text, away))) ended.current = false;
   }
 
+  // maxlength counts UTF-16 units, so it refuses an emoji the server counts as one character. An edit past `max` characters is undone
+  // instead, which keeps the end of the name. A composition is judged when it ends, as writing the value in the middle of one breaks it.
+  const take = e => {
+    const el = e.currentTarget;
+    if (e.isComposing && e.type === 'input') return setText(el.value);
+    if ([...el.value].length <= max) { kept.current = el.value; return setText(el.value); }
+    const at = Math.max(0, el.selectionStart - (el.value.length - kept.current.length));
+    el.value = kept.current;
+    el.setSelectionRange(at, at);
+    setText(kept.current);
+  };
+
   // A window that loses the focus blurs the box too, and the name is saved only when the focus goes somewhere on the page.
   const blur = () => { if (document.hasFocus()) finish(true, true); };
 
   return html`<form class="name-form" ref=${form} onSubmit=${e => { e.preventDefault(); finish(false, true); }} onKeyDown=${escapeCancels(() => finish(false, false))}>
-    <input class="input" ref=${input} type="text" value=${text} maxlength=${max} placeholder=${placeholder} aria-label=${label} autocomplete="off" enterkeyhint="done"
-      onInput=${e => setText(e.currentTarget.value)} onBlur=${blur} />
+    <input class="input" ref=${input} type="text" value=${text} placeholder=${placeholder} aria-label=${label} autocomplete="off" enterkeyhint="done"
+      onInput=${take} onCompositionEnd=${take} onBlur=${blur} />
   </form>`;
 }

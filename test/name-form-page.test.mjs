@@ -171,3 +171,33 @@ test('a refused save leaves the box open with the text and the focus in it, and 
   assert.deepEqual(await calls(page), [['submit', 'a', false], ['submit', 'a', false]]);
   assert.deepEqual(page.problems, []);
 });
+
+// Four emoji take 8 UTF-16 units but 4 characters, which is how the server counts them against the limit.
+test('emoji count as one character each against the limit, as the server counts them', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: '', max: 120 });
+  await page.insert('a'.repeat(100));
+  await page.insert('\u{1F600}'.repeat(15));
+  assert.equal(await page.evaluate(`[...${INPUT}.value].length`), 115);
+  await page.insert('b'.repeat(5));
+  assert.equal(await page.evaluate(`[...${INPUT}.value].length`), 120);
+  await page.insert('c');
+  assert.equal(await page.evaluate(`[...${INPUT}.value].length`), 120);
+  assert.deepEqual(page.problems, []);
+});
+
+test('an emoji pasted into a box and saved reaches the caller whole', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: 'Old name' });
+  const family = '\u{1F468}‍\u{1F469}‍\u{1F467}‍\u{1F466}';
+  await page.insert(`${family} \u{1F1E6}\u{1F1FA} \u{1F6E2}️ \u{1F44D}\u{1F3FD}`);
+  await page.press('Enter');
+  await page.until('window.calls.length > 0');
+  assert.deepEqual(await calls(page), [['submit', `${family} \u{1F1E6}\u{1F1FA} \u{1F6E2}️ \u{1F44D}\u{1F3FD}`, false]]);
+});
+
+test('an edit past the limit in the middle is undone and keeps the end of the name', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: `a${'b'.repeat(78)}Z`, max: 80 });
+  await page.evaluate(`${INPUT}.setSelectionRange(1, 1)`);
+  await page.insert('Q');
+  assert.equal(await page.evaluate(`${INPUT}.value.endsWith('Z') && ${INPUT}.value.length`), 80);
+  assert.equal(await page.evaluate(`${INPUT}.selectionStart`), 1);
+});
