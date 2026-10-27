@@ -18,6 +18,7 @@ import { NameForm } from '/ui/forms.js';
 
 window.calls = [];
 window.answer = () => true;
+window.unmount = () => render(null, document.getElementById('root'));
 window.mount = props => render(h(NameForm, {
   label: 'Rename session',
   onSubmit: (text, away) => { window.calls.push(['submit', text, away]); return window.answer(); },
@@ -60,6 +61,10 @@ const calls = page => page.evaluate('window.calls');
 // Nothing is asked of the caller until the page has had a moment to, so a call that should not come is looked for after one.
 const idle = page => page.evaluate('new Promise(done => setTimeout(done, 50))');
 const leave = page => page.evaluate(`document.getElementById('other').focus()`);
+// A blur with no element taking the focus, as the macOS emoji picker or a click on a Safari button gives.
+const blurToNothing = page => page.evaluate(`${INPUT}.blur()`);
+const press = (page, selector) => page.evaluate(`document.querySelector('${selector}').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))`);
+const wait = (page, ms) => page.evaluate(`new Promise(done => setTimeout(done, ${ms}))`);
 
 test('the box has its label as aria-label and no visible label or buttons', { skip, timeout }, async t => {
   const page = await boxPage(t, { value: 'Old name' });
@@ -200,4 +205,82 @@ test('an edit past the limit in the middle is undone and keeps the end of the na
   await page.insert('Q');
   assert.equal(await page.evaluate(`${INPUT}.value.endsWith('Z') && ${INPUT}.value.length`), 80);
   assert.equal(await page.evaluate(`${INPUT}.selectionStart`), 1);
+});
+
+test('the emoji picker taking the focus does not close the box, and the emoji it types is saved', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: 'Old name' });
+  assert.equal(await page.evaluate('document.hasFocus()'), true);
+  await blurToNothing(page);
+  await idle(page);
+  await page.evaluate(`${INPUT}.value = 'Old name \u2705'; ${INPUT}.dispatchEvent(new Event('input', { bubbles: true })); ${INPUT}.focus()`);
+  await idle(page);
+  assert.deepEqual(await page.evaluate(`[!!${INPUT}, document.activeElement === ${INPUT}]`), [true, true]);
+  assert.deepEqual(await calls(page), []);
+  await page.press('Enter');
+  await page.until('window.calls.length > 0');
+  assert.deepEqual(await calls(page), [['submit', 'Old name \u2705', false]]);
+});
+
+test('a blur to nothing that nothing follows saves once the grace is over', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: 'Old name', grace: 600 });
+  await page.press('a');
+  await blurToNothing(page);
+  await wait(page, 300);
+  assert.deepEqual(await calls(page), []);
+  await page.until('window.calls.length > 0');
+  await idle(page);
+  assert.deepEqual(await calls(page), [['submit', 'a', true]]);
+});
+
+// A click is a pointerdown and then a blur with no element named, as Safari gives for a link, a button or bare page.
+test('a click elsewhere saves at once, not after the grace', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: 'Old name', grace: 5000 });
+  await page.press('a');
+  await press(page, '#other');
+  await blurToNothing(page);
+  await idle(page);
+  assert.deepEqual(await calls(page), [['submit', 'a', true]]);
+});
+
+test('a press inside the box and then a blur to nothing does not save at once', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: 'Old name', grace: 600 });
+  await page.press('a');
+  await press(page, '#root input');
+  await blurToNothing(page);
+  await wait(page, 300);
+  assert.deepEqual(await calls(page), []);
+});
+
+test('the window losing the focus during the grace keeps the box, and it is refocused when the window returns', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: 'Old name', grace: 300 });
+  await page.press('a');
+  await blurToNothing(page);
+  await page.evaluate('document.hasFocus = () => false');
+  await wait(page, 500);
+  assert.deepEqual(await page.evaluate(`[!!${INPUT}, window.calls.length]`), [true, 0]);
+  await page.evaluate(`delete document.hasFocus; window.dispatchEvent(new Event('focus'))`);
+  await page.until(`document.activeElement === ${INPUT}`);
+  await page.press('Enter');
+  await page.until('window.calls.length > 0');
+  assert.deepEqual(await calls(page), [['submit', 'a', false]]);
+});
+
+test('the focus going to an element saves at once', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: 'Old name' });
+  await page.press('a');
+  await leave(page);
+  await page.until('window.calls.length > 0');
+  assert.deepEqual(await calls(page), [['submit', 'a', true]]);
+});
+
+test('a box unmounted during the grace asks nothing of the caller', { skip, timeout }, async t => {
+  const page = await boxPage(t, { value: 'Old name', grace: 600 });
+  await page.press('a');
+  await blurToNothing(page);
+  await page.evaluate('unmount()');
+  await wait(page, 800);
+  await press(page, '#other');
+  await idle(page);
+  assert.deepEqual(await calls(page), []);
+  assert.deepEqual(page.problems, []);
 });
