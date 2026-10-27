@@ -14,6 +14,7 @@ import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { buttonLabel, buttonOf, modelMenu } from './model-rules.js';
 import { messageFor } from './quote-rules.js';
 import { bangMode, leaveBang } from './terminal-rules.js';
+import { useTypingPing } from './typing.js';
 import { openViewer } from './viewer.js';
 
 export const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
@@ -94,6 +95,7 @@ export function Composer({ ctrl }) {
   const [over, setOver] = useState(false);
   const setText = value => { setDraftText(value); setLocal(value); };
   const draft = !!ctrl.draft;
+  useTypingPing(draft ? null : ctrl.id, text);
   const area = useRef(null);
   const form = useRef(null);
   const picker = useRef(null);

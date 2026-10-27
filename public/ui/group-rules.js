@@ -53,6 +53,14 @@ export const supportsGroups = ix => !!ix?.features?.groupSessions;
 export const supportsGroupEdits = ix => !!ix?.features?.groupEdits;
 export const supportsGroupRename = ix => !!ix?.features?.groupRename;
 
+// A group's chat holds back a ranked update while its owner types. A server that does not say it takes the ping would answer it with a 404, and a
+// section's chat is refused it.
+export const typingOffered = (ix, id) => !!id && !!ix?.features?.groupUpdates && !!ix.groups?.some(g => g.session?.id === id);
+
+// The most often the page sends the ping.
+export const PING_MS = 10_000;
+export const pingDue = (last, now = Date.now()) => now - last >= PING_MS;
+
 // A built-in section as a group-shaped object over the sidebar's own lists, kept per list so renders see the same object. Only a list
 // with `sections` has one, which an older server's does not.
 const made = new WeakMap();
