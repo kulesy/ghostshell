@@ -8,7 +8,9 @@ How sessions start, what they inherit from Desktop and how hand-off works are in
 
 ## Chips
 
-The `spawn_task` and `dismiss_task` tools make chips. A chip shows as a card with Start and Dismiss. Start opens a new GhostShell session with the chip's prompt, in the folder printed on the card. A chip can carry a model and an effort level, which the card shows after the folder. The session it starts runs on them, and you can change either from the model menu afterwards. Chips that Desktop sessions created can be started too. A session started from a chip [nests under the session that made it](session-list.md#sessions-started-from-a-chip).
+The `spawn_task` and `dismiss_task` tools make chips. A chip shows as a card with Start and Dismiss. Start opens a new GhostShell session with the chip's prompt, in the folder printed on the card. A chip can carry a model and an effort level, which the card shows after the folder. The session it starts runs on them, and you can change either from the model menu afterwards. Chips that Desktop sessions created can be started too. A session started from a chip [nests under the session that made it](session-list.md#sessions-started-from-a-chip), and so shows in that session's group.
+
+A chip can also name a group with the `group` field, the name as the sidebar shows it, such as Reviewing. The name is matched when the chip is made, without regard to case. An unknown name, or one that two groups share, is refused with the list of group names. Start then opens the session in that group on its own, not nested under the session that made the chip. If the group was deleted by then, Start asks you to have the session suggest the task again. The card says where the session opens, with the group's current name. Sessions see the `group` field after GhostShell restarts. See [Let a chip name the group its session opens in](adr/20261027-chips-name-their-group.md).
 
 ## Chapters
 

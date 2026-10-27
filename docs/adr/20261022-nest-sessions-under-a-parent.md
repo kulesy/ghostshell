@@ -1,6 +1,6 @@
 # Nest sessions under a parent, and follow the links Desktop records
 
-- Status: Accepted, amended 2026-10-22 and 2026-10-23
+- Status: Accepted, amended 2026-10-22, 2026-10-23 and 2026-10-27
 - Deciders: Eli
 - Date: 2026-10-22
 - Tags: sessions, nesting, linked-sessions, layout, drag-and-drop, claude-desktop
@@ -48,6 +48,7 @@ Chosen option: "Follow Desktop's links on every refresh, and keep Capcom's nests
 - **Menus.** A nested row's menu has Move out of “parent”. Every row's menu has Nest under, which opens a second menu of the other top level sessions in the row's section, without the row's own parent or any routine run, and the item is hidden when that list is empty. Its sub-menu has a search box that finds a session by title (see [Let groups sit under projects, and make every change from a menu](20261016-projects-above-groups.md)). A toast says `Nested “C” under “P”.` or `Moved “C” out of “P”.`, or `Not nested: <reason>` or `Not moved out: <reason>` when the server refuses. None has an Undo, as a move has none. A title can run to 120 characters and Nest under lists them, so a menu is at most 26rem wide (`min(26rem, calc(100vw - 1rem))`) and cuts a longer label with an ellipsis.
 
 **Amended 2026-10-23, folded families.** A folded family now rolls its marks up into the parent's row. When the most urgent mark among the sessions nested under the head is more urgent than the head's own, the head's row shows that mark in its mark slot, and the fold button's name and tip say what is under it, as "4 nested sessions, 1 waiting on you" (`familyNote` in `public/ui/sub-panel-rules.js`, drawn by `Family` in `public/ui/sessions-list.js`). The order of urgency is awaiting, then error, running and unread. An open family shows each row's own mark. It reads the list the page already has, so it works against a server that cannot summarise sessions. This replaces the rule that a folded family did not roll its children's marks into the parent's row. See [Roll a session's sub session status up to every parent](20261023-roll-sub-session-status-up.md).
+**Amended 2026-10-27, chips that name a group.** A chip that names a group with the `group` field of `spawn_task` no longer nests. Starting it calls `layout.move(id, group, { unlink: true })`, which writes a null into `parents` and puts the session in that group as a top level entry. A chip with no group nests as before and writes no group. See [Let a chip name the group its session opens in](20261027-chips-name-their-group.md).
 
 ### Consequences
 

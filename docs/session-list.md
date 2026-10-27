@@ -175,7 +175,7 @@ GhostShell's own choice wins over Desktop's in both directions, as it does for t
 
 ### Sessions started from a chip
 
-A session you start from a chip nests under the session that made the chip, as Desktop nests the tasks it suggests. GhostShell reads that from `chips.json`, so chips you started earlier nest too. Moving the session, pinning it, taking it out or nesting it elsewhere wins over the chip, as it does over Desktop's links. [Chips](tools.md#chips) covers the cards themselves.
+A session you start from a chip nests under the session that made the chip, as Desktop nests the tasks it suggests. GhostShell reads that from `chips.json`, so chips you started earlier nest too. Moving the session, pinning it, taking it out or nesting it elsewhere wins over the chip, as it does over Desktop's links. A chip that names a group is the exception: its session opens in that group on its own, with no parent. [Chips](tools.md#chips) covers the cards themselves.
 
 ## Projects
 

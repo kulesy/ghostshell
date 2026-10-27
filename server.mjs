@@ -111,6 +111,8 @@ const linksNow = () => {
   return id => linkOf(own, fromChips, desk, id);
 };
 const linkNow = id => linksNow()(id);
+// What a chip's group name is looked up in when the chip is made. Each call reads the layout again, so a group renamed since is seen as it is now.
+const groupList = () => layout.read().groups.map(({ id, name }) => ({ id, name }));
 
 // A nested session that leaves its place would take the sessions straight under it along, so each is linked to the one it showed
 // under instead, and those further down keep their links. A head takes its whole family along.
@@ -317,7 +319,7 @@ function settingsFor(id, row) {
 
 async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx });
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx, groups: groupList });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
@@ -365,15 +367,32 @@ function subCtx(sessionId) {
 
 // The session is running by now, so a layout that cannot be written is logged and told to the caller as not placed. `home` is a group, which
 // takes it in, or a section: Pinned pins it, and the sections that list loose sessions leave it as it is, where GhostShell's own sessions list.
-function placeStarted(id, home) {
+// With `unlink` the session also leaves the session that made its chip, which is how a chip that names a group places it.
+function placeStarted(id, home, { unlink = false } = {}) {
   try {
     if (home === 'pinned') layout.pin(id, true);
-    else if (!sectionById(home)) layout.move(id, home);
+    else if (!sectionById(home)) layout.move(id, home, { unlink });
     return true;
   } catch (e) {
     console.error(`Could not place ${id} in ${home}: ${e.message}`);
     return false;
   }
+}
+
+// Where a chip's session opens, worded for its card from the group's name now. `row` is the session that made the chip. A section's chat
+// and a routine run, which never holds sessions, have nothing to say.
+function withOpensIn(chip, row) {
+  const groups = groupList();
+  const nameOf = id => groups.find(g => g.id === id)?.name;
+  const opensIn = (() => {
+    if (chip.group) return nameOf(chip.group) ? `Opens in ${nameOf(chip.group)}` : 'Its group has been deleted';
+    if (!row || row.routine) return null;
+    if (row.groupSession) return nameOf(row.groupSession) ? `Opens in ${nameOf(row.groupSession)}` : null;
+    // An archived session shows nothing under it, so its chip's session stands in its place on its own.
+    if (row.archived) return nameOf(row.group) ? `Opens in ${nameOf(row.group)}` : null;
+    return nameOf(row.group) ? `Opens under this session, in ${nameOf(row.group)}` : 'Opens under this session';
+  })();
+  return opensIn ? { ...chip, opensIn } : chip;
 }
 
 // The sessions a section's chat reaches: those the sidebar lists in it, with the sessions nested under each, so the cap on a list and the
@@ -574,7 +593,7 @@ function ensureChat(id, row, { mode } = {}) {
     instructions: () => (section ? guideFor(section.name, section.id) : guideFor(layout.read().groups.find(g => g.id === groupId)?.name ?? row.title)),
     fresh: () => !hasTranscript(id),
   };
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, ...group, subs: groupId ? undefined : subCtx });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, subs: groupId ? undefined : subCtx });
   dropFastOnRefusal(chat);
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
@@ -1132,13 +1151,17 @@ async function api(req, res, u) {
     const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, model: postedModel, effort: postedEffort } = JSON.parse(await readBody(req) || '{}');
     if (!sessionId || !toolUseId) return send(res, 400, { error: 'Which chip?' });
     const known = chips.get(toolUseId);
-    if (known && known.status !== 'open') return send(res, 409, { error: `That chip was already ${known.status}.`, chip: known });
-    if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }) });
+    const maker = () => findRow(known?.sessionId || sessionId);
+    if (known && known.status !== 'open') return send(res, 409, { error: `That chip was already ${known.status}.`, chip: withOpensIn(known, maker()) });
+    if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: withOpensIn(chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }), maker()) });
     const text = known?.prompt || prompt;
     const model = known?.model || postedModel;
     if (model && (typeof model !== 'string' || !MODEL.test(model))) return send(res, 400, { error: 'Unknown model.' });
     const effort = known?.effort || postedEffort;
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
+    // Only the chip the server stored names a group, never the posted card or the transcript's input.
+    const named = known?.group;
+    if (named && !groupList().some(g => g.id === named)) return send(res, 400, { error: 'The group this chip names has been deleted. Ask the session to suggest the task again.' });
     // The folder comes from transcript text, so anywhere other than the session's own folder needs the one the card showed.
     const from = findRow(sessionId);
     // The chip's own session decides as well as the posted one, so naming another session cannot lift the group's rules.
@@ -1162,9 +1185,13 @@ async function api(req, res, u) {
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
     const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a
-    // section's chip pins it or leaves it loose, as that section's own chat would.
-    if (groupId) placeStarted(id, groupId);
-    return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), status: 'started', startedId: id }) });
+    // section's chip pins it or leaves it loose, as that section's own chat would. A group the chip names wins over both, and the session is
+    // unlinked so it stands in that group on its own. See docs/adr/20261027-chips-name-their-group.md.
+    // A group deleted while the session started leaves it loose, never nested where the chip did not ask for it.
+    if (named) placeStarted(id, named, { unlink: true }) || placeStarted(id, null, { unlink: true });
+    else if (groupId) placeStarted(id, groupId);
+    const started = chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), status: 'started', startedId: id });
+    return send(res, 200, { id, chip: withOpensIn(started, findRow(started.sessionId)) });
   }
   const booking = /^\/api\/groups\/([\w-]+)\/session$/.exec(u.pathname);
   if (req.method === 'POST' && booking) {
@@ -1186,7 +1213,10 @@ async function api(req, res, u) {
     return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, terminal: !row?.groupSession, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
-  if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });
+  if (req.method === 'GET' && action === 'chips') {
+    const row = findRow(id);
+    return send(res, 200, { chips: chips.forSession(id).map(c => withOpensIn(c, row)) });
+  }
   // The pictures of the whole chat as items with refs and no bytes, for the viewer to count and step through.
   if (req.method === 'GET' && action === 'images' && !parts[4]) {
     const before = u.searchParams.get('before');

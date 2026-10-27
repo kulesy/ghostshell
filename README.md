@@ -46,7 +46,7 @@ GhostShell lists the sessions you start in Claude Desktop, the routine runs and 
     <td width="50%" valign="top"><b>Routines on a schedule</b><br>GhostShell runs your routines on their schedules, and you add, edit and delete them on its Routines page. <a href="docs/routines.md">Routines</a></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><b>Desktop-style tools</b><br>Chips, widgets and questions from GhostShell&#39;s own MCP server, a chat for each group and each section of the list, and Claude in Chrome. <a href="docs/tools.md">Tools</a></td>
+    <td width="50%" valign="top"><b>Desktop-style tools</b><br>Chips (which can name the group their session opens in), widgets and questions from GhostShell&#39;s own MCP server, a chat for each group and each section of the list, and Claude in Chrome. <a href="docs/tools.md">Tools</a></td>
     <td width="50%" valign="top"><b>On your phone</b><br>Install it as an app on the Mac and the phone. Over https, sign in with a passkey. <a href="docs/remote-access.md">Remote access</a></td>
   </tr>
 </table>

@@ -291,6 +291,66 @@ test('a chip keeps the model it names, one with none is stored without the key, 
   assert.equal(made.length, 2, 'a bad model makes no chip');
 });
 
+test('spawn_task offers an optional group in the ordinary and the group schema', () => {
+  const ordinary = call('tools/list').result.tools.find(t => t.name === 'spawn_task').inputSchema;
+  const group = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { group: { stateDir: '/tmp/state' } }).result.tools.find(t => t.name === 'spawn_task').inputSchema;
+  for (const schema of [ordinary, group]) {
+    assert.equal(schema.properties.group.type, 'string');
+    assert.equal(schema.required.includes('group'), false);
+  }
+});
+
+test('a chip stores the id of the group it names, matched by name without regard to case or spacing, and says the group\'s name', () => {
+  const made = [];
+  const chips = { put: chip => { made.push(chip); return chip; } };
+  const groups = () => [{ id: 'cg-progress', name: 'In Progress' }, { id: 'cg-review', name: 'Reviewing' }];
+  const spawn = args => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...args } } }, { chips, groups, cwd: '/tmp/work' }).result;
+  for (const named of ['Reviewing', 'reviewing', '  REVIEWING ']) {
+    const reply = spawn({ group: named });
+    assert.equal(reply.isError, undefined, named);
+    assert.match(reply.content[0].text, /to open in the group "Reviewing"/);
+  }
+  assert.deepEqual(made.map(c => c.group), ['cg-review', 'cg-review', 'cg-review']);
+  assert.equal(Object.hasOwn(made.at(-1), 'groupName'), false, 'the id is stored, never the name');
+  assert.equal(spawn({}).isError, undefined);
+  assert.equal(spawn({ group: '  ' }).isError, undefined, 'a blank group is no group');
+  assert.equal(Object.hasOwn(made[3], 'group'), false);
+  assert.equal(Object.hasOwn(made[4], 'group'), false);
+});
+
+test('a chip that names an unknown group is refused with the groups listed and nothing stored, and so is one that names a name two groups share', () => {
+  const made = [];
+  const chips = { put: chip => { made.push(chip); return chip; } };
+  const list = [{ id: 'a', name: 'Work' }, { id: 'b', name: 'Reviewing' }, { id: 'c', name: 'work' }];
+  const spawn = (args, groups = () => list) => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...args } } }, { chips, groups, cwd: '/tmp/work' }).result;
+  const unknown = spawn({ group: 'Done' });
+  assert.equal(unknown.isError, true);
+  assert.match(unknown.content[0].text, /no group called "Done"\. The groups are "Work", "Reviewing", "work"\./);
+  const ambiguous = spawn({ group: 'WORK' });
+  assert.equal(ambiguous.isError, true);
+  assert.match(ambiguous.content[0].text, /matches 2 groups/);
+  assert.match(spawn({ group: 'Done' }, () => []).content[0].text, /There are no groups\./);
+  assert.match(handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', group: 'Done' } } }, { chips, cwd: '/tmp/work' }).result.content[0].text, /There are no groups\./, 'a chat with no lookup knows none');
+  assert.equal(spawn({ group: ['Work'] }).isError, true);
+  assert.deepEqual(made, []);
+});
+
+test('a null group is no group, and a section that cannot hold a session refuses a chip before it looks at the group', () => {
+  const made = [];
+  const chips = { put: chip => { made.push(chip); return chip; } };
+  const spawn = (args, ctx = {}) => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...args } } }, { chips, groups: () => [], cwd: '/tmp/work', ...ctx }).result;
+  assert.equal(spawn({ group: null }).isError, undefined);
+  assert.equal(Object.hasOwn(made[0], 'group'), false);
+  const refused = spawn({ group: 'Nowhere', cwd: '/tmp/work' }, { group: { stateDir: '/tmp/state', section: { id: 'ungrouped', name: 'Ungrouped', place: null } } });
+  assert.equal(refused.isError, true);
+  assert.doesNotMatch(refused.content[0].text, /no group called/);
+});
+
+test('in a group\'s chat the group field does not promise to nest', () => {
+  const schema = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { group: { stateDir: '/tmp/state' } }).result.tools.find(t => t.name === 'spawn_task').inputSchema;
+  assert.doesNotMatch(schema.properties.group.description, /nest/);
+});
+
 test('a group tool that throws something unexpected tells the model a bare failure, and one that refuses tells it why', async () => {
   const quiet = console.error;
   console.error = () => {};

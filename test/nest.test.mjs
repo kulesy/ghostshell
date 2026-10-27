@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { everyRow } from '../public/ui/tree.js';
-import { as, request, restart, signIn, start } from './harness.mjs';
+import { as, cliCalls, request, restart, signIn, start, until } from './harness.mjs';
 
 const GROUPS = [{ id: 'cg-work', name: 'Work' }, { id: 'cg-home', name: 'Home' }];
 const SESSIONS = [
@@ -629,4 +629,116 @@ test('a chip dismissed from the page of another session stays with the session t
   assert.deepEqual([res.body().chip.sessionId, res.body().chip.status], ['maker', 'dismissed']);
   assert.deepEqual((await chipsOf(s, token, 'maker')).map(c => c.status), ['dismissed']);
   assert.deepEqual(await chipsOf(s, token, 'other'), []);
+});
+
+// Chips that name a group: Home is where Maker's chip says the session opens, though Maker is in Work.
+const NAMED = [
+  { sessionId: 'maker', toolUseId: 'toolu_home', status: 'open', prompt: 'begin a session', group: 'cg-home' },
+  { sessionId: 'maker', toolUseId: 'toolu_gone', status: 'open', prompt: 'begin a session', group: 'cg-deleted' },
+  { sessionId: 'maker', toolUseId: 'toolu_plain', status: 'open', prompt: 'begin a session' },
+];
+const startChip = (s, token, toolUseId, json) => request(s, 'POST', '/api/chips/start', { headers: as(token), json: { sessionId: 'maker', toolUseId, ...json } });
+
+test('a chip that names a group starts its session in that group on its own, unlinked from the session that made it, and a restart keeps it', async () => {
+  const sessions = MAKER.filter(r => r.id !== 'made');
+  const s = await start({ sessions, groups: GROUPS, claude: true, chips: NAMED });
+  const { token } = await signIn(s);
+  const res = await startChip(s, token, 'toolu_home');
+  assert.equal(res.status, 200, res.text);
+  const { id } = res.body();
+  assert.deepEqual([onDisk(s).parents[id], onDisk(s).assignments[id]], [null, 'cg-home']);
+  const shows = async (server, cookie) => {
+    const ix = await index(server, cookie);
+    return [rowOf(ix, id).parent, shape(ix.groups.find(g => g.id === 'cg-home').sessions), shape(ix.groups.find(g => g.id === 'cg-work').sessions)];
+  };
+  assert.deepEqual(await shows(s, token), [null, ['A chip'], ['Maker', 'Other']]);
+  const again = await restart(s);
+  assert.deepEqual(await shows(again, (await signIn(again)).token), [null, ['A chip'], ['Maker', 'Other']]);
+});
+
+test('a chip that names a group which was deleted refuses to start and starts nothing, and a chip with no group still nests under the session that made it', async () => {
+  const sessions = MAKER.filter(r => r.id !== 'made');
+  const s = await start({ sessions, groups: GROUPS, claude: true, chips: NAMED });
+  const { token } = await signIn(s);
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const refused = await startChip(s, token, 'toolu_gone');
+  assert.deepEqual([refused.status, refused.body()], [400, { error: 'The group this chip names has been deleted. Ask the session to suggest the task again.' }]);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+  assert.equal(cliCalls(s).some(c => c.started), false, 'no session was started');
+  assert.deepEqual((await chipsOf(s, token, 'maker')).find(c => c.toolUseId === 'toolu_gone').status, 'open');
+
+  const plain = await startChip(s, token, 'toolu_plain');
+  assert.equal(plain.status, 200, plain.text);
+  const { id } = plain.body();
+  const layout = onDisk(s);
+  assert.deepEqual([layout.assignments?.[id], layout.parents?.[id]], [undefined, undefined], 'it writes no group and no link of its own');
+  assert.deepEqual([rowOf(await index(s, token), id).parent, rowOf(await index(s, token), id).group], ['maker', 'cg-work']);
+});
+
+test('a group posted with the card places nothing: only the chip the server stored counts', async () => {
+  const sessions = MAKER.filter(r => r.id !== 'made');
+  const s = await start({ sessions, groups: GROUPS, claude: true, chips: NAMED });
+  const { token } = await signIn(s);
+  const res = await startChip(s, token, 'toolu_plain', { group: 'cg-home' });
+  assert.equal(res.status, 200, res.text);
+  const { id } = res.body();
+  assert.deepEqual([onDisk(s).assignments?.[id], rowOf(await index(s, token), id).parent], [undefined, 'maker']);
+});
+
+test('the chips route says where each chip opens, by the group\'s name now, and the start reply keeps saying it', async () => {
+  const sessions = MAKER.filter(r => r.id !== 'made');
+  const s = await start({ sessions, groups: GROUPS, claude: true, chips: NAMED });
+  const { token } = await signIn(s);
+  const opens = async () => Object.fromEntries((await chipsOf(s, token, 'maker')).map(c => [c.toolUseId, c.opensIn]));
+  assert.deepEqual(await opens(), { toolu_home: 'Opens in Home', toolu_gone: 'Its group has been deleted', toolu_plain: 'Opens under this session, in Work' });
+  assert.equal((await request(s, 'POST', '/api/layout/group/rename', { headers: as(token), json: { id: 'cg-home', name: 'Reviewing' } })).status, 200);
+  assert.equal((await opens()).toolu_home, 'Opens in Reviewing', 'a rename shows');
+  const started = await startChip(s, token, 'toolu_home');
+  assert.equal(started.body().chip.opensIn, 'Opens in Reviewing');
+  assert.equal((await opens()).toolu_home, 'Opens in Reviewing', 'a started chip keeps the line');
+  assert.equal(Object.hasOwn(onDisk(s), 'opensIn'), false);
+});
+
+test('a chip with no group in a session that shows in no group has no group line, and one in a loose session says it opens under it', async () => {
+  const s = await start({ sessions: [{ id: 'loose', title: 'Loose', ago: 1 }], groups: GROUPS, chips: [{ sessionId: 'loose', toolUseId: 'toolu_l', status: 'open', prompt: 'x' }] });
+  const { token } = await signIn(s);
+  assert.deepEqual((await chipsOf(s, token, 'loose')).map(c => c.opensIn), ['Opens under this session']);
+});
+
+test('a chip raised by a routine run has no group line, one raised by an archived session opens in its group, and a dismissed chip keeps its line', async () => {
+  const sessions = [
+    { id: 'run', title: 'Nightly', routine: 'nightly', group: 'cg-work', ago: 1 },
+    { id: 'old', title: 'Old', archived: true, group: 'cg-work', ago: 2 },
+    ...MAKER.filter(r => r.id !== 'made'),
+  ];
+  const chips = [
+    { sessionId: 'run', toolUseId: 'toolu_run', status: 'open', prompt: 'x' },
+    { sessionId: 'old', toolUseId: 'toolu_old', status: 'open', prompt: 'x' },
+    ...NAMED,
+  ];
+  const s = await start({ sessions, groups: GROUPS, claude: true, chips });
+  const { token } = await signIn(s);
+  assert.deepEqual((await chipsOf(s, token, 'run')).map(c => c.opensIn), [undefined]);
+  assert.deepEqual((await chipsOf(s, token, 'old')).map(c => c.opensIn), ['Opens in Work']);
+  const dismissed = await request(s, 'POST', '/api/chips/dismiss', { headers: as(token), json: { sessionId: 'maker', toolUseId: 'toolu_home' } });
+  assert.equal(dismissed.body().chip.opensIn, 'Opens in Home');
+  const again = await startChip(s, token, 'toolu_home');
+  assert.equal(again.status, 409);
+  assert.equal(again.body().chip.opensIn, 'Opens in Home');
+});
+
+test('spawn_task called in a chat resolves the group name to its id when the chip is made, and refuses a name that is not a group', async () => {
+  const sessions = MAKER.filter(r => r.id !== 'made');
+  const s = await start({ sessions, groups: GROUPS, claude: true, chips: [] });
+  const { token } = await signIn(s);
+  const replies = () => cliCalls(s).filter(c => c.mcp).map(c => c.mcp.result.content[0].text);
+  const spawn = async group => {
+    const before = replies().length;
+    await request(s, 'POST', '/api/sessions/maker/send', { headers: as(token), json: { text: `call spawn_task ${JSON.stringify({ title: 'Review', prompt: 'begin a session', cwd: s.home, group })}` } });
+    await until(() => replies().length > before);
+    return replies()[before];
+  };
+  assert.match(await spawn('home'), /^Chip created \(task_id: task_\w+\), to open in the group "Home"\./);
+  assert.match(await spawn('Nowhere'), /no group called "Nowhere"\. The groups are "Work", "Home"\./);
+  assert.deepEqual((await chipsOf(s, token, 'maker')).map(c => c.group), ['cg-home']);
 });
