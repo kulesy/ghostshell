@@ -17,7 +17,7 @@ import { linksOf, previewFile, serveFile } from './lib/files.mjs';
 import { chipRefusal, ensureGroupDir, groupDir, guideFor, workFolder } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
-import { chipTitled, pendingLines } from './lib/subs.mjs';
+import { pendingLines } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
 import { makePulls } from './lib/pulls.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
@@ -169,6 +169,7 @@ function buildIndex({ archived = false } = {}) {
   const projectIds = new Set(own.projects.map(p => p.id));
   const pins = new Set(own.pinned);
   const unarchived = new Set(own.unarchived);
+  const chipTitles = chips.titles();
   for (const r of rows.values()) {
     r.group = groupIds.has(own.assignments[r.id]) ? own.assignments[r.id] : null;
     r.pinned = pins.has(r.id);
@@ -176,9 +177,11 @@ function buildIndex({ archived = false } = {}) {
     if (Object.hasOwn(own.archived, r.id)) r.archived = true;
     else if (unarchived.has(r.id)) r.archived = false;
     if (r.archived) r.archivedAt = Date.parse(own.archived[r.id]) || r.changedAt || r.lastActivityAt;
-    // Capcom's own title wins over every other, and is applied before the sorts so a group goes by it.
+    // Capcom's own title wins over every other, then the title a chip gave the session in place of its prompt's first line. Both are
+    // applied before the sorts so a group goes by them.
     const title = ownTitle(own, r.id);
     if (title) { r.title = title; r.renamed = true; }
+    else if (chipTitles.has(r.id)) r.title = chipTitles.get(r.id);
   }
 
   // A group's or section's session belongs to it alone, so its row leaves `rows` here and no list, family, count or search sees it. A session
@@ -344,9 +347,8 @@ const pendingOf = id => getChat(id)?.status().pending ?? [];
 function subCtx(sessionId) {
   return {
     lookup({ archived }) {
-      const { rows } = buildIndex({ archived });
-      const titled = chipTitled([...rows.values()], chips.titles());
-      return { self: titled.find(r => r.id === sessionId) ?? null, rows: titled.filter(r => archived || !r.archived) };
+      const listed = [...buildIndex({ archived }).rows.values()];
+      return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
     summary: (id, cwd) => summaries.get(id, cwd),

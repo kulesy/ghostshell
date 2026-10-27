@@ -249,6 +249,8 @@ With nothing typed, All shows recent sessions, then Home and each project, then 
 
 Typing filters by title, folder, branch or routine, and Home, the projects and the groups by their name. The up and down arrows and Enter open a result, and Esc closes the search.
 
+A session's result shows its state mark and its title, so the title gets the row's width. The time it last ran, or was archived, shows at the right end only while the whole title fits beside it. Hovering a result shows its full title in a tooltip. A routine's result also counts its runs.
+
 ### The order of results
 
 Every search ranks what it finds the same way: a project first, then a group, then a session, then a session nested under another. In a tie the order the list shows wins.
@@ -307,7 +309,7 @@ Archiving the open chat, from the key or the menu, opens the session the focus w
 
 ### Unarchiving
 
-In the search, each archived result has an Unarchive button, and Shift+Enter unarchives the selected one. Unarchiving, or sending the session a message, brings it back to the group, pin or routine it had.
+In the search, Shift+Enter unarchives the selected archived result, and the footer shows the key while one is selected. Unarchiving, or sending the session a message, brings it back to the group, pin or routine it had.
 
 Desktop's records are read only, so GhostShell keeps these choices in `layout.json`, and its choice wins over Desktop's archive flag in both directions.
 
@@ -327,7 +329,7 @@ A session GhostShell starts is named by one of three rules.
 - A session you start by typing is named once its first reply finishes. GhostShell asks Haiku 5.5, at low effort, for a title of 3 to 8 words, in the shape "Area - task" when an area such as UI or Server is clear. It gives the model the start of your first message and of the first reply. The list shows the title at its next refresh, within 15 seconds. Until then it shows the first line of your message.
 - If the model gives no usable title, GhostShell asks once more, and then uses your first line, cut at a word.
 
-A title you set yourself is never replaced, including one set while the first reply is still coming. A routine's run keeps its routine's title, and a group's chat or a section's chat keeps its own name. Set `autoTitle` to `false` ([configuration](configuration.md#autotitle)) to make no model call.
+A session started from a chip before GhostShell saved its title is still listed by the chip's title, everywhere a session is listed. A title you set yourself is never replaced, including one set while the first reply is still coming. A routine's run keeps its routine's title, and a group's chat or a section's chat keeps its own name. Set `autoTitle` to `false` ([configuration](configuration.md#autotitle)) to make no model call.
 
 With `desktopHandoff` set to `true`, a session renamed here before it is handed to Desktop takes its GhostShell title with it (see [sessions started here](how-it-works.md#sessions-started-here)).
 

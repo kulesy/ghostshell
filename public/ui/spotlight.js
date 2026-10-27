@@ -1,12 +1,11 @@
 // Ctrl+K searches from anywhere, in shadcn's command dialog. Chips pick what to look through, and the left and right arrows move
 // between them. Archived sessions are only found here, under their own chip, most recently archived first, and only here is one
-// unarchived, by its button or with Shift+Enter. Home, the projects and the groups are found here too, and opening one shows its
+// unarchived, with Shift+Enter. Home, the projects and the groups are found here too, and opening one shows its
 // view in the list. What a search lists, and in what order, is search-rules.js's.
 import { api } from './api.js';
 import { focusNextComposer } from './composer.js';
 import { Dialog } from './dialog.js';
-import { HOME } from './env.js';
-import { folderName, STATE_LABEL, when } from './format.js';
+import { STATE_LABEL, when } from './format.js';
 import { useModifier } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
@@ -22,7 +21,7 @@ const CHIPS = [['all', 'All'], ['projects', 'Projects'], ['groups', 'Groups'], [
 
 const Search = () => html`<svg data-part="command-input-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>`;
 
-// What an item says about itself. The hover is on the item, so it stays selected while the pointer is over its Unarchive button.
+// What an item says about itself. A session shows its title alone, with the time beside it only while the whole title fits.
 function Words({ it }) {
   if (it.action) {
     return html`<span data-part="hit-icon" aria-hidden="true">${draw(icons[it.icon] ?? icons.messageSquarePlus)}</span><span data-part="hit-title">${it.action}</span>${it.hint ? html`<span data-slot="command-shortcut">${it.hint}</span>` : null}`;
@@ -40,19 +39,15 @@ function Words({ it }) {
       <span data-part="hit-meta">${meta}</span><span data-part="hit-time">${g.count}</span>`;
   }
   const { r } = it;
-  const meta = r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''}` : [folderName(r.cwd, HOME), r.branch, r.archived ? 'archived' : STATE_LABEL[r.state]].filter(Boolean).join(' · ');
-  return html`<span class="lamp" data-state=${r.state} aria-hidden="true"></span><span data-part="hit-title">${r.title || UNTITLED}</span>
-    ${meta ? html`<span data-part="hit-meta">${meta}</span>` : null}<time data-part="hit-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time>`;
+  const title = r.title || UNTITLED;
+  const state = !r.archived && STATE_LABEL[r.state];
+  return html`<span class="lamp" data-state=${r.state} aria-hidden="true"></span><span data-part="hit-line" data-tip=${title} data-tip-delay="700">
+    <span data-part="hit-title">${title}</span>${state ? html`<span class="sr">${`, ${state}`}</span>` : null}${r.runs ? html`<span data-part="hit-meta">${`${r.runs} run${r.runs > 1 ? 's' : ''}`}</span>` : null}
+    <time data-part="hit-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time></span>`;
 }
 
-function Hit({ it, id, selected, onPick, onMove, onUnarchive }) {
-  const option = html`<div id=${id} data-slot="command-item" cmdk-item="" role="option" aria-selected=${selected} data-selected=${selected} data-disabled="false" data-value=${it.key}
-    onClick=${() => onPick(it)} onPointerMove=${onMove}><${Words} it=${it} /></div>`;
-  if (!it.r?.archived) return option;
-  const title = it.r.title || UNTITLED;
-  return html`<div class="can-unarchive" role="presentation" onPointerMove=${onMove}>${option}
-    <button class="btn unarchive" data-variant="outline" data-size="xs" type="button" aria-label=${`Unarchive ${title}`} onClick=${() => onUnarchive(it)}>Unarchive</button></div>`;
-}
+const Hit = ({ it, id, selected, onPick, onMove }) => html`<div id=${id} data-slot="command-item" cmdk-item="" role="option" aria-selected=${selected} data-selected=${selected}
+  data-disabled="false" data-value=${it.key} onClick=${() => onPick(it)} onPointerMove=${onMove}><${Words} it=${it} /></div>`;
 
 // `onShow(id, group)` shows a view of the list, a project id or null for Home, with a group in it in sight when `group` names one, and
 // closes the search. Opening anything else closes it here.
@@ -211,7 +206,7 @@ function Palette({ ix, archive, onShow, onClose }) {
           ? sections.map(s => html`<div key=${s.key} data-slot="command-group" cmdk-group="" role="presentation">
               <div cmdk-group-heading="" aria-hidden="true" id=${`group-${s.key}`}>${s.title}</div>
               <div cmdk-group-items="" role="group" aria-labelledby=${`group-${s.key}`}>
-                ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} id=${`result-${index.get(it)}`} selected=${index.get(it) === pick} onPick=${open} onMove=${moved(index.get(it))} onUnarchive=${unarchive} />`)}
+                ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} id=${`result-${index.get(it)}`} selected=${index.get(it) === pick} onPick=${open} onMove=${moved(index.get(it))} />`)}
               </div>
             </div>`)
           : html`<div data-slot="command-empty" cmdk-empty="" role="presentation">${ix ? emptyText(chip, query) : 'Loading sessions'}</div>`}

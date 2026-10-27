@@ -64,6 +64,8 @@ Measured on CLI 2.1.311 with six real calls to Haiku 5.5 at low effort and the s
 - ❌ A title generated at the end of the first turn is not there while that turn runs, and a session stopped during its first turn is named from the first message alone, at the turn end that the exit emits first.
 - ❌ A title is written once. A session whose subject changes keeps its first title until it is renamed.
 
+**Amended 2026-10-27, chips started earlier.** A chip session started before this change has no title in `layout.json`, so the sidebar and the search listed it by its prompt's first line. The session index now applies the chip's title from `chips.json` to any session the owner has not renamed, the same rule the sub session tools used, so every list and tool names it alike. A title in `layout.json` still wins.
+
 ## Pros and Cons of the Options
 
 ### 1. Clean the first line only

@@ -34,7 +34,7 @@ A model may treat a message that reaches a running session in the middle of a tu
 
 A session keeps the tool list it first loaded, even after a resume. One that started before GhostShell restarted does not see `send_session`, and only a session started afterwards does.
 
-`list_sub_sessions` and `read_sub_session` name a session by the title the parent gave its chip in `spawn_task`. A name you gave it by renaming still wins, and a session with no chip keeps the title it had before. The sidebar and the group tools are unchanged.
+`list_sub_sessions` and `read_sub_session` name a session by the title the parent gave its chip in `spawn_task`, as the sidebar and the search do. A name you gave it by renaming still wins, and a session with no chip keeps the title it had before.
 
 These two tools count by session state alone. A session that waits on you for a pull request counts as waiting in the [tab](session-list.md#pull-requests) and on the header button, and not in what they list.
 
