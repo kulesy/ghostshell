@@ -1,5 +1,5 @@
 // Run with `npm test`. The route that answers the pull requests each session works on, over HTTP against the real server and a fake gh that never
-// leaves the machine.
+// leaves the machine. The route for the links in a reply is in links-api.test.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -31,7 +31,7 @@ const says = (s, id, text) => fs.appendFileSync(path.join(s.home, '.claude', 'pr
 const raw = (extra = {}) => ({
   state: 'OPEN', isDraft: false, reviewDecision: 'APPROVED', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN',
   statusCheckRollup: [{ __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' }], latestReviews: [],
-  reviewRequests: [], author: { login: 'octocat' }, ...extra,
+  reviewRequests: [], author: { login: 'octocat' }, title: 'Fix the thing', ...extra,
 });
 const state = (s, value) => fs.writeFileSync(path.join(s.home, 'gh-state.json'), JSON.stringify(value));
 const ghCalls = s => (fs.existsSync(s.ghLog) ? fs.readFileSync(s.ghLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []);
@@ -80,7 +80,7 @@ test('a session gets the one pull request its latest reply names, with its statu
   assert.deepEqual(body.pulls.gone, [], 'an address gh cannot show is left out');
   assert.deepEqual(body.pulls.quiet, [], 'two pull requests in one reply is a sweep, which has no main one');
   assert.deepEqual(body.pulls.top[0], {
-    url: pr(1), repo: 'example-org/example-repo', number: 1, state: 'open', mine: true, asked: false, requested: 0,
+    kind: 'pull', url: pr(1), title: 'Fix the thing', repo: 'example-org/example-repo', number: 1, state: 'open', mine: true, asked: false, requested: 0,
     review: 'approved', checks: 'passing', conflicts: false, clean: true, threads: 2,
   });
   assert.deepEqual([body.pulls.kid[0].state, body.pulls.kid[0].mine, body.pulls.kid[0].asked, body.pulls.kid[0].review, body.pulls.kid[0].threads], ['draft', false, true, 'none', 0]);

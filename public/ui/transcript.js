@@ -5,10 +5,12 @@ import { duration, tokenCount } from './format.js';
 import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { gapBelow, NEAR_END, useClock, useFields, usePin, useStick, useStore } from './hooks.js';
+import { linksOn, useLinkPreviews } from './links.js';
 import { loadingView } from './load-rules.js';
 import { QuoteFloat } from './quote.js';
 import { isChip, Row, Thought } from './rows.js';
 import { Shell } from './shell.js';
+import { sessionIndex } from './subs.js';
 import { display, doingNow } from './thread.js';
 import { closeViewer, openViewer } from './viewer.js';
 import { DEFAULT_TEXT, hasRow, HOLD_MS, nextHold, ROTATE_MS, waitText } from './widget-wait.js';
@@ -93,6 +95,7 @@ export function Transcript({ ctrl, quoting }) {
   const turn = useStore(ctrl.store, turnOf);
   const [away, setAway] = useState(false);
   const pin = usePin(box);
+  useLinkPreviews(box, useStore(sessionIndex, s => linksOn(s.ix)));
   // A late picture or a docked card grows the box with no scroll event, so a resize pins a pinned box and checks the gap once a frame.
   useEffect(() => {
     const el = box.current;

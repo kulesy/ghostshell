@@ -34,6 +34,7 @@ import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
+import { isIssueUrl, isPullUrl } from './public/ui/pull-url.js';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
 import { titleText } from './public/ui/quote-rules.js';
 import { SECTION_IDS, SECTIONS, sectionById, sectionOf, sectionSessions } from './public/ui/sections.js';
@@ -1062,6 +1063,25 @@ async function pullsApi(res, u) {
   return send(res, 200, { pulls: answer, settling });
 }
 
+const MAX_LINKS = 40;
+
+// The distinct addresses in the url parameters, or the sentence for a 400 when there are none, too many, or one is not a pull request or issue address.
+function askedLinks(u) {
+  const urls = [...new Set(u.searchParams.getAll('url'))];
+  if (!urls.length) return 'Name the links in url.';
+  if (urls.length > MAX_LINKS) return `Ask for at most ${MAX_LINKS} links at a time.`;
+  return urls.every(url => isPullUrl(url) || isIssueUrl(url)) ? urls : 'Every url must be the plain address of a GitHub pull request or issue.';
+}
+
+// GET api/links?url=a&url=b answers for each address that is a GitHub pull request or issue: its title and status from GitHub, and whether some
+// are still being read. An address gh cannot show is left out without a word.
+async function linksApi(res, u) {
+  const urls = askedLinks(u);
+  if (typeof urls === 'string') return send(res, 400, { error: urls });
+  const { found, settling } = await pulls.lookup(urls);
+  return send(res, 200, { links: Object.fromEntries(found), settling });
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
@@ -1091,11 +1111,12 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, and the status of the pull requests a session works on.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, and the status of the pull requests and issues a reply links to.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
+  if (req.method === 'GET' && u.pathname === '/api/links') return linksApi(res, u);
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
   // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's or built-in section's.
   if (req.method === 'GET' && u.pathname === '/api/archived') {

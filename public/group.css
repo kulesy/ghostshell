@@ -288,15 +288,15 @@
 
 .sub-status { margin: 0; font: 500 0.875rem/1.375rem var(--font-sans); overflow-wrap: anywhere; }
 
-.sub-status[data-tone="needs"] { color: var(--warning-foreground); }
+:is(.sub-status, .link-next, .link-state)[data-tone="needs"], .link-badge[data-tone="needs"] svg { color: var(--warning-foreground); }
 
-.sub-status[data-tone="error"] { color: color-mix(in oklab, var(--destructive) 60%, var(--foreground)); }
+:is(.sub-status, .link-next, .link-state)[data-tone="error"], .link-badge[data-tone="error"] svg { color: color-mix(in oklab, var(--destructive) 60%, var(--foreground)); }
 
-.sub-status[data-tone="ready"] { color: color-mix(in oklab, var(--ready) 70%, var(--foreground)); }
+:is(.sub-status, .link-next, .link-state)[data-tone="ready"], .link-badge[data-tone="ready"] svg { color: color-mix(in oklab, var(--ready) 70%, var(--foreground)); }
 
-.sub-status[data-tone="working"] { color: var(--foreground); }
+:is(.sub-status, .link-next, .link-state)[data-tone="working"], .link-badge[data-tone="working"] svg { color: var(--foreground); }
 
-.sub-status[data-tone="quiet"] { color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground)); }
+:is(.sub-status, .link-next, .link-state)[data-tone="quiet"], .link-badge[data-tone="quiet"] svg { color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground)); }
 
 .pull-link {
   align-self: flex-start;
