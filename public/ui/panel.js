@@ -1,4 +1,4 @@
-// The side panel of a chat: the sub sessions under it, its terminal and the file it has open, as tabs. It sits on the right of the chat when
+// The side panel of a chat: the sub sessions under it, the subagents it started, its terminal and the file it has open, as tabs. It sits on the right of the chat when
 // there is room for both, and covers the chat when there is not. Its look is in app.css, which reads the mode and width this file puts on the session.
 import { backTo, closeFile, FileTab, useFile } from './file-view.js';
 import { useStore } from './hooks.js';
@@ -6,25 +6,36 @@ import { html, memo, useCallback, useLayoutEffect, useRef, useState } from './ht
 import { draw, icons } from './menu.js';
 import { closeQuietly, hidePanel, openQuietly, panelOf, panels, selectTab, setPanelWidth, takeOrigin, takeWant } from './panel-state.js';
 import { keyHint } from './shortcuts.js';
+import { tabOffered } from './subagent-rules.js';
+import { BOT, SubagentsTab } from './subagents.js';
 import { subsOffered } from './sub-panel-rules.js';
 import { LIST_TREE, sessionIndex, SubsTab } from './subs.js';
 import { clampWidth, opensByDefault, PANEL, panelMode, panelName, panelTabs, TAB_LABEL, tabByKey, tabShown, widestPanel, widthByKey } from './terminal-rules.js';
 import { TerminalTab } from './terminal.js';
 
-const ICON = { subs: LIST_TREE, terminal: icons.terminal, file: icons.file };
+const ICON = { subs: LIST_TREE, agents: BOT, terminal: icons.terminal, file: icons.file };
 
 const fine = () => matchMedia('(pointer: fine)').matches;
 
 const SubsPane = memo(SubsTab);
+const AgentsPane = memo(SubagentsTab);
 const TerminalPane = memo(TerminalTab);
 const FilePane = memo(FileTab);
+
+// Whether the chat has a Subagents tab: the server sends the list and the chat has had a helper.
+export function useAgentsOffered(ctrl) {
+  const features = useStore(sessionIndex, s => s.ix?.features ?? null);
+  const agents = useStore(ctrl.store, s => s.agents);
+  return tabOffered(features, agents);
+}
 
 // The tabs the chat's panel offers, and the file it has open. `ctrl.term` is null only for a new session, which never has a tab.
 export function usePanelTabs(ctrl) {
   const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
+  const agents = useAgentsOffered(ctrl);
   const terminal = useStore(ctrl.store, s => s.terminal);
   const file = useFile(ctrl.id);
-  return { tabs: panelTabs({ subs, terminal, file: !!file }), file };
+  return { tabs: panelTabs({ subs, agents, terminal, file: !!file }), file };
 }
 
 // The tab on show, or null while the panel is closed.
@@ -114,7 +125,7 @@ function Shown({ ctrl, tabs, tab, file }) {
     return () => {
       const from = takeOrigin(id);
       if (!me.contains(document.activeElement)) return;
-      (from?.isConnected ? from : document.getElementById('terminalButton') ?? document.getElementById('subsButton') ?? document.getElementById('text'))?.focus();
+      (from?.isConnected ? from : document.getElementById('terminalButton') ?? document.getElementById('subsButton') ?? document.getElementById('agentsButton') ?? document.getElementById('text'))?.focus();
     };
   }, [id]);
 
@@ -135,7 +146,7 @@ function Shown({ ctrl, tabs, tab, file }) {
     closeFile: () => {
       const link = backTo(file.from, file.path);
       closeFile();
-      const back = ['terminal', 'subs'].find(t => tabs.includes(t));
+      const back = ['terminal', 'subs', 'agents'].find(t => tabs.includes(t));
       if (back) selectTab(id, back);
       else hidePanel(id);
       (link ?? document.getElementById('text'))?.focus();
@@ -200,6 +211,7 @@ function Shown({ ctrl, tabs, tab, file }) {
       </div>
     </div>
     ${tabs.includes('subs') ? html`<div class="panel-pane" role="tabpanel" id="pane-subs" aria-labelledby="tab-subs" hidden=${tab !== 'subs'}><${SubsPane} ctrl=${ctrl} active=${tab === 'subs'} /></div>` : null}
+    ${tabs.includes('agents') ? html`<div class="panel-pane" role="tabpanel" id="pane-agents" aria-labelledby="tab-agents" hidden=${tab !== 'agents'}><${AgentsPane} ctrl=${ctrl} active=${tab === 'agents'} /></div>` : null}
     ${tabs.includes('terminal') ? html`<div class="panel-pane" role="tabpanel" id="pane-terminal" aria-labelledby="tab-terminal" hidden=${tab !== 'terminal'}><${TerminalPane} ctrl=${ctrl} active=${tab === 'terminal'} onLeave=${leave} /></div>` : null}
     ${file ? html`<div class="panel-pane" role="tabpanel" id="pane-file" aria-labelledby="tab-file" hidden=${tab !== 'file'}><${FilePane} file=${file} onClose=${leaveFile} /></div>` : null}
   </section>`;

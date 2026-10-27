@@ -25,6 +25,8 @@ import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readI
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } from './lib/uploads.mjs';
 import { createOutside, STALE_MS } from './lib/outside.mjs';
+import { createSubagents } from './lib/subagents.mjs';
+import { agentsKey } from './lib/subagent-rules.mjs';
 import { chatFor, getChat, onTurn, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
@@ -80,6 +82,7 @@ const terminal = makeTerminal({
   onEnd: (id, done) => handBashToClaude(id, done),
 });
 const outside = createOutside();
+const subagents = createSubagents();
 const listOutside = createOutside({ keep: 256 });
 
 // A mark that cannot be written costs the list one dot, so it is logged. Marks are written as Claude's output is read and as a stream
@@ -692,6 +695,9 @@ function events(req, res, id) {
   const first = outsideFor(id);
   // The key of the turn of another app this viewer was last sent, so a change is sent once.
   let shown = outsideKey(first);
+  // The same for the helpers the chat started. The page keeps them through a state event, so nothing resets this key.
+  const helpers = subagents.read(transcriptFor(id));
+  let helpersShown = agentsKey(helpers);
   // The page drops that turn when Capcom starts work in the chat. If the work ends before the next look at the transcript, the key
   // would still match and the page would never get the turn back, so the key is cleared and the turn is sent again.
   const forward = ev => {
@@ -700,6 +706,7 @@ function events(req, res, id) {
   };
   const row = findRow(id);
   write('status', { ...(chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, row), live: '', pending: [] }), outside: first });
+  write('subagents', { agents: helpers });
   if (!row?.groupSession) write('terminal', { type: 'state', ...terminal.snapshot(id, row?.cwd || '') });
   if (!viewers.has(id)) viewers.set(id, new Set());
   viewers.get(id).add(forward);
@@ -718,6 +725,8 @@ function events(req, res, id) {
     if (now !== size) { size = now; write('changed', {}); }
     const out = outsideFor(id);
     if (outsideKey(out) !== shown) { shown = outsideKey(out); write('outside', out); }
+    const agents = subagents.read(t);
+    if (agentsKey(agents) !== helpersShown) { helpersShown = agentsKey(agents); write('subagents', { agents }); }
   }, 1500);
   const beat = setInterval(() => res.destroyed || res.write(': keep-alive\n\n'), 20_000);
   req.on('close', () => {
@@ -1073,6 +1082,18 @@ async function pullsApi(res, u) {
   return send(res, 200, { pulls: answer, settling });
 }
 
+// GET api/sessions/<id>/subagents/<agentId> answers one helper the session started: its state, its last steps and, once it has ended, its reply.
+// The id has to be a file the helpers' folder lists, so a made-up one is a 404 and no path of the caller's is opened.
+function subagentApi(res, id, rest) {
+  const [agentId, ...more] = rest;
+  if (!agentId || more.length) return send(res, 404, { error: 'Not found' });
+  if (!/^[\w-]+$/.test(agentId)) return send(res, 400, { error: 'Bad subagent id' });
+  const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+  if (!t) return send(res, 404, { error: NO_SESSION });
+  const found = subagents.detail(t, agentId);
+  return found ? send(res, 200, found) : send(res, 404, { error: 'No such subagent.' });
+}
+
 const MAX_LINKS = 40;
 
 // The distinct addresses in the url parameters, or the sentence for a 400 when there are none, too many, or one is not a pull request or issue address.
@@ -1167,8 +1188,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1283,6 +1304,7 @@ async function api(req, res, u) {
   if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad session id' });
   const action = parts[3];
   if (action === 'terminal') return terminalApi(req, res, id, parts.slice(4));
+  if (req.method === 'GET' && action === 'subagents') return subagentApi(res, id, parts.slice(4));
   if (req.method === 'GET' && action === 'messages') {
     const row = findRow(id);
     const connectors = loadDesktop(cfg.desktopDir).connectors.get(id) || {};

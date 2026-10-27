@@ -9,7 +9,7 @@ import { Holds } from './holds.js';
 import { useDocumentTitle, useFields, useStore } from './hooks.js';
 import { html, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
-import { Panel, useShownTab } from './panel.js';
+import { Panel, useAgentsOffered, useShownTab } from './panel.js';
 import { toggleTab } from './panel-state.js';
 import { runFromClick } from './run.js';
 import { QuoteDock, useQuoting } from './quote.js';
@@ -17,6 +17,7 @@ import { draftGroup, groupById } from './group-rules.js';
 import { createChat } from './session.js';
 import { keyHint, shortcut } from './shortcuts.js';
 import { usePullNeeds, usePullStatus } from './pulls.js';
+import { BOT } from './subagents.js';
 import { subsButtonName, subsOffered, subsStatus } from './sub-panel-rules.js';
 import { LIST_TREE, sessionIndex } from './subs.js';
 import { runnableBlock } from './terminal-rules.js';
@@ -28,6 +29,12 @@ export const Back = () => html`<a class="btn back" data-variant="ghost" data-siz
 function TerminalButton({ ctrl }) {
   const shown = useShownTab(ctrl);
   return html`<button class="btn" id="terminalButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label="Terminal" aria-expanded=${shown === 'terminal'} aria-controls="panel" data-tip="Terminal" data-tip-key=${keyHint('Ctrl', '`')} onClick=${e => toggleTab(ctrl.id, 'terminal', e.currentTarget, shown)}>${draw(icons.terminal, 'icon')}</button>`;
+}
+
+// Only where the chat has neither the terminal nor sub sessions, so a chat with helpers alone still has a way to its panel.
+function AgentsButton({ ctrl }) {
+  const shown = useShownTab(ctrl);
+  return html`<button class="btn" id="agentsButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label="Subagents" aria-expanded=${shown === 'agents'} aria-controls="panel" data-tip="Subagents" onClick=${e => toggleTab(ctrl.id, 'agents', e.currentTarget, shown)}>${draw(BOT, 'icon')}</button>`;
 }
 
 // Its name carries the count and what waits on the owner, since the mark on it is colour alone. It also asks for the pull requests of the
@@ -76,6 +83,7 @@ function ChatHead({ ctrl, kind, rename }) {
   const draft = !!ctrl.draft;
   const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? null : null));
   const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
+  const agents = useAgentsOffered(ctrl);
   const state = status?.state || 'idle';
   useDocumentTitle(draft ? 'New session · GhostShell' : session?.title ? `${session.title} · GhostShell` : 'GhostShell');
   const place = kind ? [kind] : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : ''] : [];
@@ -109,7 +117,7 @@ function ChatHead({ ctrl, kind, rename }) {
       <p class="chat-meta" id="meta">${meta}</p>
       ${draft && groupName ? html`<span class="start-group">${draw(icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${`Start outside ${groupName}`} data-tip="Start outside the group" onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>
-    ${terminal || subs ? html`<div class="chat-tools">${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
+    ${terminal || subs || agents ? html`<div class="chat-tools">${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${agents && !subs && !terminal ? html`<${AgentsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
   </header>`;
 }
 

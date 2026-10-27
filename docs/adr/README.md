@@ -43,6 +43,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-24 | [Manage routines from a page, and keep the prompts GhostShell writes in its own folder](20261024-manage-routines-from-a-page.md) | Partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) |
 | 2026-10-25 | [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) | Accepted |
 | 2026-10-26 | [Show pull request status on session cards, read from the gh CLI on the server](20261026-show-pull-request-status-on-session-cards.md) | Accepted |
+| 2026-10-26 | [Show the helpers a session started in the side panel, read from the transcript folder and pushed over the events stream](20261026-subagents-in-the-side-panel.md) | Accepted |
 | 2026-10-27 | [Name sessions from their first turn, with a small model, and keep titles that are given](20261027-name-sessions-from-their-first-turn.md) | Accepted |
 | 2026-10-27 | [Let a chip name the group its session opens in](20261027-chips-name-their-group.md) | Accepted |
 | 2026-10-27 | [Show a badge after each pull request and issue link in a reply, with a card of its details](20261027-github-link-previews.md) | Accepted |
