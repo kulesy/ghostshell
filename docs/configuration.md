@@ -28,6 +28,10 @@ The settings in `config.json` and `config.local.json`, and the four environment 
 
 `chrome` is `true` by default. Set it to `false` to start every session without Claude in Chrome (see [Claude in Chrome](tools.md#claude-in-chrome)).
 
+### `autoTitle`
+
+`autoTitle` is `true` by default. GhostShell then names each session it starts: a session started with a title keeps it, and one you start by typing is named once its first reply finishes (see [naming a new session](session-list.md#naming-a-new-session)). That costs one short call to Haiku 5.5 for each typed session. Set it to `false` to make no such call and leave the first line of the first message as the title.
+
 ### `desktopHandoff`
 
 `desktopHandoff` is `false` by default. Set it to `true` to hand new sessions to Claude Desktop (see [sessions started here](how-it-works.md#sessions-started-here)). Turning it on also hands over, the next time GhostShell starts, every session started here that Desktop does not have yet.
@@ -40,11 +44,12 @@ The settings in `config.json` and `config.local.json`, and the four environment 
 
 ## Environment variables
 
-Four environment variables win over both files:
+Five environment variables win over both files:
 
 - `PORT` sets the port.
 - `CAPCOM_CLAUDE` sets the CLI.
 - `CAPCOM_GH` sets the GitHub CLI.
 - `CAPCOM_STATE` points a test instance at its own login, registry and routines.
+- `CAPCOM_AUTO_TITLE` set to `0` turns off [`autoTitle`](#autotitle), and any other value turns it on.
 
 Two instances that share a state folder both fire its routines, so always give a test instance its own.
