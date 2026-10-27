@@ -313,11 +313,21 @@ Desktop's records are read only, so GhostShell keeps these choices in `layout.js
 
 ## Renaming
 
-Projects and groups are renamed from their menus (see [A project's menu](#a-projects-menu) and [A group's menu](#a-groups-menu)). Double-click a session's row, or choose Rename in its menu, and a text box takes the row's place with the title selected. Enter saves, Esc cancels, clicking away saves, and a title runs to 120 characters at most. On a phone a double tap opens the session, so rename from the menu.
+Projects and groups are renamed from their menus (see [A project's menu](#a-projects-menu) and [A group's menu](#a-groups-menu)). Double-click a session's row, or choose Rename in its menu, and a text box takes the row's place with the title selected. Enter saves, Esc cancels, clicking away saves, and a title runs to 120 characters at most. A box left by the emoji picker or another panel taking the focus waits a moment before saving, while a click elsewhere saves at once. On a phone a double tap opens the session, so rename from the menu.
 
 GhostShell keeps the title in `layout.json` and shows it in place of every other title, for any session, whichever app started it. It shows in GhostShell only: Desktop's records are read only and a terminal session's title belongs to the CLI, so Desktop and the terminal keep the titles they have. A group lists its sessions by the new title, and the search finds them by it.
 
-The open chat's title can be renamed in place too, which matters on a phone, where the list is hidden while a chat is open. A pencil sits beside the title: always shown on a touch screen, and on desktop shown when the pointer or the focus is on the title. Clicking the title does the same. A box with the title selected replaces it, and Enter saves, Esc cancels and clicking away saves, as in the list. A session's title runs to 120 characters and a group's name to 80. The list, the page title, the Sub sessions tab and the search show the new name at once. A built-in section's chat has no pencil, and neither does a group's chat against a server that cannot rename groups. A chat that is not yet a session, such as a new one, has none either.
+The open chat's title can be renamed in place too, which matters on a phone, where the list is hidden while a chat is open. A pencil sits beside the title: always shown on a touch screen, and on desktop shown when the pointer or the focus is on the title. Clicking the title does the same. A box with the title selected replaces it, and Enter saves, Esc cancels and clicking away saves, as in the list, including the wait after the emoji picker or another panel takes the focus. A session's title runs to 120 characters and a group's name to 80. The list, the page title, the Sub sessions tab and the search show the new name at once. A built-in section's chat has no pencil, and neither does a group's chat against a server that cannot rename groups. A chat that is not yet a session, such as a new one, has none either.
+
+### Naming a new session
+
+A session GhostShell starts is named by one of three rules.
+
+- A session started with a title keeps it. A chip's title and a title a group's chat gives when it starts a session are saved in `layout.json` at once, cut to 120 characters, and no model is asked.
+- A session you start by typing is named once its first reply finishes. GhostShell asks Haiku 5.5, at low effort, for a title of 3 to 8 words, in the shape "Area - task" when an area such as UI or Server is clear. It gives the model the start of your first message and of the first reply. The list shows the title at its next refresh, within 15 seconds. Until then it shows the first line of your message.
+- If the model gives no usable title, GhostShell asks once more, and then uses your first line, cut at a word.
+
+A title you set yourself is never replaced, including one set while the first reply is still coming. A routine's run keeps its routine's title, and a group's chat or a section's chat keeps its own name. Set `autoTitle` to `false` ([configuration](configuration.md#autotitle)) to make no model call.
 
 With `desktopHandoff` set to `true`, a session renamed here before it is handed to Desktop takes its GhostShell title with it (see [sessions started here](how-it-works.md#sessions-started-here)).
 

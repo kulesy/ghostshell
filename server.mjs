@@ -26,6 +26,8 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { chatFor, getChat, onTurn, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
+import { askClaude } from './lib/title-ask.mjs';
+import { makeTitler } from './lib/titler.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
@@ -96,6 +98,9 @@ onTurn(({ id, kind, at }) => writeMark(() => {
 // ---- the session index ---------------------------------------------------------------------------
 
 const ownTitle = (own, id) => (Object.hasOwn(own.titles, id) && typeof own.titles[id] === 'string' && own.titles[id].trim() ? own.titles[id] : '');
+
+// A session started here is named from its first turn, and a title the owner set is never replaced. See docs/adr/20261027-name-sessions-from-their-first-turn.md.
+const titler = makeTitler({ ask: askClaude(cfg.claude), own: id => ownTitle(layout.read(), id), record: (id, title) => layout.rename(id, title), enabled: cfg.autoTitle });
 
 // What a session is linked to: Capcom's own choice, a null included, wins over the chip it was started from, and that over Desktop's link.
 const linkOf = (own, fromChips, desk, id) => (Object.hasOwn(own.parents, id) ? own.parents[id] : fromChips.get(id) ?? desk.links.get(id) ?? null);
@@ -324,6 +329,7 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
   } catch (e) {
     console.error(`Could not record session ${chat.id}: ${e.message}`);
   }
+  if (!routine) titler.start(chat, { title, first: titleText(text.trim()) || files.map(f => f.name).join(', ') });
   if (cfg.desktopHandoff && !routine) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
 }
