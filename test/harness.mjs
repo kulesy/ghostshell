@@ -211,7 +211,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
 }
 
 // A GitHub CLI that never leaves the machine. It logs its arguments to gh.log in the home, and answers from gh-state.json there: `pulls` is the
-// output of pr view for each address, `threads` the unresolved flags of its review threads, and `fail` makes every call fail. The login is octocat.
+// output of pr view for each address, `issues` the output of issue view, `threads` the unresolved flags of its review threads, and `fail` makes every call fail. The login is octocat.
 const FAKE_GH = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
@@ -228,6 +228,10 @@ else if (args[0] === 'pr' && args[1] === 'view') {
   const pull = (state.pulls || {})[args[2]];
   if (!pull) fail('Could not resolve to a PullRequest.');
   console.log(JSON.stringify(pull));
+} else if (args[0] === 'issue' && args[1] === 'view') {
+  const issue = (state.issues || {})[args[2]];
+  if (!issue) fail('Could not resolve to an Issue.');
+  console.log(JSON.stringify(issue));
 } else if (args[0] === 'api' && args[1] === 'graphql') {
   const url = 'https://github.com/' + named('owner') + '/' + named('name') + '/pull/' + named('number');
   const nodes = ((state.threads || {})[url] || []).map(isResolved => ({ isResolved }));

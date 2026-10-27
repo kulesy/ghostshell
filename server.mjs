@@ -27,6 +27,7 @@ import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { chatFor, getChat, onTurn, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
+import { makeLinks, shown as shownLinks } from './lib/links.mjs';
 import { makeTitler } from './lib/titler.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
@@ -35,6 +36,7 @@ import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
+import { normaliseUrl } from './public/ui/pull-url.js';
 import { titleText } from './public/ui/quote-rules.js';
 import { SECTION_IDS, SECTIONS, sectionById, sectionOf, sectionSessions } from './public/ui/sections.js';
 import { withKids } from './public/ui/tree.js';
@@ -48,6 +50,8 @@ const windows = makeWindows(cfg.stateDir);
 const uploads = makeUploads(cfg.stateDir);
 const summaries = makeSummaries({ transcriptFor });
 const pulls = makePulls({ transcriptFor, gh: cfg.gh });
+// The pull requests and issues the owner attached to a session or hid from it, kept here because Desktop's own records are read only.
+const links = makeLinks(cfg.stateDir);
 // A mention of a file in front of /name stops the CLI reading the message as a command.
 const SLASH_WITH_FILES = 'Send a slash command on its own, without files.';
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -704,16 +708,24 @@ const NO_SESSION = 'No session with that id on this Mac.';
 const kindOf = row => (SECTION_IDS.includes(row.groupSession) ? 'section' : 'group');
 const refuse = (status, message) => Object.assign(new Error(message), { status });
 
-async function editLayout(req, res, change) {
+// The body, id and row of a write to one session, or null once the answer for a refusal is sent. A group's or section's own session is refused.
+async function ownedSession(req, res) {
   const body = await readJson(req);
-  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
-  // A new password can land while the body is still arriving, so the session is checked again before the layout is written.
-  if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
+  if (!body) return void send(res, 400, { error: 'Send a JSON body.' });
+  // A new password can land while the body is still arriving, so the session is checked again before anything is written.
+  if (!auth.check(req)) return void send(res, 401, { error: 'Signed out.' });
   const { id } = body;
-  if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Which session?' });
+  if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return void send(res, 400, { error: 'Which session?' });
   const row = findRow(id);
-  if (!row) return send(res, 404, { error: NO_SESSION });
-  if (row.groupSession) return send(res, 400, { error: `A ${kindOf(row)}'s session stays with its ${kindOf(row)}.` });
+  if (!row) return void send(res, 404, { error: NO_SESSION });
+  if (row.groupSession) return void send(res, 400, { error: `A ${kindOf(row)}'s session stays with its ${kindOf(row)}.` });
+  return { body, id, row };
+}
+
+async function editLayout(req, res, change) {
+  const owned = await ownedSession(req, res);
+  if (!owned) return;
+  const { body, id } = owned;
   let extra;
   try {
     extra = change(id, body);
@@ -1037,10 +1049,29 @@ async function pullsApi(res, u) {
   const ids = askedIds(u);
   if (typeof ids === 'string') return send(res, 400, { error: ids });
   const { rows } = buildIndex({ archived: true });
-  const urls = new Map(ids.filter(id => rows.has(id)).map(id => [id, pulls.urlsFor(id, rows.get(id).cwd)]));
-  const { found, settling } = await pulls.lookup([...new Set([...urls.values()].flat())]);
-  const answer = Object.fromEntries([...urls].map(([id, list]) => [id, list.filter(url => found.has(url)).map(url => found.get(url))]));
-  return send(res, 200, { pulls: answer, settling });
+  const lists = new Map(ids.filter(id => rows.has(id)).map(id => [id, attachedOf(id, rows.get(id).cwd, links.read())]));
+  const { answered, settling } = await pulls.answer(lists);
+  return send(res, 200, { pulls: Object.fromEntries(answered), settling });
+}
+
+// What a session's header lists: the pull request and issues found in its transcript, less the ones hidden, then the ones the owner added.
+const foundIn = (id, cwd) => [...pulls.urlsFor(id, cwd), ...pulls.issuesFor(id, cwd)];
+const attachedOf = (id, cwd, all) => shownLinks(all, id, foundIn(id, cwd));
+
+// POST api/links { id, url, attached } adds an item to a session's list or takes it off. The address may carry a tail GitHub adds, which is cut off.
+async function linksApi(req, res) {
+  const owned = await ownedSession(req, res);
+  if (!owned) return;
+  const { body, id, row } = owned;
+  const given = normaliseUrl(body.url);
+  if (!given) return send(res, 400, { error: 'Paste the address of a GitHub pull request or issue.' });
+  if (typeof body.attached !== 'boolean') return send(res, 400, { error: 'Attach it or remove it?' });
+  try {
+    links.set(id, given.url, body.attached, foundIn(id, row.cwd));
+  } catch (e) {
+    return send(res, e.status || 500, { error: e.message });
+  }
+  return send(res, 200, { id });
 }
 
 async function api(req, res, u) {
@@ -1072,8 +1103,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, and the status of the pull requests a session works on.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, and attaching pull requests and issues to a session.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, attachLinks: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1122,6 +1153,7 @@ async function api(req, res, u) {
   // POSTs, so a page on another site can never start a CLI through them (the same-origin check covers POSTs only).
   if (req.method === 'POST' && u.pathname === '/api/commands') return askLists(req, res, 'commands', listCommands);
   if (req.method === 'POST' && u.pathname === '/api/models') return askLists(req, res, 'models', listModels);
+  if (req.method === 'POST' && u.pathname === '/api/links') return linksApi(req, res);
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
