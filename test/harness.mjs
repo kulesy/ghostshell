@@ -98,7 +98,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     fs.writeFileSync(path.join(state, 'marks.json'), JSON.stringify({ edges: times(marks.edges), seen: times(marks.seen), unread: times(marks.unread), errors: times(marks.errors) }));
   }
   if (chips) {
-    const made = chips.map((c, i) => ({ toolUseId: `toolu_${i}`, status: 'open', title: 'A chip', ...c }));
+    const made = chips.map((c, i) => ({ toolUseId: `toolu_${i}`, status: 'open', ...c }));
     fs.writeFileSync(path.join(state, 'chips.json'), JSON.stringify(Object.fromEntries(made.map(c => [c.toolUseId, c]))));
   }
   const started = [];

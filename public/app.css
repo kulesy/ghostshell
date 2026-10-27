@@ -3160,10 +3160,24 @@ button.thumb {
   white-space: nowrap;
 }
 
+[data-part="hit-line"] {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  column-gap: 0.5rem;
+  min-width: 0;
+  height: 1.25rem;
+  overflow: hidden;
+}
+
+[data-part="hit-line"] > [data-part="hit-title"] { flex: 1 1 auto; max-width: 100%; }
+
 @media (max-width: 40rem) {
   [data-slot="command-item"] { flex-wrap: wrap; row-gap: 0; }
 
-  [data-part="hit-meta"] { order: 3; flex-basis: 100%; max-width: none; padding-left: 1.25rem; }
+  [data-slot="command-item"] > [data-part="hit-meta"] { order: 3; flex-basis: 100%; max-width: none; padding-left: 1.25rem; }
 }
 
 .slash-menu {
@@ -3218,17 +3232,6 @@ button.thumb {
   [data-part="slash-name"] { max-width: 100%; }
 
   [data-part="slash-description"] { flex-basis: 100%; }
-}
-
-.can-unarchive { position: relative; }
-
-.can-unarchive > [data-slot="command-item"] { padding-right: 5.5rem; }
-
-.btn.unarchive {
-  position: absolute;
-  top: 50%;
-  right: 0.5rem;
-  transform: translateY(-50%);
 }
 
 [data-part="command-footer"] {

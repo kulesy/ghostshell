@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readGroupSession } from '../lib/groups.mjs';
-import { chipTitled, listSubSessions, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
+import { listSubSessions, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
 import { GROUP_READ_NAMES, handleMcp, SUB_READ_NAMES, SEND_NAME, TOOL_NAMES } from '../lib/tools.mjs';
 import { indexTranscripts } from '../lib/transcripts.mjs';
@@ -338,20 +338,6 @@ test('the approval card names the recipient by title and shows the start of the 
   assert.equal(sendSummary({ session_id: 'far1', message: 'hi' }, subs), 'to "Session far1": hi', 'a session that is not below is named too');
   assert.equal(sendSummary({ session_id: 'nobody', message: 'hi' }, subs), 'to "nobody": hi', 'an id that is no session shows as given');
   assert.equal(sendSummary({}, { lookup() { throw new Error('index broke'); } }), 'to "": ');
-});
-
-test('a sub session is named by the chip title its parent chose, unless the owner renamed it, and one with no chip keeps its own', () => {
-  const rows = [row('top', null), row('c1', 'top', { title: 'Fix the tests in the first line of the prompt' }), row('c2', 'top', { title: 'Mine', renamed: true }), row('c3', 'top')];
-  const titles = new Map([['c1', 'Review - dialogs, sheet, tooltip'], ['c2', 'Chip title'], ['top', 'The parent chip']]);
-  const titled = chipTitled(rows, titles);
-  assert.deepEqual(titled.map(r => r.title), ['The parent chip', 'Review - dialogs, sheet, tooltip', 'Mine', 'Session c3']);
-  assert.equal(rows[1].title, 'Fix the tests in the first line of the prompt', 'the index\'s own rows are left as they were');
-  const subs = { ...subsFor(titled), summary: () => null };
-  assert.match(listSubSessions({}, subs, NOW), /^Session "The parent chip": 3 sub sessions/);
-  assert.match(listSubSessions({}, subs, NOW), /- Review - dialogs, sheet, tooltip \[c1\]/);
-  assert.match(readSubSession({ session_id: 'c1' }, subs, NOW), /^Session "Review - dialogs, sheet, tooltip" \[c1\]/);
-  assert.match(readSubSession({ session_id: 'c2' }, subs, NOW), /^Session "Mine" \[c2\]/);
-  assert.match(sendSession({ session_id: 'c1', message: 'hi' }, { ...subs, send: () => 'idle' }), /^Delivered to "Review - dialogs, sheet, tooltip" \[c1\]/);
 });
 
 test('a grandchild is told the message comes from an ancestor, and a closing tag in the message stays text', () => {

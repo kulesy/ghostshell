@@ -63,6 +63,26 @@ test('the archive lists the newest first, by when Capcom archived a session or w
   assert.deepEqual(places(await index(s, token)), { routines: [], pinned: [], groups: {}, started: [], ungrouped: ['Not archived'], other: [] });
 });
 
+test('a session a chip started is listed and archived by the chip title, unless the owner renamed it', async () => {
+  const s = await start({
+    sessions: [
+      { id: 'kid', title: '## Goal Give a session a way', source: 'capcom', ago: 2 },
+      { id: 'mine', title: '## Goal Fix the tests', ago: 3 },
+      { id: 'live', title: '## Goal Tidy the list', ago: 4 },
+      { id: 'plain', title: 'Typed by hand', ago: 5 },
+    ],
+    chips: [
+      { sessionId: 'top', startedId: 'kid', status: 'started', title: 'Server - Message idle sub sessions' },
+      { sessionId: 'top', startedId: 'mine', status: 'started', title: 'UI - Fix the tests' },
+      { sessionId: 'top', startedId: 'live', status: 'started', title: 'UI - Tidy the list' },
+    ],
+    layout: { archived: { kid: minutesAgo(1), mine: minutesAgo(2) }, titles: { mine: 'My own name' } },
+  });
+  const { token } = await signIn(s);
+  assert.deepEqual(titles(await archive(s, token)), ['Server - Message idle sub sessions', 'My own name']);
+  assert.deepEqual(places(await index(s, token)).ungrouped, ['UI - Tidy the list', 'Typed by hand']);
+});
+
 test("a session in neither of Capcom's lists follows Desktop's flag, and Capcom's choice wins when they differ, in either direction", async () => {
   const s = await start({
     sessions: [
