@@ -673,3 +673,40 @@ test('an issue is found only in the last 2 MB of a long transcript', () => {
   const pulls = makePulls({ transcriptFor });
   assert.deepEqual([pulls.issuesFor('issues-far'), pulls.issuesFor('issues-near')], [[], [is(2)]]);
 });
+
+test('an issue answer is kept for 10 minutes and a pull request answer for 2', async () => {
+  const f = fake({ answer: (file, args) => {
+    if (args[0] === 'issue') return JSON.stringify(issueRaw());
+    if (args[0] === 'pr') return JSON.stringify(raw({ state: 'OPEN' }));
+    if (args[1] === 'graphql') return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [] } } } } });
+    return 'octocat\n';
+  } });
+  const { pulls, clock } = maker({ fake: f });
+  await pulls.lookup([pr(1), is(5)]);
+  const issueReads = () => f.calls.filter(c => c.args[0] === 'issue').length;
+  clock.at += 121_000;
+  await pulls.lookup([pr(1), is(5)]);
+  assert.deepEqual([f.of('view').length, issueReads()], [2, 1]);
+  clock.at += 478_000;
+  await pulls.lookup([is(5)]);
+  assert.equal(issueReads(), 1, 'just inside 10 minutes');
+  clock.at += 2_000;
+  await pulls.lookup([is(5)]);
+  assert.equal(issueReads(), 2);
+});
+
+test('a tool result with a pull request address as well as the issue one is a listing, and claims neither', () => {
+  transcript('both', [gave('t1', `Closes ${pr(3)}\n${is(4)}`), gave('t2', `${is(6)}\n`)]);
+  const pulls = makePulls({ transcriptFor });
+  assert.deepEqual([pulls.issuesFor('both'), pulls.urlsFor('both')], [[is(6)], []]);
+});
+
+test('an incremental read never starts below the newest 2 MB, even when those bytes held no whole line', () => {
+  const file = path.join(dir, 'long-line.jsonl');
+  fs.writeFileSync(file, `${lines([gave('t1', is(1))])}${'x'.repeat(2_500_000)}`);
+  files.set('long-line', { id: 'long-line', file });
+  const pulls = makePulls({ transcriptFor });
+  assert.deepEqual(pulls.issuesFor('long-line'), []);
+  fs.appendFileSync(file, `\n${lines([gave('t2', is(2))])}`);
+  assert.deepEqual(pulls.issuesFor('long-line'), [is(2)], 'the first line, long before the last 2 MB, was not read');
+});
