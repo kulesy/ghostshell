@@ -1,21 +1,22 @@
 // Run with `npm test`. The pull requests a session works on: how a pull request is summarised from gh's JSON, which addresses a transcript
-// names and in what order, and how lookups are cached, shared, limited and kept to fixed gh argument lists. No gh is run and no network is used.
+// names and in what order, and how lookups are cached, shared, limited and kept to fixed gh argument lists, and the titles and issues read the same way. No gh is run and no network is used.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isPullUrl } from '../public/ui/pull-url.js';
-import { makePulls, summarise } from '../lib/pulls.mjs';
+import { makePulls, summarise, summariseIssue } from '../lib/pulls.mjs';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-pulls-'));
 const pr = n => `https://github.com/example-org/example-repo/pull/${n}`;
-const FIELDS = 'state,isDraft,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,latestReviews,reviewRequests,author';
+const issue = n => `https://github.com/example-org/example-repo/issues/${n}`;
+const FIELDS = 'state,isDraft,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,latestReviews,reviewRequests,author,title';
 const QUERY = 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}';
 
 const raw = (extra = {}) => ({
   url: pr(12), state: 'OPEN', isDraft: false, reviewDecision: '', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED',
-  statusCheckRollup: [], latestReviews: [], reviewRequests: [], author: { login: 'someone' }, ...extra,
+  statusCheckRollup: [], latestReviews: [], reviewRequests: [], author: { login: 'someone' }, title: 'Fix the thing', ...extra,
 });
 const run = (conclusion, status = 'COMPLETED') => ({ __typename: 'CheckRun', status, conclusion });
 const context = state => ({ __typename: 'StatusContext', state });
@@ -99,7 +100,7 @@ test('conflicts, clean and threads come from the mergeable fields and the thread
 
 test('a pull request has exactly the fields the page is promised', () => {
   assert.deepEqual(Object.keys(summarise(raw(), [], 'octocat')).sort(),
-    ['asked', 'checks', 'clean', 'conflicts', 'mine', 'number', 'repo', 'requested', 'review', 'state', 'threads', 'url']);
+    ['asked', 'checks', 'clean', 'conflicts', 'kind', 'mine', 'number', 'repo', 'requested', 'review', 'state', 'threads', 'title', 'url']);
 });
 
 // ---- which addresses a transcript names -------------------------------------------------------------------------------------------
@@ -237,6 +238,7 @@ function fake(options = {}) {
   const calls = [];
   const answer = options.answer ?? ((file, args) => {
     if (args[0] === 'api' && args[1] === 'user') return `${options.login ?? 'octocat'}\n`;
+    if (args[0] === 'issue') return JSON.stringify(options.issue ?? { title: 'Crash on start', state: 'OPEN', stateReason: '' });
     if (args[0] === 'pr') return JSON.stringify(raw({ state: 'OPEN', reviewRequests: [{ login: 'octocat' }] }));
     if (args[0] === 'api' && args[1] === 'graphql') return JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: false }, { isResolved: true }] } } } } });
     throw new Error(`unexpected ${args.join(' ')}`);
@@ -245,7 +247,7 @@ function fake(options = {}) {
     calls.push({ file, args });
     return answer(file, args);
   };
-  const of = kind => calls.filter(c => (kind === 'view' ? c.args[0] === 'pr' : kind === 'threads' ? c.args[1] === 'graphql' : c.args[1] === 'user'));
+  const of = kind => calls.filter(c => (kind === 'view' ? c.args[0] === 'pr' : kind === 'issue' ? c.args[0] === 'issue' : kind === 'threads' ? c.args[1] === 'graphql' : c.args[1] === 'user'));
   return { run, calls, of };
 }
 
@@ -267,7 +269,7 @@ test('a lookup runs the three fixed gh calls, with the exact argument lists, and
   assert.deepEqual(f.of('user').map(c => c.args), [['api', 'user', '--jq', '.login', '--hostname', 'github.com']]);
   assert.deepEqual([...found.keys()], [pr(12)]);
   assert.deepEqual(found.get(pr(12)), {
-    url: pr(12), repo: 'example-org/example-repo', number: 12, state: 'open', mine: false, asked: true, requested: 1,
+    kind: 'pull', url: pr(12), title: 'Fix the thing', repo: 'example-org/example-repo', number: 12, state: 'open', mine: false, asked: true, requested: 1,
     review: 'none', checks: 'none', conflicts: false, clean: false, threads: 1,
   });
 });
@@ -548,4 +550,84 @@ test('a thread answer with no nodes is a failed read of the threads', async () =
   const f = { ...base, run: async (file, args) => (args[1] === 'graphql' ? (base.calls.push({ file, args }), JSON.stringify({ data: { repository: null }, errors: [{}] })) : base.run(file, args)) };
   const { pulls } = maker({ fake: f });
   assert.equal((await pulls.lookup([pr(1)])).found.get(pr(1)).threads, null);
+});
+
+// ---- titles and issues ------------------------------------------------------------------------------------------------------------
+
+test('a pull request has its title on one line, cut at 300 characters, and an empty one when gh gave none', () => {
+  assert.equal(summarise(raw({ title: '  Fix\nthe   thing ' }), [], 'octocat').title, 'Fix the thing');
+  assert.equal(summarise(raw({ title: 'x'.repeat(500) }), [], 'octocat').title.length, 300);
+  assert.equal(summarise(raw({ title: undefined }), [], 'octocat').title, '');
+  assert.equal(summarise(raw({ title: 5 }), [], 'octocat').title, '5');
+  assert.equal(summarise(raw({ title: null }), [], 'octocat').title, '');
+  assert.equal(summarise(raw(), [], 'octocat').kind, 'pull');
+});
+
+test('an issue is open, or closed with the reason gh gave, and a closed one with no reason was completed', () => {
+  const made = extra => summariseIssue({ url: issue(7), title: 'Crash on start', state: 'OPEN', stateReason: '', ...extra });
+  assert.deepEqual(made({}), { kind: 'issue', url: issue(7), title: 'Crash on start', repo: 'example-org/example-repo', number: 7, state: 'open', reason: null });
+  assert.deepEqual([made({ state: 'OPEN', stateReason: 'REOPENED' }).state, made({ state: 'OPEN', stateReason: 'REOPENED' }).reason], ['open', null]);
+  const closed = reason => made({ state: 'CLOSED', stateReason: reason });
+  assert.deepEqual([closed('COMPLETED').state, closed('COMPLETED').reason], ['closed', 'completed']);
+  assert.equal(closed('NOT_PLANNED').reason, 'not_planned');
+  assert.equal(closed('DUPLICATE').reason, 'duplicate');
+  assert.equal(closed('').reason, 'completed');
+  assert.equal(closed(undefined).reason, 'completed');
+  assert.equal(closed('SOMETHING_NEW').reason, 'completed');
+  assert.equal(made({ title: 'x'.repeat(500) }).title.length, 300);
+});
+
+test('gh answering MERGED for an issues address, or nonsense, is no issue', () => {
+  assert.equal(summariseIssue({ url: issue(7), title: 'A pull request', state: 'MERGED', stateReason: '' }), null);
+  assert.equal(summariseIssue({ url: issue(7), title: 'x' }), null);
+  assert.equal(summariseIssue({ url: issue(7), state: 5 }), null);
+});
+
+test('a lookup reads a pull request and an issue together, the issue with the one fixed gh call and no login or threads', async () => {
+  const { pulls, f } = maker();
+  const { found, settling } = await pulls.lookup([pr(12), issue(3)]);
+  assert.equal(settling, false);
+  assert.deepEqual(f.of('issue').map(c => c.args), [['issue', 'view', issue(3), '--json', 'title,state,stateReason']]);
+  assert.equal(f.calls.length, 4, 'three for the pull request and one for the issue');
+  assert.deepEqual([...found.keys()], [pr(12), issue(3)]);
+  assert.deepEqual(found.get(issue(3)), { kind: 'issue', url: issue(3), title: 'Crash on start', repo: 'example-org/example-repo', number: 3, state: 'open', reason: null });
+  assert.equal(found.get(pr(12)).kind, 'pull');
+});
+
+test('a second lookup of an issue inside the time to live runs nothing, and one after it reads it again', async () => {
+  const { pulls, clock, f } = maker();
+  await pulls.lookup([issue(3)]);
+  await pulls.lookup([issue(3)]);
+  assert.equal(f.of('issue').length, 1, 'the second ask came from the cache');
+  clock.at += 200_000;
+  await pulls.lookup([issue(3)]);
+  assert.equal(f.of('issue').length, 2);
+});
+
+test('an issues address that gh cannot show, or that is a merged pull request, is left out and told once', async () => {
+  const gone = maker({ fake: fake({ answer: () => { throw Object.assign(new Error('Command failed'), { stderr: 'Could not resolve to an Issue.\n' }); } }) });
+  assert.deepEqual([...(await gone.pulls.lookup([issue(1)])).found.keys()], []);
+  await gone.pulls.lookup([issue(1)]);
+  assert.deepEqual(gone.told, [`Could not read ${issue(1)}: Could not resolve to an Issue.`]);
+  const merged = maker({ fake: fake({ issue: { title: 'A pull request', state: 'MERGED', stateReason: '' } }) });
+  assert.equal((await merged.pulls.lookup([issue(2)])).found.size, 0);
+  assert.equal(merged.told.length, 1);
+});
+
+test('an address that is not the plain form of an issue is dropped before anything is run', async () => {
+  const { pulls, f } = maker();
+  const lookalikes = [
+    'https://github.com.evil.com/o/r/issues/1', 'http://github.com/o/r/issues/1', `${issue(1)}/files`, `${issue(1)}#issuecomment-5`,
+    `${issue(1)}\n--help`, 'https://github.com/o/r/issue/1', 'https://github.com/o/r/issues/0', 'https://github.com/o/r/issues/',
+  ];
+  assert.deepEqual(await pulls.lookup(lookalikes), { found: new Map(), settling: false });
+  assert.equal(f.calls.length, 0);
+});
+
+test('an issue address given in another letter case is answered for each spelling, from one read', async () => {
+  const { pulls, f } = maker();
+  const other = issue(4).replace('example-org', 'Example-Org');
+  const { found } = await pulls.lookup([issue(4), other]);
+  assert.equal(f.of('issue').length, 1);
+  assert.deepEqual([...found.keys()], [issue(4), other]);
 });

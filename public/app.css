@@ -2133,6 +2133,70 @@ button.thumb {
 
 .msg.claude a { font-weight: 500; text-underline-offset: 4px; }
 
+.link-badge {
+  position: relative;
+  margin-left: 0.375rem;
+  overflow: visible;
+  vertical-align: 0.0625rem;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.link-card {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  width: 20rem;
+  max-width: calc(100vw - 1rem);
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-md);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  outline: 0;
+}
+
+.link-card[hidden] { display: none; }
+
+.link-card:focus-visible { box-shadow: var(--shadow-md); }
+
+.link-card > p, .link-card > dl { margin: 0; }
+
+.link-title { font-weight: 500; overflow-wrap: anywhere; }
+
+.link-title + .link-repo { margin-top: -0.375rem; }
+
+.link-repo { color: var(--muted-foreground); font-size: 0.8125rem; overflow-wrap: anywhere; }
+
+.link-state { display: flex; align-items: center; gap: 0.375rem; font-weight: 500; }
+
+.link-state svg { flex-shrink: 0; width: 1rem; height: 1rem; }
+
+.link-facts { display: grid; grid-template-columns: auto 1fr; gap: 0.125rem 0.75rem; }
+
+.link-facts dt { color: var(--muted-foreground); }
+
+.link-facts dd { margin: 0; }
+
+.link-next { font-weight: 500; }
+
+@media (hover: hover) {
+  .link-badge:hover { background-color: var(--accent); }
+}
+
+@media (pointer: coarse) {
+  .link-badge::after { content: ""; position: absolute; inset: -0.75rem -0.5rem; }
+}
+
 .file-link { overflow-wrap: anywhere; }
 
 .msg code, .tool code {
@@ -4468,6 +4532,8 @@ html.viewing, html.viewing body { overflow: hidden; }
 @media (prefers-reduced-motion: no-preference) {
   .widget-ask { animation: widget-ask-in 180ms ease-out; }
 
+  .link-card { animation: link-card-in 120ms ease-out; }
+
   .widget-wait::before {
     content: "";
     position: absolute;
@@ -4587,6 +4653,10 @@ html.viewing, html.viewing body { overflow: hidden; }
 }
 
 @keyframes widget-wait-text-in {
+  from { opacity: 0; }
+}
+
+@keyframes link-card-in {
   from { opacity: 0; }
 }
 
