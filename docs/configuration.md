@@ -22,7 +22,7 @@ The settings in `config.json` and `config.local.json`, and the four environment 
 
 ### `gh`
 
-`gh` is the GitHub CLI that GhostShell asks for the state of the pull requests a session is working on. It defaults to `gh`, found on `PATH`, and the sign-in is whatever `gh auth login` stored. GhostShell never reads the token. It asks github.com only, and runs `gh` without `GH_HOST`, `GH_REPO` and `GH_DEBUG`. Without `gh`, or without a sign-in, a session shows no pull requests.
+`gh` is the GitHub CLI that GhostShell asks for the state of the pull requests and issues a session is working on. It defaults to `gh`, found on `PATH`, and the sign-in is whatever `gh auth login` stored. GhostShell never reads the token. It asks github.com only, and runs `gh` without `GH_HOST`, `GH_REPO` and `GH_DEBUG`. Without `gh`, or without a sign-in, a session shows no pull requests or issues, and an item you added reads Can't read.
 
 ### `chrome`
 

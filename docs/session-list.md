@@ -121,7 +121,7 @@ GhostShell reads each line's latest reply from the session's transcript, for the
 
 #### Pull requests
 
-A card also says what is to be done about its session's main pull request, in one line of words, followed by the pull request's whole address as a link that opens GitHub in a new tab. The line tells you what to do, or who the session is waiting on. A card whose session has no main pull request, or whose pull request GhostShell could not read, looks as it did. A card that already shows what it waits on for an approval shows no pull request line, so a card never has two.
+A card also says what is to be done about its session's lead pull request, in one line of words, followed by the pull request's whole address as a link that opens GitHub in a new tab. The line tells you what to do, or who the session is waiting on. A card whose session has no pull request, or whose pull request GhostShell could not read, looks as it did. A card that already shows what it waits on for an approval shows no pull request line, so a card never has two.
 
 A session has one main pull request. GhostShell finds it in the transcript, newest message first: the newest message that names a pull request decides. If that message names one pull request, that is the main one. If it names several, the session is a sweep over many pull requests and has no main one, so its card shows none of them. An address in a tool result counts only when it is the last line of the output, as `gh pr create` prints it, so a listing of pull requests does not make the session claim all of them.
 
@@ -140,7 +140,7 @@ The line is the first of these that fits:
 
 When GitHub will not say who you are, the line never says what is asked of you or not. It reads **Approved**, **Open**, **Waiting on a reviewer** and the like, and no line asks anything of you.
 
-A line that starts with an instruction to you (review, merge, ask the session) makes its session count as waiting on you. The card gets the Waiting on you pill and moves under Waiting on you, the line at the top of the tab counts it, and so do the number and the amber mark on the header button, which stay right while the panel is closed. The other lines say the session waits on something else, or on nothing, and add no count. A review asked of you on a pull request that is not its session's main one does not count.
+A line that starts with an instruction to you (review, merge, ask the session) makes its session count as waiting on you. The card gets the Waiting on you pill and moves under Waiting on you, the line at the top of the tab counts it, and so do the number and the amber mark on the header button, which stay right while the panel is closed. The other lines say the session waits on something else, or on nothing, and add no count. A session counts as waiting on you when any pull request in its list does, and an issue never does.
 
 The server reads each main pull request by asking `gh`, the GitHub CLI, on the Mac. The page never sees the token and never calls GitHub. GhostShell keeps what `gh` says for 2 minutes (1 minute after a failure), and the page asks again for a session after 60 seconds, so a change on GitHub shows within a few minutes. It makes 2 `gh` calls for each pull request, so the calls follow the number of sessions with a main pull request, and runs at most 4 at once. When the server needs longer than 8 seconds it answers with what it has, a pull request being read again keeping its last line, and the page asks again 4 seconds later. A server that started before this feature, or has no `gh` signed in, shows no pull request lines and counts nothing extra.
 
@@ -151,9 +151,19 @@ This covers the pull requests of the GitHub account `gh` is signed in as, and re
 - comments on a pull request's conversation tab, which are not review threads.
 - a review requested from a team you belong to. Only a request that names you counts.
 - a pull request in a repository that account cannot see.
-- the other pull requests a session mentions. Only the main one is read and shown.
+- the other pull requests a session mentions in prose. Only its main pull request is found by itself, and you add the rest ([below](#pull-requests-and-issues-in-the-header)).
 
 The route is `GET api/pulls?ids=a,b,c`, with 1 to 60 session ids, signed in like the others. It answers `{ pulls: { <id>: [...] }, settling }` with no pull request or one for each session. The one has its address, repository, number, state (`open`, `draft`, `merged` or `closed`), whether you wrote it, whether your review is asked (both `null` when GitHub would not say who you are), the review decision, the state of its checks, whether it has conflicts, and how many review threads are unresolved. `settling` is true while some are still being read. A pull request GitHub could not show is left out. `GET api/sessions` lists `pullStatus` in its `features`. [The decision record](adr/20261026-show-pull-request-status-on-session-cards.md) says why the server asks `gh` and why only the main pull request shows.
+
+#### Pull requests and issues in the header
+
+The header of an open session shows its pull requests and issues as badges under the folder and branch line. Each badge has a pull request or issue glyph, `repo#n` and a short status word, and links to GitHub in a new tab. Its name and tooltip carry the title, the whole address and, for a pull request, the same sentence the card shows. The words for a pull request come from the card's rules, so the two agree: Merged, Closed, Review asked, Ready to merge, Changes asked, Conflicts, Comments, Checks failing, Checks running, Approved, In review, Draft or Open. An issue reads Open, Done (closed as completed) or Not planned. An item GitHub could not show reads Can't read.
+
+GhostShell lists the session's main pull request, found as above, and the newest 3 issues the session made or edited, found as the last line of a tool result that is one bare issue address, as `gh issue create` and `gh issue edit` print. An issue a session only mentions in prose is not found. Press the plus button after the badges to paste a pull request or issue address, and press Enter. An address with a tail GitHub adds, such as `/files` or `#issuecomment-1`, is cut back to the plain form. The x on a badge removes it: an item you added is dropped, and one GhostShell found is hidden, so it does not come back. Adding a hidden item shows it again. A session holds at most 20 added items. An added item GitHub cannot show stays, reading Can't read, so you can remove it.
+
+On the Sub sessions tab a card speaks of the first pull request in its list that waits on you, or else the first, and shows the other items as the same badges with no x. The sidebar shows nothing of this.
+
+Your additions and hidden items are kept in `links.json` in the state folder. The route is `POST api/links` with `{ id, url, attached }`, signed in and same-origin like the other writes, and a group's or section's own session is refused. `GET api/pulls` now lists an item's `kind` (`pull` or `issue`), its title, and `attached`, true for one you added, and an issue has the state `open`, `completed` or `not_planned`. `GET api/sessions` lists `attachLinks` in its `features`, and a page offers no plus or x without it. An issue is read with one `gh` call, and the first look at a session reads the newest 2 MB of its transcript once, then only what was added. [The decision record](adr/20261027-attach-pull-requests-and-issues-to-sessions.md) has the detail.
 
 #### Archiving from a card
 
