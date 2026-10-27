@@ -17,7 +17,7 @@ import { linksOf, previewFile, serveFile } from './lib/files.mjs';
 import { chipRefusal, ensureGroupDir, groupDir, guideFor, workFolder } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
-import { pendingLines } from './lib/subs.mjs';
+import { chipTitled, pendingLines } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
 import { makePulls } from './lib/pulls.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
@@ -339,16 +339,25 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 // What a chat is waiting on for the owner's say-so.
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
-// What an ordinary chat reaches the sessions under it through. Each call looks the index up again, so a session archived or nested since is seen
+// What an ordinary chat reaches the sessions under it through, and sends to them with. Each call looks the index up again, so a session archived or nested since is seen
 // as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for.
 function subCtx(sessionId) {
   return {
     lookup({ archived }) {
       const { rows } = buildIndex({ archived });
-      return { self: rows.get(sessionId) ?? null, rows: [...rows.values()].filter(r => archived || !r.archived) };
+      const titled = chipTitled([...rows.values()], chips.titles());
+      return { self: titled.find(r => r.id === sessionId) ?? null, rows: titled.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
     summary: (id, cwd) => summaries.get(id, cwd),
+    // The same path as a message typed into the session: its chat is resumed if it has no process, and queued behind a running turn. Answers the state it found.
+    send(row, text) {
+      const chat = getChat(row.id);
+      if (!chat?.proc && row.state === 'active') return 'elsewhere';
+      const was = chat?.state ?? 'idle';
+      ensureChat(row.id, row).send(text);
+      return was;
+    },
   };
 }
 

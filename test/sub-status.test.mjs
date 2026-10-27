@@ -145,7 +145,7 @@ test('an ordinary chat is offered the sub session tools after the ones every cha
   await sendTo(s, token, 'top', 'list the tools');
   await until(() => replies(s).length === 1);
   const names = replies(s)[0].result.tools.map(t => t.name);
-  assert.deepEqual(names.slice(-2), ['list_sub_sessions', 'read_sub_session']);
+  assert.deepEqual(names.slice(-3), ['list_sub_sessions', 'read_sub_session', 'send_session']);
   assert.ok(names.length > 2);
   assert.equal(names.some(n => n.endsWith('_group_session') || n === 'list_group_sessions'), false);
 
@@ -253,7 +253,7 @@ test('a chat that is only just started has the tools too, and reaches its sessio
   assert.equal(made, 'begun-by-the-fake');
   await sendTo(s, token, made, 'list the tools');
   await until(() => replies(s).length === 1);
-  assert.deepEqual(replies(s)[0].result.tools.map(t => t.name).slice(-2), ['list_sub_sessions', 'read_sub_session']);
+  assert.deepEqual(replies(s)[0].result.tools.map(t => t.name).slice(-3), ['list_sub_sessions', 'read_sub_session', 'send_session']);
   assert.match(textOf(await callTool(s, token, made, 'list_sub_sessions')), /has no sub sessions\.$/);
 
   assert.equal((await post(s, token, '/api/layout/nest', { id: 'loose', parent: made })).status, 200);

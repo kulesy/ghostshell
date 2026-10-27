@@ -130,7 +130,9 @@ Chats message each other with the CLI's `SendMessage` tool and find each other w
 
 GhostShell shows the message as a notice titled "Message from" and the sender's name, with the sender's address and mode behind Details. A report from one of this chat's own subagents is titled "Message from a subagent". The name and the address are claims the sender makes, so they label a message and do not prove who sent it.
 
-A chat that GhostShell stopped after 30 idle minutes has nothing listening and receives no messages until it starts again.
+A chat can also message any other session with `send_session`, after you approve its card. The session reads it as a turn and the chat shows it as a notice titled "Message from" and the sender's name, followed by "(your parent session)", "(your ancestor session)" or "(another session)", with the sender's id and name behind Details. See [the tool](tools.md#sub-sessions).
+
+A chat that GhostShell stopped after 30 idle minutes has nothing listening and receives no messages from other chats until it starts again. A parent's message starts it.
 
 ## Held messages
 

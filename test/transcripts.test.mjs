@@ -118,6 +118,14 @@ test('a message from another session names its sender and shows its text; one wr
   assert.equal(noticeFrom('<agent-message from="a09d">[Subagent hand-back] Report.</agent-message>').title, 'Message from a subagent');
 });
 
+test('a message from a parent session shows as a message from another session, and the CLI\'s own tag is not what carries it', () => {
+  const m = noticeFrom('<session-message from="abc" from-name="Fix the build (your parent session)">\nPlease rebase.\n</session-message>');
+  assert.equal(m.title, 'Message from Fix the build (your parent session)');
+  assert.equal(m.text, 'Please rebase.');
+  assert.deepEqual(m.details, [{ label: 'From', value: 'abc' }, { label: 'From name', value: 'Fix the build (your parent session)' }]);
+  assert.equal(noticeFrom('say <session-message> in a sentence'), null);
+});
+
 test('a task that ends while Claude is idle (a user entry) and one that ends mid-turn (a queued attachment) both show as notices', () => {
   const t = file('shapes', [user('first prompt'), user(AGENT), queued(ORPHANS, 'task-notification'), queued('redirect the work', 'prompt')]);
   const items = itemsOf(t);
@@ -181,6 +189,15 @@ test('a message that arrives while Claude is mid-turn is a queued attachment wit
   assert.deepEqual(items.map(i => [i.kind, i.title || i.text]), [['user', 'first prompt'], ['system', 'Message from Late sender'], ['user', 'thanks']]);
   assert.equal(items[1].text, 'The deploy window moved to 5pm.');
   assert.deepEqual(items[1].details, [{ label: 'From', value: ADDRESS }, { label: 'From name', value: 'Late sender' }, { label: 'From mode', value: 'bypass' }]);
+});
+
+test('a message a parent sent through send_session is saved as a plain user turn, or a queued one mid-turn, and shows as a message from its parent', () => {
+  const tag = '<session-message from="parent-id" from-name="Fix the build (your parent session)">\nPlease rebase.\n</session-message>';
+  const t = file('peer-parent', [user('first prompt'), user(tag), queued(tag, 'prompt'), user('thanks')]);
+  const items = itemsOf(t);
+  assert.deepEqual(items.map(i => [i.kind, i.title || i.text]), [['user', 'first prompt'], ['system', 'Message from Fix the build (your parent session)'], ['system', 'Message from Fix the build (your parent session)'], ['user', 'thanks']]);
+  assert.deepEqual(items[1].details, [{ label: 'From', value: 'parent-id' }, { label: 'From name', value: 'Fix the build (your parent session)' }]);
+  assert.equal(items[1].text, 'Please rebase.');
 });
 
 test('a message with no sender name, or no text, is still a notice', () => {
@@ -1037,4 +1054,9 @@ test('the end of the last complete line is found without reading a byte twice, a
   assert.equal(completeEnd({ file: f }), 0);
   fs.writeFileSync(f, 'one\ntwo\n');
   assert.equal(completeEnd({ file: f }, 3), 8, 'the last line end is the last byte');
+});
+
+test('a send to a sub session is summarised as its recipient and the start of the message', () => {
+  assert.equal(toolSummary('mcp__capcom__send_session', { session_id: 'abc', message: 'Please\nrebase' }), 'to abc: Please rebase');
+  assert.equal(toolSummary('mcp__capcom__send_session', {}), '');
 });
