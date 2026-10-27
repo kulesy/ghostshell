@@ -1,5 +1,5 @@
 // The status of the pull requests and issues of the open session and of the sessions under it, asked of the server for the session itself and the
-// sessions the header button counts, so its mark is right with the panel closed. The header mounts the hook, and the tab and its cards only read the store.
+// sessions the header button counts, so its mark is right with the panel closed. The header's PullFeed mounts the hook, and the badges, the tab and its cards only read the store.
 import { api } from './api.js';
 import { enc } from './group-status.js';
 import { useStore } from './hooks.js';

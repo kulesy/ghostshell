@@ -31,12 +31,17 @@ function TerminalButton({ ctrl }) {
   return html`<button class="btn" id="terminalButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label="Terminal" aria-expanded=${shown === 'terminal'} aria-controls="panel" data-tip="Terminal" data-tip-key=${keyHint('Ctrl', '`')} onClick=${e => toggleTab(ctrl.id, 'terminal', e.currentTarget, shown)}>${draw(icons.terminal, 'icon')}</button>`;
 }
 
-// Its name carries the count and what waits on the owner, since the mark on it is colour alone. It also asks for the pull requests of the
-// sessions it counts, so that count is right with the panel closed.
+// Asks for the pull requests and issues of the open session and the sessions under it, so the header's list and the Subs count are right with the
+// panel closed. It is drawn once, and the badges, the button and the tab only read what it fetches.
+function PullFeed({ ctrl }) {
+  usePullStatus(useStore(sessionIndex, s => s.ix), ctrl.id);
+  return null;
+}
+
+// Its name carries the count and what waits on the owner, since the mark on it is colour alone.
 function SubsButton({ ctrl }) {
   const ix = useStore(sessionIndex, s => s.ix);
   const shown = useShownTab(ctrl);
-  usePullStatus(ix, ctrl.id);
   const status = subsStatus(ix, ctrl.id, undefined, usePullNeeds(ix));
   const name = subsButtonName(status);
   return html`<button class="btn" id="subsButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label=${name} aria-expanded=${shown === 'subs'} aria-controls="panel" data-tip=${name} onClick=${e => toggleTab(ctrl.id, 'subs', e.currentTarget, shown)}>${draw(LIST_TREE, 'icon')}${status.needs ? html`<span class="subs-mark" aria-hidden="true"></span>` : null}</button>`;
@@ -109,6 +114,7 @@ function ChatHead({ ctrl, kind, rename }) {
             ${renamable ? html`<button class="btn chat-rename" type="button" data-variant="ghost" data-size="icon-xs" ref=${pencil} aria-label=${rename.label} data-tip=${rename.label} onClick=${() => setRenaming(true)}>${draw(icons.pencil, 'icon')}</button>` : null}`}
       </div>
       <p class="chat-meta" id="meta">${meta}</p>
+      ${(subs || attached) && !draft ? html`<${PullFeed} ctrl=${ctrl} />` : null}
       ${attached && !draft ? html`<${Attached} ctrl=${ctrl} />` : null}
       ${draft && groupName ? html`<span class="start-group">${draw(icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${`Start outside ${groupName}`} data-tip="Start outside the group" onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>

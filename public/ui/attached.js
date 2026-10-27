@@ -8,7 +8,7 @@ import { html, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
 import { itemsOf } from './pull-rules.js';
 import { normaliseUrl } from './pull-url.js';
-import { attachOn, pullsOn, pullStore, refreshPulls, usePullStatus } from './pulls.js';
+import { attachOn, pullsOn, pullStore, refreshPulls } from './pulls.js';
 import { sessionIndex } from './subs.js';
 import { toast } from './toast.js';
 import { findRow } from './tree.js';
@@ -22,7 +22,7 @@ export const attachable = (ix, id) => pullsOn(ix) && !!id && !!findRow(ix, id);
 // Sends one change and resolves true when the server took it.
 async function change(id, url, attached) {
   try {
-    await api('api/links', { id, url, attached });
+    await api('api/attached', { id, url, attached });
     refreshPulls(id);
     return true;
   } catch (e) {
@@ -35,7 +35,12 @@ function AddForm({ id, onDone }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const input = useRef(null);
+  const retry = useRef(false);
   useLayoutEffect(() => { input.current?.focus({ preventScroll: true }); }, []);
+  useLayoutEffect(() => {
+    if (!sending && retry.current) input.current?.focus({ preventScroll: true });
+    retry.current = false;
+  }, [sending]);
   const submit = async e => {
     e.preventDefault();
     if (sending) return;
@@ -44,9 +49,9 @@ function AddForm({ id, onDone }) {
     setSending(true);
     const ok = await change(id, given.url, true);
     if (ok) onDone(true);
-    else { setSending(false); input.current?.focus(); }
+    else { retry.current = true; setSending(false); }
   };
-  return html`<li class="attached-form">
+  return html`<li class="session-link-form">
     <form onSubmit=${submit} onKeyDown=${escapeCancels(() => onDone(true))}>
       <label class="sr" for=${FIELD}>Pull request or issue address</label>
       <input class="input" id=${FIELD} ref=${input} type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste a pull request or issue address" value=${text} disabled=${sending} onInput=${e => setText(e.currentTarget.value)} />
@@ -64,11 +69,15 @@ export function Attached({ ctrl }) {
   const [busy, setBusy] = useState(() => new Set());
   const plus = useRef(null);
   const refocus = useRef(false);
-  usePullStatus(ix, id);
+  const failed = useRef(null);
   useLayoutEffect(() => {
     if (!adding && refocus.current) plus.current?.focus({ preventScroll: true });
     refocus.current = false;
   }, [adding]);
+  useLayoutEffect(() => {
+    failed.current?.focus({ preventScroll: true });
+    failed.current = null;
+  }, [busy]);
   if (!attachable(ix, id)) return null;
   const row = findRow(ix, id);
   const items = itemsOf(known.get(id)?.pulls);
@@ -76,12 +85,12 @@ export function Attached({ ctrl }) {
   const remove = async (item, button) => {
     setBusy(all => new Set(all).add(item.url));
     const ok = await change(id, item.url, false);
+    if (!ok) failed.current = button;
     setBusy(all => { const next = new Set(all); next.delete(item.url); return next; });
     if (ok) (plus.current ?? document.getElementById('text'))?.focus({ preventScroll: true });
-    else button.focus({ preventScroll: true });
   };
   const tail = !editable ? null : adding
     ? html`<${AddForm} id=${id} onDone=${back => { refocus.current = back; setAdding(false); }} />`
-    : html`<li class="attached-tail"><button class="badge attached-add" data-variant="outline" type="button" ref=${plus} aria-label="Add a pull request or issue" data-tip="Add a pull request or issue" onClick=${() => setAdding(true)}>${draw(icons.plus, 'icon')}</button></li>`;
+    : html`<li class="session-link-tail"><button class="badge session-link-add" data-variant="outline" type="button" ref=${plus} aria-label="Add a pull request or issue" data-tip="Add a pull request or issue" onClick=${() => setAdding(true)}>${draw(icons.plus, 'icon')}</button></li>`;
   return html`<${Badges} items=${items} row=${row} label="Pull requests and issues" remove=${editable ? remove : null} busy=${busy} tail=${tail} />`;
 }

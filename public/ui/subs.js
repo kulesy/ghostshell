@@ -182,7 +182,7 @@ function Line({ node, shared }) {
       ${heard?.line ? html`<p class="sub-said">${heard.line}</p>` : null}
       ${waits ? html`<p class="sub-wait">${waits}</p>` : null}
       ${main && !waits ? html`<${Status} id=${`${body}-status`} pull=${main} row=${row} />` : null}
-      <${Badges} items=${items.filter(item => item !== main)} row=${row} label=${`Pull requests and issues of ${name}`} />
+      <${Badges} items=${items.filter(item => waits || item !== main)} row=${row} label=${`Pull requests and issues of ${name}`} />
       <div class="sub-foot">
         ${roll ? html`<p class="sub-roll"><${Words} text=${roll} /></p>` : null}
         <div class="sub-acts">

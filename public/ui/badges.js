@@ -11,15 +11,15 @@ const GLYPH = { pull: icons.gitPullRequest, issue: icons.circleDot };
 // and `tail` is drawn after the last badge, as the header's add button is.
 export function Badges({ items, row, label, remove, busy, tail }) {
   if (!items.length && !tail) return null;
-  return html`<ul class="attached" aria-label=${label}>
+  return html`<ul class="session-links" aria-label=${label}>
     ${items.map(item => {
       const badge = badgeOf(item, row);
       const gone = `Remove ${badge.label.toLowerCase()} ${badge.ref}`;
-      return html`<li class="badge attached-item" data-variant="outline" data-tone=${badge.tone} key=${item.url}>
-        <a class="attached-link" href=${badge.url} target="_blank" rel="noopener noreferrer" aria-label=${badge.name} data-tip=${badge.tip}>
-          ${draw(GLYPH[badge.kind], 'icon')}<span class="attached-ref">${badge.ref}</span><span class="attached-word">${badge.word}</span>
+      return html`<li class="badge session-link-item" data-variant="outline" data-tone=${badge.tone} key=${item.url}>
+        <a class="session-link-link" href=${badge.url} target="_blank" rel="noopener noreferrer" aria-label=${badge.name} data-tip=${badge.tip}>
+          ${draw(GLYPH[badge.kind], 'icon')}<span class="session-link-ref">${badge.ref}</span><span class="session-link-word">${badge.word}</span>
         </a>
-        ${remove ? html`<button class="attached-remove" type="button" aria-label=${gone} data-tip=${gone} disabled=${busy?.has(item.url)} onClick=${e => remove(item, e.currentTarget)}>${draw(icons.x, 'icon')}</button>` : null}
+        ${remove ? html`<button class="session-link-remove" type="button" aria-label=${gone} data-tip=${gone} disabled=${busy?.has(item.url)} onClick=${e => remove(item, e.currentTarget)}>${draw(icons.x, 'icon')}</button>` : null}
       </li>`;
     })}
     ${tail}

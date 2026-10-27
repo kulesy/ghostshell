@@ -21,8 +21,7 @@ const status = (you, text, tone, word) => ({ you, text, tone, word });
 const busy = row => row?.state === 'working' || row?.state === 'active';
 
 // What the owner has to do about a pull request, or who the session waits on, as { you, text, tone, word }, where `word` is the short status a
-// badge shows. `row` is the session's, whose state says whether it is working on the pull request itself. The first rule that fits wins. A null `mine` (the viewer is unknown) says nothing of
-// what is asked of them.
+// badge shows. `row` is the session's, and the first rule that fits wins. A null `mine` (the viewer is unknown) says nothing of what is asked of them.
 export function statusOf(pull, row) {
   if (pull.state === 'merged') return status(false, 'Merged, nothing to do', 'ready', 'Merged');
   if (pull.state === 'closed') return status(false, 'Closed, nothing to do', 'quiet', 'Closed');
@@ -69,7 +68,7 @@ const UNREADABLE = ["Can't read", 'error'];
 export const issueWord = issue => ISSUE_WORDS[issue?.state] ?? UNREADABLE;
 
 // What a badge shows for an item, from its address and its answer: its kind, `ref` (`repo#n`), short status word and tone, the sentence of a pull request
-// (the card's own), and the title. Its `name` is what a screen reader hears, and its `tip` what the pointer and the keyboard show.
+// (the card's own), and the title. Its `name` is short for a screen reader, and its `tip` holds the rest for the pointer and the keyboard.
 export function badgeOf(item, row) {
   const kind = kindOfUrl(item.url);
   const [, , repo, number] = (kind === 'issue' ? ISSUE_URL : PULL_URL).exec(item.url);
@@ -81,7 +80,7 @@ export function badgeOf(item, row) {
   const sentence = read && kind === 'pull' ? said.text : '';
   return {
     kind, label, word, tone, title, sentence, url: item.url, ref: `${repo}#${number}`, attached: item.attached === true,
-    name: [`${label} ${repo}#${number}`, word, title, sentence, item.url].filter(Boolean).join('. '),
+    name: `${repo}#${number}, ${word}`,
     tip: [title, sentence, item.url].filter(Boolean).join('. '),
   };
 }

@@ -159,18 +159,18 @@ test('an issue reads Open, Done or Not planned, and an item that could not be re
   assert.deepEqual([issueWord(issue({ state: 'unknown' })), issueWord(issue({ state: 'what' })), issueWord(undefined)], [["Can't read", 'error'], ["Can't read", 'error'], ["Can't read", 'error']]);
 });
 
-test('a badge names the item by repo and number, with the status word, tone, title, sentence and address a screen reader and a tooltip give', () => {
+test('a badge names the item by repo and number, with the status word for a screen reader, and the title, sentence and address in the tooltip', () => {
   const merge = badgeOf(pull({ url: url(12), title: 'Fix the thing', ...READY, attached: true }), idle);
   assert.deepEqual({ ...merge, name: undefined, tip: undefined }, {
     kind: 'pull', label: 'Pull request', word: 'Ready to merge', tone: 'needs', title: 'Fix the thing', sentence: 'Merge the pull request', url: url(12), ref: 'example-repo#12', attached: true, name: undefined, tip: undefined,
   });
-  assert.equal(merge.name, `Pull request example-repo#12. Ready to merge. Fix the thing. Merge the pull request. ${url(12)}`);
+  assert.equal(merge.name, 'example-repo#12, Ready to merge');
   assert.equal(merge.tip, `Fix the thing. Merge the pull request. ${url(12)}`);
   const done = badgeOf(issue({ state: 'completed' }), idle);
   assert.deepEqual([done.kind, done.label, done.word, done.tone, done.sentence, done.ref, done.attached], ['issue', 'Issue', 'Done', 'ready', '', 'example-repo#5', false]);
-  assert.equal(done.name, `Issue example-repo#5. Done. Something is broken. ${issue().url}`);
+  assert.equal(done.name, 'example-repo#5, Done');
   const lost = badgeOf({ url: issue().url, kind: 'issue', repo: 'example-org/example-repo', number: 5, state: 'unknown', attached: true }, idle);
-  assert.deepEqual([lost.word, lost.tone, lost.title, lost.sentence, lost.name], ["Can't read", 'error', '', '', `Issue example-repo#5. Can't read. ${issue().url}`]);
+  assert.deepEqual([lost.word, lost.tone, lost.title, lost.sentence, lost.name], ["Can't read", 'error', '', '', "example-repo#5, Can't read"]);
   const lostPull = badgeOf({ url: url(9), state: 'unknown', attached: true }, idle);
   assert.deepEqual([lostPull.word, lostPull.label, lostPull.sentence], ["Can't read", 'Pull request', '']);
   assert.equal(badgeOf(pull({ url: url(12), checks: 'failing' }), working).word, 'Checks failing', 'the word does not change with what the session is doing');

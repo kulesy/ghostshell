@@ -311,7 +311,7 @@
 
 .pull-link:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
 
-.attached {
+.session-links {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -323,9 +323,9 @@
   list-style: none;
 }
 
-.sub-card > .attached { margin: 0; }
+.sub-card > .session-links { margin: 0; }
 
-.attached-item {
+.session-link-item {
   position: relative;
   flex-shrink: 1;
   min-width: 0;
@@ -335,7 +335,7 @@
   overflow: visible;
 }
 
-.attached-link {
+.session-link-link {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -346,15 +346,15 @@
   text-decoration: none;
 }
 
-.attached-item:has(.attached-remove) .attached-link { padding-right: 0.25rem; }
+.session-link-item:has(.session-link-remove) .session-link-link { padding-right: 0.25rem; }
 
-.attached-link:focus-visible, .attached-remove:focus-visible, .attached-add:focus-visible { outline: 0; box-shadow: 0 0 0 2px var(--ring); }
+.session-link-link:focus-visible, .session-link-remove:focus-visible, .session-link-add:focus-visible { outline: 0; box-shadow: 0 0 0 2px var(--ring); }
 
-.attached-ref { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-link-ref { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.attached-word { flex: none; font-weight: 600; }
+.session-link-word { flex: none; font-weight: 600; }
 
-.attached-remove {
+.session-link-remove {
   position: relative;
   display: inline-flex;
   flex: none;
@@ -372,35 +372,35 @@
   opacity: 0.7;
 }
 
-.attached-remove:disabled { cursor: default; opacity: 0.4; }
+.session-link-remove:disabled { cursor: default; opacity: 0.4; }
 
-.attached-remove svg { width: 0.75rem; height: 0.75rem; pointer-events: none; }
+.session-link-remove svg { width: 0.75rem; height: 0.75rem; pointer-events: none; }
 
-.attached-item[data-tone="needs"] {
+.session-link-item[data-tone="needs"] {
   border-color: color-mix(in oklab, var(--warning) 55%, var(--warning-muted));
   background: var(--warning-muted);
   color: var(--warning-foreground);
 }
 
-.attached-item[data-tone="working"] { background: var(--muted); color: var(--foreground); }
+.session-link-item[data-tone="working"] { background: var(--muted); color: var(--foreground); }
 
-.attached-item[data-tone="ready"] {
+.session-link-item[data-tone="ready"] {
   border-color: color-mix(in oklab, var(--ready) 40%, var(--background));
   background: color-mix(in oklab, var(--ready) 12%, var(--background));
   color: color-mix(in oklab, var(--ready) 70%, var(--foreground));
 }
 
-.attached-item[data-tone="error"] {
+.session-link-item[data-tone="error"] {
   border-color: color-mix(in oklab, var(--destructive) 40%, var(--background));
   background: color-mix(in oklab, var(--destructive) 12%, var(--background));
   color: color-mix(in oklab, var(--destructive) 60%, var(--foreground));
 }
 
-.attached-item[data-tone="quiet"] { color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground)); }
+.session-link-item[data-tone="quiet"] { color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground)); }
 
-.attached-tail { display: contents; }
+.session-link-tail { display: contents; }
 
-.attached-add {
+.session-link-add {
   position: relative;
   width: 1.5rem;
   height: 1.375rem;
@@ -410,26 +410,26 @@
   cursor: pointer;
 }
 
-.attached-form { flex: 1 1 100%; min-width: 0; }
+.session-link-form { flex: 1 1 100%; min-width: 0; }
 
-.attached-form form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.session-link-form form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
 
-.attached-form .input { flex: 1 1 14rem; width: auto; min-width: 0; height: 2rem; font-size: 0.875rem; }
+.session-link-form .input { flex: 1 1 14rem; width: auto; min-width: 0; height: 2rem; font-size: 0.875rem; }
 
 @media (hover: hover) {
-  .attached-link:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+  .session-link-link:hover { text-decoration: underline; text-underline-offset: 0.2em; }
 
-  .attached-remove:hover:not(:disabled), .attached-add:hover { opacity: 1; background-color: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--foreground); }
+  .session-link-remove:hover:not(:disabled), .session-link-add:hover { opacity: 1; background-color: color-mix(in oklab, var(--foreground) 10%, transparent); color: var(--foreground); }
 }
 
 @media (pointer: coarse) {
-  .attached-link::after, .attached-add::after { content: ""; position: absolute; inset: -0.375rem 0; }
+  .session-link-link::after, .session-link-add::after { content: ""; position: absolute; inset: -0.375rem 0; }
 
-  .attached-remove::after { content: ""; position: absolute; inset: -0.75rem -0.5rem; }
+  .session-link-remove::after { content: ""; position: absolute; inset: -0.75rem -0.5rem; }
 
-  .attached-form .input { font-size: 1rem; }
+  .session-link-form .input { font-size: 1rem; }
 
-  .attached-form .btn { min-height: 2.75rem; }
+  .session-link-form .btn { min-height: 2.75rem; }
 }
 
 .sub-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 0.5rem; align-self: stretch; margin-top: auto; }
