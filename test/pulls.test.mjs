@@ -6,15 +6,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isPullUrl } from '../public/ui/pull-url.js';
-import { makePulls, summarise } from '../lib/pulls.mjs';
+import { makePulls, summarise, summariseIssue, unreadable } from '../lib/pulls.mjs';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-pulls-'));
 const pr = n => `https://github.com/example-org/example-repo/pull/${n}`;
-const FIELDS = 'state,isDraft,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,latestReviews,reviewRequests,author';
+const is = n => `https://github.com/example-org/example-repo/issues/${n}`;
+const FIELDS = 'title,state,isDraft,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,latestReviews,reviewRequests,author';
 const QUERY = 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}';
 
 const raw = (extra = {}) => ({
-  url: pr(12), state: 'OPEN', isDraft: false, reviewDecision: '', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED',
+  url: pr(12), title: 'Fix the thing', state: 'OPEN', isDraft: false, reviewDecision: '', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED',
   statusCheckRollup: [], latestReviews: [], reviewRequests: [], author: { login: 'someone' }, ...extra,
 });
 const run = (conclusion, status = 'COMPLETED') => ({ __typename: 'CheckRun', status, conclusion });
@@ -99,7 +100,7 @@ test('conflicts, clean and threads come from the mergeable fields and the thread
 
 test('a pull request has exactly the fields the page is promised', () => {
   assert.deepEqual(Object.keys(summarise(raw(), [], 'octocat')).sort(),
-    ['asked', 'checks', 'clean', 'conflicts', 'mine', 'number', 'repo', 'requested', 'review', 'state', 'threads', 'url']);
+    ['asked', 'checks', 'clean', 'conflicts', 'kind', 'mine', 'number', 'repo', 'requested', 'review', 'state', 'threads', 'title', 'url']);
 });
 
 // ---- which addresses a transcript names -------------------------------------------------------------------------------------------
@@ -267,7 +268,7 @@ test('a lookup runs the three fixed gh calls, with the exact argument lists, and
   assert.deepEqual(f.of('user').map(c => c.args), [['api', 'user', '--jq', '.login', '--hostname', 'github.com']]);
   assert.deepEqual([...found.keys()], [pr(12)]);
   assert.deepEqual(found.get(pr(12)), {
-    url: pr(12), repo: 'example-org/example-repo', number: 12, state: 'open', mine: false, asked: true, requested: 1,
+    url: pr(12), kind: 'pull', repo: 'example-org/example-repo', number: 12, title: 'Fix the thing', state: 'open', mine: false, asked: true, requested: 1,
     review: 'none', checks: 'none', conflicts: false, clean: false, threads: 1,
   });
 });
@@ -291,8 +292,8 @@ test('an address that is not the plain form is dropped before anything is run', 
     'https://github.com.evil.com/o/r/pull/1', 'http://github.com/o/r/pull/1', 'https://github.com@evil.com/o/r/pull/1',
     `${pr(1)}/files`, `${pr(1)}\n--help`, '--web', 'gh pr list', '', null, undefined, 5, { toString: () => pr(1) },
   ];
-  assert.deepEqual(await pulls.lookup(lookalikes), { found: new Map(), settling: false });
-  assert.deepEqual(await pulls.lookup('not a list'), { found: new Map(), settling: false });
+  assert.deepEqual(await pulls.lookup(lookalikes), { found: new Map(), settling: false, waiting: new Set() });
+  assert.deepEqual(await pulls.lookup('not a list'), { found: new Map(), settling: false, waiting: new Set() });
   assert.equal(f.calls.length, 0);
 });
 
@@ -548,4 +549,127 @@ test('a thread answer with no nodes is a failed read of the threads', async () =
   const f = { ...base, run: async (file, args) => (args[1] === 'graphql' ? (base.calls.push({ file, args }), JSON.stringify({ data: { repository: null }, errors: [{}] })) : base.run(file, args)) };
   const { pulls } = maker({ fake: f });
   assert.equal((await pulls.lookup([pr(1)])).found.get(pr(1)).threads, null);
+});
+
+// ---- issues ---------------------------------------------------------------------------------------------------------------------
+
+const ISSUE_FIELDS = 'state,stateReason,title';
+const issueRaw = (extra = {}) => ({ state: 'OPEN', stateReason: '', title: 'Something is broken', ...extra });
+
+test('an issue is open, or closed as completed or not planned, and a closed one with no reason was completed', () => {
+  const state = extra => summariseIssue({ url: is(5), ...issueRaw(extra) }).state;
+  assert.equal(state({}), 'open');
+  assert.equal(state({ state: 'OPEN', stateReason: 'REOPENED' }), 'open');
+  assert.equal(state({ state: 'CLOSED', stateReason: 'COMPLETED' }), 'completed');
+  assert.equal(state({ state: 'CLOSED', stateReason: '' }), 'completed');
+  assert.equal(state({ state: 'CLOSED', stateReason: null }), 'completed');
+  assert.equal(state({ state: 'CLOSED', stateReason: 'NOT_PLANNED' }), 'not_planned');
+  assert.equal(state({ state: 'CLOSED', stateReason: 'DUPLICATE' }), 'not_planned');
+  assert.deepEqual(summariseIssue({ url: is(5), ...issueRaw() }), { url: is(5), kind: 'issue', repo: 'example-org/example-repo', number: 5, title: 'Something is broken', state: 'open' });
+  assert.equal(summariseIssue({ url: is(5), ...issueRaw({ title: 'x'.repeat(500) }) }).title.length, 200);
+});
+
+test('an issue is read with one gh call, through the same cache, and needs no login', async () => {
+  const f = fake({ answer: (file, args) => {
+    if (args[0] === 'issue') return JSON.stringify(issueRaw({ state: 'CLOSED', stateReason: 'NOT_PLANNED' }));
+    throw new Error(`unexpected ${args.join(' ')}`);
+  } });
+  const { pulls } = maker({ fake: f });
+  const { found, settling } = await pulls.lookup([is(5), is(5)]);
+  assert.equal(settling, false);
+  assert.deepEqual(f.calls.map(c => c.args), [['issue', 'view', is(5), '--json', ISSUE_FIELDS]]);
+  assert.deepEqual(found.get(is(5)), { url: is(5), kind: 'issue', repo: 'example-org/example-repo', number: 5, title: 'Something is broken', state: 'not_planned' });
+  await pulls.lookup([is(5)]);
+  assert.equal(f.calls.length, 1, 'the second ask came from the cache');
+});
+
+test('an issue address that is not the plain form is never passed to gh', async () => {
+  const { pulls, f } = maker();
+  await pulls.lookup([`${is(1)}/comments`, 'https://github.com.evil.com/o/r/issues/1', `${is(1)}\n--help`, 'https://github.com/o/r/issues/0']);
+  assert.equal(f.calls.length, 0);
+});
+
+test('an added item gh cannot read comes back unknown, a found one is left out, and one still being read waits for the next ask', async () => {
+  const f = fake({ answer: (file, args) => {
+    if (args[0] === 'issue' && args[2] === is(1)) return JSON.stringify(issueRaw());
+    throw new Error('gh could not find that');
+  } });
+  const { pulls, told } = maker({ fake: f });
+  const { answered, settling } = await pulls.answer(new Map([['s', [{ url: is(1), attached: false }, { url: is(2), attached: true }, { url: is(3), attached: false }, { url: pr(4), attached: true }]]]));
+  assert.equal(settling, false);
+  assert.deepEqual(answered.get('s').map(i => [i.url, i.kind, i.state, i.attached]), [
+    [is(1), 'issue', 'open', false],
+    [is(2), 'issue', 'unknown', true],
+    [pr(4), 'pull', 'unknown', true],
+  ]);
+  assert.deepEqual(answered.get('s')[1], unreadable(is(2)));
+  const toldBefore = told.length;
+  await pulls.answer(new Map([['s', [{ url: is(2), attached: true }]]]));
+  assert.equal(told.length, toldBefore, 'a failure is told once');
+
+  const slow = fake({ answer: () => new Promise(() => {}) });
+  const waiting = maker({ fake: slow, options: { waitMs: 20 } });
+  const out = await waiting.pulls.answer(new Map([['s', [{ url: is(7), attached: true }]]]));
+  assert.deepEqual([out.settling, out.answered.get('s')], [true, []]);
+});
+
+// ---- which issues a transcript made or edited ---------------------------------------------------------------------------------
+
+test('an issue a tool result ends with is found, one cited in prose or in a listing is not, and the newest 3 are kept oldest first', () => {
+  transcript('issues', [
+    said(`I will also look at ${is(90)}.`),
+    gave('t1', `Creating issue in example-org/example-repo\n\n${is(1)}\n`),
+    gave('t2', [10, 11].map(n => `#${n}  A title  ${is(n)}`).join('\n')),
+    prompt(`and ${is(91)}`),
+    gave('t3', `${is(2)}`),
+    gave('t4', `${pr(5)}`),
+    gave('t5', `${is(3)}\n`),
+    gave('t6', `${is(1).toUpperCase().replace('HTTPS://GITHUB.COM', 'https://github.com')}`),
+    gave('t7', `${is(4)}\n`),
+  ]);
+  const pulls = makePulls({ transcriptFor });
+  assert.deepEqual(pulls.issuesFor('issues'), [is(2), is(3), is(4)]);
+  transcript('edited', [gave('t1', is(7)), gave('t2', is(8)), gave('t3', is(7))]);
+  assert.deepEqual(pulls.issuesFor('edited'), [is(8), is(7)], 'an issue edited again is the newest');
+  transcript('none', [said(`Look at ${is(1)}`), gave('t1', `${is(1)}\nmore`)]);
+  assert.deepEqual([pulls.issuesFor('none'), pulls.issuesFor('nobody')], [[], []]);
+});
+
+test('an issue address in a tool result is not a pull request, and a pull request address is not an issue', () => {
+  transcript('mixed', [gave('t1', is(1)), gave('t2', pr(2))]);
+  const pulls = makePulls({ transcriptFor });
+  assert.deepEqual([pulls.urlsFor('mixed'), pulls.issuesFor('mixed')], [[pr(2)], [is(1)]]);
+});
+
+test('after the first read of the newest 2 MB only the appended bytes are read, and a file that shrank or was replaced is read in full', () => {
+  const file = transcript('grow', [gave('t1', is(1)), gave('t2', is(2))]);
+  const pulls = makePulls({ transcriptFor });
+  assert.deepEqual(pulls.issuesFor('grow'), [is(1), is(2)]);
+  // Changing bytes already read, keeping the size, shows only a read of the whole file would see it.
+  const fd = fs.openSync(file, 'r+');
+  fs.writeSync(fd, Buffer.from(fs.readFileSync(file, 'utf8').replace(is(1), is(9))), 0);
+  fs.closeSync(fd);
+  assert.deepEqual(pulls.issuesFor('grow'), [is(1), is(2)], 'unchanged size is not read again');
+  fs.appendFileSync(file, lines([gave('t3', is(3))]));
+  assert.deepEqual(pulls.issuesFor('grow'), [is(1), is(2), is(3)], 'the appended line is added to what was read');
+  fs.appendFileSync(file, '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"' + is(4));
+  assert.deepEqual(pulls.issuesFor('grow'), [is(1), is(2), is(3)], 'a half-written line waits');
+  fs.appendFileSync(file, '"}]}}\n');
+  assert.deepEqual(pulls.issuesFor('grow'), [is(2), is(3), is(4)]);
+
+  fs.writeFileSync(file, lines([gave('t1', is(5))]));
+  assert.deepEqual(pulls.issuesFor('grow'), [is(5)], 'a file that shrank is read in full');
+
+  const swap = path.join(dir, 'grow.swap');
+  fs.writeFileSync(swap, lines([gave('t1', is(6)), gave('t2', is(7))]));
+  fs.renameSync(swap, file);
+  assert.deepEqual(pulls.issuesFor('grow'), [is(6), is(7)], 'a file with another identity is read in full');
+});
+
+test('an issue is found only in the last 2 MB of a long transcript', () => {
+  const filler = Array.from({ length: 2300 }, () => ({ type: 'summary', summary: 'x'.repeat(1000) }));
+  transcript('issues-far', [gave('t1', is(1)), ...filler]);
+  transcript('issues-near', [...filler, gave('t1', is(2))]);
+  const pulls = makePulls({ transcriptFor });
+  assert.deepEqual([pulls.issuesFor('issues-far'), pulls.issuesFor('issues-near')], [[], [is(2)]]);
 });
