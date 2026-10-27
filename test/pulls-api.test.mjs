@@ -114,7 +114,7 @@ test('the session list says the server answers pull request status', async () =>
 // ---- attaching pull requests and issues ----------------------------------------------------------------------------------------
 
 const ISSUE = (extra = {}) => ({ title: 'Something is broken', state: 'OPEN', stateReason: '', ...extra });
-const attach = (s, token, body, headers = {}) => request(s, 'POST', '/api/links', { headers: { ...as(token), ...headers }, json: body });
+const attach = (s, token, body, headers = {}) => request(s, 'POST', '/api/attached', { headers: { ...as(token), ...headers }, json: body });
 const linksFile = s => path.join(s.state, 'links.json');
 const saved = s => JSON.parse(fs.readFileSync(linksFile(s), 'utf8'));
 const listOf = async (s, token, id) => (await pullsOf(s, token, id)).pulls[id].map(i => [i.url, i.kind, i.state, i.attached]);
@@ -124,11 +124,11 @@ const created = (s, id, output) => fs.appendFileSync(path.join(s.home, '.claude'
 test('the links route is a signed-in, same-origin write for one real session with a JSON body, and it refuses a group\'s session', async () => {
   const { s, token } = await ready();
   const ok = { id: 'top', url: pr(1), attached: true };
-  assert.equal((await request(s, 'POST', '/api/links', { json: ok })).status, 401);
-  assert.equal((await request(s, 'GET', '/api/links', { headers: as(token) })).status, 404);
+  assert.equal((await request(s, 'POST', '/api/attached', { json: ok })).status, 401);
+  assert.equal((await request(s, 'GET', '/api/attached', { headers: as(token) })).status, 404);
   const cross = await attach(s, token, ok, { origin: 'https://evil.example' });
   assert.deepEqual([cross.status, cross.body()], [403, { error: 'Cross-site request refused.' }]);
-  const bad = await request(s, 'POST', '/api/links', { headers: { ...as(token), 'content-type': 'application/json' } });
+  const bad = await request(s, 'POST', '/api/attached', { headers: { ...as(token), 'content-type': 'application/json' } });
   assert.equal(bad.status, 400, 'a body with nothing in it names no session');
   const cases = [
     [{ ...ok, id: undefined }, 400, 'Which session?'],

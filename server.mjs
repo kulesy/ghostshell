@@ -1049,7 +1049,8 @@ async function pullsApi(res, u) {
   const ids = askedIds(u);
   if (typeof ids === 'string') return send(res, 400, { error: ids });
   const { rows } = buildIndex({ archived: true });
-  const lists = new Map(ids.filter(id => rows.has(id)).map(id => [id, attachedOf(id, rows.get(id).cwd, links.read())]));
+  const all = links.read();
+  const lists = new Map(ids.filter(id => rows.has(id)).map(id => [id, attachedOf(id, rows.get(id).cwd, all)]));
   const { answered, settling } = await pulls.answer(lists);
   return send(res, 200, { pulls: Object.fromEntries(answered), settling });
 }
@@ -1058,8 +1059,8 @@ async function pullsApi(res, u) {
 const foundIn = (id, cwd) => [...pulls.urlsFor(id, cwd), ...pulls.issuesFor(id, cwd)];
 const attachedOf = (id, cwd, all) => shownLinks(all, id, foundIn(id, cwd));
 
-// POST api/links { id, url, attached } adds an item to a session's list or takes it off. The address may carry a tail GitHub adds, which is cut off.
-async function linksApi(req, res) {
+// POST api/attached { id, url, attached } adds an item to a session's list or takes it off. The address may carry a tail GitHub adds, which is cut off.
+async function attachedApi(req, res) {
   const owned = await ownedSession(req, res);
   if (!owned) return;
   const { body, id, row } = owned;
@@ -1153,7 +1154,7 @@ async function api(req, res, u) {
   // POSTs, so a page on another site can never start a CLI through them (the same-origin check covers POSTs only).
   if (req.method === 'POST' && u.pathname === '/api/commands') return askLists(req, res, 'commands', listCommands);
   if (req.method === 'POST' && u.pathname === '/api/models') return askLists(req, res, 'models', listModels);
-  if (req.method === 'POST' && u.pathname === '/api/links') return linksApi(req, res);
+  if (req.method === 'POST' && u.pathname === '/api/attached') return attachedApi(req, res);
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
