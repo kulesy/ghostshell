@@ -3,8 +3,8 @@
 // archives, and when the turn of each running row began.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GROUP_SORT, UNTITLED } from '../public/ui/order.js';
-import { archiveTarget, everyRow, findRow, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, sortGroups, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
+import { TITLE_SORT, UNTITLED } from '../public/ui/order.js';
+import { archiveTarget, everyRow, findRow, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, sortByTitle, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
   const from = (at, key) => nextStop(5, at, key);
@@ -472,7 +472,7 @@ const groupsOf = ix => shapeOf(ix).groups;
 test('every group lists its sessions A to Z by title, whatever sort it came with, and the rows with no title go last', () => {
   assert.deepEqual(groupsOf(SERVED)['cg-r'], ['blank', 'cat', 'ant', 'bee'], 'it came newest first');
   assert.deepEqual(groupsOf(SERVED)['cg-c'], ['eel', 'dog', 'cow'], 'it came by when each was made');
-  const out = groupsOf(sortGroups(SERVED));
+  const out = groupsOf(sortByTitle(SERVED));
   assert.deepEqual(out['cg-r'], ['ant', 'bee', 'cat', 'blank']);
   assert.deepEqual(out['cg-c'], ['cow', 'dog', 'eel']);
   assert.deepEqual(out['cg-e'], []);
@@ -480,46 +480,74 @@ test('every group lists its sessions A to Z by title, whatever sort it came with
 
 test('a group that came Z to A by title goes A to Z', () => {
   const backwards = { ...SERVED, groups: [{ id: 'cg-z', name: 'Backwards', project: null, sort: { by: 'alpha', ascending: true }, sessions: ['cat', 'bee', 'ant'].map(id => person(id, { group: 'cg-z' })) }] };
-  assert.deepEqual(groupsOf(sortGroups(backwards))['cg-z'], ['ant', 'bee', 'cat']);
+  assert.deepEqual(groupsOf(sortByTitle(backwards))['cg-z'], ['ant', 'bee', 'cat']);
 });
 
 test('a family sits where its head\'s title puts it, and its children follow it by title, depth first', () => {
   assert.deepEqual(groupsOf(SERVED)['cg-f'], ['zulu[abel,yank,xray,whisky]', 'mike', 'alfa']);
-  assert.deepEqual(groupsOf(sortGroups(SERVED))['cg-f'], ['alfa', 'mike', 'zulu[abel,xray,whisky,yank]'], 'abel sorts first but does not lift its family');
+  assert.deepEqual(groupsOf(sortByTitle(SERVED))['cg-f'], ['alfa', 'mike', 'zulu[abel,xray,whisky,yank]'], 'abel sorts first but does not lift its family');
 });
 
 test('a group in a project is sorted by title like one in Home', () => {
-  const out = sortGroups(SERVED);
+  const out = sortByTitle(SERVED);
   assert.deepEqual(out.groups.filter(g => g.project === 'cp-a').map(g => g.id), ['cg-f']);
   assert.deepEqual(out.groups.filter(g => !g.project).map(g => g.id), ['cg-r', 'cg-c', 'cg-e'], 'the groups stay in the order they came');
   assert.deepEqual(out.groups.find(g => g.project === 'cp-a').sessions.map(r => r.id), ['alfa', 'mike', 'zulu']);
 });
 
-test('Pinned, Routines and the loose lists are left as they were, and so is everything else in the list', () => {
-  const { groups, ...kept } = sortGroups(SERVED);
-  const { groups: before, ...was } = SERVED;
+test('Pinned and the loose lists go A to Z by title too, with the rows that have no title last', () => {
+  const out = sortByTitle({ ...SERVED, pinned: [person('pz', { pinned: true, title: UNTITLED }), person('pb', { pinned: true, title: 'bee' }), person('pa', { pinned: true, title: 'ant' })] });
+  assert.deepEqual(out.pinned.map(r => r.id), ['pa', 'pb', 'pz']);
+  assert.deepEqual(out.started.map(r => r.id), ['sa', 'sz']);
+  assert.deepEqual(out.ungrouped.map(r => r.id), ['bun', 'ua', 'uz']);
+  assert.deepEqual(out.other.map(r => r.id), ['oa', 'oz']);
+  const blank = sortByTitle({ ...SERVED, ungrouped: [person('x', { title: UNTITLED }), person('y', { title: 'yak' }), person('w', { title: 'wolf' })] });
+  assert.deepEqual(blank.ungrouped.map(r => r.id), ['w', 'y', 'x']);
+});
+
+test('a family in a loose list sits by its head\'s title, and its children follow in title order', () => {
+  const family = person('zulu', { sortAt: 100, children: [kid('yank', 'zulu', { sortAt: 90 }), kid('abel', 'zulu', { sortAt: 80 })] });
+  const out = sortByTitle({ ...SERVED, started: [family, person('mike', { sortAt: 10 })] });
+  assert.deepEqual(out.started.map(describe), ['mike', 'zulu[abel,yank]']);
+});
+
+test('Routines go by the title of their latest run, and each keeps its earlier runs newest first', () => {
+  const routine = (name, latest, ...earlier) => ({ name, latest: person(latest, { routine: name }), earlier: earlier.map(id => person(id, { routine: name })) });
+  const out = sortByTitle({ ...SERVED, routines: [routine('zed', 'rz', 'rz2', 'rz1'), routine('abe', 'ra', 'ra2', 'ra1')] });
+  assert.deepEqual(out.routines.map(g => g.latest.id), ['ra', 'rz']);
+  assert.deepEqual(out.routines.map(g => g.earlier.map(r => r.id)), [['ra2', 'ra1'], ['rz2', 'rz1']]);
+  assert.deepEqual(out.routines.map(g => g.name), ['abe', 'zed']);
+});
+
+test('everything else in the list is left as it was', () => {
+  const { groups, pinned, routines, started, ungrouped, other, sorts, ...kept } = sortByTitle(SERVED);
+  const { groups: before, pinned: p, routines: r, started: s, ungrouped: u, other: o, sorts: so, ...was } = SERVED;
   assert.deepEqual(kept, was);
-  assert.deepEqual(kept.pinned.map(r => r.id), ['pz', 'pa']);
-  assert.deepEqual(kept.ungrouped.map(describe), ['uz', 'bun', 'ua']);
   assert.deepEqual(groups.map(({ sessions, sort, ...group }) => group), before.map(({ sessions, sort, ...group }) => group));
 });
 
-test('each group now holds the group sort, so a later edit follows the title order', () => {
-  assert.deepEqual(GROUP_SORT, TITLES);
-  assert.deepEqual(sortGroups(SERVED).groups.map(g => g.sort), [TITLES, TITLES, TITLES, TITLES]);
+test('each list now holds the title sort, so a later edit follows the title order', () => {
+  assert.deepEqual(TITLE_SORT, TITLES);
+  assert.deepEqual(sortByTitle(SERVED).sorts, { pinned: TITLES, routines: TITLES, sessions: TITLES });
+  assert.deepEqual(sortByTitle(SERVED).groups.map(g => g.sort), [TITLES, TITLES, TITLES, TITLES]);
 });
 
 test('a row dropped into a group after it was sorted lands by title, and by its time before', () => {
-  assert.deepEqual(groupsOf(placeRow(sortGroups(SERVED), 'bun', 'cg-r'))['cg-r'], ['ant', 'bee', 'bun', 'cat', 'blank']);
+  assert.deepEqual(groupsOf(placeRow(sortByTitle(SERVED), 'bun', 'cg-r'))['cg-r'], ['ant', 'bee', 'bun', 'cat', 'blank']);
   assert.deepEqual(groupsOf(placeRow(SERVED, 'bun', 'cg-r'))['cg-r'], ['blank', 'cat', 'ant', 'bun', 'bee']);
+});
+
+test('a row dropped into a loose list after it was sorted lands by title', () => {
+  assert.deepEqual(placeRow(sortByTitle(SERVED), 'bee', 'ungrouped').ungrouped.map(r => r.id), ['bee', 'bun', 'ua', 'uz']);
+  assert.deepEqual(placeRow(sortByTitle(SERVED), 'bee', 'pinned').pinned.map(r => r.id), ['bee', 'pa', 'pz']);
 });
 
 test('sorting the groups leaves the list it was given as it was', () => {
   const before = JSON.stringify(SERVED);
-  const out = sortGroups(SERVED);
+  const out = sortByTitle(SERVED);
   assert.equal(JSON.stringify(SERVED), before);
   assert.notEqual(out, SERVED);
-  assert.equal(JSON.stringify(sortGroups(out)), JSON.stringify(out), 'a list that is sorted already comes back the same');
+  assert.equal(JSON.stringify(sortByTitle(out)), JSON.stringify(out), 'a list that is sorted already comes back the same');
 });
 
 // The server sends a row's turn as its age (`turnMs`) and when it began by the server's clock (`turnStartedAt`), which only names the turn.

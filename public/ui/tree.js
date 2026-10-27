@@ -1,5 +1,5 @@
 // The rules of the sidebar tree that need no page, so node can test them.
-import { GROUP_SORT, sortFamily, sortRows } from './order.js';
+import { comparator, sortFamily, sortRows, TITLE_SORT } from './order.js';
 
 // The stop the arrows go to. `at` is the focused stop, or -1 when none is, and then up and down land on `start`.
 // It returns -1 when the key is not for the walk or there is no stop that way.
@@ -67,7 +67,7 @@ export function rootOf(ix, id) {
   return findRow(ix, row?.parent) ?? row;
 }
 
-// Every list that holds nested rows, handed to `edit` with the sort the server sent for it and its name. A routine run holds none.
+// Every list that holds nested rows, handed to `edit` with the sort it holds and its name. A routine run holds none.
 const mapLists = (ix, edit) => ({
   ...ix,
   pinned: edit(ix.pinned, ix.sorts.pinned, 'pinned'),
@@ -82,11 +82,19 @@ const setChildren = ({ children, ...bare }, list) => (list.length ? { ...bare, c
 // A row's children go in the order of the list the row is in.
 const reorder = (row, sort) => (row.children ? { ...row, children: sortFamily(row, row.children, sort) } : row);
 
-// The list with every group sorted by title, which later edits then follow through the sort each group now holds. The server sends a
-// group with Desktop's sort, and the other lists keep theirs.
-export const sortGroups = ix => ({
+const byTitle = list => sortRows(list.map(r => reorder(r, TITLE_SORT)), TITLE_SORT);
+
+// The list with every section sorted by title, which later edits then follow through the sort each list now holds. The server sends
+// each list in Desktop's sort. A routine goes by the title of its latest run, and its earlier runs stay as they came.
+export const sortByTitle = ix => ({
   ...ix,
-  groups: ix.groups.map(g => ({ ...g, sort: GROUP_SORT, sessions: sortRows(g.sessions.map(r => reorder(r, GROUP_SORT)), GROUP_SORT) })),
+  sorts: { pinned: TITLE_SORT, routines: TITLE_SORT, sessions: TITLE_SORT },
+  pinned: byTitle(ix.pinned),
+  groups: ix.groups.map(g => ({ ...g, sort: TITLE_SORT, sessions: byTitle(g.sessions) })),
+  routines: [...ix.routines].sort((a, b) => comparator(TITLE_SORT)(a.latest, b.latest)),
+  started: byTitle(ix.started),
+  ungrouped: byTitle(ix.ungrouped),
+  other: byTitle(ix.other),
 });
 
 // The list with a session taken out of every place it shows. A routine whose latest run it was shows its next run instead,

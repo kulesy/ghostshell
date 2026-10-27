@@ -6,8 +6,8 @@ export const UNTITLED = 'Untitled session';
 // A list Desktop has no section for goes newest first.
 export const DEFAULT_SORT = { by: 'recency', ascending: false };
 
-// Every group goes A to Z by title, whatever sort Desktop holds for it.
-export const GROUP_SORT = { by: 'alpha', ascending: false };
+// Every list goes A to Z by title, whatever sort Desktop holds for it.
+export const TITLE_SORT = { by: 'alpha', ascending: false };
 
 const titled = row => (row.title && row.title !== UNTITLED ? row.title : null);
 // When the row was made, unless that is missing or later than its last turn, which then stands in for it.

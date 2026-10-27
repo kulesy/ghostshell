@@ -19,7 +19,7 @@ import { Spotlight } from './ui/spotlight.js';
 import { sessionActions, sessionIndex } from './ui/subs.js';
 import { ToastHost } from './ui/toast.js';
 import { installTooltips } from './ui/tooltip.js';
-import { findRow, nestRow, placeRow, sortGroups, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
+import { findRow, nestRow, placeRow, sortByTitle, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in),
@@ -66,7 +66,7 @@ function App() {
       const loaded = await api('api/sessions');
       const arrived = Date.now();
       // A list asked for in the middle of an archive batch still has the rows the batch has not reached, which would flicker back.
-      const next = hiding.reduce((list, id) => withoutRow(list, id), sortGroups(loaded));
+      const next = hiding.reduce((list, id) => withoutRow(list, id), sortByTitle(loaded));
       if (mine > shown.current) { shown.current = mine; setIx(stampTurns(next, now.current.ix, arrived)); setError(''); }
     } catch (e) {
       if (!now.current.ix) setError(e.message);
