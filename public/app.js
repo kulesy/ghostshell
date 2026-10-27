@@ -1,6 +1,7 @@
 import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
 import { ChatPane } from './ui/chat.js';
+import { renamerFor } from './ui/chat-rename.js';
 import { groupById, groupOfSession, parseNewRoute } from './ui/group-rules.js';
 import { GroupPane } from './ui/group.js';
 import { checkUploads } from './ui/draft.js';
@@ -15,10 +16,10 @@ import { newSession, SessionList } from './ui/sessions-list.js';
 import { Shell } from './ui/shell.js';
 import { keyHint, shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
-import { sessionIndex } from './ui/subs.js';
+import { sessionActions, sessionIndex } from './ui/subs.js';
 import { ToastHost } from './ui/toast.js';
 import { installTooltips } from './ui/tooltip.js';
-import { findRow, nestRow, placeRow, sortGroups, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
+import { findRow, nestRow, placeRow, sortByTitle, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in),
@@ -65,7 +66,7 @@ function App() {
       const loaded = await api('api/sessions');
       const arrived = Date.now();
       // A list asked for in the middle of an archive batch still has the rows the batch has not reached, which would flicker back.
-      const next = hiding.reduce((list, id) => withoutRow(list, id), sortGroups(loaded));
+      const next = hiding.reduce((list, id) => withoutRow(list, id), sortByTitle(loaded));
       if (mine > shown.current) { shown.current = mine; setIx(stampTurns(next, now.current.ix, arrived)); setError(''); }
     } catch (e) {
       if (!now.current.ix) setError(e.message);
@@ -164,6 +165,7 @@ function App() {
       await loadIndex();
     }
   }, []);
+  useLayoutEffect(() => { sessionActions.set({ archive }); }, [archive]);
 
   // Archives or unarchives several sessions one after another, one request each, and loads the list once at the end. Archiving takes
   // every row out at once, and the rows the server refused come back at once. It resolves with { done, stopped, failed }: the ids the
@@ -252,6 +254,7 @@ function App() {
   const view = route.name !== 'list' && (route.name === 'new' || ready || ix) ? 'chat' : 'list';
   const id = route.name === 'session' ? route.id : null;
   const row = findRow(ix, id);
+  const renamer = useMemo(() => renamerFor({ kind: 'session', id, edit }), [id, edit]);
   // A group's session is not a row, but the list and the projects still follow it as the chat on screen.
   const groupSession = route.name === 'group' ? groupById(ix, route.id)?.session?.id ?? null : null;
   const current = view === 'chat' ? id ?? groupSession : null;
@@ -290,8 +293,8 @@ function App() {
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name === 'routines' ? html`<${RoutinesPane} ix=${ix} route=${route} routines=${routines} error=${routinesError} reload=${loadRoutines} refresh=${refreshRoutines} />` : null}
-      ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} />` : null}
-      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} />` : null}
+      ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} edit=${edit} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} rename=${renamer} />` : null}
     </main>
   </div>
   <${Spotlight} open=${finding} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />

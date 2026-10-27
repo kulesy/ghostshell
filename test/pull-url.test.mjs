@@ -1,7 +1,7 @@
 // Run with `npm test`. What counts as a pull request address: the full string, and the ones found inside prose.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isPullUrl, PULL_URL, pullUrlsIn } from '../public/ui/pull-url.js';
+import { isIssueUrl, isPullUrl, ISSUE_URL, PULL_URL, pullUrlsIn } from '../public/ui/pull-url.js';
 
 const PR = 'https://github.com/example-org/example-repo/pull/12';
 
@@ -143,4 +143,47 @@ test('a long text of near misses is read quickly', () => {
   const started = Date.now();
   assert.deepEqual(pullUrlsIn(text), []);
   assert.ok(Date.now() - started < 1000);
+});
+
+test('the plain https address of an issue passes, with the same owner, repo and number rules as a pull request', () => {
+  for (const url of [
+    'https://github.com/example-org/example-repo/issues/12',
+    'https://github.com/A1/repo.name_x-y/issues/999999999',
+    `https://github.com/${'a'.repeat(39)}/r/issues/5`,
+    'https://github.com/o/.github/issues/5',
+  ]) {
+    assert.equal(isIssueUrl(url), true, url);
+    assert.equal(ISSUE_URL.test(url), true, url);
+    assert.equal(isPullUrl(url), false, url);
+  }
+  assert.equal(isPullUrl(PR), true);
+  assert.equal(isIssueUrl(PR), false);
+});
+
+test('anything but the plain form of an issue is refused', () => {
+  for (const url of [
+    'http://github.com/o/r/issues/1',
+    'https://github.com.evil.com/o/r/issues/1',
+    'https://github.com@evil.com/o/r/issues/1',
+    'https://github.com:8443/o/r/issues/1',
+    'https://www.github.com/o/r/issues/1',
+    'https://github.com/o/r/issue/1',
+    'https://github.com/o/r/issues/0',
+    'https://github.com/o/r/issues/01',
+    'https://github.com/o/r/issues/1234567890',
+    'https://github.com/o/r/issues/',
+    'https://github.com/o/r/issues/1/',
+    'https://github.com/o/r/issues/1#issuecomment-5',
+    'https://github.com/o/r/issues/1?x=1',
+    'https://github.com/o/r/issues/1\n',
+    'https://github.com/o/r/pull/1',
+    '',
+    null,
+    undefined,
+    5,
+  ]) assert.equal(isIssueUrl(url), false, String(url));
+});
+
+test('an issue address does not count as a pull request address in text', () => {
+  assert.deepEqual(pullUrlsIn('See https://github.com/o/r/issues/4 and https://github.com/o/r/pull/5.'), ['https://github.com/o/r/pull/5']);
 });

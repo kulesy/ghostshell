@@ -116,6 +116,7 @@ function ChipCard({ t, chip, cwd, onChip }) {
     ${i.tldr ? html`<p>${i.tldr}</p>` : null}
     <pre class="tool-io chip-prompt">${pre(clip(i.prompt || '', 8))}</pre>
     <p class="chip-folder">Starts in ${tilde(folder, HOME) || 'the session folder'}${model ? ` on ${modelName(model)}` : ''}${effort ? ` at ${effortName(effort)} effort` : ''}</p>
+    ${chip?.opensIn ? html`<p class="chip-folder chip-opens">${chip.opensIn}</p>` : null}
     <div class="chip-actions">${actions}</div></li>`;
 }
 

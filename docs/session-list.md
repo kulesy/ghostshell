@@ -15,7 +15,7 @@ Each group's header, and each of Home's built-in sections (Routines, Pinned, Sta
 
 ### Order
 
-Every group lists its sessions by title, A to Z, and a family goes by its head's title. The other sections sort as you set them in Claude Desktop: by last turn, by when the session was made or by title, either way round.
+Every section, groups included, lists its sessions A to Z by title, whatever sort you set in Claude Desktop. A family goes by its head's title, and a routine by its name, with its earlier runs newest first under it. Sessions with no title come last.
 
 A group shows when it is empty, so a new group can be found and filled. A project with no groups says so beside a New group button. The other sections show only when they hold a session, so an empty section has no chat button either.
 
@@ -83,9 +83,15 @@ Each result says where it is:
 - A place outside projects shows Home, when a project has places.
 - Pinned and Routines show nothing.
 
-### Renaming and deleting groups
+### A group's menu
 
-There is no screen yet to rename, delete or reorder groups. Edit `layout.json` for those: GhostShell reads it on every refresh, and shows the error at the top of the list if it cannot.
+The dots at the end of a group's header always open its menu, and so do a right click, the menu key or Shift+F10. On a phone a long press on the header opens it too, but only when the header can be dragged, which a group alone in its view with nowhere to move to cannot be, so use the dots there. It has Rename, New session, Move up, Move down, the moves to a project (Move to) and Delete group, in that order, in parts with a line between them. Move up is left out for the first group of the view and Move down for the last, and a part with nothing in it leaves no line.
+
+- Rename puts a name field in the header's place with the name selected. Enter saves, Esc cancels, clicking away saves, and a name runs to 80 characters at most. The new name shows in the header, the search, the Move to menus and the title of the group's chat. While the field is open the header cannot be dragged.
+- Move up and Move down put the group above or below the next one in the view.
+- Delete group asks first, with Cancel focused. Its sessions become ungrouped, its chat is hidden with its transcript kept, and no session is deleted.
+
+A group's chat is told the group's name when its session starts, and its system prompt keeps that name after a rename. Its guide says so, and its tools (`list_group_sessions`, `start_group_session`) carry the current name, so it learns the new name when it uses one. See [Give each group a session of its own](adr/20261023-a-session-for-each-group.md).
 
 ## Nested sessions
 
@@ -109,33 +115,34 @@ The arrow on a parent's row folds its nested sessions. Every family starts open,
 
 A chat with sessions under it has a Sub sessions tab in its side panel, ahead of Terminal and File. The panel opens on that tab by itself in a window with room for it beside the chat, until you open or close the panel yourself. On a phone or in a narrow window, the list button in the chat's header opens it. That button shows an amber mark while any session below the chat needs you.
 
-The tab lists the sessions under the chat at every depth, so a side chat of a side chat shows there although the list nests one level. The ones that need you come first, then the ones working, the recent ones and the idle ones. Archived sessions stay out of the tab. Each session is a card with its title as a link, when it last moved, its state, the first sentence of its latest reply, what it waits on and a roll-up of the sessions under it, such as "2 sub sessions, 1 waiting on you". Details opens the whole reply in the card, and the sessions under it show below as cards of the same kind. A line at the top of the tab rolls up every level.
+The tab lists the sessions under the chat at every depth, so a side chat of a side chat shows there although the list nests one level. The ones that need you come first, then the ones working, the recent ones and the idle ones. Archived sessions stay out of the tab. Each session is a card with its title as a link, when it last moved, its state, the first sentence of its latest reply, what it waits on and a roll-up of the sessions under it, such as "2 sub sessions, 1 waiting on you". Details opens the whole reply in the card, and the sessions under it show below as cards of the same kind. Archive clears a session from the tab ([below](#archiving-from-a-card)). A line at the top of the tab rolls up every level.
 
 GhostShell reads each line's latest reply from the session's transcript, for the lines on show alone, and keeps it until the transcript changes. No model is asked, so the tab costs no tokens. A chat's model can read the same status with two tools of its own ([Sub sessions](tools.md#sub-sessions)). [The decision record](adr/20261023-roll-sub-session-status-up.md) has the detail.
 
 #### Pull requests
 
-A card also shows the GitHub pull requests its session is working on, one line for each, up to 5. A line says in words how the pull request stands, then gives its whole address as a link that opens GitHub in a new tab. The most urgent pull request comes first. A card whose session names no pull request, or whose pull request GhostShell could not read, looks as it did.
+A card also says what is to be done about its session's main pull request, in one line of words, followed by the pull request's whole address as a link that opens GitHub in a new tab. The line tells you what to do, or who the session is waiting on. A card whose session has no main pull request, or whose pull request GhostShell could not read, looks as it did. A card that already shows what it waits on for an approval shows no pull request line, so a card never has two.
 
-GhostShell finds the addresses in the transcript. Those in the session's latest reply come first, then the rest, newest first. An address in a tool result counts only when it is the last line of the output, as `gh pr create` prints it, so a listing of pull requests does not make the session claim all of them.
+A session has one main pull request. GhostShell finds it in the transcript, newest message first: the newest message that names a pull request decides. If that message names one pull request, that is the main one. If it names several, the session is a sweep over many pull requests and has no main one, so its card shows none of them. An address in a tool result counts only when it is the last line of the output, as `gh pr create` prints it, so a listing of pull requests does not make the session claim all of them.
 
-A line says up to three of these, most urgent first, with dots between them:
+The line is the first of these that fits:
 
-- **Needs your review**: GitHub asks you to review it, and you did not write it.
-- **Changes requested**, **Has conflicts**, **Has 2 unresolved comments** (review threads nobody resolved), **Checks failing** and **Checks running**.
-- **Ready to merge**: open, not a draft, approved, with nothing in the way and no checks failing or running. Otherwise an approved pull request says **Approved**.
-- **Waiting for review**: a review is requested from someone, or one is required. A pull request with none of the lines above says **Open**.
-- **Draft** comes last. **Merged** and **Closed** stand alone.
+- **Merged, nothing to do** and **Closed, nothing to do**.
+- **Review the pull request**: GitHub asks you to review it, and you did not write it.
+- **Merge the pull request**: you wrote it, and it is open, approved, with nothing in the way and no checks failing or running. It is amber, since it waits on you.
+- **Ask the session to deal with** the requested changes, the conflicts, the unresolved comments (review threads nobody resolved) and the failing checks, whichever apply, such as "Ask the session to deal with the conflicts and the failing checks". It is shown in red when checks are failing and in amber otherwise. While the session is working, or active in another app, the line reads **The session is dealing with** the same things, since it is already on them.
+- **Waiting on checks to finish**.
+- **Approved, but it cannot merge yet**: the pull request is approved but is a draft, is not clean or has failing checks.
+- **Approved, nothing asked of you**: someone else's pull request that is approved and ready to merge.
+- **Waiting on a reviewer**: a review is requested from someone, or one is required.
+- **Still a draft**.
+- **Open, no review asked for yet** for your own pull request, and **Open, nothing asked of you** for someone else's.
 
-A pull request that waits on you makes its session count as waiting on you. The card gets the Waiting on you pill and moves under Waiting on you, the line at the top of the tab counts it, and so do the number and the amber mark on the header button, which stay right while the panel is closed. A pull request waits on you when:
+When GitHub will not say who you are, the line never says what is asked of you or not. It reads **Approved**, **Open**, **Waiting on a reviewer** and the like, and no line asks anything of you.
 
-- someone asked for your review.
-- you wrote it and it is ready to merge.
-- you wrote it, and it has changes requested, conflicts, unresolved comments or failing checks, while its session is not working. A working session is already at work on those, so they do not count until it stops.
+A line that starts with an instruction to you (review, merge, ask the session) makes its session count as waiting on you. The card gets the Waiting on you pill and moves under Waiting on you, the line at the top of the tab counts it, and so do the number and the amber mark on the header button, which stay right while the panel is closed. The other lines say the session waits on something else, or on nothing, and add no count. A review asked of you on a pull request that is not its session's main one does not count.
 
-A pull request that someone else wrote and did not ask you to review never counts, and neither does a merged or closed one. The line is still shown.
-
-The server reads each pull request by asking `gh`, the GitHub CLI, on the Mac. The page never sees the token and never calls GitHub. GhostShell keeps what `gh` says for 2 minutes (1 minute after a failure), and the page asks again for a session after 60 seconds, so a change on GitHub shows within a few minutes. It makes 2 `gh` calls for each pull request and runs at most 4 at once. When the server needs longer than 8 seconds it answers with what it has, a pull request being read again keeping its last line, and the page asks again 4 seconds later. A server that started before this feature, or has no `gh` signed in, shows no pull request lines and counts nothing extra.
+The server reads each main pull request by asking `gh`, the GitHub CLI, on the Mac. The page never sees the token and never calls GitHub. GhostShell keeps what `gh` says for 2 minutes (1 minute after a failure), and the page asks again for a session after 60 seconds, so a change on GitHub shows within a few minutes. It makes 2 `gh` calls for each pull request, so the calls follow the number of sessions with a main pull request, and runs at most 4 at once. When the server needs longer than 8 seconds it answers with what it has, a pull request being read again keeping its last line, and the page asks again 4 seconds later. A server that started before this feature, or has no `gh` signed in, shows no pull request lines and counts nothing extra.
 
 This covers the pull requests of the GitHub account `gh` is signed in as, and review threads. It does not cover:
 
@@ -144,8 +151,13 @@ This covers the pull requests of the GitHub account `gh` is signed in as, and re
 - comments on a pull request's conversation tab, which are not review threads.
 - a review requested from a team you belong to. Only a request that names you counts.
 - a pull request in a repository that account cannot see.
+- the other pull requests a session mentions. Only the main one is read and shown.
 
-The route is `GET api/pulls?ids=a,b,c`, with 1 to 60 session ids, signed in like the others. It answers `{ pulls: { <id>: [...] }, settling }` with up to 5 pull requests for each session, in the order the session names them. Each has its address, repository, number, state (`open`, `draft`, `merged` or `closed`), whether you wrote it, whether your review is asked, the review decision, the state of its checks, whether it has conflicts, and how many review threads are unresolved. `settling` is true while some are still being read. A pull request GitHub could not show is left out. `GET api/sessions` lists `pullStatus` in its `features`. [The decision record](adr/20261026-show-pull-request-status-on-session-cards.md) says why the server asks `gh`.
+The route is `GET api/pulls?ids=a,b,c`, with 1 to 60 session ids, signed in like the others. It answers `{ pulls: { <id>: [...] }, settling }` with no pull request or one for each session. The one has its address, repository, number, state (`open`, `draft`, `merged` or `closed`), whether you wrote it, whether your review is asked (both `null` when GitHub would not say who you are), the review decision, the state of its checks, whether it has conflicts, and how many review threads are unresolved. `settling` is true while some are still being read. A pull request GitHub could not show is left out. `GET api/sessions` lists `pullStatus` in its `features`. [The decision record](adr/20261026-show-pull-request-status-on-session-cards.md) says why the server asks `gh` and why only the main pull request shows.
+
+#### Archiving from a card
+
+Each card has an Archive button beside Details, so a session can be cleared from the tab without going to the sidebar. It follows the sidebar's rules. An idle session is archived at once, and a note says "Archived" with an Undo button that brings the card back. A running session, or one waiting on an approval, asks first, because archiving stops its turn and denies the approval it waits on, and its button reads "Stop and archive" to assistive technology. If the server says the session is running after all, the card asks too. If the server refuses, a warning note says why and the card stays. Only one archive goes at a time, so a held Enter or Space, or a double click, archives one card and leaves the Undo note reachable. When a card goes, the keyboard focus moves to the title link of a session that was under it, which takes its place, else the card after it, else the one before it, else the line at the top of the tab, else the tab, or the message box when the tab goes too, so it never falls to the page and never lands on another Archive button. Archiving a session does not archive the sessions under it. They show under the session the archived one showed under.
 
 ### Subagents
 
@@ -180,7 +192,7 @@ GhostShell's own choice wins over Desktop's in both directions, as it does for t
 
 ### Sessions started from a chip
 
-A session you start from a chip nests under the session that made the chip, as Desktop nests the tasks it suggests. GhostShell reads that from `chips.json`, so chips you started earlier nest too. Moving the session, pinning it, taking it out or nesting it elsewhere wins over the chip, as it does over Desktop's links. [Chips](tools.md#chips) covers the cards themselves.
+A session you start from a chip nests under the session that made the chip, as Desktop nests the tasks it suggests. GhostShell reads that from `chips.json`, so chips you started earlier nest too. Moving the session, pinning it, taking it out or nesting it elsewhere wins over the chip, as it does over Desktop's links. A chip that names a group is the exception: its session opens in that group on its own, with no parent. [Chips](tools.md#chips) covers the cards themselves.
 
 ## Projects
 
@@ -200,7 +212,7 @@ A project's menu is on its row in the projects sidebar: New group here, Rename a
 
 ### Moving a group
 
-The dots on a group's header move it into a project, between projects or back to Home, and show only when there is somewhere to move it. A note then says where the group went, and the list stays on the view it was in. A right click or the menu key on a group's header opens the same menu.
+Move to in a group's menu moves it into a project, between projects or back to Home, and shows only when there is somewhere to move it. A note then says where the group went, and the list stays on the view it was in. A right click or the menu key on a group's header opens the same menu.
 
 Drag a group's header to move the group with its sessions, folded or open. Only your own groups have a handle: Pinned, Routines, Started here, Ungrouped and Terminal and other do not, and neither does a group with nowhere to go. A mouse drags after a few pixels of movement, so a click still folds the group and the dots still open its menu. A finger drags after a long press, so a swipe still scrolls the list, and a long press let go without moving opens the group's menu.
 
@@ -208,7 +220,7 @@ Drag a group's header to move the group with its sessions, folded or open. Only 
 - Onto a project or Home moves the group there, as the menu does. With the projects sidebar open its rows are the targets, and the one under the pointer lights up. With it shut, a Move to strip of Home and the projects replaces the header's row while the group is carried, so the list does not move. The view the group is in is left out.
 - Esc cancels, and a note says where the group went or why the server refused. After a reorder the focus is on the group's header.
 
-The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with New session, which opens the new session page with the group chosen (`#/new/<group>`). The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. The + menu and Ctrl+N or Cmd+N start a session with no group, as before.
+The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with Rename and then New session, which opens the new session page with the group chosen (`#/new/<group>`). The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. The + menu and Ctrl+N or Cmd+N start a session with no group, as before.
 
 ## The projects sidebar
 
@@ -253,6 +265,8 @@ Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a se
 With nothing typed, All shows recent sessions, then Home and each project, then a New session action. The Groups chip lists every group, Home's first and then each project's in the sidebar's order, or says "No groups yet." when there is none. The Sessions chip lists the newest first.
 
 Typing filters by title, folder, branch or routine, and Home, the projects and the groups by their name. The up and down arrows and Enter open a result, and Esc closes the search.
+
+A session's result shows its state mark and its title, so the title gets the row's width. The time it last ran, or was archived, shows at the right end only while the whole title fits beside it. Hovering a result shows its full title in a tooltip. A routine's result also counts its runs.
 
 ### The order of results
 
@@ -312,15 +326,27 @@ Archiving the open chat, from the key or the menu, opens the session the focus w
 
 ### Unarchiving
 
-In the search, each archived result has an Unarchive button, and Shift+Enter unarchives the selected one. Unarchiving, or sending the session a message, brings it back to the group, pin or routine it had.
+In the search, Shift+Enter unarchives the selected archived result, and the footer shows the key while one is selected. Unarchiving, or sending the session a message, brings it back to the group, pin or routine it had.
 
 Desktop's records are read only, so GhostShell keeps these choices in `layout.json`, and its choice wins over Desktop's archive flag in both directions.
 
 ## Renaming
 
-Double-click a session's row, or choose Rename in its menu, and a text box takes the row's place with the title selected. Enter saves, Esc cancels, clicking away saves, and a title runs to 120 characters at most. On a phone a double tap opens the session, so rename from the menu.
+Projects and groups are renamed from their menus (see [A project's menu](#a-projects-menu) and [A group's menu](#a-groups-menu)). Double-click a session's row, or choose Rename in its menu, and a text box takes the row's place with the title selected. Enter saves, Esc cancels, clicking away saves, and a title runs to 120 characters at most. A box left by the emoji picker or another panel taking the focus waits a moment before saving, while a click elsewhere saves at once. On a phone a double tap opens the session, so rename from the menu.
 
 GhostShell keeps the title in `layout.json` and shows it in place of every other title, for any session, whichever app started it. It shows in GhostShell only: Desktop's records are read only and a terminal session's title belongs to the CLI, so Desktop and the terminal keep the titles they have. A group lists its sessions by the new title, and the search finds them by it.
+
+The open chat's title can be renamed in place too, which matters on a phone, where the list is hidden while a chat is open. A pencil sits beside the title: always shown on a touch screen, and on desktop shown when the pointer or the focus is on the title. Clicking the title does the same. A box with the title selected replaces it, and Enter saves, Esc cancels and clicking away saves, as in the list, including the wait after the emoji picker or another panel takes the focus. A session's title runs to 120 characters and a group's name to 80. The list, the page title, the Sub sessions tab and the search show the new name at once. A built-in section's chat has no pencil, and neither does a group's chat against a server that cannot rename groups. A chat that is not yet a session, such as a new one, has none either.
+
+### Naming a new session
+
+A session GhostShell starts is named by one of three rules.
+
+- A session started with a title keeps it. A chip's title and a title a group's chat gives when it starts a session are saved in `layout.json` at once, cut to 120 characters, and no model is asked.
+- A session you start by typing is named once its first reply finishes. GhostShell asks Haiku 5.5, at low effort, for a title of 3 to 8 words, in the shape "Area - task" when an area such as UI or Server is clear. It gives the model the start of your first message and of the first reply. The list shows the title at its next refresh, within 15 seconds. Until then it shows the first line of your message.
+- If the model gives no usable title, GhostShell asks once more, and then uses your first line, cut at a word.
+
+A session started from a chip before GhostShell saved its title is still listed by the chip's title, everywhere a session is listed. A title you set yourself is never replaced, including one set while the first reply is still coming. A routine's run keeps its routine's title, and a group's chat or a section's chat keeps its own name. Set `autoTitle` to `false` ([configuration](configuration.md#autotitle)) to make no model call.
 
 With `desktopHandoff` set to `true`, a session renamed here before it is handed to Desktop takes its GhostShell title with it (see [sessions started here](how-it-works.md#sessions-started-here)).
 

@@ -29,7 +29,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-19 | [Draw widgets the way Desktop does, in a frame that cannot reach Capcom](20261019-widgets-render-like-desktop.md) | Accepted |
 | 2026-10-22 | [Build Capcom's look and behaviour on shadcn/ui](20261022-shadcn-design-language.md) | Accepted, amended 2026-10-22 |
 | 2026-10-22 | [List a chat's skills and commands under / from the CLI's own list](20261022-slash-menu-from-the-cli.md) | Accepted |
-| 2026-10-22 | [Nest sessions under a parent, and follow the links Desktop records](20261022-nest-sessions-under-a-parent.md) | Accepted, amended 2026-10-22 and 2026-10-23 |
+| 2026-10-22 | [Nest sessions under a parent, and follow the links Desktop records](20261022-nest-sessions-under-a-parent.md) | Accepted, amended 2026-10-22, 2026-10-23 and 2026-10-27 |
 | 2026-10-22 | [Show a chat's context usage from the CLI's own count](20261022-context-usage-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Pick the model, effort and fast mode from one menu, with the models read from the CLI](20261022-model-menu-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md) | Accepted, amended 2026-10-23 |
@@ -44,3 +44,6 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-25 | [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) | Accepted |
 | 2026-10-26 | [Show pull request status on session cards, read from the gh CLI on the server](20261026-show-pull-request-status-on-session-cards.md) | Accepted |
 | 2026-10-26 | [Show the helpers a session started in the side panel, read from the transcript folder and pushed over the events stream](20261026-subagents-in-the-side-panel.md) | Accepted |
+| 2026-10-27 | [Name sessions from their first turn, with a small model, and keep titles that are given](20261027-name-sessions-from-their-first-turn.md) | Accepted |
+| 2026-10-27 | [Let a chip name the group its session opens in](20261027-chips-name-their-group.md) | Accepted |
+| 2026-10-27 | [Show a badge after each pull request and issue link in a reply, with a card of its details](20261027-github-link-previews.md) | Accepted |

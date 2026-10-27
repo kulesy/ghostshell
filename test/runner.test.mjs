@@ -961,7 +961,7 @@ test('with no hook installed a turn runs the same', async t => {
 });
 
 // A CLI for a group's chat. It logs how it was started and every line it is sent. It starts its session when it is sent the first message
-// (named by --session-id or --resume), and a message of `call <tool> <json>` makes it ask Capcom's tool server, `ask <tool>` ask to use one of Capcom's tools and `builtin <Tool>` one of the CLI's own.
+// (named by --session-id or --resume), and a message of `call <tool> <json>` makes it ask Capcom's tool server, `ask <tool> [json]` ask to use one of Capcom's tools, with that input and `builtin <Tool>` one of the CLI's own.
 // Each of these starts several CLIs, which a busy machine can be slow to launch, so they wait longer than the others.
 const slow = check => until(check, 20_000);
 const groupCli = dir => {
@@ -983,7 +983,7 @@ const groupCli = dir => {
     "  if (m.type !== 'user') return;",
     "  out({ type: 'system', subtype: 'init', session_id: flag('--session-id') || flag('--resume') || 'sess-unnamed', model: 'stub' });",
     "  const [verb, tool, ...rest] = m.message.content.split(' ');",
-    "  if (verb === 'ask') out({ type: 'control_request', request_id: `ask-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: {}, permission_suggestions: rule } });",
+    "  if (verb === 'ask') out({ type: 'control_request', request_id: `ask-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: JSON.parse(rest.join(' ') || '{}'), permission_suggestions: rule } });",
     "  if (verb === 'builtin') out({ type: 'control_request', request_id: `builtin-${tool}`, request: { subtype: 'can_use_tool', tool_name: tool, input: {}, permission_suggestions: rule } });",
     "  if (verb === 'call') out({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(rest.join(' ') || '{}') } } } });",
     "  if (verb === 'tools') out({ type: 'control_request', request_id: 'tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
@@ -1183,4 +1183,50 @@ test('a tool call from an ordinary chat is refused by the tool server as unknown
   await slow(() => recorded.answers().some(a => a.request_id === 'call-list_group_sessions'));
   const { result, error } = recorded.answers().find(a => a.request_id === 'call-list_group_sessions').response.mcp_response;
   assert.ok(error || result?.isError, JSON.stringify({ result, error }));
+});
+
+const SUB_SEND = 'mcp__capcom__send_session';
+const subsOf = (rows = [{ id: 'kid', title: 'Review - dialogs' }]) => () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: rows.map(r => ({ via: 'me', ...r })) }), pending: () => [], summary: () => null });
+
+test('an ordinary chat that has sub sessions asks before every send to one, a group chat and one with no sub sessions are not given that rule, and Chrome\'s stays beside it', async t => {
+  const rules = async (id, options) => {
+    const { chat, recorded } = groupChat(t, { id, ...options });
+    chat.send('hi', []);
+    await slow(() => recorded.starts().length === 1);
+    const { started } = recorded.starts()[0];
+    return started.includes('--settings') ? JSON.parse(flagOf(started, '--settings')).permissions.ask : undefined;
+  };
+  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000050', { subs: subsOf() }), [SUB_SEND]);
+  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000051', { subs: subsOf(), chrome: true }), ['mcp__claude-in-chrome', SUB_SEND]);
+  assert.equal(await rules('11111111-2222-4333-8444-000000000052', {}), undefined, 'a chat with no sub sessions to reach is given no rule');
+  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000053', { group: {}, subs: subsOf() }), GROUP_ASKS, 'a group chat keeps its own list');
+});
+
+test('in an ordinary chat a send to a sub session always shows a card, in any mode, naming the recipient and the start of the message, with no Always allow even when the CLI offers one, while the reads need no card', async t => {
+  const modes = ['manual', 'bypassPermissions', 'auto'];
+  for (const mode of modes) {
+    const { chat, recorded } = groupChat(t, { subs: subsOf(), mode, id: `11111111-2222-4333-8444-00000000006${modes.indexOf(mode)}` });
+    for (const tool of ['list_sub_sessions', 'read_sub_session']) {
+      chat.send(`ask ${tool}`, []);
+      await slow(() => recorded.answers().some(a => a.request_id === `ask-${tool}`));
+    }
+    chat.send(`ask send_session ${JSON.stringify({ session_id: 'kid', message: 'Please rebase\nand push' })}`, []);
+    await slow(() => chat.status().pending.length === 1);
+    const [card] = chat.status().pending;
+    assert.deepEqual([card.tool, card.always, card.summary], [SUB_SEND, false, 'to "Review - dialogs": Please rebase and push'], mode);
+    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-list_sub_sessions', 'allow'], ['ask-read_sub_session', 'allow']], mode);
+    chat.answer('ask-send_session', 'always');
+    await slow(() => recorded.answers().some(a => a.request_id === 'ask-send_session'));
+    const answer = recorded.answers().find(a => a.request_id === 'ask-send_session').response;
+    assert.deepEqual([answer.behavior, answer.updatedPermissions], ['allow', undefined], 'Always allow keeps no rule for it');
+  }
+});
+
+test('a chat with no sub sessions, and a group chat, are given no automatic allow for the send tool either', async t => {
+  for (const [n, options] of [{}, { group: {} }].entries()) {
+    const { chat, recorded } = groupChat(t, { mode: 'bypassPermissions', id: `11111111-2222-4333-8444-00000000007${n}`, ...options });
+    chat.send('ask send_session {}', []);
+    await slow(() => chat.status().pending.length === 1);
+    assert.equal(recorded.answers().some(a => a.request_id.startsWith('ask-')), false);
+  }
 });

@@ -28,12 +28,15 @@ import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
 import { chatFor, getChat, onTurn, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
+import { askClaude } from './lib/title-ask.mjs';
+import { makeTitler } from './lib/titler.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
+import { isIssueUrl, isPullUrl } from './public/ui/pull-url.js';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
 import { titleText } from './public/ui/quote-rules.js';
 import { SECTION_IDS, SECTIONS, sectionById, sectionOf, sectionSessions } from './public/ui/sections.js';
@@ -100,6 +103,9 @@ onTurn(({ id, kind, at }) => writeMark(() => {
 
 const ownTitle = (own, id) => (Object.hasOwn(own.titles, id) && typeof own.titles[id] === 'string' && own.titles[id].trim() ? own.titles[id] : '');
 
+// A session started here is named from its first turn, and a title the owner set is never replaced. See docs/adr/20261027-name-sessions-from-their-first-turn.md.
+const titler = makeTitler({ ask: askClaude(cfg.claude), own: id => ownTitle(layout.read(), id), record: (id, title) => layout.rename(id, title), enabled: cfg.autoTitle });
+
 // What a session is linked to: Capcom's own choice, a null included, wins over the chip it was started from, and that over Desktop's link.
 const linkOf = (own, fromChips, desk, id) => (Object.hasOwn(own.parents, id) ? own.parents[id] : fromChips.get(id) ?? desk.links.get(id) ?? null);
 const linksNow = () => {
@@ -109,6 +115,8 @@ const linksNow = () => {
   return id => linkOf(own, fromChips, desk, id);
 };
 const linkNow = id => linksNow()(id);
+// What a chip's group name is looked up in when the chip is made. Each call reads the layout again, so a group renamed since is seen as it is now.
+const groupList = () => layout.read().groups.map(({ id, name }) => ({ id, name }));
 
 // A nested session that leaves its place would take the sessions straight under it along, so each is linked to the one it showed
 // under instead, and those further down keep their links. A head takes its whole family along.
@@ -167,6 +175,7 @@ function buildIndex({ archived = false } = {}) {
   const projectIds = new Set(own.projects.map(p => p.id));
   const pins = new Set(own.pinned);
   const unarchived = new Set(own.unarchived);
+  const chipTitles = chips.titles();
   for (const r of rows.values()) {
     r.group = groupIds.has(own.assignments[r.id]) ? own.assignments[r.id] : null;
     r.pinned = pins.has(r.id);
@@ -174,9 +183,11 @@ function buildIndex({ archived = false } = {}) {
     if (Object.hasOwn(own.archived, r.id)) r.archived = true;
     else if (unarchived.has(r.id)) r.archived = false;
     if (r.archived) r.archivedAt = Date.parse(own.archived[r.id]) || r.changedAt || r.lastActivityAt;
-    // Capcom's own title wins over every other, and is applied before the sorts so a group goes by it.
+    // Capcom's own title wins over every other, then the title a chip gave the session in place of its prompt's first line. Both are
+    // applied before the sorts so a group goes by them.
     const title = ownTitle(own, r.id);
     if (title) { r.title = title; r.renamed = true; }
+    else if (chipTitles.has(r.id)) r.title = chipTitles.get(r.id);
   }
 
   // A group's or section's session belongs to it alone, so its row leaves `rows` here and no list, family, count or search sees it. A session
@@ -315,7 +326,7 @@ function settingsFor(id, row) {
 
 async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx });
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx, groups: groupList });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
@@ -327,6 +338,7 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
   } catch (e) {
     console.error(`Could not record session ${chat.id}: ${e.message}`);
   }
+  if (!routine) titler.start(chat, { title, first: titleText(text.trim()) || files.map(f => f.name).join(', ') });
   if (cfg.desktopHandoff && !routine) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
 }
@@ -336,16 +348,24 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 // What a chat is waiting on for the owner's say-so.
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
-// What an ordinary chat reaches the sessions under it through. Each call looks the index up again, so a session archived or nested since is seen
+// What an ordinary chat reaches the sessions under it through, and sends to them with. Each call looks the index up again, so a session archived or nested since is seen
 // as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for.
 function subCtx(sessionId) {
   return {
     lookup({ archived }) {
-      const { rows } = buildIndex({ archived });
-      return { self: rows.get(sessionId) ?? null, rows: [...rows.values()].filter(r => archived || !r.archived) };
+      const listed = [...buildIndex({ archived }).rows.values()];
+      return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
     summary: (id, cwd) => summaries.get(id, cwd),
+    // The same path as a message typed into the session: its chat is resumed if it has no process, and queued behind a running turn. Answers the state it found.
+    send(row, text) {
+      const chat = getChat(row.id);
+      if (!chat?.proc && row.state === 'active') return 'elsewhere';
+      const was = chat?.state ?? 'idle';
+      ensureChat(row.id, row).send(text);
+      return was;
+    },
   };
 }
 
@@ -353,15 +373,32 @@ function subCtx(sessionId) {
 
 // The session is running by now, so a layout that cannot be written is logged and told to the caller as not placed. `home` is a group, which
 // takes it in, or a section: Pinned pins it, and the sections that list loose sessions leave it as it is, where GhostShell's own sessions list.
-function placeStarted(id, home) {
+// With `unlink` the session also leaves the session that made its chip, which is how a chip that names a group places it.
+function placeStarted(id, home, { unlink = false } = {}) {
   try {
     if (home === 'pinned') layout.pin(id, true);
-    else if (!sectionById(home)) layout.move(id, home);
+    else if (!sectionById(home)) layout.move(id, home, { unlink });
     return true;
   } catch (e) {
     console.error(`Could not place ${id} in ${home}: ${e.message}`);
     return false;
   }
+}
+
+// Where a chip's session opens, worded for its card from the group's name now. `row` is the session that made the chip. A section's chat
+// and a routine run, which never holds sessions, have nothing to say.
+function withOpensIn(chip, row) {
+  const groups = groupList();
+  const nameOf = id => groups.find(g => g.id === id)?.name;
+  const opensIn = (() => {
+    if (chip.group) return nameOf(chip.group) ? `Opens in ${nameOf(chip.group)}` : 'Its group has been deleted';
+    if (!row || row.routine) return null;
+    if (row.groupSession) return nameOf(row.groupSession) ? `Opens in ${nameOf(row.groupSession)}` : null;
+    // An archived session shows nothing under it, so its chip's session stands in its place on its own.
+    if (row.archived) return nameOf(row.group) ? `Opens in ${nameOf(row.group)}` : null;
+    return nameOf(row.group) ? `Opens under this session, in ${nameOf(row.group)}` : 'Opens under this session';
+  })();
+  return opensIn ? { ...chip, opensIn } : chip;
 }
 
 // The sessions a section's chat reaches: those the sidebar lists in it, with the sessions nested under each, so the cap on a list and the
@@ -562,7 +599,7 @@ function ensureChat(id, row, { mode } = {}) {
     instructions: () => (section ? guideFor(section.name, section.id) : guideFor(layout.read().groups.find(g => g.id === groupId)?.name ?? row.title)),
     fresh: () => !hasTranscript(id),
   };
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, ...group, subs: groupId ? undefined : subCtx });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, subs: groupId ? undefined : subCtx });
   dropFastOnRefusal(chat);
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
@@ -775,6 +812,7 @@ function removeGroup(id) {
 const STRUCTURE = new Map([
   ['/api/layout/project/add', b => layout.addProject(b.name)],
   ['/api/layout/project/rename', b => layout.renameProject(b.id, b.name)],
+  ['/api/layout/group/rename', b => layout.renameGroup(b.id, b.name)],
   ['/api/layout/project/remove', b => layout.removeProject(b.id)],
   ['/api/layout/group/add', b => layout.addGroup(b.name, b.project ?? null)],
   ['/api/layout/group/move', b => layout.moveGroup(b.id, b.project ?? null)],
@@ -1048,6 +1086,25 @@ function subagentApi(res, id, rest) {
   return found ? send(res, 200, found) : send(res, 404, { error: 'No such subagent.' });
 }
 
+const MAX_LINKS = 40;
+
+// The distinct addresses in the url parameters, or the sentence for a 400 when there are none, too many, or one is not a pull request or issue address.
+function askedLinks(u) {
+  const urls = [...new Set(u.searchParams.getAll('url'))];
+  if (!urls.length) return 'Name the links in url.';
+  if (urls.length > MAX_LINKS) return `Ask for at most ${MAX_LINKS} links at a time.`;
+  return urls.every(url => isPullUrl(url) || isIssueUrl(url)) ? urls : 'Every url must be the plain address of a GitHub pull request or issue.';
+}
+
+// GET api/links?url=a&url=b answers for each address that is a GitHub pull request or issue: its title and status from GitHub, and whether some
+// are still being read. An address gh cannot show is left out without a word.
+async function linksApi(res, u) {
+  const urls = askedLinks(u);
+  if (typeof urls === 'string') return send(res, 400, { error: urls });
+  const { found, settling } = await pulls.lookup(urls);
+  return send(res, 200, { links: Object.fromEntries(found), settling });
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
@@ -1077,11 +1134,12 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, and the helpers a session started.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, subagents: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the helpers a session started.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true, subagents: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
+  if (req.method === 'GET' && u.pathname === '/api/links') return linksApi(res, u);
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
   // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's or built-in section's.
   if (req.method === 'GET' && u.pathname === '/api/archived') {
@@ -1137,13 +1195,17 @@ async function api(req, res, u) {
     const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, model: postedModel, effort: postedEffort } = JSON.parse(await readBody(req) || '{}');
     if (!sessionId || !toolUseId) return send(res, 400, { error: 'Which chip?' });
     const known = chips.get(toolUseId);
-    if (known && known.status !== 'open') return send(res, 409, { error: `That chip was already ${known.status}.`, chip: known });
-    if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }) });
+    const maker = () => findRow(known?.sessionId || sessionId);
+    if (known && known.status !== 'open') return send(res, 409, { error: `That chip was already ${known.status}.`, chip: withOpensIn(known, maker()) });
+    if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: withOpensIn(chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }), maker()) });
     const text = known?.prompt || prompt;
     const model = known?.model || postedModel;
     if (model && (typeof model !== 'string' || !MODEL.test(model))) return send(res, 400, { error: 'Unknown model.' });
     const effort = known?.effort || postedEffort;
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
+    // Only the chip the server stored names a group, never the posted card or the transcript's input.
+    const named = known?.group;
+    if (named && !groupList().some(g => g.id === named)) return send(res, 400, { error: 'The group this chip names has been deleted. Ask the session to suggest the task again.' });
     // The folder comes from transcript text, so anywhere other than the session's own folder needs the one the card showed.
     const from = findRow(sessionId);
     // The chip's own session decides as well as the posted one, so naming another session cannot lift the group's rules.
@@ -1167,9 +1229,13 @@ async function api(req, res, u) {
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
     const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a
-    // section's chip pins it or leaves it loose, as that section's own chat would.
-    if (groupId) placeStarted(id, groupId);
-    return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), status: 'started', startedId: id }) });
+    // section's chip pins it or leaves it loose, as that section's own chat would. A group the chip names wins over both, and the session is
+    // unlinked so it stands in that group on its own. See docs/adr/20261027-chips-name-their-group.md.
+    // A group deleted while the session started leaves it loose, never nested where the chip did not ask for it.
+    if (named) placeStarted(id, named, { unlink: true }) || placeStarted(id, null, { unlink: true });
+    else if (groupId) placeStarted(id, groupId);
+    const started = chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), status: 'started', startedId: id });
+    return send(res, 200, { id, chip: withOpensIn(started, findRow(started.sessionId)) });
   }
   const booking = /^\/api\/groups\/([\w-]+)\/session$/.exec(u.pathname);
   if (req.method === 'POST' && booking) {
@@ -1192,7 +1258,10 @@ async function api(req, res, u) {
     return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, terminal: !row?.groupSession, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
-  if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });
+  if (req.method === 'GET' && action === 'chips') {
+    const row = findRow(id);
+    return send(res, 200, { chips: chips.forSession(id).map(c => withOpensIn(c, row)) });
+  }
   // The pictures of the whole chat as items with refs and no bytes, for the viewer to count and step through.
   if (req.method === 'GET' && action === 'images' && !parts[4]) {
     const before = u.searchParams.get('before');

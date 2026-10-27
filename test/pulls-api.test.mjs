@@ -1,5 +1,5 @@
 // Run with `npm test`. The route that answers the pull requests each session works on, over HTTP against the real server and a fake gh that never
-// leaves the machine.
+// leaves the machine. The route for the links in a reply is in links-api.test.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -31,7 +31,7 @@ const says = (s, id, text) => fs.appendFileSync(path.join(s.home, '.claude', 'pr
 const raw = (extra = {}) => ({
   state: 'OPEN', isDraft: false, reviewDecision: 'APPROVED', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN',
   statusCheckRollup: [{ __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' }], latestReviews: [],
-  reviewRequests: [], author: { login: 'octocat' }, ...extra,
+  reviewRequests: [], author: { login: 'octocat' }, title: 'Fix the thing', ...extra,
 });
 const state = (s, value) => fs.writeFileSync(path.join(s.home, 'gh-state.json'), JSON.stringify(value));
 const ghCalls = s => (fs.existsSync(s.ghLog) ? fs.readFileSync(s.ghLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []);
@@ -61,31 +61,35 @@ test('an id that is no session, or is a group\'s chat, is left out without a wor
   assert.deepEqual(ghCalls(s), [], 'nothing to look up, nothing run');
 });
 
-test('a session whose transcript names pull requests gets them with their status, the latest reply first, and a repeat ask runs gh no more', async () => {
+test('a session gets the one pull request its latest reply names, with its status, a sweep gets none, and a repeat ask runs gh no more', async () => {
   const { s, token } = await ready();
   state(s, {
     pulls: { [pr(1)]: raw(), [pr(2)]: raw({ isDraft: true, author: { login: 'hubot' }, reviewRequests: [{ login: 'octocat' }], reviewDecision: '', mergeStateStatus: 'BLOCKED' }) },
     threads: { [pr(1)]: [false, true, false] },
   });
-  says(s, 'kid', `Opened ${pr(2)} and ${pr(1)}.`);
-  says(s, 'top', `Also ${pr(1)}, and ${pr(3)} which GitHub does not know, and https://github.com.evil.com/o/r/pull/9.`);
-  const body = await pullsOf(s, token, 'kid,top,quiet');
+  says(s, 'kid', `Opened ${pr(2)}.`);
+  says(s, 'top', `Also ${pr(1)}, and https://github.com.evil.com/o/r/pull/9.`);
+  says(s, 'gone', `Opened ${pr(3)} which GitHub does not know.`);
+  says(s, 'quiet', `Compared ${pr(1)} and ${pr(2)}.`);
+  const ids = 'kid,top,gone,quiet';
+  const body = await pullsOf(s, token, ids);
   assert.equal(body.settling, false);
-  assert.deepEqual(Object.keys(body.pulls), ['kid', 'top', 'quiet']);
-  assert.deepEqual(body.pulls.kid.map(p => p.url), [pr(2), pr(1)]);
-  assert.deepEqual(body.pulls.top.map(p => p.url), [pr(1)], 'an address gh cannot show is left out, and a look-alike is never read');
-  assert.deepEqual(body.pulls.quiet, []);
-  assert.deepEqual(body.pulls.kid[1], {
-    url: pr(1), repo: 'example-org/example-repo', number: 1, state: 'open', mine: true, asked: false, requested: 0,
+  assert.deepEqual(Object.keys(body.pulls), ['kid', 'top', 'gone', 'quiet']);
+  assert.deepEqual(body.pulls.kid.map(p => p.url), [pr(2)]);
+  assert.deepEqual(body.pulls.top.map(p => p.url), [pr(1)], 'a look-alike is never read');
+  assert.deepEqual(body.pulls.gone, [], 'an address gh cannot show is left out');
+  assert.deepEqual(body.pulls.quiet, [], 'two pull requests in one reply is a sweep, which has no main one');
+  assert.deepEqual(body.pulls.top[0], {
+    kind: 'pull', url: pr(1), title: 'Fix the thing', repo: 'example-org/example-repo', number: 1, state: 'open', mine: true, asked: false, requested: 0,
     review: 'approved', checks: 'passing', conflicts: false, clean: true, threads: 2,
   });
   assert.deepEqual([body.pulls.kid[0].state, body.pulls.kid[0].mine, body.pulls.kid[0].asked, body.pulls.kid[0].review, body.pulls.kid[0].threads], ['draft', false, true, 'none', 0]);
   const calls = ghCalls(s);
   const views = calls.filter(a => a[0] === 'pr');
-  assert.deepEqual(views.map(a => a[2]).sort(), [pr(1), pr(2), pr(3)], 'an address two sessions share is read once');
+  assert.deepEqual(views.map(a => a[2]).sort(), [pr(1), pr(2), pr(3)], 'each address is read once');
   assert.deepEqual(calls.filter(a => a[1] === 'user'), [['api', 'user', '--jq', '.login', '--hostname', 'github.com']]);
   assert.equal(calls.some(a => a.includes('auth')), false);
-  assert.deepEqual(await pullsOf(s, token, 'kid,top,quiet'), body);
+  assert.deepEqual(await pullsOf(s, token, ids), body);
   assert.equal(ghCalls(s).length, calls.length, 'the second ask came from the cache');
 });
 

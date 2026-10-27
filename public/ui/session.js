@@ -48,6 +48,8 @@ const CONTEXT_EVERY = 5000;
 // A chat's pane is built again each time the owner opens another chat, so the holds that ended undelivered wait here by chat id.
 const endedByChat = new Map();
 
+const OPEN_FAILED = 'Could not open this session: ';
+
 // `toast` shows a note on the screen. The page passes it in so this file loads without the page's components.
 export function createChat({ id = null, draft = false, row = null, refreshIndex, toast = () => {} }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
@@ -55,7 +57,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // Until a new session starts, the box holds its settings here; the ones left alone follow the home folder's defaults.
   const touched = draft ? new Set() : null;
   const store = createStore({
-    items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, fileLinks: false, terminal: false,
+    items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, agents: null, holdsEnded: endedByChat.get(id) || [],
     group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
@@ -91,12 +93,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     } catch { return null; }
   }
 
-  async function open() {
-    document.addEventListener('visibilitychange', onVisible);
-    if (draft) {
-      loadDefaults();
-      return;
-    }
+  async function load() {
     try {
       const r = await api(`api/sessions/${enc(id)}/messages`);
       if (closed) return;
@@ -105,13 +102,35 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
       const chips = await loadChips();
       if (closed) return;
       store.set(s => ({
-        ...thread, ...(chips && { chips }), start: r.start, end: r.end, hasEarlier: r.hasEarlier, loaded: true,
+        ...thread, ...(chips && { chips }), start: r.start, end: r.end, hasEarlier: r.hasEarlier, loaded: true, failed: false,
         sending: s.sending.filter(m => !thread.items.some(i => sameMessage(i, m))),
       }));
     } catch (e) {
-      notice(`Could not open this session: ${e.message}`);
+      if (closed) return;
+      store.set({ failed: true });
+      notice(`${OPEN_FAILED}${e.message}`);
     }
+  }
+
+  async function open() {
+    document.addEventListener('visibilitychange', onVisible);
+    if (draft) {
+      loadDefaults();
+      return;
+    }
+    await load();
     if (!closed) connect();
+  }
+
+  // The event stream is already connected, so a retry only asks for the history again.
+  async function retry() {
+    if (!state().failed) return;
+    store.set(s => ({ failed: false, notice: s.notice.startsWith(OPEN_FAILED) ? '' : s.notice }));
+    await load();
+    if (closed || state().failed) return;
+    // Events that came in while the history was missing were dropped, and a reply that finished meanwhile is a row now.
+    store.set({ live: '', think: null });
+    fetchNew();
   }
 
   function close() {
@@ -403,7 +422,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   const fileUrl = path => `api/sessions/${enc(id)}/file?path=${enc(path)}`;
 
   return {
-    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext,
+    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, retry,
     send, prompt, stop, decide, dismissHold, chip, setMode, pick, startNew, notice, imageUrl, fileUrl,
   };
 }

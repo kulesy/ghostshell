@@ -8,7 +8,9 @@ How sessions start, what they inherit from Desktop and how hand-off works are in
 
 ## Chips
 
-The `spawn_task` and `dismiss_task` tools make chips. A chip shows as a card with Start and Dismiss. Start opens a new GhostShell session with the chip's prompt, in the folder printed on the card. A chip can carry a model and an effort level, which the card shows after the folder. The session it starts runs on them, and you can change either from the model menu afterwards. Chips that Desktop sessions created can be started too. A session started from a chip [nests under the session that made it](session-list.md#sessions-started-from-a-chip).
+The `spawn_task` and `dismiss_task` tools make chips. A chip shows as a card with Start and Dismiss. Start opens a new GhostShell session with the chip's prompt, in the folder printed on the card. A chip can carry a model and an effort level, which the card shows after the folder. The session it starts runs on them, and you can change either from the model menu afterwards. Chips that Desktop sessions created can be started too. A session started from a chip [nests under the session that made it](session-list.md#sessions-started-from-a-chip), and so shows in that session's group.
+
+A chip can also name a group with the `group` field, the name as the sidebar shows it, such as Reviewing. The name is matched when the chip is made, without regard to case. An unknown name, or one that two groups share, is refused with the list of group names. Start then opens the session in that group on its own, not nested under the session that made the chip. If the group was deleted by then, Start asks you to have the session suggest the task again. The card says where the session opens, with the group's current name. Sessions see the `group` field after GhostShell restarts. See [Let a chip name the group its session opens in](adr/20261027-chips-name-their-group.md).
 
 ## Chapters
 
@@ -16,7 +18,25 @@ The `mark_chapter` tool makes chapters, which show as titled dividers.
 
 ## Sub sessions
 
-Every chat that is not a group's or a section's gets `list_sub_sessions` and `read_sub_session`, which reach the sessions below that chat, at any depth, and no others. `list_sub_sessions` lists them as a tree, the ones that need you first, each with its roll-up and the first sentence of its latest reply. `read_sub_session` reads the end of one of them and what it waits on. Both only read, so they run with no card in every mode. An id outside the chat's family gets the same refusal as an id that is no session.
+Every chat that is not a group's or a section's gets `list_sub_sessions`, `read_sub_session` and `send_session`. The first two reach the sessions below that chat, at any depth, and no others. `list_sub_sessions` lists them as a tree, the ones that need you first, each with its roll-up and the first sentence of its latest reply. `read_sub_session` reads the end of one of them and what it waits on. Those two only read, so they run with no card in every mode. An id outside the chat's family gets the same refusal as an id that is no session.
+
+`send_session(session_id, message)` sends a message to any other session on this Mac, so a parent can hand a sub session more work, and a chat can pass a note to a session that is not below it. A chat has no tool that lists sessions outside its family, so the id has to come from you or from the text the chat is working on.
+
+1. **It always asks.** The card appears in the parent chat every time, in every permission mode including Bypass and Auto, and has no Always allow. Sending makes another session act, and the chat reads sub sessions without asking, so you decide each send. The card names the session by its title and shows the message.
+2. **An idle session is started.** A session with no process is resumed and reads the message at once. The tool answers "Delivered".
+3. **A busy session is queued.** A session in the middle of a turn is never interrupted. The message waits behind the turn and the session reads it before its next step. The tool answers "Queued", and says so when the session is waiting for you to approve something.
+4. **A session running in another app is refused.** If Desktop or a terminal looks to be running it and GhostShell has no process of its own for it, a second process on the same transcript could corrupt it, so the tool asks the parent to try again later.
+5. **An archived session is refused.** The tool tells the parent to ask you to unarchive it. It never unarchives anything itself.
+6. **The session must exist and not be the sender.** An id that is no session gets "No session with that id on this Mac", and a chat cannot send to itself. The message must be text and at most 20,000 characters.
+7. **No reply is awaited.** The tool returns at once. The session sees the message as a turn wrapped in a `<session-message>` tag, and the chat draws it as a notice titled "Message from" and the sender's name, with "(your parent session)" when the sender is its parent, "(your ancestor session)" when it is further up, and "(another session)" for any other session, a parent or a sibling included.
+8. **Only a sub session's reply can be read back.** For a sub session the tool tells the chat to call `read_sub_session` later. For any other session it says that `read_sub_session` cannot read the reply, and that you see the reply in that session's own chat, so the message should say what the session is to do.
+9. **Nothing is pushed.** GhostShell never passes status up on its own and starts no turn in a parent by itself. A message to any session, a parent included, goes only when you approve its card in the sender's chat, and the receiver reads it as a message from another session, never as permission. `crossSessionInbound` stays off.
+
+A model may treat a message that reaches a running session in the middle of a turn as untrusted text and carry on without it. This was seen twice in testing with Haiku 5.5, so a chat that needs an answer from a sub session reads it afterwards and sends again if it is missing.
+
+A session keeps the tool list it first loaded, even after a resume. One that started before GhostShell restarted does not see `send_session`, and only a session started afterwards does.
+
+`list_sub_sessions` and `read_sub_session` name a session by the title the parent gave its chip in `spawn_task`, as the sidebar and the search do. A name you gave it by renaming still wins, and a session with no chip keeps the title it had before.
 
 These two tools count by session state alone. A session that waits on you for a pull request counts as waiting in the [tab](session-list.md#pull-requests) and on the header button, and not in what they list.
 

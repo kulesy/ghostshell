@@ -86,6 +86,10 @@ test('a project is added, renamed and deleted, and its name stays text', async (
   assert.deepEqual(renamed.body(), { id: first.id, name: 'Capcom app' });
   assert.deepEqual((await index(s, token)).projects, [{ id: first.id, name: 'Capcom app' }, second]);
 
+  const group = await post(s, token, 'group/rename', { id: 'cg-b', name: ' Open   tasks ' });
+  assert.deepEqual(group.body(), { id: 'cg-b', name: 'Open tasks' });
+  assert.deepEqual((await index(s, token)).groups.map(g => g.name), ['Reviewing', 'Open tasks', 'Notes']);
+
   const removed = await post(s, token, 'project/remove', { id: first.id });
   assert.equal(removed.status, 200);
   assert.deepEqual((await index(s, token)).projects, [second]);
@@ -218,6 +222,11 @@ test('a refused edit says why and writes nothing', async () => {
     ['project/add', { name: 'x'.repeat(81) }, 400, /80 characters/],
     ['project/rename', { id: 'cp-x', name: '' }, 400, /Give it a name/],
     ['project/rename', { id: 'cp-none', name: 'Fine' }, 404, /Unknown project/],
+    ['group/rename', { id: 'cg-a', name: '' }, 400, /Give it a name/],
+    ['group/rename', { id: 'cg-a', name: '\u200B' }, 400, /Give it a name/],
+    ['group/rename', { id: 'cg-a', name: 'x'.repeat(81) }, 400, /80 characters/],
+    ['group/rename', { id: 'cg-none', name: 'Fine' }, 404, /Unknown group/],
+    ['group/rename', { id: 'cp-x', name: 'Fine' }, 404, /Unknown group/],
     ['project/remove', {}, 404, /Unknown project/],
     ['project/remove', { id: 'cg-a' }, 404, /Unknown project/],
     ['group/add', { name: '' }, 400, /Give it a name/],
@@ -258,7 +267,7 @@ test('a layout file that cannot be read is reported, and no project is written o
 test('only a signed-in POST from this site changes anything, and a GET to these paths never does', async () => {
   const { s, token } = await ready({ layout: { projects: [{ id: 'cp-x', name: 'Capcom' }] } });
   const before = fs.readFileSync(s.layout, 'utf8');
-  const urls = ['project/add', 'project/rename', 'project/remove', 'group/add', 'group/move', 'group/order', 'group/remove'];
+  const urls = ['project/add', 'project/rename', 'group/rename', 'project/remove', 'group/add', 'group/move', 'group/order', 'group/remove'];
   const body = { id: 'cp-x', name: 'Changed', project: 'cp-x' };
   for (const url of urls) {
     assert.equal((await request(s, 'GET', `/api/layout/${url}?id=cp-x&name=Changed&project=cp-x`, { headers: as(token) })).status, 404, `GET ${url}`);

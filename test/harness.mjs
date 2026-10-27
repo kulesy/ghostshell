@@ -53,7 +53,8 @@ const freePort = () => new Promise(resolve => {
 // the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
-// 'ask to list the group' or 'ask to list the subs' it asks to use the tool of that name. The log has the folder it started in, and the reply to each such request as `mcp`.
+// 'ask to list the group', 'ask to list the subs' or 'ask to send to a sub' it asks to use the tool of that name, and a message that opens with a <session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
+// `autoTitle` turns on naming sessions from their first turn, which is off in the tests unless they ask, since the fake CLI would be asked as well.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
 // edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
 // `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
@@ -97,7 +98,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     fs.writeFileSync(path.join(state, 'marks.json'), JSON.stringify({ edges: times(marks.edges), seen: times(marks.seen), unread: times(marks.unread), errors: times(marks.errors) }));
   }
   if (chips) {
-    const made = chips.map((c, i) => ({ toolUseId: `toolu_${i}`, status: 'open', title: 'A chip', ...c }));
+    const made = chips.map((c, i) => ({ toolUseId: `toolu_${i}`, status: 'open', ...c }));
     fs.writeFileSync(path.join(state, 'chips.json'), JSON.stringify(Object.fromEntries(made.map(c => [c.toolUseId, c]))));
   }
   const started = [];
@@ -150,7 +151,13 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "if (namedId && transcriptOf(namedId)) { process.stderr.write(`Error: Session ID ${namedId} is already in use.\\n`); process.exit(1); }",
     "const held = [];",
     "let begun = false;",
-    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    // A title ask is a one-shot process with plain text on stdin and a JSON answer. It answers 'Fake - generated title' and logs what it was sent as `titled`.
+    "const titling = process.argv[process.argv.indexOf('--output-format') + 1] === 'json';",
+    "if (titling) {",
+    "  let asked = '';",
+    "  process.stdin.on('data', d => { asked += d; }).on('end', () => { note({ titled: asked }); say({ type: 'result', result: 'Fake - generated title', is_error: false }); process.exit(0); });",
+    "}",
+    "if (!titling) readline.createInterface({ input: process.stdin }).on('line', line => {",
     "  try {",
     "    const m = JSON.parse(line);",
     "    if (begun) held.splice(0).forEach(say);",
@@ -186,6 +193,8 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    if (m.message.content === 'ask to start a session') say({ type: 'control_request', request_id: 'perm-start', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__start_group_session', input: { cwd: '/tmp', prompt: 'x' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'mcp__capcom__start_group_session' }], behavior: 'allow', destination: 'localSettings' }] } });",
     "    if (m.message.content === 'ask to list the group') say({ type: 'control_request', request_id: 'perm-list', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__list_group_sessions', input: {} } });",
     "    if (m.message.content === 'ask to list the subs') say({ type: 'control_request', request_id: 'perm-subs', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__list_sub_sessions', input: {} } });",
+    "    if (m.message.content === 'ask to send to a sub') say({ type: 'control_request', request_id: 'perm-send', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__send_session', input: { session_id: 'kid', message: 'Please rebase' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'mcp__capcom__send_session' }], behavior: 'allow', destination: 'localSettings' }] } });",
+    "    if (said.startsWith('<session-message')) say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'finish the turn with fast mode off') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: 'off' });",
@@ -202,7 +211,8 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
 }
 
 // A GitHub CLI that never leaves the machine. It logs its arguments to gh.log in the home, and answers from gh-state.json there: `pulls` is the
-// output of pr view for each address, `threads` the unresolved flags of its review threads, and `fail` makes every call fail. The login is octocat.
+// output of pr view for each address, `issues` the output of issue view for each, `threads` the unresolved flags of a pull request's review threads,
+// and `fail` makes every call fail. The login is octocat.
 const FAKE_GH = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
@@ -219,6 +229,10 @@ else if (args[0] === 'pr' && args[1] === 'view') {
   const pull = (state.pulls || {})[args[2]];
   if (!pull) fail('Could not resolve to a PullRequest.');
   console.log(JSON.stringify(pull));
+} else if (args[0] === 'issue' && args[1] === 'view') {
+  const issue = (state.issues || {})[args[2]];
+  if (!issue) fail('Could not resolve to an Issue.');
+  console.log(JSON.stringify(issue));
 } else if (args[0] === 'api' && args[1] === 'graphql') {
   const url = 'https://github.com/' + named('owner') + '/' + named('name') + '/pull/' + named('number');
   const nodes = ((state.threads || {})[url] || []).map(isResolved => ({ isResolved }));
@@ -238,13 +252,13 @@ export async function start(mac) {
   const state = path.join(home, 'state');
   fs.mkdirSync(state);
   writePassword(state, PASSWORD);
-  const made = mac ? { ...furnish(home, state, mac), ...(mac.gh && furnishGh(home, mac.gh)) } : {};
+  const made = mac ? { ...furnish(home, state, mac), ...(mac.gh && furnishGh(home, mac.gh)), autoTitle: !!mac.autoTitle } : {};
   return launch(home, state, made);
 }
 
 async function launch(home, state, made) {
   const port = await freePort();
-  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, ...(made.cli && { CAPCOM_CLAUDE: made.cli }), ...(made.gh && { CAPCOM_GH: made.gh }) };
+  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, CAPCOM_AUTO_TITLE: made.autoTitle ? '1' : '0', ...(made.cli && { CAPCOM_CLAUDE: made.cli }), ...(made.gh && { CAPCOM_GH: made.gh }) };
   const child = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });

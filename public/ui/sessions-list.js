@@ -3,13 +3,14 @@
 // onto a section to move it there, or onto another row to nest it under that one, and a group's header can be dragged among the groups
 // or onto a project. Everything else is done from menus, so a phone can do it all.
 import { ask } from './ask.js';
+import { isRunning, STOP_DETAIL } from './close.js';
 import { dragRows, pointIn } from './drag.js';
 import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatButton } from './group-button.js';
 import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } from './group-drag-rules.js';
-import { deleteDetail, groupById, newRoute, parseNewRoute, supportsGroupEdits, supportsGroups } from './group-rules.js';
+import { deleteDetail, groupById, newRoute, parseNewRoute, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
@@ -88,11 +89,13 @@ const MoveStrip = ({ targets, over }) => html`<div class="move-strip" aria-hidde
 // The header of a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
 // The same menu opens on a right click, at the pointer, or the menu key, under the button. `chat` is the group, when its header has the
 // button that opens the group's own session, or a built-in section's, and `extra` another small button of the same kind. A built-in section
-// has no menu: none of a group's actions fits it. `handle` is the group's id when the header can be dragged.
-function Head({ id, name, count, open, toggle, menu, chat, extra, handle, current, tree }) {
+// has no menu: none of a group's actions fits it. `handle` is the group's id when the header can be dragged. `form` is the rename box that
+// takes the header's place, and a header with it has no handle, so it cannot be carried while the name is typed.
+function Head({ id, name, count, open, toggle, menu, chat, extra, handle, form, current, tree }) {
   const pop = (button, point, entry) => tree.pop(id, menu, button, { point, entry });
   const trigger = opener((button, entry) => pop(button, null, entry));
   const shown = tree.shown?.key === id;
+  if (form) return html`<div class="bar">${form}</div>`;
   return html`<div class=${['bar', menu && 'has-menu', (chat || extra) && 'has-chat', chat && extra && 'has-two'].filter(Boolean).join(' ')} data-handle=${handle || null} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
     <button class="group-head" type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
     ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
@@ -101,10 +104,10 @@ function Head({ id, name, count, open, toggle, menu, chat, extra, handle, curren
   </div>`;
 }
 
-function Section({ id, name, count, collapsed, toggle, drop, over, lifted, line, menu, chat, extra, handle, current, tree, children }) {
+function Section({ id, name, count, collapsed, toggle, drop, over, lifted, line, menu, chat, extra, handle, form, current, tree, children }) {
   const open = !collapsed[id];
   return html`<section class="group" data-drop=${drop ? id : null} data-over=${over || null} data-lifted=${lifted || null} data-line=${line || null}>
-    <${Head} id=${id} name=${name} count=${count} open=${open} toggle=${toggle} menu=${menu} chat=${chat} extra=${extra} handle=${handle} current=${current} tree=${tree} />
+    <${Head} id=${id} name=${name} count=${count} open=${open} toggle=${toggle} menu=${menu} chat=${chat} extra=${extra} handle=${handle} form=${form} current=${current} tree=${tree} />
     ${open && children ? html`<ul class="rows">${children}</ul>` : null}</section>`;
 }
 
@@ -175,9 +178,9 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   const rows = list => list.map(r => (r.children
     ? html`<${Family} key=${r.id} r=${r} rowProps=${rowProps} holds=${carried?.parent === r.id} open=${!folded[r.id]} onToggle=${toggleFold} tree=${tree} />`
     : html`<${Row} key=${r.id} r=${r} ...${rowProps(r)} tree=${tree} />`));
-  const section = (id, name, list, body, { drop = true, always = false, menu = null, chat = null, extra = null, handle = null, lifted = false, line = null } = {}) => {
+  const section = (id, name, list, body, { drop = true, always = false, menu = null, chat = null, extra = null, handle = null, form = null, lifted = false, line = null } = {}) => {
     if (!list.length && !always && !(drag && drop)) return null;
-    return html`<${Section} key=${id} id=${id} name=${name} count=${withKids(list).length} collapsed=${collapsed} toggle=${toggle} drop=${drop && !carry} over=${lands === id} lifted=${lifted} line=${line} menu=${menu} chat=${chat} extra=${extra} handle=${handle} current=${current} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
+    return html`<${Section} key=${id} id=${id} name=${name} count=${withKids(list).length} collapsed=${collapsed} toggle=${toggle} drop=${drop && !carry} over=${lands === id} lifted=${lifted} line=${line} menu=${menu} chat=${chat} extra=${extra} handle=${handle} form=${form} current=${current} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
   };
   const home = view === HOME_VIEW;
   const project = ix.projects.find(p => p.id === view);
@@ -189,6 +192,7 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
     menu: tree.groupMenu(g),
     chat: supportsGroups(ix) ? g : null,
     handle: grab ? g.id : null,
+    form: tree.renamingGroup === g.id ? tree.groupRenameForm(g) : null,
     lifted: carry?.id === g.id,
     line: place?.beside === g.id ? place.side : null,
   });
@@ -257,9 +261,6 @@ export const newSession = group => {
 
 // A note about something that did not work, which shows with a warning. No reason means no note, and clears an older one.
 const problemNote = text => say(text, { problem: true });
-
-const isRunning = r => r.state === 'working' || r.state === 'waiting';
-const STOP_DETAIL = "Archiving stops Claude's turn and denies any approval it is waiting for. Undo brings the session back, but not the turn.";
 
 // `projects` is the projects sidebar's state, which the app owns because the search changes it as well.
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string. `nest(id, parent)`
@@ -404,9 +405,9 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
 
   // A rename form lasts only as long as its row is drawn. A reload can take the row away (archived elsewhere, folded among a
   // routine's earlier runs, past the newest 60), and the form is then dropped rather than coming back unasked later. A project's rename
-  // form goes when a reload no longer lists the project.
+  // form goes when a reload no longer lists the project, and a group's when its header is no longer drawn.
   useLayoutEffect(() => {
-    if (form?.kind === 'session' && !box.current?.querySelector('.name-form')) setForm(null);
+    if ((form?.kind === 'session' || form?.kind === 'rename-group') && !box.current?.querySelector('.name-form')) setForm(null);
     if (form?.kind === 'rename' && ix && !ix.projects.some(p => p.id === form.project)) setForm(null);
   });
 
@@ -820,6 +821,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     shut: () => setShown(null),
     renamingProject: form?.kind === 'rename' ? form.project : null,
     cancelRename: () => closeForm(scopeOf(form.project)),
+    renamingGroup: form?.kind === 'rename-group' ? form.group : null,
     rowMenu: (id, button, entry) => (shown?.session === id && shown.anchor === button && !entry ? setShown(null) : latestMenu.current(id, button, null, entry)),
     newGroup: (p, back) => { projects.pick(p.id); setForm({ kind: 'group', project: p.id, back }); },
     sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} was=${r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`,
@@ -834,6 +836,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       const at = ids.indexOf(g.id);
       // Each part has its icons so the labels line up, and a part that is empty leaves no separator behind.
       const parts = [
+        supportsGroupRename(ix) ? [{ label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'rename-group', group: g.id }) }] : [],
         [{ label: 'New session', icon: icons.messageSquarePlus, run: () => newSession(g.id) }],
         [
           ...(at > 0 ? [{ label: 'Move up', icon: icons.arrowUp, run: () => orderGroup(g, ids[at - 1], 'before') }] : []),
@@ -844,6 +847,12 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       ].filter(part => part.length);
       return { label: `Actions for ${g.name}`, items: parts.flatMap((part, n) => (n ? [{ separator: true }, ...part] : part)) };
     },
+    groupRenameForm: g => html`<${NameForm} label="Rename group" value=${g.name} onCancel=${away => closeFormAway(away, headOf(g.id))}
+      onSubmit=${async (name, away) => {
+        const done = await change('api/layout/group/rename', { id: g.id, name });
+        if (done) closeSaved(f => f?.kind === 'rename-group' && f.group === g.id, away, headOf(g.id));
+        return !!done;
+      }} />`,
     projectMenu: p => ({
       label: `Actions for ${p.name}`,
       items: [
@@ -865,9 +874,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   // Where a carried header would land among the groups of the view, from where they are drawn now.
   latestSlot.current = (x, y, id) => {
     if (!supportsGroupEdits(ix)) return null;
-    const order = groupsIn(ix, view).map(g => g.id);
-    const bars = order.map(gid => box.current.querySelector(`.bar[data-handle="${CSS.escape(gid)}"]`));
-    if (!bars.length || bars.some(bar => !bar)) return null;
+    const all = groupsIn(ix, view).map(g => [g.id, box.current.querySelector(`.bar[data-handle="${CSS.escape(g.id)}"]`)]);
+    const order = all.filter(([, bar]) => bar).map(([gid]) => gid);
+    const bars = all.map(([, bar]) => bar).filter(Boolean);
+    if (all.length - bars.length > 1 || !bars.length) return null;
     const list = box.current.getBoundingClientRect();
     const mids = Object.fromEntries(order.map((gid, n) => { const r = bars[n].getBoundingClientRect(); return [gid, r.top + r.height / 2]; }));
     const area = { left: list.left, right: list.right, top: bars[0].closest('.group').getBoundingClientRect().top, bottom: bars.at(-1).closest('.group').getBoundingClientRect().bottom };

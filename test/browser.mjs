@@ -167,6 +167,12 @@ export async function launch(chromium) {
       await call('Input.dispatchKeyEvent', { type: 'keyUp', ...which });
     }
 
+    // Text arriving as one insertion, as a paste or the emoji picker puts it, with no key presses.
+    async function insert(text) {
+      await settled();
+      await call('Input.insertText', { text });
+    }
+
     const centre = selector => evaluate(`(r => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 }))(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect())`);
 
     async function click(selector) {
@@ -253,6 +259,7 @@ export async function launch(chromium) {
       evaluate,
       until,
       press,
+      insert,
       click,
       tap,
       resize,
@@ -261,7 +268,7 @@ export async function launch(chromium) {
       up,
       hold,
       carry,
-      wheel,
+      wheel, call,
       close: async () => {
         problemsOf.delete(sessionId);
         await send('Target.closeTarget', { targetId });

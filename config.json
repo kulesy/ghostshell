@@ -8,6 +8,7 @@
   "defaultMode": "manual",
   "desktopHandoff": false,
   "chrome": true,
+  "autoTitle": true,
   "passkeyOrigins": [],
   "idleMinutes": 30,
   "otherDays": 30,

@@ -2,8 +2,9 @@
 // panel. An older one gets it above the transcript, which is the only place this file draws it.
 import { api } from './api.js';
 import { Back, ChatPane } from './chat.js';
+import { renamerFor } from './chat-rename.js';
 import { enc, GroupStatus } from './group-status.js';
-import { groupById, paneOf } from './group-rules.js';
+import { groupById, paneOf, supportsGroupRename } from './group-rules.js';
 import { sectionById } from './sections.js';
 import { useDocumentTitle } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useState } from './html.js';
@@ -29,10 +30,12 @@ function Stub({ title, children, action, kind }) {
 
 // The chat of the group or section `id`. One not yet opened is given its session first, which starts no process and costs no tokens, then the
 // list brings the id and the chat opens. `ix` is the page's list, so a server that cannot run group sessions is told from it.
-export function GroupPane({ id, ix, refreshIndex }) {
+export function GroupPane({ id, ix, refreshIndex, edit }) {
   const state = paneOf(ix, id);
   const group = groupById(ix, id);
   const kind = sectionById(id) ? 'Section' : 'Group';
+  const renameOn = kind === 'Group' && supportsGroupRename(ix);
+  const rename = useMemo(() => (renameOn ? renamerFor({ kind: 'group', id, edit }) : null), [renameOn, id, edit]);
   const [booked, setBooked] = useState(null);
   const [problem, setProblem] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -61,5 +64,5 @@ export function GroupPane({ id, ix, refreshIndex }) {
     return html`<${Stub} kind=${kind} title=${problem ? 'Could not open the session' : 'Opening the session'}
       action=${problem ? html`<button class="btn" data-variant="outline" type="button" onClick=${() => setAttempt(n => n + 1)}>Try again</button>` : null}>${problem || `Getting ${group.name} ready.`}<//>`;
   }
-  return html`<${ChatPane} key=${session} id=${session} row=${{ title: group.name, cwd: '', branch: '' }} title=${group.name} refreshIndex=${refreshIndex} meta=${`${kind} session`} aside=${subStatusOn(ix) ? undefined : panel} />`;
+  return html`<${ChatPane} key=${session} id=${session} row=${{ title: group.name, cwd: '', branch: '' }} title=${group.name} refreshIndex=${refreshIndex} meta=${`${kind} session`} rename=${rename} aside=${subStatusOn(ix) ? undefined : panel} />`;
 }

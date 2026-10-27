@@ -6,11 +6,14 @@ const NUMBER = '[1-9][0-9]{0,8}';
 const BODY = `https://github\\.com/(${OWNER})/(${REPO})/pull/(${NUMBER})`;
 
 export const PULL_URL = new RegExp(`^${BODY}$`);
+// An issue address is the same plain form with /issues/ for /pull/.
+export const ISSUE_URL = new RegExp(`^https://github\\.com/(${OWNER})/(${REPO})/issues/(${NUMBER})$`);
 
 // In prose an address must not sit inside a longer one (a web archive link, a user@host) or run into more of a word (/pull/12abc, /pull/12.html).
 const IN_TEXT = new RegExp(`(?<![\\w/.@-])${BODY}(?![\\w-])(?!\\.\\w)`, 'g');
 
 export const isPullUrl = s => typeof s === 'string' && PULL_URL.test(s);
+export const isIssueUrl = s => typeof s === 'string' && ISSUE_URL.test(s);
 
 // The pull request addresses in some text, as the plain form, in the order they first appear. GitHub ignores case in a name, so two spellings count once.
 export function pullUrlsIn(text) {

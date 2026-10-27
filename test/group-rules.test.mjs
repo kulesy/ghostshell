@@ -1,7 +1,7 @@
 // Run with `npm test`. How a group's sessions fall into the parts of its panel and of the list tool, and the summary line over them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newRoute, paneOf, parseNewRoute, RECENT_MS, summaryOf, supportsGroupEdits, supportsGroups } from '../public/ui/group-rules.js';
+import { BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newRoute, paneOf, parseNewRoute, RECENT_MS, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups } from '../public/ui/group-rules.js';
 import { supportsSections } from '../public/ui/sections.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -63,6 +63,12 @@ test('a server says it can delete and order groups on the list, and one that doe
   assert.equal(supportsGroupEdits(ix({ groupSessions: true, groupEdits: true })), true);
   for (const features of [undefined, {}, { groupSessions: true }, { groupEdits: false }]) assert.equal(supportsGroupEdits(ix(features)), false);
   assert.equal(supportsGroupEdits(null), false);
+});
+
+test('a server says it can rename groups on the list, and one that does not say so cannot, whatever else it says', () => {
+  assert.equal(supportsGroupRename(ix({ groupRename: true })), true);
+  for (const features of [undefined, {}, { groupEdits: true }, { groupRename: false }]) assert.equal(supportsGroupRename(ix(features)), false);
+  assert.equal(supportsGroupRename(null), false);
 });
 
 test('the question before a group is deleted counts the sessions its header counts, nested ones included, and says what becomes of its chat', () => {

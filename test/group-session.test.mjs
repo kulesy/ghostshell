@@ -93,7 +93,7 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   const ordinary = startsOf(s)[1].started;
   assert.equal(flagOf(ordinary, '--permission-mode'), mode, 'it starts in the mode a new session in its folder gets');
   for (const flag of ['--session-id', '--append-system-prompt', '--setting-sources']) assert.equal(ordinary.includes(flag), false, `an ordinary session has no ${flag}`);
-  assert.deepEqual(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.filter(rule => rule !== 'mcp__claude-in-chrome'), []);
+  assert.deepEqual(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.filter(rule => rule !== 'mcp__claude-in-chrome'), ['mcp__capcom__send_session'], 'an ordinary session asks only about sending to a sub session');
 
   const again = await restart(s);
   const second = await signIn(again);
@@ -103,6 +103,26 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   assert.equal(flagOf(resumed, '--resume'), id, 'its transcript exists now, so it is resumed');
   assert.equal(resumed.includes('--session-id'), false);
   assert.match(flagOf(resumed, '--append-system-prompt'), /group "Work"/, 'the guide goes with every spawn');
+});
+
+test('a renamed group\'s session is titled with the new name, and its guide names the group so from the next spawn on', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await until(() => startsOf(s).length === 1);
+  assert.match(flagOf(startsOf(s)[0].started, '--append-system-prompt'), /group "Work" in GhostShell/);
+
+  assert.equal((await post(s, token, '/api/layout/group/rename', { id: 'cg-work', name: 'Reviews' })).status, 200);
+  const ix = await get(s, token, '/api/sessions');
+  assert.equal(ix.groups.find(g => g.id === 'cg-work').name, 'Reviews');
+  assert.equal((await get(s, token, `/api/sessions/${WORK}/messages`)).session.title, 'Reviews');
+
+  const again = await restart(s);
+  const second = await signIn(again);
+  await sendTo(again, second.token, WORK, 'hello again');
+  await until(() => startsOf(again).length === 2);
+  const guide = flagOf(startsOf(again)[1].started, '--append-system-prompt');
+  assert.match(guide, /^You are the session for the group "Reviews" in GhostShell\./);
+  assert.equal(guide.includes('"Work"'), false);
 });
 
 test('the page\'s stream finds the transcript of a group\'s session once its first message has been sent', async () => {
