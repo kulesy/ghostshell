@@ -86,7 +86,7 @@ test('moving, pinning, renaming, archiving or nesting a deleted group\'s session
 test('the index tells each group its session and how many of its members are archived, and tells the page this server knows group sessions, sessions for the built-in sections, how to edit groups, how to edit routines, routines that run a prompt file, sub session status and pull request status', async () => {
   const { s, token } = await ready();
   const ix = await get(s, token, '/api/sessions');
-  assert.deepEqual(ix.features, { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true });
+  assert.deepEqual(ix.features, { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, attachLinks: true });
   assert.deepEqual(ix.groups.map(g => [g.id, g.session, g.archived]), [['cg-work', { id: WORK, state: 'active' }, 2], ['cg-home', null, 1]]);
   assert.deepEqual((await get(s, token, '/api/sessions?archived=1')).groups.map(g => g.archived), [2, 1], 'the count is the same with the archive listed');
 });
