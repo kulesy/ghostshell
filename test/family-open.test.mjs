@@ -13,7 +13,7 @@ const timeout = 30_000;
 let app;
 let browser;
 
-// Maker made a chip that started Made, so Made shows under Maker, and Loner is a session on its own.
+// Maker made a chip that started Made, so Made shows under Maker, and Loner is a session on its own. The list goes A to Z, so Loner comes first.
 const SESSIONS = [{ id: 'maker', title: 'Maker', ago: 5 }, { id: 'made', title: 'Made', source: 'capcom', ago: 1 }, { id: 'loner', title: 'Loner', ago: 9 }];
 const FAMILY = '#family-maker';
 
@@ -60,7 +60,7 @@ async function refresh(page) {
 test('a session opened inside a folded family opens the family, and the family folded again while it is open stays folded after a refresh', { skip, timeout }, async t => {
   const page = await listPage(t, '#/s/made');
   await page.until(`!!document.querySelector('${FAMILY}')`);
-  assert.deepEqual(await rowsIn(page), ['maker', 'made', 'loner']);
+  assert.deepEqual(await rowsIn(page), ['loner', 'maker', 'made']);
 
   await page.click('.has-fold > .fold');
   await page.until(`!document.querySelector('${FAMILY}')`);
@@ -72,10 +72,10 @@ test('a session opened inside a folded family opens the family, and the family f
 test('a family stays folded while a session outside it is open, and opens when a session in it is opened', { skip, timeout }, async t => {
   const page = await listPage(t, '#/s/loner');
   await page.until(`!!document.querySelector('#sections a.row[data-id="loner"]')`);
-  assert.deepEqual(await rowsIn(page), ['maker', 'loner']);
+  assert.deepEqual(await rowsIn(page), ['loner', 'maker']);
 
   await page.evaluate(`location.hash = '#/s/made'`);
   await page.until(`!!document.querySelector('${FAMILY}')`);
-  assert.deepEqual(await rowsIn(page), ['maker', 'made', 'loner']);
+  assert.deepEqual(await rowsIn(page), ['loner', 'maker', 'made']);
   assert.deepEqual(page.problems, []);
 });

@@ -272,11 +272,11 @@ test('a folded family shows the mark of the most urgent session under it, and sa
     const page = await appPage(t, '', { origin, keep: { folded: { top: true } } });
     await page.until(`!!document.querySelector('#sections a.row[data-id="top"]')`);
     assert.equal(await page.evaluate(`document.querySelector('a.row[data-id="top"] .row-dot')?.dataset.dot`), 'awaiting', origin);
-    assert.equal(await page.evaluate(`document.querySelector('#sections li.has-fold .fold').getAttribute('aria-label')`), '2 nested sessions, 1 waiting on you');
-    await page.click('#sections li.has-fold .fold');
-    await page.until(`document.querySelector('#sections li.has-fold .fold')?.getAttribute('aria-expanded') === 'true'`);
+    assert.equal(await page.evaluate(`document.querySelector('#sections li.has-fold:has(a.row[data-id="top"]) .fold').getAttribute('aria-label')`), '2 nested sessions, 1 waiting on you');
+    await page.click('#sections li.has-fold:has(a.row[data-id="top"]) .fold');
+    await page.until(`document.querySelector('#sections li.has-fold:has(a.row[data-id="top"]) .fold')?.getAttribute('aria-expanded') === 'true'`);
     assert.equal(await page.evaluate(`document.querySelector('a.row[data-id="top"] .row-dot')?.dataset.dot ?? null`), null, 'open, the head shows its own mark');
-    assert.equal(await page.evaluate(`document.querySelector('#sections li.has-fold .fold').getAttribute('aria-label')`), '2 nested sessions');
+    assert.equal(await page.evaluate(`document.querySelector('#sections li.has-fold:has(a.row[data-id="top"]) .fold').getAttribute('aria-label')`), '2 nested sessions');
     assert.deepEqual(page.problems, []);
   }
 });

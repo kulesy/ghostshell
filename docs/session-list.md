@@ -15,7 +15,7 @@ Each group's header, and each of Home's built-in sections (Routines, Pinned, Sta
 
 ### Order
 
-Every group lists its sessions by title, A to Z, and a family goes by its head's title. The other sections sort as you set them in Claude Desktop: by last turn, by when the session was made or by title, either way round.
+Every section, groups included, lists its sessions A to Z by title, whatever sort you set in Claude Desktop. A family goes by its head's title, and a routine by its name, with its earlier runs newest first under it. Sessions with no title come last.
 
 A group shows when it is empty, so a new group can be found and filled. A project with no groups says so beside a New group button. The other sections show only when they hold a session, so an empty section has no chat button either.
 

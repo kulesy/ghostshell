@@ -2,7 +2,7 @@
 // family placed in its list, and a family's children in depth-first order.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { comparator, DEFAULT_SORT, GROUP_SORT, sortFamily, sortRows, UNTITLED } from '../public/ui/order.js';
+import { comparator, DEFAULT_SORT, TITLE_SORT, sortFamily, sortRows, UNTITLED } from '../public/ui/order.js';
 
 const row = (id, sortAt, extra = {}) => ({ id, title: id, sortAt, ...extra });
 const ids = rows => rows.map(r => r.id);
@@ -57,9 +57,9 @@ test('alpha goes A to Z by title, and ascending turns it around', () => {
 });
 
 test('the group sort is A to Z by title, with the rows that have no title last', () => {
-  assert.deepEqual(GROUP_SORT, { by: 'alpha', ascending: false });
+  assert.deepEqual(TITLE_SORT, { by: 'alpha', ascending: false });
   const rows = [row('1', 1, { title: 'Mango' }), row('2', 2, { title: UNTITLED }), row('3', 3, { title: 'apple' }), row('4', 4, { title: '' }), row('5', 5, { title: 'Zebra' })];
-  assert.deepEqual(sorted(rows, GROUP_SORT), ['3', '1', '5', '2', '4']);
+  assert.deepEqual(sorted(rows, TITLE_SORT), ['3', '1', '5', '2', '4']);
 });
 
 test('alpha compares titles as localeCompare does, so numbers run as text', () => {
