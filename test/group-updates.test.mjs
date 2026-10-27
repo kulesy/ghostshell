@@ -212,6 +212,7 @@ function world(over = {}) {
   const w = {
     at: NOW,
     sent: [],
+    logs: [],
     rows: [row({ id: 'a', title: 'Alpha', state: 'working', dot: 'running', lastActivityAt: undefined }), row({ id: 'b', title: 'Beta', lastActivityAt: undefined })],
     opened: NOW - MINUTE,
     transcript: { mtime: NOW - MINUTE },
@@ -229,15 +230,15 @@ function world(over = {}) {
     candidates: () => [{ groupId: 'g', chatId: 'chat' }],
     openedAt: () => w.opened,
     transcript: () => w.transcript,
-    members: () => ({ name: 'Work', rows: w.rows.map(r => ({ ...r, lastActivityAt: r.lastActivityAt ?? w.at })) }),
+    members: () => (w.gone ? null : { name: 'Work', rows: w.rows.map(r => ({ ...r, lastActivityAt: r.lastActivityAt ?? w.at })) }),
     details: () => ({ pending: [], said: 'Hello there.' }),
-    pulls: async () => { w.pulled++; return w.pulls; },
+    pulls: async () => { w.pulled++; await w.duringPulls?.(); return w.pulls; },
     chatIdle: () => w.idle,
     viewing: () => w.viewing,
     send: async (chat, text) => { w.sent.push({ chat, text }); },
     rules: () => 'THE RULES',
     store: w.store,
-    log: () => {},
+    log: message => w.logs.push(message),
   });
   w.step = async minutes => { w.at += minutes * MINUTE; await w.updates.tick(); };
   w.change = (id, over) => { w.rows = w.rows.map(r => (r.id === id ? { ...r, ...over } : r)); };
@@ -380,10 +381,119 @@ test('pullsOf gives a session its main pull request, null for none and undefined
   assert.deepEqual([...got], [['a', null], ['b', PULL], ['c', undefined]]);
 });
 
-test('the store keeps a chat\'s record across a restart and reads a broken file as empty', () => {
+test('the store keeps a chat\'s record across a restart, reads a missing file as empty and refuses a broken one', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-updates-'));
+  assert.deepEqual(makeUpdateStore(dir).read(), {});
   makeUpdateStore(dir).set('chat', { at: 1, day: '2026-10-27', count: 2, rules: true });
   assert.deepEqual(makeUpdateStore(dir).read(), { chat: { at: 1, day: '2026-10-27', count: 2, rules: true } });
   fs.writeFileSync(path.join(dir, 'group-updates.json'), '{ nope');
-  assert.deepEqual(makeUpdateStore(dir).read(), {});
+  assert.throws(() => makeUpdateStore(dir).read(), /cannot be read\. Fix it or move it away/);
+  fs.writeFileSync(path.join(dir, 'group-updates.json'), '[]');
+  assert.throws(() => makeUpdateStore(dir).read());
+});
+
+const settle = async w => {
+  await w.updates.tick();
+  w.change('a', { state: 'idle', dot: 'ready' });
+  await w.step(1);
+  await w.step(3);
+};
+
+test('an update is recorded before it is sent, and a send that fails gives the record back', async () => {
+  const w = world();
+  let seen;
+  const real = w.updates;
+  w.sent.push = ((push) => (item) => { seen = w.store.read().chat; return push(item); })(w.sent.push.bind(w.sent));
+  await settle(w);
+  assert.equal(w.sent.length, 1);
+  assert.deepEqual([seen.count, seen.rules], [1, true], 'the record was there when the message went');
+  assert.ok(real);
+  const f = world();
+  f.sent.push = () => { throw new Error('the chat would not take it'); };
+  await settle(f);
+  assert.equal(f.store.read().chat.count, 0, 'the failed send was not counted');
+  assert.equal(f.store.read().chat.rules, false, 'and the rules did not count as sent');
+  assert.match(f.logs.join('\n'), /the chat would not take it/);
+});
+
+test('with a store that cannot be written or read nothing is sent, and the problem is logged once', async () => {
+  const unwritable = world();
+  unwritable.store.set = () => { throw new Error('disk full'); };
+  await settle(unwritable);
+  await unwritable.step(1);
+  await unwritable.step(1);
+  assert.deepEqual(unwritable.sent, []);
+  assert.deepEqual(unwritable.logs, ['Group update for g failed: disk full']);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-updates-'));
+  fs.writeFileSync(path.join(dir, 'group-updates.json'), '{ nope');
+  const broken = world({ store: makeUpdateStore(dir) });
+  await settle(broken);
+  await broken.step(1);
+  assert.deepEqual(broken.sent, []);
+  assert.equal(broken.logs.length, 1);
+  assert.match(broken.logs[0], /group-updates\.json cannot be read/);
+  fs.writeFileSync(path.join(dir, 'group-updates.json'), '{}');
+  await broken.step(1);
+  assert.equal(broken.sent.length, 1, 'it goes once the file can be read, with the batch it kept');
+});
+
+test('a pull request read without its threads or the viewer\'s login counts as unread', async () => {
+  const rows = [{ id: 'a' }];
+  const ask = pull => pullsOf(rows, { urlsFor: () => [PULL.url], lookup: async () => ({ found: new Map([[PULL.url, pull]]), settling: false }) });
+  assert.deepEqual([...await ask({ ...PULL, threads: 0 })], [['a', { ...PULL, threads: 0 }]]);
+  assert.deepEqual([...await ask({ ...PULL, threads: null, mine: true })], [['a', undefined]]);
+  assert.deepEqual([...await ask({ ...PULL, threads: 0, mine: null })], [['a', undefined]]);
+});
+
+test('a turn read from another app\'s transcript that stops showing without a new write did not finish', () => {
+  const run = at => snapshotOf(row({ state: 'active', dot: 'running', lastActivityAt: at }), { external: true }, NOW);
+  const idle = at => snapshotOf(row({ lastActivityAt: at }), { external: true }, NOW);
+  assert.deepEqual(kinds(run(NOW - 12 * MINUTE), idle(NOW - 12 * MINUTE)), [], 'dropped as too old');
+  assert.deepEqual(kinds(run(NOW - 12 * MINUTE), idle(NOW - MINUTE)), ['finished'], 'ended with a write');
+  const ours = snapshotOf(row({ state: 'working', dot: 'running', lastActivityAt: NOW - MINUTE }), {}, NOW);
+  assert.deepEqual(kinds(ours, idle(NOW - MINUTE)), ['finished'], 'a turn GhostShell runs ends when its process says so');
+  const long = snapshotOf(row({ state: 'active', dot: 'running', lastActivityAt: NOW - 12 * MINUTE }), { external: true }, NOW + 9 * MINUTE);
+  assert.equal(long.stalled, true, 'a long tool call in another app is a stall at 20 minutes');
+});
+
+test('a group deleted while its pull requests are asked for gets no update', async () => {
+  const w = world();
+  await w.updates.tick();
+  w.change('a', { state: 'idle', dot: 'ready' });
+  w.duringPulls = async () => { w.gone = true; };
+  await w.step(6);
+  await w.step(4);
+  assert.deepEqual(w.sent, []);
+  assert.equal(w.updates.watching('chat'), false);
+});
+
+test('a chat that was started with the ranking rules in its guide is not sent them', async () => {
+  const w = world();
+  w.updates.rulesSent('chat');
+  await settle(w);
+  assert.equal(w.sent.length, 1);
+  assert.doesNotMatch(w.sent[0].text, /THE RULES/);
+  assert.deepEqual([w.store.read().chat.count, w.store.read().chat.rules], [1, true]);
+});
+
+test('a session that left the group is not listed as news in its update, and a batch of nothing else sends none', async () => {
+  const w = world();
+  await w.updates.tick();
+  w.change('a', { state: 'idle', dot: 'ready' });
+  w.change('b', { state: 'waiting', dot: 'awaiting' });
+  await w.step(1);
+  w.rows = w.rows.filter(r => r.id !== 'a');
+  await w.step(3);
+  assert.equal(w.sent.length, 1);
+  assert.match(w.sent[0].text, /- "Beta" is waiting on you\./);
+  assert.doesNotMatch(w.sent[0].text, /Alpha/);
+  const alone = world();
+  await alone.updates.tick();
+  alone.change('a', { state: 'idle', dot: 'ready' });
+  await alone.step(1);
+  alone.rows = alone.rows.filter(r => r.id !== 'a');
+  await alone.step(4);
+  await alone.step(20);
+  assert.deepEqual(alone.sent, []);
 });

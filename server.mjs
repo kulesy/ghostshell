@@ -595,7 +595,14 @@ function ensureChat(id, row, { mode } = {}) {
   const group = groupId && {
     group: groupCtx(groupId),
     instructions: () => (section ? guideFor(section.name, section.id) : guideFor(layout.read().groups.find(g => g.id === groupId)?.name ?? row.title)),
-    fresh: () => !hasTranscript(id),
+    // A chat started now gets the guide with the ranking rules in it, so its first update need not carry them.
+    fresh: () => {
+      const fresh = !hasTranscript(id);
+      if (fresh && !section) {
+        try { groupUpdates.rulesSent(id); } catch (e) { console.error(`Could not record the ranking rules for ${id}: ${e.message}`); }
+      }
+      return fresh;
+    },
   };
   const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, subs: groupId ? undefined : subCtx });
   dropFastOnRefusal(chat);
@@ -1088,6 +1095,10 @@ async function linksApi(res, u) {
 // ---- ranked updates to a group's chat ------------------------------------------------------------
 // A turn in each group's chat when its sessions change, under the rules in docs/adr/20261023-a-session-for-each-group.md (amended 2026-10-27).
 
+// A turn another app runs is read from its transcript for up to a day, with or without a page on it, so a long tool call is still a turn
+// after 10 minutes and a session left open for a day is not.
+const updateOutside = createOutside({ staleMs: 24 * 3600_000, keep: 256 });
+
 // The group's live sessions with their marks, as the page's list draws them.
 function updateMembers(groupId) {
   const found = groupCtx(groupId).lookup();
@@ -1095,9 +1106,10 @@ function updateMembers(groupId) {
   const now = Date.now();
   const shared = { desk: loadDesktop(cfg.desktopDir), mine: marks.read(), now };
   const rows = found.members.filter(r => !r.archived).map(r => {
-    const turn = turnOf(r.id, now);
+    const chat = workingChat(r.id);
+    const turn = chat ? chat.work.snapshot() : updateOutside.read(transcriptFor(r.id));
     const row = turn && r.state === 'idle' ? { ...r, state: 'active' } : r;
-    return { ...row, dot: dotFor(row, row.state === 'active' && !!turn, shared) };
+    return { ...row, external: !chat, dot: dotFor(row, row.state === 'active' && !!turn, shared) };
   });
   return { name: found.name, rows };
 }
@@ -1119,7 +1131,7 @@ const groupUpdates = makeGroupUpdates({
   viewing: chatId => !!viewers.get(chatId)?.size,
   send(chatId, text) {
     const row = findRow(chatId);
-    if (!row?.groupSession) throw new Error('the chat is gone');
+    if (!row?.groupSession || !layout.read().groups.some(g => g.session === chatId)) throw new Error('the group is gone');
     ensureChat(chatId, row).send(text);
   },
   rules: rankRules,
