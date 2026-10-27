@@ -14,7 +14,8 @@ import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
-import { chipRefusal, ensureGroupDir, groupDir, guideFor, workFolder } from './lib/groups.mjs';
+import { makeGroupUpdates, makeUpdateStore, pullsOf, scaled } from './lib/group-updates.mjs';
+import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, workFolder } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { pendingLines } from './lib/subs.mjs';
@@ -1084,6 +1085,47 @@ async function linksApi(res, u) {
   return send(res, 200, { links: Object.fromEntries(found), settling });
 }
 
+// ---- ranked updates to a group's chat ------------------------------------------------------------
+// A turn in each group's chat when its sessions change, under the rules in docs/adr/20261023-a-session-for-each-group.md (amended 2026-10-27).
+
+// The group's live sessions with their marks, as the page's list draws them.
+function updateMembers(groupId) {
+  const found = groupCtx(groupId).lookup();
+  if (!found) return null;
+  const now = Date.now();
+  const shared = { desk: loadDesktop(cfg.desktopDir), mine: marks.read(), now };
+  const rows = found.members.filter(r => !r.archived).map(r => {
+    const turn = turnOf(r.id, now);
+    const row = turn && r.state === 'idle' ? { ...r, state: 'active' } : r;
+    return { ...row, dot: dotFor(row, row.state === 'active' && !!turn, shared) };
+  });
+  return { name: found.name, rows };
+}
+
+const groupUpdates = makeGroupUpdates({
+  timing: scaled(cfg.groupUpdateScale),
+  enabled: () => cfg.groupUpdates,
+  candidates: () => layout.read().groups.filter(g => g.session).map(g => ({ groupId: g.id, chatId: g.session })),
+  openedAt: chatId => (viewers.get(chatId)?.size ? Date.now() : marks.read().seen.get(chatId) ?? 0),
+  // The chat's transcript is written as its model is called, so its time stands in for the last call.
+  transcript(chatId) {
+    const t = transcriptFor(chatId) || (indexTranscripts(cfg.projectsDir, 60_000), transcriptFor(chatId));
+    try { return t && { mtime: fs.statSync(t.file).mtimeMs }; } catch { return null; }
+  },
+  members: updateMembers,
+  details: row => ({ pending: pendingLines(pendingOf(row.id)), said: summaries.get(row.id, row.cwd)?.line ?? '' }),
+  pulls: rows => pullsOf(rows, pulls),
+  chatIdle: chatId => (getChat(chatId)?.state ?? 'idle') === 'idle',
+  viewing: chatId => !!viewers.get(chatId)?.size,
+  send(chatId, text) {
+    const row = findRow(chatId);
+    if (!row?.groupSession) throw new Error('the chat is gone');
+    ensureChat(chatId, row).send(text);
+  },
+  rules: rankRules,
+  store: makeUpdateStore(cfg.stateDir),
+});
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
@@ -1113,8 +1155,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, and the status of the pull requests and issues a reply links to.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1278,6 +1320,12 @@ async function api(req, res, u) {
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
   const body = JSON.parse(await readBody(req, action === 'send' ? MAX_BODY_BYTES : undefined) || '{}');
+  // The owner is typing in a group's prompt box, which holds an update back for a while. Only a group's chat takes it.
+  if (action === 'typing') {
+    if (!layout.read().groups.some(g => g.session === id)) return findRow(id) ? send(res, 400, { error: 'Only a group\'s chat takes this.' }) : send(res, 404, { error: NO_SESSION });
+    groupUpdates.typing(id);
+    return send(res, 204, '');
+  }
   if (action === 'send') {
     const { images, error } = readImages(body.images);
     if (error) return send(res, 400, { error });
@@ -1290,6 +1338,7 @@ async function api(req, res, u) {
     const row = findRow(id);
     if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
     const chat = ensureChat(id, row, { mode: body.mode });
+    if (row.groupSession) groupUpdates.ownerSpoke(id);
     // The result of a command run with ! that Claude was not to reply to goes in front of the next message, as its own paragraph.
     // A slash command has to stay first to run, so the result waits for the message after it.
     const held = !isSlashCommand(body.text || '') && terminal.held(id);
@@ -1422,6 +1471,7 @@ server.listen(cfg.port, '127.0.0.1', () => {
   checkRoutines();
 });
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
+setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates failed: ${e.message}`)), scaled(cfg.groupUpdateScale).tick).unref();
 // Whatever the terminal started ends with Capcom, so a restart leaves nothing running behind. A signal ends the process through
 // exit, which kills the command groups; without a handler the default would end it first.
 process.on('exit', () => terminal.killAll());
