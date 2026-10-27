@@ -28,6 +28,10 @@ The settings in `config.json` and `config.local.json`, and the four environment 
 
 `chrome` is `true` by default. Set it to `false` to start every session without Claude in Chrome (see [Claude in Chrome](tools.md#claude-in-chrome)).
 
+### `groupUpdates`
+
+`groupUpdates` is `true` by default. GhostShell then posts a ranked list of a group's sessions in the group's chat when they change, which is a turn of the chat's model and spends tokens (see [a session for each group](adr/20261023-a-session-for-each-group.md)). Set it to `false` to post none. The Sub sessions tab stays live either way.
+
 ### `autoTitle`
 
 `autoTitle` is `true` by default. GhostShell then names each session it starts: a session started with a title keeps it, and one you start by typing is named once its first reply finishes (see [naming a new session](session-list.md#naming-a-new-session)). That costs one short call to Haiku 5.5 for each typed session. Set it to `false` to make no such call and leave the first line of the first message as the title.
@@ -44,12 +48,13 @@ The settings in `config.json` and `config.local.json`, and the four environment 
 
 ## Environment variables
 
-Five environment variables win over both files:
+Six environment variables win over both files:
 
 - `PORT` sets the port.
 - `CAPCOM_CLAUDE` sets the CLI.
 - `CAPCOM_GH` sets the GitHub CLI.
 - `CAPCOM_STATE` points a test instance at its own login, registry and routines.
 - `CAPCOM_AUTO_TITLE` set to `0` turns off [`autoTitle`](#autotitle), and any other value turns it on.
+- `CAPCOM_GROUP_UPDATE_SCALE` divides the waits of the [group updates](#groupupdates) by that number, so a test instance can see one in seconds. Leave it unset in real use.
 
 Two instances that share a state folder both fire its routines, so always give a test instance its own.
