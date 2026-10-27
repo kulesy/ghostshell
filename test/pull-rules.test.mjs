@@ -1,8 +1,9 @@
 // Run with `npm test`. What a session's pull requests say on its card and when they put the session in the owner's court, with no page: the
-// status line of a pull request, its words, tone and who it waits on, the session's main pull request, and which sessions to ask about.
+// status line of a pull request, its words, tone and who it waits on, the pull request a card speaks of, the badge of each kind of item, and which
+// sessions to ask about.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FRESH_MS, mainPull, needsOf, needsOwner, pullsToAsk, scopeOf, statusOf, wantsPulls } from '../public/ui/pull-rules.js';
+import { badgeOf, FRESH_MS, issueWord, itemsOf, leadPull, needsOf, needsOwner, pullsToAsk, scopeOf, statusOf, wantsPulls } from '../public/ui/pull-rules.js';
 import { stampOf } from '../public/ui/sub-panel-rules.js';
 
 const NOW = Date.parse('2026-10-26T01:00:00.000Z');
@@ -19,26 +20,26 @@ const line = (extra, row = idle) => statusOf(pull(extra), row);
 
 test('each rule says what the owner has to do, or who the session waits on, with its tone', () => {
   const cases = [
-    [{ state: 'merged' }, idle, false, 'Merged, nothing to do', 'ready'],
-    [{ state: 'closed' }, idle, false, 'Closed, nothing to do', 'quiet'],
-    [{ asked: true, mine: false }, idle, true, 'Review the pull request', 'needs'],
-    [READY, idle, true, 'Merge the pull request', 'needs'],
-    [{ review: 'changes' }, idle, true, 'Ask the session to deal with the requested changes', 'needs'],
-    [{ conflicts: true }, idle, true, 'Ask the session to deal with the conflicts', 'needs'],
-    [{ threads: 3 }, idle, true, 'Ask the session to deal with the 3 unresolved comments', 'needs'],
-    [{ checks: 'failing' }, idle, true, 'Ask the session to deal with the failing checks', 'error'],
-    [{ checks: 'failing' }, working, false, 'The session is dealing with the failing checks', 'working'],
-    [{ checks: 'running' }, idle, false, 'Waiting on checks to finish', 'working'],
-    [{ review: 'approved' }, idle, false, 'Approved, but it cannot merge yet', 'quiet'],
-    [{ ...READY, mine: false }, idle, false, 'Approved, nothing asked of you', 'quiet'],
-    [{ checks: 'failing' }, { state: 'active' }, false, 'The session is dealing with the failing checks', 'working'],
-    [{ requested: 1 }, idle, false, 'Waiting on a reviewer', 'quiet'],
-    [{ review: 'required' }, idle, false, 'Waiting on a reviewer', 'quiet'],
-    [{ state: 'draft' }, idle, false, 'Still a draft', 'quiet'],
-    [{}, idle, false, 'Open, no review asked for yet', 'quiet'],
-    [{ mine: false }, idle, false, 'Open, nothing asked of you', 'quiet'],
+    [{ state: 'merged' }, idle, false, 'Merged, nothing to do', 'ready', 'Merged'],
+    [{ state: 'closed' }, idle, false, 'Closed, nothing to do', 'quiet', 'Closed'],
+    [{ asked: true, mine: false }, idle, true, 'Review the pull request', 'needs', 'Review asked'],
+    [READY, idle, true, 'Merge the pull request', 'needs', 'Ready to merge'],
+    [{ review: 'changes' }, idle, true, 'Ask the session to deal with the requested changes', 'needs', 'Changes asked'],
+    [{ conflicts: true }, idle, true, 'Ask the session to deal with the conflicts', 'needs', 'Conflicts'],
+    [{ threads: 3 }, idle, true, 'Ask the session to deal with the 3 unresolved comments', 'needs', 'Comments'],
+    [{ checks: 'failing' }, idle, true, 'Ask the session to deal with the failing checks', 'error', 'Checks failing'],
+    [{ checks: 'failing' }, working, false, 'The session is dealing with the failing checks', 'working', 'Checks failing'],
+    [{ checks: 'running' }, idle, false, 'Waiting on checks to finish', 'working', 'Checks running'],
+    [{ review: 'approved' }, idle, false, 'Approved, but it cannot merge yet', 'quiet', 'Approved'],
+    [{ ...READY, mine: false }, idle, false, 'Approved, nothing asked of you', 'quiet', 'Approved'],
+    [{ checks: 'failing' }, { state: 'active' }, false, 'The session is dealing with the failing checks', 'working', 'Checks failing'],
+    [{ requested: 1 }, idle, false, 'Waiting on a reviewer', 'quiet', 'In review'],
+    [{ review: 'required' }, idle, false, 'Waiting on a reviewer', 'quiet', 'In review'],
+    [{ state: 'draft' }, idle, false, 'Still a draft', 'quiet', 'Draft'],
+    [{}, idle, false, 'Open, no review asked for yet', 'quiet', 'Open'],
+    [{ mine: false }, idle, false, 'Open, nothing asked of you', 'quiet', 'Open'],
   ];
-  for (const [extra, row, you, text, tone] of cases) assert.deepEqual(line(extra, row), { you, text, tone }, text);
+  for (const [extra, row, you, text, tone, word] of cases) assert.deepEqual(line(extra, row), { you, text, tone, word }, text);
 });
 
 test('the work to do is listed in a fixed order, joined with commas and an and, and a single comment reads in the singular', () => {
@@ -59,7 +60,7 @@ test('the tone is error only when checks are failing, whatever else is listed', 
 
 test('a working or active session is dealing with the work itself, and a session waiting for an approval or idle is not', () => {
   const all = { review: 'changes', conflicts: true };
-  assert.deepEqual(line(all, working), { you: false, text: 'The session is dealing with the requested changes and the conflicts', tone: 'working' });
+  assert.deepEqual(line(all, working), { you: false, text: 'The session is dealing with the requested changes and the conflicts', tone: 'working', word: 'Changes asked' });
   assert.deepEqual(line(all, { state: 'active' }), line(all, working));
   for (const state of ['idle', 'waiting']) assert.equal(line(all, { state }).you, true, state);
   assert.equal(statusOf(pull(all), undefined).you, true, 'a row that is not known is not working');
@@ -90,7 +91,7 @@ test('merge it needs an open pull request of the owner that is approved, clean a
 
 test('work on a pull request that is not the owner\'s is not theirs to ask for', () => {
   for (const extra of [{ review: 'changes' }, { conflicts: true }, { threads: 2 }, { checks: 'failing' }]) {
-    assert.deepEqual(line({ ...extra, mine: false }), { you: false, text: 'Open, nothing asked of you', tone: 'quiet' }, JSON.stringify(extra));
+    assert.deepEqual(line({ ...extra, mine: false }), { you: false, text: 'Open, nothing asked of you', tone: 'quiet', word: 'Open' }, JSON.stringify(extra));
   }
 });
 
@@ -113,14 +114,67 @@ test('a viewer who is not known is never told what is asked of them, and gets th
   assert.equal(needsOwner([pull({ mine: null, asked: null, checks: 'failing' })], idle), false);
 });
 
-test('the main pull request is the first of the list that the page may link to', () => {
-  const list = [pull({ url: 'javascript:alert(1)' }), pull({ url: 'https://github.com.evil.example/o/r/pull/3' }), null, pull({ url: url(2) }), pull({ url: url(1) })];
-  assert.equal(mainPull(list).url, url(2));
-  assert.equal(mainPull([pull({ url: 'javascript:alert(1)' })]), null);
-  assert.equal(mainPull([pull({ url: url(1) + '/files' })]), null);
-  assert.equal(mainPull([]), null);
-  assert.equal(mainPull(undefined), null);
-  assert.equal(mainPull('nothing'), null);
+test('the word of a pull request is the first thing to do from the sentence\'s list, and a viewer who is not known gets the plain words', () => {
+  const all = { review: 'changes', conflicts: true, threads: 2, checks: 'failing' };
+  assert.equal(line(all).word, 'Changes asked');
+  assert.equal(line({ ...all, review: 'none' }).word, 'Conflicts');
+  assert.equal(line({ ...all, review: 'none', conflicts: false }).word, 'Comments');
+  assert.equal(line({ ...all, asked: true, mine: false }).word, 'Review asked');
+  assert.equal(line({ mine: null, asked: null, ...READY }).word, 'Approved');
+});
+
+const issue = (extra = {}) => ({ url: 'https://github.com/example-org/example-repo/issues/5', kind: 'issue', repo: 'example-org/example-repo', number: 5, title: 'Something is broken', state: 'open', attached: false, ...extra });
+
+test('the items the page may link to are the pull requests and issues at their plain address, whatever else a list holds', () => {
+  const list = [pull({ url: 'javascript:alert(1)' }), pull({ url: 'https://github.com.evil.example/o/r/pull/3' }), null, pull({ url: url(2) }), issue(), pull({ url: url(1) + '/files' }), issue({ url: 'https://github.com/o/r/issues/5/x' })];
+  assert.deepEqual(itemsOf(list).map(item => item.url), [url(2), issue().url]);
+  for (const nothing of [[], undefined, 'nothing', null]) assert.deepEqual(itemsOf(nothing), []);
+});
+
+test('a card speaks of the first pull request that waits on the owner, else the first pull request, and never of an issue or an item that could not be read', () => {
+  const quiet = pull({ url: url(1), mine: false });
+  const asked = pull({ url: url(2), asked: true, mine: false });
+  const later = pull({ url: url(3), ...READY });
+  assert.equal(leadPull([quiet, asked, later], idle).url, url(2));
+  assert.equal(leadPull([quiet, later, asked], idle).url, url(3));
+  assert.equal(leadPull([quiet, pull({ url: url(4), mine: false })], idle).url, url(1));
+  assert.equal(leadPull([pull({ url: url(5), checks: 'failing' }), asked], working).url, url(2), 'work the session is doing is not waiting on the owner');
+  assert.equal(leadPull([issue(), quiet], idle).url, url(1), 'an issue is skipped');
+  assert.equal(leadPull([issue(), pull({ url: url(6), state: 'unknown', attached: true })], idle), null);
+  assert.equal(leadPull([pull({ url: 'javascript:alert(1)' })], idle), null);
+  assert.equal(leadPull([], idle), null);
+  assert.equal(leadPull(undefined, idle), null);
+});
+
+test('an issue or an item that could not be read never puts a session in the owner\'s court', () => {
+  const waiting = pull({ url: url(1), asked: true, mine: false });
+  assert.equal(needsOwner([issue(), pull({ url: url(2), state: 'unknown', asked: true, attached: true })], idle), false);
+  assert.equal(needsOwner([issue(), waiting], idle), true);
+  assert.equal(needsOwner([issue({ state: 'completed' }), issue({ state: 'not_planned' })], idle), false);
+  assert.equal(needsOwner(undefined, idle), false);
+});
+
+test('an issue reads Open, Done or Not planned, and an item that could not be read reads Can\'t read', () => {
+  assert.deepEqual([issueWord(issue()), issueWord(issue({ state: 'completed' })), issueWord(issue({ state: 'not_planned' }))], [['Open', 'quiet'], ['Done', 'ready'], ['Not planned', 'quiet']]);
+  assert.deepEqual([issueWord(issue({ state: 'unknown' })), issueWord(issue({ state: 'what' })), issueWord(undefined)], [["Can't read", 'error'], ["Can't read", 'error'], ["Can't read", 'error']]);
+});
+
+test('a badge names the item by repo and number, with the status word, tone, title, sentence and address a screen reader and a tooltip give', () => {
+  const merge = badgeOf(pull({ url: url(12), title: 'Fix the thing', ...READY, attached: true }), idle);
+  assert.deepEqual({ ...merge, name: undefined, tip: undefined }, {
+    kind: 'pull', label: 'Pull request', word: 'Ready to merge', tone: 'needs', title: 'Fix the thing', sentence: 'Merge the pull request', url: url(12), ref: 'example-repo#12', attached: true, name: undefined, tip: undefined,
+  });
+  assert.equal(merge.name, `Pull request example-repo#12. Ready to merge. Fix the thing. Merge the pull request. ${url(12)}`);
+  assert.equal(merge.tip, `Fix the thing. Merge the pull request. ${url(12)}`);
+  const done = badgeOf(issue({ state: 'completed' }), idle);
+  assert.deepEqual([done.kind, done.label, done.word, done.tone, done.sentence, done.ref, done.attached], ['issue', 'Issue', 'Done', 'ready', '', 'example-repo#5', false]);
+  assert.equal(done.name, `Issue example-repo#5. Done. Something is broken. ${issue().url}`);
+  const lost = badgeOf({ url: issue().url, kind: 'issue', repo: 'example-org/example-repo', number: 5, state: 'unknown', attached: true }, idle);
+  assert.deepEqual([lost.word, lost.tone, lost.title, lost.sentence, lost.name], ["Can't read", 'error', '', '', `Issue example-repo#5. Can't read. ${issue().url}`]);
+  const lostPull = badgeOf({ url: url(9), state: 'unknown', attached: true }, idle);
+  assert.deepEqual([lostPull.word, lostPull.label, lostPull.sentence], ["Can't read", 'Pull request', '']);
+  assert.equal(badgeOf(pull({ url: url(12), checks: 'failing' }), working).word, 'Checks failing', 'the word does not change with what the session is doing');
+  assert.equal(badgeOf(pull({ url: url(12), checks: 'failing' }), working).sentence, 'The session is dealing with the failing checks');
 });
 
 test('a review asked of the owner always waits on them, for a draft too, and merged and closed never do', () => {
