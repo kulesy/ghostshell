@@ -93,7 +93,7 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   const ordinary = startsOf(s)[1].started;
   assert.equal(flagOf(ordinary, '--permission-mode'), mode, 'it starts in the mode a new session in its folder gets');
   for (const flag of ['--session-id', '--append-system-prompt', '--setting-sources']) assert.equal(ordinary.includes(flag), false, `an ordinary session has no ${flag}`);
-  assert.deepEqual(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.filter(rule => rule !== 'mcp__claude-in-chrome'), ['mcp__capcom__send_sub_session'], 'an ordinary session asks only about sending to a sub session');
+  assert.deepEqual(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.filter(rule => rule !== 'mcp__claude-in-chrome'), ['mcp__capcom__send_session'], 'an ordinary session asks only about sending to a sub session');
 
   const again = await restart(s);
   const second = await signIn(again);

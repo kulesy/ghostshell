@@ -1,5 +1,5 @@
 // Run with `npm test`. Sending to a sub session over HTTP against the real server and a fake CLI: a chip starts a session, its process stops, and the
-// chat above it wakes it with send_sub_session. The wording, the refusals and the card rules have their own tests.
+// chat above it wakes it with send_session. The wording, the refusals and the card rules have their own tests.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { findRow } from '../public/ui/tree.js';
@@ -37,7 +37,7 @@ async function callTool(s, token, id, tool, args = {}) {
   return replies(s)[before];
 }
 const resumed = (s, id) => cliCalls(s).filter(c => c.started?.includes('--resume') && c.started[c.started.indexOf('--resume') + 1] === id);
-const delivered = s => cliCalls(s).filter(c => typeof c.user === 'string' && c.user.startsWith('<parent-session-message'));
+const delivered = s => cliCalls(s).filter(c => typeof c.user === 'string' && c.user.startsWith('<session-message'));
 
 test('the list and the read name a sub session by the chip title, and a rename by the owner wins over it', async () => {
   const { s, token } = await ready();
@@ -50,11 +50,11 @@ test('the list and the read name a sub session by the chip title, and a rename b
 test('a message to an idle sub session with no process resumes it and arrives as a message from its parent, at any depth', async () => {
   const { s, token } = await ready();
   assert.equal(resumed(s, 'kid').length, 0);
-  const text = textOf(await callTool(s, token, 'top', 'send_sub_session', { session_id: 'kid', message: 'Please rebase.' }));
+  const text = textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'kid', message: 'Please rebase.' }));
   assert.match(text, /^Delivered to "Review - dialogs" \[kid\]\./);
   await until(() => resumed(s, 'kid').length === 1 && delivered(s).length === 1);
-  assert.equal(delivered(s)[0].user, '<parent-session-message from="top" from-name="Top (your parent session)">\nPlease rebase.\n</parent-session-message>');
-  assert.match(textOf(await callTool(s, token, 'top', 'send_sub_session', { session_id: 'grand', message: 'And you.' })), /^Delivered to "Grand" \[grand\]\./);
+  assert.equal(delivered(s)[0].user, '<session-message from="top" from-name="Top (your parent session)">\nPlease rebase.\n</session-message>');
+  assert.match(textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'grand', message: 'And you.' })), /^Delivered to "Grand" \[grand\]\./);
   await until(() => resumed(s, 'grand').length === 1);
 });
 
@@ -62,13 +62,13 @@ test('a message to a session that is running a turn or waiting on its owner is q
   const { s, token } = await ready();
   await sendTo(s, token, 'kid', 'begin a session');
   await until(() => resumed(s, 'kid').length === 1);
-  assert.match(textOf(await callTool(s, token, 'top', 'send_sub_session', { session_id: 'kid', message: 'One.' })), /^Queued for "Review - dialogs" \[kid\]\. It is running a turn/);
+  assert.match(textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'kid', message: 'One.' })), /^Queued for "Review - dialogs" \[kid\]\. It is running a turn/);
   await sendTo(s, token, 'kid', 'ask for approval');
   await until(() => cliCalls(s).some(c => c.user === 'ask for approval'));
   const viewer = listen(s, token, 'kid');
   try {
     await until(() => viewer.events.some(e => e.type === 'approval' || (e.type === 'status' && e.data.pending?.length)));
-    assert.match(textOf(await callTool(s, token, 'top', 'send_sub_session', { session_id: 'kid', message: 'Two.' })), /^Queued for "Review - dialogs" \[kid\]\. It is waiting for its owner to approve something/);
+    assert.match(textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'kid', message: 'Two.' })), /^Queued for "Review - dialogs" \[kid\]\. It is waiting for its owner to approve something/);
     assert.equal(cliCalls(s).some(c => c.control === 'interrupt'), false, 'nothing was interrupted');
     assert.equal(resumed(s, 'kid').length, 1, 'no second process was started');
     await until(() => delivered(s).length === 2);
@@ -77,15 +77,22 @@ test('a message to a session that is running a turn or waiting on its owner is q
   }
 });
 
-test('an archived sub session and a session that is not below are refused, and nothing reaches them', async () => {
+test('an archived session, itself and an id that is no session are refused, and any other session in the index is sent to as another session', async () => {
   const { s, token } = await ready();
-  const archived = await callTool(s, token, 'top', 'send_sub_session', { session_id: 'gone', message: 'hi' });
+  const archived = await callTool(s, token, 'top', 'send_session', { session_id: 'gone', message: 'hi' });
   assert.equal(archived.result.isError, true);
   assert.equal(textOf(archived), 'Refused: "Gone" [gone] is archived. Ask the owner to unarchive it, then send again.');
-  for (const id of ['loose', 'top', 'nobody']) assert.deepEqual((await callTool(s, token, 'top', 'send_sub_session', { session_id: id, message: 'hi' })).result, { content: [{ type: 'text', text: NOT_BELOW }], isError: true });
+  assert.equal(textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'top', message: 'hi' })), 'A session cannot send a message to itself.');
+  assert.match(textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'nobody', message: 'hi' })), /^No session with that id on this Mac\./);
+  assert.equal((await callTool(s, token, 'top', 'read_sub_session', { session_id: 'loose' })).result.content[0].text, NOT_BELOW, 'a read still reaches only sub sessions');
   assert.equal((await get(s, token, '/api/sessions?archived=1')).body().features.subStatus, true);
   assert.equal(delivered(s).length, 0);
-  assert.equal(resumed(s, 'gone').length + resumed(s, 'loose').length, 0);
+  assert.equal(resumed(s, 'gone').length, 0);
+  const text = textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'loose', message: 'Hello.' }));
+  assert.match(text, /^Delivered to "Loose" \[loose\]\..*read_sub_session reaches only sub sessions/);
+  await until(() => delivered(s).length === 1);
+  assert.equal(delivered(s)[0].user, '<session-message from="top" from-name="Top (another session)">\nHello.\n</session-message>');
+  assert.equal(resumed(s, 'loose').length, 1);
 });
 
 test('the chat above asks first, in every mode, with a card that names the recipient, and nothing is sent until it is approved', async () => {
@@ -97,7 +104,7 @@ test('the chat above asks first, in every mode, with a card that names the recip
     await sendTo(s, token, 'top', 'ask to send to a sub');
     await until(() => viewer.events.some(e => e.type === 'approval'));
     const [card] = viewer.events.filter(e => e.type === 'approval').map(e => e.data);
-    assert.deepEqual([card.tool, card.always, card.summary], ['mcp__capcom__send_sub_session', false, 'to "Review - dialogs": Please rebase']);
+    assert.deepEqual([card.tool, card.always, card.summary], ['mcp__capcom__send_session', false, 'to "Review - dialogs": Please rebase']);
     assert.equal(cliCalls(s).some(c => c.requestId === 'perm-send'), false, 'the CLI is not answered until the owner decides');
     assert.equal((await post(s, token, '/api/sessions/top/approve', { requestId: 'perm-send', decision: 'always' })).status, 200);
     await until(() => cliCalls(s).some(c => c.requestId === 'perm-send'));
@@ -126,9 +133,9 @@ test('a session a chip started goes idle and loses its process, and the chat abo
   assert.equal((await post(s, token, '/api/layout/archive', { id: started.id, archived: false })).status, 200);
   const before = cliCalls(s).filter(c => c.started).length;
 
-  const text = textOf(await callTool(s, token, 'top', 'send_sub_session', { session_id: started.id, message: 'Please rebase.' }));
+  const text = textOf(await callTool(s, token, 'top', 'send_session', { session_id: started.id, message: 'Please rebase.' }));
   assert.match(text, /^Delivered to "Review - dialogs" \[begun-by-the-fake\]\. It was idle/);
   await until(() => cliCalls(s).filter(c => c.started).length === before + 1 && delivered(s).length === 1);
   assert.equal(resumed(s, started.id).length, 1, 'a new process resumed the session');
-  assert.match(delivered(s)[0].user, /^<parent-session-message from="top" from-name="Top \(your parent session\)">\nPlease rebase\.\n<\/parent-session-message>$/);
+  assert.match(delivered(s)[0].user, /^<session-message from="top" from-name="Top \(your parent session\)">\nPlease rebase\.\n<\/session-message>$/);
 });
