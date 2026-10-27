@@ -1,5 +1,6 @@
 // The chat pane: header, transcript and the dock under it. It owns one chat controller for as long as it is on screen.
 import { Approvals } from './approvals.js';
+import { Attached, attachable } from './attached.js';
 import { copyText } from './clipboard.js';
 import { Composer } from './composer.js';
 import { HOME } from './env.js';
@@ -76,6 +77,7 @@ function ChatHead({ ctrl, kind, rename }) {
   const draft = !!ctrl.draft;
   const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? null : null));
   const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
+  const attached = useStore(sessionIndex, s => attachable(s.ix, ctrl.id));
   const state = status?.state || 'idle';
   useDocumentTitle(draft ? 'New session · GhostShell' : session?.title ? `${session.title} · GhostShell` : 'GhostShell');
   const place = kind ? [kind] : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : ''] : [];
@@ -107,6 +109,7 @@ function ChatHead({ ctrl, kind, rename }) {
             ${renamable ? html`<button class="btn chat-rename" type="button" data-variant="ghost" data-size="icon-xs" ref=${pencil} aria-label=${rename.label} data-tip=${rename.label} onClick=${() => setRenaming(true)}>${draw(icons.pencil, 'icon')}</button>` : null}`}
       </div>
       <p class="chat-meta" id="meta">${meta}</p>
+      ${attached && !draft ? html`<${Attached} ctrl=${ctrl} />` : null}
       ${draft && groupName ? html`<span class="start-group">${draw(icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${`Start outside ${groupName}`} data-tip="Start outside the group" onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>
     ${terminal || subs ? html`<div class="chat-tools">${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}

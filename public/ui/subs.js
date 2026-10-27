@@ -11,7 +11,8 @@ import { useStore } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
 import { UNTITLED } from './order.js';
-import { mainPull, statusOf } from './pull-rules.js';
+import { Badges } from './badges.js';
+import { itemsOf, leadPull, statusOf } from './pull-rules.js';
 import { pullsOn, pullStore, usePullNeeds } from './pulls.js';
 import { createStore } from './store.js';
 import { batchesOf, drawnRows, KEPT, linesOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, summaryLine, trim, withPulls } from './sub-panel-rules.js';
@@ -150,7 +151,8 @@ function Line({ node, shared }) {
   const name = row.title || UNTITLED;
   const state = DOT_LABEL[row.dot] ?? STATE_LABEL[row.state];
   const pill = pillOf(row);
-  const main = mainPull(known.get(row.id)?.pulls);
+  const items = itemsOf(known.get(row.id)?.pulls);
+  const main = leadPull(items, row);
   const running = isRunning(row);
   const body = `sub-${row.id}`;
   const close = button => {
@@ -180,6 +182,7 @@ function Line({ node, shared }) {
       ${heard?.line ? html`<p class="sub-said">${heard.line}</p>` : null}
       ${waits ? html`<p class="sub-wait">${waits}</p>` : null}
       ${main && !waits ? html`<${Status} id=${`${body}-status`} pull=${main} row=${row} />` : null}
+      <${Badges} items=${items.filter(item => item !== main)} row=${row} label=${`Pull requests and issues of ${name}`} />
       <div class="sub-foot">
         ${roll ? html`<p class="sub-roll"><${Words} text=${roll} /></p>` : null}
         <div class="sub-acts">

@@ -387,11 +387,11 @@ test('a second look at the same sessions within the minute asks the server for n
   await page.evaluate(`location.hash = '#/s/calm'`);
   await page.until(`!!document.querySelector('#panel .sub-pull')`);
   await new Promise(resolve => setTimeout(resolve, 800));
-  assert.equal(watch.pulls().length, first, 'the tab closed and opened, and the chat left and come back to');
+  assert.deepEqual(watch.pulls().slice(first), ['/api/pulls?ids=plain'], 'the tab closed and opened, and the chat left and come back to, with only the session the page opened asking for itself');
   const before = ghCalls();
   await page.evaluate(`window.oldDocument = true; location.reload()`);
   await page.until(`!window.oldDocument && !!document.querySelector('#panel .sub-pull')`, 15_000);
-  assert.equal(watch.pulls().length, first + 1, 'a new page knows nothing and asks');
+  assert.equal(watch.pulls().length, first + 2, 'a new page knows nothing and asks');
   assert.equal(ghCalls(), before, 'and the server answers from its cache');
   assert.deepEqual(page.problems, []);
 });
