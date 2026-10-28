@@ -362,6 +362,17 @@ test('a group deleted by hand while its chat runs takes its tools with it', asyn
 });
 
 const removeGroup = (s, token, id) => post(s, token, '/api/layout/group/remove', { id });
+
+test('after its group is deleted, a send to the group\'s chat is refused as no session, and its chat cannot send either', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await sendTo(s, token, WORK, 'finish the turn');
+  assert.equal((await removeGroup(s, token, 'cg-work')).status, 200);
+  assert.ok(onDisk(s).retired.some(g => g.session === WORK));
+  assert.match(textOf(await callTool(s, token, 'loose', 'send_session', { session_id: WORK, message: 'hi' })), /^No session with that id on this Mac\./);
+  assert.equal(textOf(await callTool(s, token, WORK, 'send_session', { session_id: 'loose', message: 'hi' })), 'This group no longer exists.');
+  assert.equal(delivered(s).length, 0);
+});
 const stateOfWork = async (s, token) => (await get(s, token, '/api/sessions')).groups.find(g => g.id === 'cg-work').session.state;
 const touched = s => cliCalls(s).filter(c => c.response || c.control === 'interrupt' || c.closed);
 // The layout as the fake CLI found it when the interrupt reached it, which shows whether the server had written it by then.

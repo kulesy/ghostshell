@@ -192,12 +192,13 @@ function buildIndex({ archived = false } = {}) {
   }
 
   // A group's or section's session belongs to it alone, so its row leaves `rows` here and no list, family, count or search sees it. A session
-  // with no transcript yet gets a row from the layout.
+  // with no transcript yet gets a row from the layout. A deleted group's chat is marked `retired`, which send_session cannot reach.
+  const retired = new Set(own.retired.map(g => g.session));
   const groupSessions = new Map();
   for (const g of ownedChats) {
     const row = rows.get(g.session) ?? { lastActivityAt: 0, sortAt: 0, createdAt: 0, state: stateOf(g.session, 0) };
     rows.delete(g.session);
-    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, via: null, groupSession: g.id });
+    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, via: null, groupSession: g.id, ...(retired.has(g.session) && { retired: true }) });
   }
 
   // A family shows in the place of its holder, the topmost session its links reach, so a child takes the place its holder has now.
@@ -356,8 +357,7 @@ function subCtx(sessionId) {
   return {
     lookup({ archived }) {
       const { rows, groupSessions } = buildIndex({ archived });
-      const retired = new Set(layout.read().retired.map(g => g.session));
-      const listed = [...rows.values(), ...[...groupSessions.values()].filter(r => !retired.has(r.id))];
+      const listed = [...rows.values(), ...[...groupSessions.values()].filter(r => !r.retired)];
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
