@@ -53,8 +53,6 @@ const ALLOWED = [
   'gh pr view https://github.com/acme/web/pull/12 --json state',
   'gh pr view 1 --repo=github.com/acme/web',
   'gh pr view 1 -R https://github.com/acme/web',
-  'gh repo view acme/web --json name',
-  'gh repo view -b main https://github.com/acme/web',
   'gh pr list --hostname github.com',
   'gh issue view 4 --json body',
   'gh run view 99 --log',
@@ -113,6 +111,10 @@ const REFUSED = [
   'find . -name x~y',
   'find . ^x',
   'tree -R -H . -L 2',
+  'gh repo view -- -@evil.example/a/b',
+  'gh repo view acme/web',
+  'gh pr view -- 1',
+  'gh pr list -- -@evil.example/a/b',
   'gh repo view evil.example/a/b',
   'gh repo view git@evil.example:a/b',
   'gh repo view --json name evil.com/a/b',
@@ -355,4 +357,25 @@ test('a glob is allowed only where it cannot turn a file name into a flag the co
   assert.equal(readOnlyCommand('sort "*.md"'), true);
   assert.equal(readOnlyCommand("find . -name '*.md'"), true);
   assert.equal(readOnlyCommand('find . -name *.md'), false);
+});
+
+test('no gh command the check allows names a host other than github.com, across seeded mixes of verbs, flags and hostile words', () => {
+  let seed = 20261028;
+  const pick = list => list[(seed = (seed * 1103515245 + 12345) % 2 ** 31) % list.length];
+  const verbs = ['pr view', 'pr list', 'pr diff', 'pr checks', 'pr status', 'issue view', 'issue list', 'run view', 'run list', 'release view', 'workflow view',
+    'search prs', 'search repos', 'repo view', 'api repos/o/r/pulls'];
+  const words = ['1', 'acme/web', '--json', 'state', '-q', '.state', '--', '-R', '--repo', '--hostname', '-b', 'main', '--paginate', '-H', 'Accept: x',
+    'evil.example/a/b', '-@evil.example/a/b', 'git@evil.example:a/b', 'https://evil.example/a/b/pull/1', 'github.com.evil.example/a/b',
+    '-Revil.example/a/b', '--repo=evil.example/a/b', '--hostname=evil.example', 'evil.example', '-:x@evil.example/a/b'];
+  let allowed = 0;
+  for (let n = 0; n < 5000; n++) {
+    const args = Array.from({ length: 1 + (n % 5) }, () => pick(words));
+    const command = `gh ${pick(verbs)} ${args.map(a => `'${a}'`).join(' ')}`;
+    if (!readOnlyCommand(command)) continue;
+    allowed++;
+    // A bare host is only a host as the value of --hostname. Elsewhere gh reads it as a name, such as a workflow's.
+    const hosts = args.filter((a, i) => a.includes('evil') && (a !== 'evil.example' || args[i - 1] === '--hostname'));
+    assert.deepEqual(hosts, [], command);
+  }
+  assert.ok(allowed > 100, `only ${allowed} commands were allowed, so the mix tests too little`);
 });
