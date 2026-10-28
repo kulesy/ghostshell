@@ -1186,7 +1186,7 @@ test('a tool call from an ordinary chat is refused by the tool server as unknown
 });
 
 const SUB_SEND = 'mcp__capcom__send_session';
-const subsOf = (rows = [{ id: 'kid', title: 'Review - dialogs' }]) => () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: rows.map(r => ({ via: 'me', ...r })) }), pending: () => [], summary: () => null });
+const subsOf = (rows = [{ id: 'kid', title: 'Review - dialogs' }, { id: 'stranger', title: 'Elsewhere', via: null }]) => () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: rows.map(r => ({ via: 'me', ...r })) }), pending: () => [], summary: () => null });
 
 test('an ordinary chat that has sub sessions asks before every send to one, a group chat asks for it in its own list, one with no sub sessions is given no rule, and Chrome\'s stays beside it', async t => {
   const rules = async (id, options) => {
@@ -1202,7 +1202,7 @@ test('an ordinary chat that has sub sessions asks before every send to one, a gr
   assert.deepEqual(await rules('11111111-2222-4333-8444-000000000053', { group: {}, subs: subsOf() }), GROUP_ASKS, 'a group chat keeps its own list, which has the send in it');
 });
 
-test('in an ordinary chat a send to a sub session always shows a card, in any mode, naming the recipient and the start of the message, with no Always allow even when the CLI offers one, while the reads need no card', async t => {
+test('in an ordinary chat a send to its own tree goes with no card and a send outside it always shows one, in any mode, naming the recipient and the start of the message, with no Always allow even when the CLI offers one, while the reads need no card', async t => {
   const modes = ['manual', 'bypassPermissions', 'auto'];
   for (const mode of modes) {
     const { chat, recorded } = groupChat(t, { subs: subsOf(), mode, id: `11111111-2222-4333-8444-00000000006${modes.indexOf(mode)}` });
@@ -1210,14 +1210,18 @@ test('in an ordinary chat a send to a sub session always shows a card, in any mo
       chat.send(`ask ${tool}`, []);
       await slow(() => recorded.answers().some(a => a.request_id === `ask-${tool}`));
     }
-    chat.send(`ask send_session ${JSON.stringify({ session_id: 'kid', message: 'Please rebase\nand push' })}`, []);
+    chat.send(`ask send_session ${JSON.stringify({ session_id: 'kid', message: 'Please rebase' })}`, []);
+    await slow(() => recorded.answers().some(a => a.request_id === 'ask-send_session'));
+    assert.equal(chat.status().pending.length, 0, mode);
+    chat.send(`ask send_session ${JSON.stringify({ session_id: 'stranger', message: 'Please rebase\nand push' })}`, []);
     await slow(() => chat.status().pending.length === 1);
     const [card] = chat.status().pending;
-    assert.deepEqual([card.tool, card.always, card.summary], [SUB_SEND, false, 'to "Review - dialogs": Please rebase and push'], mode);
-    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-list_sub_sessions', 'allow'], ['ask-read_sub_session', 'allow']], mode);
+    assert.deepEqual([card.tool, card.always, card.summary], [SUB_SEND, false, 'to "Elsewhere": Please rebase and push'], mode);
+    const sends = () => recorded.answers().filter(a => a.request_id === 'ask-send_session');
+    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-list_sub_sessions', 'allow'], ['ask-read_sub_session', 'allow'], ['ask-send_session', 'allow']], mode);
     chat.answer('ask-send_session', 'always');
-    await slow(() => recorded.answers().some(a => a.request_id === 'ask-send_session'));
-    const answer = recorded.answers().find(a => a.request_id === 'ask-send_session').response;
+    await slow(() => sends().length === 2);
+    const answer = sends()[1].response;
     assert.deepEqual([answer.behavior, answer.updatedPermissions], ['allow', undefined], 'Always allow keeps no rule for it');
   }
 });

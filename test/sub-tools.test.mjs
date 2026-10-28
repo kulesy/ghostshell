@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readGroupSession } from '../lib/groups.mjs';
-import { listSubSessions, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
+import { inOwnTree, listSubSessions, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
 import { GROUP_READ_NAMES, handleMcp, SUB_READ_NAMES, SEND_NAME, TOOL_NAMES } from '../lib/tools.mjs';
 import { indexTranscripts } from '../lib/transcripts.mjs';
@@ -378,6 +378,19 @@ test('the approval card names the recipient by title and shows the start of the 
   assert.equal(sendSummary({ session_id: 'far1', message: 'hi' }, subs), 'to "Session far1": hi', 'a session that is not below is named too');
   assert.equal(sendSummary({ session_id: 'nobody', message: 'hi' }, subs), 'to "nobody": hi', 'an id that is no session shows as given');
   assert.equal(sendSummary({}, { lookup() { throw new Error('index broke'); } }), 'to "": ');
+});
+
+test('a send needs no card to the parent, to a session below at any depth, archived ones included, or to a sibling, and asks for any other', () => {
+  const subs = subsFor(ROWS);
+  for (const id of ['up', 'a', 'a1', 'a2', 'a2x', 'b', 'sib']) assert.equal(inOwnTree(subs, id), true, id);
+  for (const id of ['far', 'far1', 'top', 'nobody', undefined]) assert.equal(inOwnTree(subs, id), false, String(id));
+  assert.equal(inOwnTree(subsFor(ROWS, { self: 'a' }), 'top'), true, 'a sub session reaches its parent');
+  assert.equal(inOwnTree(subsFor(ROWS, { self: 'a' }), 'up'), false, 'and not its grandparent');
+  assert.equal(inOwnTree(subsFor(ROWS, { self: 'a' }), 'sib'), false, 'or its parent\'s sibling');
+  assert.equal(inOwnTree(subsFor(ROWS, { self: 'far' }), 'up'), false, 'two sessions at the top level are not siblings');
+  assert.equal(inOwnTree(subsFor([...ROWS, GROUP_CHAT], { self: 'chat' }), 'b'), false, 'a group\'s chat has no tree');
+  assert.equal(inOwnTree(subsFor(ROWS, { self: 'nobody' }), 'up'), false, 'a session not in the index yet has no tree');
+  assert.equal(inOwnTree({ lookup() { throw new Error('index broke'); } }, 'up'), false);
 });
 
 test('a grandchild is told the message comes from an ancestor, and a closing tag in the message stays text', () => {
