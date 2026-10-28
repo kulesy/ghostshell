@@ -274,15 +274,13 @@
 
 .sub-card > p { align-self: stretch; margin: 0; font-size: 0.875rem; line-height: 1.375rem; overflow-wrap: anywhere; }
 
-.sub-said {
+:is(.sub-said, .sub-next) {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   line-clamp: 3;
   overflow: hidden;
 }
-
-.sub-wait { font-weight: 600; }
 
 .sub-pull { display: flex; flex-direction: column; gap: 0.125rem; align-self: stretch; min-width: 0; }
 

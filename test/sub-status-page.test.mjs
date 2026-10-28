@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { findChromium, launch, notFound } from './browser.mjs';
-import { PASSWORD, start } from './harness.mjs';
+import { as, PASSWORD, request, signIn, start, until } from './harness.mjs';
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 //   top
@@ -34,7 +34,7 @@ const SESSIONS = [
   { id: WORK, title: 'Talk about the work', source: 'cli', ago: 1, group: 'cg-work' },
 ];
 const GROUPS = [{ id: 'cg-work', name: 'Work', session: WORK }];
-const REPLY = 'The tests pass. Merging next.\n\n```bash\nnpm run release\n```';
+const REPLY = 'The tests pass. Merging next.\n\n```bash\nnpm run release\n```\n\nShall I merge it?';
 
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
@@ -44,13 +44,19 @@ let older;
 let spy;
 let browser;
 
-// The fake CLI's transcripts are in one folder, and a session that has said something has an assistant line at the end of its file.
-const says = (id, text) => fs.appendFileSync(path.join(app.home, '.claude', 'projects', '-test-folder', `${id}.jsonl`),
-  `${JSON.stringify({ type: 'assistant', message: { id: `m-${id}`, role: 'assistant', content: [{ type: 'text', text }] } })}\n`);
+// The fake CLI's transcripts are in one folder, and a session that has said something has an assistant line at the end of its file. The file is
+// dated 10 minutes back, since a session that wrote within the last 2 minutes is active and its card says it is working.
+const said = (home, id, text) => {
+  const file = path.join(home, '.claude', 'projects', '-test-folder', `${id}.jsonl`);
+  fs.appendFileSync(file, `${JSON.stringify({ type: 'assistant', message: { id: `m-${id}`, role: 'assistant', content: [{ type: 'text', text }] } })}\n`);
+  const old = (Date.now() - 600_000) / 1000;
+  fs.utimesSync(file, old, old);
+};
+const says = (id, text) => said(app.home, id, text);
 
 // The server behind a proxy that logs the requests it passes on and can hold the answers to api/summaries until they are let go. `leave` names
-// the features of the list it leaves out, as a server that started before they existed does.
-function through(target, { leave = [] } = {}) {
+// the features of the list it leaves out, and `strip` the fields of each summary, as a server that started before they existed does.
+function through(target, { leave = [], strip = [] } = {}) {
   const seen = [];
   const held = { on: false, answers: [] };
   const proxy = http.createServer((req, res) => {
@@ -70,6 +76,11 @@ function through(target, { leave = [] } = {}) {
           const { features, ...index } = JSON.parse(body.toString('utf8'));
           for (const name of leave) delete features[name];
           body = Buffer.from(JSON.stringify({ ...index, features }));
+        }
+        if (route === '/api/summaries' && strip.length) {
+          const parsed = JSON.parse(body.toString('utf8'));
+          for (const summary of Object.values(parsed.summaries ?? {})) for (const name of strip) delete summary[name];
+          body = Buffer.from(JSON.stringify(parsed));
         }
         const answer = () => {
           res.writeHead(reply.statusCode, { ...reply.headers, 'content-length': body.length });
@@ -156,9 +167,11 @@ test('a chat with sub sessions has the Sub sessions tab, open and first, and a h
   assert.deepEqual(page.problems, []);
 });
 
-test('a line has its title as a link, when it last moved, the first sentence of its reply and its roll-up, and the page asks for the lines on screen only', { skip, timeout }, async t => {
+test('a line has its title as a link, when it last moved, what to do next about it and its roll-up, and the page asks for the lines on screen only', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/top');
-  await page.until(`document.querySelector('.sub .sub-said')?.textContent === 'The tests pass.'`);
+  await page.until(`document.querySelector('.sub .sub-next')?.textContent === 'Answer its question: Shall I merge it?'`);
+  assert.equal(await page.evaluate(`document.querySelector('.sub .sub-next').dataset.tone`), 'needs', 'Kid is marked as awaiting');
+  assert.equal(await page.evaluate(`document.querySelectorAll('.sub .sub-said, .sub .sub-wait').length`), 0, 'one line, not a sentence and a line');
   assert.deepEqual(await all(page, '#panel .sub-title', 'el.getAttribute("href") + " " + el.firstChild.textContent'), ['#/s/kid Kid']);
   assert.equal(await text(page, '.sub .sub-roll'), '1 sub session');
   assert.equal(await page.evaluate(`!!document.querySelector('.sub .status-time')?.textContent`), true);
@@ -363,10 +376,10 @@ test('a line that moves while its summary is on the way is asked for again when 
     if (Date.now() - start > 5000) throw new Error('the request for the line was never made');
     await new Promise(resolve => setTimeout(resolve, 20));
   }
-  await moves(page, 'mover', 'Moved on. The rest follows.');
+  await moves(page, 'mover', 'Moved on. Let me know when to carry on.');
   assert.equal(spy.summaries().length - mark, 1, 'the line is stale, but the request for it is still out, so it is not asked for twice');
   spy.release();
-  await page.until(`document.querySelector('.sub .sub-said')?.textContent === 'Moved on.'`, 8000);
+  await page.until(`document.querySelector('.sub .sub-next')?.textContent === 'Reply to its offer: Let me know when to carry on.'`, 8000);
   assert.deepEqual(spy.summaries().slice(mark).filter(url => listen(url, { ids: 'mover' })).length, 2, 'asked once more, with the new stamp');
   assert.deepEqual(page.problems, []);
 });
@@ -413,5 +426,43 @@ test('more than 300 lines drawn are each asked for once and then the page stops 
   }
   await new Promise(resolve => setTimeout(resolve, 1500));
   assert.equal(asked().length, 330, 'each line once, and no more after');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a card says what to do next: answer a waiting question, answer or reply to where a reply ended, or that there is nothing to do', { skip, timeout: 60_000 }, async t => {
+  const steps = await start({ sessions: [
+    { id: 'hub', title: 'Hub', ago: 5 },
+    { id: 'asking', title: 'Asking', parent: 'hub', ago: 20 },
+    { id: 'ended', title: 'Ended', parent: 'hub', ago: 21 },
+    { id: 'offered', title: 'Offered', parent: 'hub', ago: 22 },
+    { id: 'quiet', title: 'Quiet', parent: 'hub', ago: 23 },
+  ], claude: true });
+  const say = (id, text) => said(steps.home, id, text);
+  say('ended', 'I read the config.\n\nWhich of the two branches should it use?');
+  say('offered', 'The change is in. If you want, I can also add the test.');
+  say('quiet', 'All finished.');
+  const { token } = await signIn(steps);
+  await request(steps, 'POST', '/api/sessions/asking/send', { headers: as(token), json: { text: 'ask a question' } });
+  await until(async () => (await request(steps, 'GET', '/api/sessions', { headers: as(token) })).body().ungrouped.some(r => (r.children ?? []).some(c => c.id === 'asking' && c.state === 'waiting')), 10_000);
+  const page = await appPage(t, '#/s/hub', { origin: steps.origin });
+  await page.until(`document.querySelectorAll('.sub .sub-next').length === 4`, 15_000);
+  const found = await page.evaluate(`Object.fromEntries([...document.querySelectorAll('.sub')].map(sub => [sub.querySelector('.sub-title').firstChild.textContent, [sub.querySelector('.sub-next').textContent, sub.querySelector('.sub-next').dataset.tone]]))`);
+  assert.deepEqual(found, {
+    Asking: ['Answer its question: Which branch should it use?', 'needs'],
+    Ended: ['Answer its question: Which of the two branches should it use?', 'ready'],
+    Offered: ['Reply to its offer: If you want, I can also add the test.', 'ready'],
+    Quiet: ["Nothing, it's done", 'quiet'],
+  });
+  assert.equal(await page.evaluate(`document.querySelectorAll('.sub .sub-said, .sub .sub-wait').length`), 0);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a server that sends no question or offer keeps the first sentence of the reply on the card, as before', { skip, timeout: 60_000 }, async t => {
+  const proxy = await through(app, { strip: ['ask'] });
+  t.after(() => proxy.close());
+  const page = await appPage(t, '#/s/top', { origin: proxy.origin });
+  await page.until(`document.querySelector('.sub .sub-said')?.textContent === 'The tests pass.'`);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.sub .sub-next, .sub .sub-wait').length`), 0);
+  assert.equal(await page.evaluate(`document.querySelector('.sub .sub-said').className`), 'sub-said');
   assert.deepEqual(page.problems, []);
 });

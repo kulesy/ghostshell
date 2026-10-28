@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RECENT_MS } from '../public/ui/group-rules.js';
 import {
-  batchesOf, drawnRows, familyNote, KEPT, linesOf, MAX_IDS, partOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, subsButtonName, subsOffered, subsStatus,
+  batchesOf, drawnRows, familyNote, KEPT, linesOf, MAX_IDS, nextStep, partOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, subsButtonName, subsOffered, subsStatus,
   subStatusOn, summaryLine, trim, withPulls,
 } from '../public/ui/sub-panel-rules.js';
 
@@ -136,6 +136,76 @@ test('what a session waits on names the tool and what it would do, or says it is
   assert.equal(pendingLine([]), '');
   assert.equal(pendingLine(undefined), '');
   assert.equal(pendingLine('Bash'), '');
+});
+
+const open = { url: 'https://github.com/o/r/pull/1', state: 'open', mine: true, asked: false, requested: 0, review: 'none', checks: 'none', conflicts: false, clean: false, threads: 0 };
+const heard = (extra = {}) => ({ line: 'It ran.', ask: '', at: NOW, pending: [], ...extra });
+const step = (state, extra, summary, pull = null) => nextStep(row('s', null, state, MINUTE, extra), summary, pull);
+
+test('a session that waits on an approval has the step of approving it, with the rest counted, and a question the step of answering it', () => {
+  const bash = { tool: 'Bash', summary: 'npm test' };
+  assert.deepEqual(step('waiting', {}, heard({ pending: [bash] })), { text: 'Approve Bash: npm test', tone: 'needs', from: 'pending' });
+  assert.equal(step('waiting', {}, heard({ pending: [bash, { tool: 'Edit', summary: 'a.js' }, bash] })).text, 'Approve Bash: npm test (and 2 more)');
+  assert.equal(step('waiting', {}, heard({ pending: [{ tool: 'Bash', summary: '' }] })).text, 'Approve Bash');
+  assert.equal(step('waiting', {}, heard({ pending: [{ tool: '', summary: '' }] })).text, 'Approve a request');
+  assert.equal(step('waiting', {}, heard({ pending: [{ tool: 'AskUserQuestion', summary: 'Which one?' }] })).text, 'Answer its question: Which one?');
+  assert.equal(step('waiting', {}, heard({ pending: [{ tool: 'AskUserQuestion', summary: '' }, bash] })).text, 'Answer its question (and 1 more)');
+  assert.equal(step('waiting', {}, heard({ pending: [{ tool: 'AskUserQuestion', summary: 'Which one?' }] })).from, 'pending');
+});
+
+test('a session that waits with nothing pending has the step of opening it, even when it has a question or an error to its name', () => {
+  assert.deepEqual(step('waiting', {}, heard()), { text: "Open it, it's waiting on you", tone: 'needs', from: 'pending' });
+  assert.equal(step('waiting', { dot: 'error' }, heard({ ask: 'Shall I?' })).from, 'pending');
+  assert.equal(step('waiting', {}, heard({ pending: 'Bash' })).text, "Open it, it's waiting on you");
+});
+
+test('a session that stopped on an error has the step of looking at it, before a pull request or a question', () => {
+  assert.deepEqual(step('idle', { dot: 'error' }, heard({ ask: 'Shall I?' }), { ...open, asked: true }), { text: 'Look at the error it stopped on', tone: 'error', from: 'error' });
+});
+
+test('a pull request that asks something of the owner is the step in its own words, and one that asks nothing is not', () => {
+  assert.deepEqual(step('idle', {}, heard({ ask: 'Shall I?' }), { ...open, asked: true }), { text: 'Review the pull request', tone: 'needs', from: 'pull' });
+  assert.equal(step('idle', {}, heard(), { ...open, review: 'approved', clean: true }).text, 'Merge the pull request');
+  assert.equal(step('working', {}, heard(), { ...open, asked: true }).from, 'pull', 'a review asked of the owner is theirs even while the session works');
+  assert.equal(step('idle', {}, heard(), { ...open, mine: false }).from, 'done');
+  assert.equal(step('idle', {}, heard(), { ...open, state: 'merged' }).from, 'done');
+});
+
+test('a working or active session has the step of nothing yet, and the first sentence waits for an older server', () => {
+  for (const state of ['working', 'active']) assert.deepEqual(step(state, {}, heard({ ask: 'Shall I?' })), { text: "Nothing yet, it's working", tone: 'working', from: 'working' }, state);
+  assert.equal(step('working', {}, heard({ ask: undefined })).from, 'working');
+});
+
+test('a server that sends no ask gets the first sentence of the reply, with no tone, and nothing when there is none', () => {
+  assert.deepEqual(step('idle', {}, { line: 'The tests pass.', at: NOW, pending: [] }), { text: 'The tests pass.', tone: null, from: 'said' });
+  assert.equal(step('idle', {}, { line: '', at: null, pending: [] }), null);
+  assert.equal(step('idle', {}, { line: 'x', ask: undefined, pending: [] }, { ...open, mine: false }).from, 'said');
+});
+
+test('an idle session whose reply ends on a question has the step of answering it, and on an offer the step of replying to it', () => {
+  assert.deepEqual(step('idle', {}, heard({ ask: 'Which branch?' })), { text: 'Answer its question: Which branch?', tone: 'ready', from: 'ask' });
+  assert.deepEqual(step('idle', {}, heard({ ask: 'Let me know if you want more.' })), { text: 'Reply to its offer: Let me know if you want more.', tone: 'ready', from: 'ask' });
+  assert.equal(step('idle', { dot: 'awaiting' }, heard({ ask: 'Shall I go?' })).text, 'Answer its question: Shall I go?');
+});
+
+test('a session Desktop marks as awaiting takes the waiting tone, with its question when it asked one and the step of opening it when not', () => {
+  assert.deepEqual(step('idle', { dot: 'awaiting' }, heard({ ask: 'Shall I go?' })), { text: 'Answer its question: Shall I go?', tone: 'needs', from: 'ask' });
+  assert.deepEqual(step('idle', { dot: 'awaiting' }, heard()), { text: "Open it, it's waiting on you", tone: 'needs', from: 'pending' });
+  assert.equal(step('idle', { dot: 'awaiting' }, heard(), { ...open, asked: true }).from, 'pull', 'a pull request that marks it awaiting says why');
+});
+
+test('an idle session with nothing asked has nothing for now with a pull request open and that it is done without one', () => {
+  assert.deepEqual(step('idle', {}, heard(), { ...open, mine: false }), { text: 'Nothing for now', tone: 'quiet', from: 'done' });
+  assert.equal(step('idle', {}, heard({ line: '' }), { ...open, state: 'draft', mine: false }).text, 'Nothing for now');
+  assert.deepEqual(step('idle', {}, heard()), { text: "Nothing, it's done", tone: 'quiet', from: 'done' });
+  assert.equal(step('idle', {}, heard(), { ...open, state: 'merged' }).text, "Nothing, it's done");
+  assert.equal(step('idle', {}, heard(), { ...open, state: 'closed' }).text, "Nothing, it's done");
+});
+
+test('a session the page has heard nothing of has no step yet', () => {
+  assert.equal(step('waiting', {}, undefined), null);
+  assert.equal(step('idle', { dot: 'error' }, undefined, { ...open, asked: true }), null);
+  assert.equal(step('working', {}, undefined), null);
 });
 
 test('a summary is read again for a session that has moved or changed state, and only for the sessions drawn', () => {

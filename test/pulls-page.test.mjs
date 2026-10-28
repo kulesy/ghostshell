@@ -241,13 +241,16 @@ async function appPage(t, hash = '', { origin = app.origin, phone = false } = {}
 const text = (page, selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
 const all = (page, selector, read) => page.evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].map(el => ${read})`);
 const button = page => page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-label')`);
-// The title of each card with the one status line it shows, and the address it links to.
+// The title of each card with the status line its pull request's link points at, the address it links to, and how many paragraphs say that status.
 const cards = page => page.evaluate(`Object.fromEntries([...document.querySelectorAll('.sub')].map(sub => {
-  const status = sub.querySelector(':scope > .sub-card .sub-status');
   const link = sub.querySelector(':scope > .sub-card .pull-link');
-  return [sub.querySelector('.sub-title').firstChild.textContent, status && { text: status.textContent, tone: status.dataset.tone, link: link.textContent, href: link.getAttribute('href'), described: link.getAttribute('aria-describedby') === status.id, lines: sub.querySelectorAll(':scope > .sub-card .sub-status').length }];
+  const status = link && document.getElementById(link.getAttribute('aria-describedby'));
+  const said = status && [...sub.querySelectorAll(':scope > .sub-card p')].filter(p => p.textContent === status.textContent).length;
+  return [sub.querySelector('.sub-title').firstChild.textContent, link && { text: status.textContent, tone: status.dataset.tone, link: link.textContent, href: link.getAttribute('href'), described: !!status, lines: said }];
 }))`);
-const settled = page => page.until(`document.querySelectorAll('.sub-status').length >= ${KINDS.length}`, 15_000);
+// The title of each card with the next-step line it shows.
+const steps = page => page.evaluate(`Object.fromEntries([...document.querySelectorAll('.sub')].map(sub => [sub.querySelector('.sub-title').firstChild.textContent, sub.querySelector(':scope > .sub-card .sub-next')?.textContent ?? null]))`);
+const settled = page => page.until(`document.querySelectorAll('.pull-link').length >= ${KINDS.length} && document.querySelectorAll('.sub-next').length >= document.querySelectorAll('.sub').length`, 15_000);
 
 test('a card shows one line saying what the owner has to do, with the whole address as a link that opens in another tab', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/top');
@@ -260,6 +263,11 @@ test('a card shows one line saying what the owner has to do, with the whole addr
   assert.equal(await page.evaluate(`[...document.querySelectorAll('.pull-link')].every(a => a.target === '_blank' && a.rel === 'noopener noreferrer')`), true);
   assert.equal(await page.evaluate(`document.querySelectorAll('.sub-pulls, .pull-facts, .pull-fact').length`), 0, 'no list of pull requests');
   assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.sub-status[data-tone="needs"]')).fontWeight`), '500');
+  const lines = await steps(page);
+  assert.equal(lines.Review, 'Review the pull request', 'a pull request that asks something of the owner is the next step, said once');
+  assert.equal(lines.Open, 'Nothing for now', 'an open pull request that asks nothing leaves nothing to do');
+  assert.equal(lines.Merged, "Nothing, it's done");
+  assert.equal(lines.Plain, "Nothing, it's done");
   assert.deepEqual(page.problems, []);
 });
 
@@ -267,7 +275,7 @@ test('a session that names several pull requests together shows none of them, an
   const page = await appPage(t, '#/s/top');
   await settled(page);
   assert.equal((await cards(page)).Many, null);
-  const noise = await page.evaluate(`(sub => sub.querySelectorAll('.sub-pull, .sub-status, .pull-link').length)([...document.querySelectorAll('.sub')].find(s => s.querySelector('.sub-title').firstChild.textContent === 'Many'))`);
+  const noise = await page.evaluate(`(sub => sub.querySelectorAll('.sub-pull, .pull-link').length)([...document.querySelectorAll('.sub')].find(s => s.querySelector('.sub-title').firstChild.textContent === 'Many'))`);
   assert.equal(noise, 0);
   const asked = fs.readFileSync(app.ghLog, 'utf8');
   for (const n of [21, 22, 23]) assert.equal(asked.includes(pr(n)), false, `pull request ${n}`);
@@ -275,22 +283,22 @@ test('a session that names several pull requests together shows none of them, an
   assert.deepEqual(page.problems, []);
 });
 
-test('a card that shows what it waits on for an approval shows no status line', { skip, timeout }, async t => {
+test('a card that waits on an approval says so as its next step and shows no pull request line', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/top');
   await settled(page);
-  await page.until(`!![...document.querySelectorAll('.sub')].find(s => s.querySelector('.sub-title').firstChild.textContent === 'Approve')?.querySelector('.sub-wait')`, 15_000);
-  const card = await page.evaluate(`(sub => ({ wait: sub.querySelector('.sub-wait').textContent, status: sub.querySelectorAll('.sub-status, .pull-link').length }))([...document.querySelectorAll('.sub')].find(s => s.querySelector('.sub-title').firstChild.textContent === 'Approve'))`);
-  assert.deepEqual(card, { wait: 'Waiting for you to approve Bash: ls', status: 0 });
-  assert.equal(await page.evaluate(`document.querySelectorAll('.sub .sub-status').length`), KINDS.length, 'every other card keeps its line');
+  await page.until(`/^Approve/.test([...document.querySelectorAll('.sub')].find(s => s.querySelector('.sub-title').firstChild.textContent === 'Approve')?.querySelector('.sub-next')?.textContent)`, 15_000);
+  const card = await page.evaluate(`(sub => ({ next: sub.querySelector('.sub-next').textContent, tone: sub.querySelector('.sub-next').dataset.tone, status: sub.querySelectorAll('.sub-pull, .pull-link').length }))([...document.querySelectorAll('.sub')].find(s => s.querySelector('.sub-title').firstChild.textContent === 'Approve'))`);
+  assert.deepEqual(card, { next: 'Approve Bash: ls', tone: 'needs', status: 0 });
+  assert.equal(await page.evaluate(`document.querySelectorAll('.sub .pull-link').length`), KINDS.length, 'every other card keeps its line');
   assert.deepEqual(page.problems, []);
 });
 
-test('a card with no pull request, and one whose pull request gh could not read, have no line at all', { skip, timeout }, async t => {
+test('a card with no pull request, and one whose pull request gh could not read, have no pull request line', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/top');
   await settled(page);
   const found = await cards(page);
   assert.deepEqual([found.Plain, found.Unknown], [null, null]);
-  const bare = await page.evaluate(`['Plain', 'Unknown'].map(name => { const sub = [...document.querySelectorAll('.sub')].find(s => s.querySelector('.sub-title').firstChild.textContent === name); return sub.querySelectorAll('.sub-pull, .sub-status, .pull-link').length; })`);
+  const bare = await page.evaluate(`['Plain', 'Unknown'].map(name => { const sub = [...document.querySelectorAll('.sub')].find(s => s.querySelector('.sub-title').firstChild.textContent === name); return sub.querySelectorAll('.sub-pull, .pull-link').length; })`);
   assert.deepEqual(bare, [0, 0]);
   assert.deepEqual(page.problems, []);
 });
@@ -349,13 +357,14 @@ test('the header button counts a pull request that needs the owner with the pane
 
 test('a working session leaves its own failing checks to itself and is not counted, and one with a review asked of the owner is', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/work');
-  await page.until(`document.querySelectorAll('.sub-status').length === 2`, 15_000);
+  await page.until(`document.querySelectorAll('.pull-link').length === 2 && document.querySelectorAll('.sub-next').length === 2`, 15_000);
   assert.equal(await button(page), 'Sub sessions: 2, 1 waiting on you');
   const pills = await page.evaluate(`Object.fromEntries([...document.querySelectorAll('.sub')].map(sub => [sub.querySelector('.sub-title').firstChild.textContent, sub.querySelector('.sub-pill').textContent]))`);
   assert.deepEqual(pills, { 'Working on failing checks': 'Working', 'Working with a review asked': 'Waiting on you' });
   const found = await cards(page);
   assert.deepEqual([found['Working on failing checks'].text, found['Working on failing checks'].tone], ['The session is dealing with the failing checks', 'working']);
   assert.deepEqual([found['Working with a review asked'].text, found['Working with a review asked'].tone], ['Review the pull request', 'needs']);
+  assert.deepEqual(await steps(page), { 'Working on failing checks': "Nothing yet, it's working", 'Working with a review asked': 'Review the pull request' });
   assert.deepEqual(await all(page, '.subs .status-heading', 'el.textContent'), ['Waiting on you (1)', 'Working (1)']);
   assert.equal(await text(page, '.subs-sum'), '2 sub sessions, 1 waiting on you, 1 working');
   assert.deepEqual(page.problems, []);
@@ -364,9 +373,9 @@ test('a working session leaves its own failing checks to itself and is not count
 test('a server that cannot say draws no line, counts nothing extra and is never asked for pull requests', { skip, timeout }, async t => {
   const older = await through(app, { leave: ['pullStatus'] });
   const page = await appPage(t, '#/s/top', { origin: older.origin });
-  await page.until(`document.querySelectorAll('#panel .sub').length === ${KIDS_OF_TOP} && !!document.querySelector('.sub-said')`, 15_000);
+  await page.until(`document.querySelectorAll('#panel .sub').length === ${KIDS_OF_TOP} && document.querySelectorAll('.sub-next').length === ${KIDS_OF_TOP}`, 15_000);
   await new Promise(resolve => setTimeout(resolve, 1000));
-  assert.equal(await page.evaluate(`document.querySelectorAll('.sub-pull, .sub-status, .pull-link').length`), 0);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.sub-pull, .pull-link').length`), 0);
   assert.equal(await button(page), `Sub sessions: ${KIDS_OF_TOP}, 2 waiting on you`, 'only Asks, which asked a question, and Approve, which waits for an approval');
   assert.deepEqual(older.pulls(), []);
   assert.deepEqual(page.problems, []);
@@ -451,6 +460,7 @@ const titles = page => page.evaluate(`[...document.querySelectorAll('[data-sub-c
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const order = page => page.evaluate(`[...document.querySelectorAll('[data-archive-card]')].map(b => b.dataset.archiveCard)`);
 const archive = async (page, id) => {
+  await page.until(`document.querySelectorAll('.sub-next').length === document.querySelectorAll('.sub').length`, 15_000);
   await page.evaluate(`document.querySelector(${JSON.stringify(archiveOf(id))}).scrollIntoView({ block: 'center' })`);
   await page.click(archiveOf(id));
 };
