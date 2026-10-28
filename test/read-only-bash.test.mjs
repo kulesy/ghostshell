@@ -41,6 +41,12 @@ const ALLOWED = [
   'sort -u file | uniq -c',
   'sort -k2,2 -n file',
   'find lib -name "*.mjs" -newer README.md',
+  'find . -name -rm',
+  'grep -iA3 x f',
+  'grep -e -x f',
+  'grep --color=never -c x f',
+  'grep -rn --include="*.md" x ~/notes/*.md',
+  'fgrep -lw x src/*.mjs',
   'sed -n 5p file',
   "sed -nE '1,$p' file",
   "sed -n '3,$p'",
@@ -226,6 +232,23 @@ const REFUSED = [
   'find . -fprintf out x',
   'find . -fls out',
   'find x*',
+  'find . -rm',
+  'find . -name',
+  'find . -newerct x',
+  'find -E . -regex x',
+  'grep --filter=txt:id x a.txt',
+  "egrep '--filter=txt:touch /tmp/x' x a.txt",
+  'grep --pager=id x f',
+  'grep ---/tmp/c x f',
+  'grep --config=/tmp/c x f',
+  'grep --save-config x',
+  'grep --filte=txt:id x a.txt',
+  'grep -Q x',
+  'grep -A',
+  'grep x *',
+  'grep x -*',
+  'grep -n x [a-c]*',
+  'cat a 1&>/dev/null b',
   'sed s/a/b/ f',
   'sed -n p f',
   'sed -n 1,5p f -i',
@@ -352,7 +375,8 @@ test('every simple command in a chain or pipe is checked on its own', () => {
 test('a glob is allowed only where it cannot turn a file name into a flag the command acts on', () => {
   assert.equal(readOnlyCommand('cat *.md'), true);
   assert.equal(readOnlyCommand('ls src/?'), true);
-  assert.equal(readOnlyCommand('grep -n x [a-c]*'), true);
+  assert.equal(readOnlyCommand('grep -n x src/*.mjs'), true);
+  assert.equal(readOnlyCommand('grep -n x *.mjs'), false);
   assert.equal(readOnlyCommand('sort *.md'), false);
   assert.equal(readOnlyCommand('sort "*.md"'), true);
   assert.equal(readOnlyCommand("find . -name '*.md'"), true);
@@ -363,19 +387,24 @@ test('no gh command the check allows names a host other than github.com, across 
   let seed = 20261028;
   const pick = list => list[(seed = (seed * 1103515245 + 12345) % 2 ** 31) % list.length];
   const verbs = ['pr view', 'pr list', 'pr diff', 'pr checks', 'pr status', 'issue view', 'issue list', 'run view', 'run list', 'release view', 'workflow view',
-    'search prs', 'search repos', 'repo view', 'api repos/o/r/pulls'];
+    'search prs', 'search repos', 'api repos/o/r/pulls'];
+  // Hosts with a dot are hostile wherever they sit. A host without one, such as intranet or localhost:8080, is only a host where gh reads a repo or a
+  // host, so as the value of -R, --repo or --hostname; elsewhere gh reads it as a branch or a name and looks it up on github.com.
+  const dotless = ['intranet/a/b', 'localhost:8080/a/b', 'intranet', '[::1]/a/b'];
   const words = ['1', 'acme/web', '--json', 'state', '-q', '.state', '--', '-R', '--repo', '--hostname', '-b', 'main', '--paginate', '-H', 'Accept: x',
     'evil.example/a/b', '-@evil.example/a/b', 'git@evil.example:a/b', 'https://evil.example/a/b/pull/1', 'github.com.evil.example/a/b',
-    '-Revil.example/a/b', '--repo=evil.example/a/b', '--hostname=evil.example', 'evil.example', '-:x@evil.example/a/b'];
+    '-Revil.example/a/b', '--repo=evil.example/a/b', '--hostname=evil.example', 'evil.example', '-:x@evil.example/a/b',
+    ...dotless, '-Rintranet/a/b', '--repo=localhost:8080/a/b', '--hostname=intranet', '-R[::1]/a/b'];
+  const hostValue = ['-R', '--repo', '--hostname'];
+  const hostile = (a, before) => a.includes('evil') ? a !== 'evil.example' || before === '--hostname'
+    : dotless.includes(a) ? hostValue.includes(before) : /^(-R|--repo=|--hostname=)/.test(a) && a !== '-R';
   let allowed = 0;
   for (let n = 0; n < 5000; n++) {
     const args = Array.from({ length: 1 + (n % 5) }, () => pick(words));
-    const command = `gh ${pick(verbs)} ${args.map(a => `'${a}'`).join(' ')}`;
+    const command = `gh ${pick(verbs)} ${args.map(a => (a.includes(' ') || pick([true, false]) ? `'${a}'` : a)).join(' ')}`;
     if (!readOnlyCommand(command)) continue;
     allowed++;
-    // A bare host is only a host as the value of --hostname. Elsewhere gh reads it as a name, such as a workflow's.
-    const hosts = args.filter((a, i) => a.includes('evil') && (a !== 'evil.example' || args[i - 1] === '--hostname'));
-    assert.deepEqual(hosts, [], command);
+    assert.deepEqual(args.filter((a, i) => hostile(a, args[i - 1])), [], command);
   }
   assert.ok(allowed > 100, `only ${allowed} commands were allowed, so the mix tests too little`);
 });
