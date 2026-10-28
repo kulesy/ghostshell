@@ -394,10 +394,11 @@ test('no gh command the check allows names a host other than github.com, across 
   const words = ['1', 'acme/web', '--json', 'state', '-q', '.state', '--', '-R', '--repo', '--hostname', '-b', 'main', '--paginate', '-H', 'Accept: x',
     'evil.example/a/b', '-@evil.example/a/b', 'git@evil.example:a/b', 'https://evil.example/a/b/pull/1', 'github.com.evil.example/a/b',
     '-Revil.example/a/b', '--repo=evil.example/a/b', '--hostname=evil.example', 'evil.example', '-:x@evil.example/a/b',
-    ...dotless, '-Rintranet/a/b', '--repo=localhost:8080/a/b', '--hostname=intranet', '-R[::1]/a/b'];
-  const hostValue = ['-R', '--repo', '--hostname'];
+    ...dotless, '-Rintranet/a/b', '--repo=localhost:8080/a/b', '--hostname=intranet', '-R[::1]/a/b', '-cR', '-cRintranet/a/b'];
+  // -R may close a cluster of short flags, such as -cR, and take the next word, or carry its value in the same word.
+  const takesHost = w => w === '--repo' || w === '--hostname' || /^-[A-Za-z]*R$/.test(w ?? '');
   const hostile = (a, before) => a.includes('evil') ? a !== 'evil.example' || before === '--hostname'
-    : dotless.includes(a) ? hostValue.includes(before) : /^(-R|--repo=|--hostname=)/.test(a) && a !== '-R';
+    : dotless.includes(a) ? takesHost(before) : /^(--repo=|--hostname=|-[A-Za-z]*R.)/.test(a);
   let allowed = 0;
   for (let n = 0; n < 5000; n++) {
     const args = Array.from({ length: 1 + (n % 5) }, () => pick(words));
