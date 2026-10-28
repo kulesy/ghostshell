@@ -115,10 +115,10 @@ test('only the last three lines of prose are read, and a code block or a heading
 });
 
 test('an offer is a phrase like want me to or let me know, whole words in any case, and a plain statement is not one', () => {
-  for (const offer of ['Want me to add a test.', 'SHALL I go on.', 'Should I continue.', 'Would you like a summary.', 'Do you want it merged.', 'Let me know when.', 'Say the word.', 'I can do more if you want.', "Done, if you'd like more.", 'Happy to help.']) {
+  for (const offer of ['Want me to add a test.', 'SHALL I go on.', 'Should I continue.', 'Would you like a summary.', 'Do you want it merged.', 'Let me know when.', 'Say the word.', 'I can do more if you want.', "Done, if you'd like more."]) {
     assert.equal(closingAsk(`Finished. ${offer}`), offer, offer);
   }
-  for (const plain of ['It was not wanted.', 'The shall-I-not file is gone.', 'Letting me know is not needed.', 'All finished.', 'Unhappy to hear it.']) assert.equal(closingAsk(plain), '', plain);
+  for (const plain of ['It was not wanted.', 'The shall-I-not file is gone.', 'Letting me know is not needed.', 'All finished.', 'Unhappy to hear it.', 'Happy to report the tests pass.']) assert.equal(closingAsk(plain), '', plain);
 });
 
 test('a long ask is cut to the limit with an ellipsis, 160 characters unless another is given, and nothing in gives nothing out', () => {
