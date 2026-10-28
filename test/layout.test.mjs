@@ -655,3 +655,80 @@ test('seeding from Desktop keeps the sections that were booked before the copy',
   assert.ok(f.layout.seed(desk));
   assert.deepEqual(f.onDisk().sections, { pinned: SESSION });
 });
+
+// ---- a new parent for several sessions ----------------------------------------------------------------
+
+const PARENT = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
+const FAMILY = { ...OLD, pinned: ['p1', 's3'], assignments: { s1: 'cg-a', s2: 'cg-b', s4: 'cg-a' }, parents: { s2: 'boss', s5: null } };
+
+test('a new parent gets its title and place, and links each session in one write, and the sessions it takes lose their own pin and group', () => {
+  const f = folder(FAMILY);
+  const { title, before } = f.layout.newParent(PARENT, { title: '  Login   work ', group: 'cg-a', links: { s1: PARENT, s2: PARENT, s3: PARENT, kid: 'boss' }, moved: ['s1', 's2', 's3'] });
+  assert.equal(title, 'Login work');
+  assert.deepEqual(f.onDisk(), {
+    ...FAMILY,
+    projects: [], retired: [], sections: {}, unarchived: [], archived: {},
+    pinned: ['p1'],
+    assignments: { s4: 'cg-a', [PARENT]: 'cg-a' },
+    titles: { [PARENT]: 'Login work' },
+    parents: { s2: PARENT, s5: null, s1: PARENT, s3: PARENT, kid: 'boss' },
+  });
+  assert.deepEqual(before, {
+    s1: { parent: false, group: 'cg-a', pinned: false },
+    s2: { parent: 'boss', group: 'cg-b', pinned: false },
+    s3: { parent: false, group: null, pinned: true },
+    kid: { parent: false, group: null, pinned: false },
+  });
+});
+
+test('a new parent is pinned instead when asked, and a take-out entry is recorded as null so it comes back as one', () => {
+  const f = folder(FAMILY);
+  const { before } = f.layout.newParent(PARENT, { title: 'Pinned parent', pinned: true, links: { s5: PARENT, s4: PARENT }, moved: ['s5', 's4'] });
+  assert.deepEqual(f.onDisk().pinned, ['p1', 's3', PARENT]);
+  assert.equal(PARENT in f.onDisk().assignments, false);
+  assert.deepEqual(before.s5, { parent: null, group: null, pinned: false });
+});
+
+test('a new parent that cannot be made writes nothing: no title, an unknown group, or a pin that is not a boolean', () => {
+  const f = folder(FAMILY);
+  backdate(f);
+  for (const title of [undefined, '', '   ', '​', 'x'.repeat(121)]) assert.throws(() => f.layout.newParent(PARENT, { title, links: { s1: PARENT }, moved: ['s1'] }), { status: 400 }, String(title));
+  assert.throws(() => f.layout.newParent(PARENT, { title: 'Ok', group: 'cg-gone', links: { s1: PARENT }, moved: ['s1'] }), { status: 400, message: 'Unknown group.' });
+  assert.throws(() => f.layout.newParent(PARENT, { title: 'Ok', pinned: 'yes', links: { s1: PARENT }, moved: ['s1'] }), { status: 400, message: 'Pinned or not?' });
+  assert.equal(rewritten(f), false);
+});
+
+test('putting a new parent back restores every entry exactly, takes the parent\'s title and place away, and leaves everything else alone', () => {
+  const f = folder(FAMILY);
+  const made = f.layout.newParent(PARENT, { title: 'Login work', group: 'cg-a', links: { s1: PARENT, s2: PARENT, s3: PARENT, s5: PARENT, kid: 'boss' }, moved: ['s1', 's2', 's3', 's5'] });
+  f.layout.rename('s4', 'Kept');
+  f.layout.restoreParent(PARENT, made.before);
+  assert.deepEqual(f.onDisk(), { ...FAMILY, projects: [], retired: [], sections: {}, unarchived: [], archived: {}, titles: { s4: 'Kept' }, pinned: ['p1', 's3'] });
+});
+
+test('putting a new parent back drops the group of a session whose group has gone, and a link that was none', () => {
+  const f = folder(FAMILY);
+  const made = f.layout.newParent(PARENT, { title: 'Login work', links: { s1: PARENT }, moved: ['s1'] });
+  f.layout.removeGroup('cg-a');
+  f.layout.restoreParent(PARENT, made.before);
+  const now = f.onDisk();
+  assert.equal('s1' in now.assignments, false);
+  assert.equal('s1' in now.parents, false);
+});
+
+test('putting a new parent back refuses anything newParent could not have made, and writes nothing', () => {
+  const f = folder(FAMILY);
+  backdate(f);
+  const fine = { parent: false, group: null, pinned: false };
+  const bad = [
+    undefined, null, [], 'x', 5,
+    { 'a b': fine }, { '../x': fine }, { '': fine },
+    { s1: null }, { s1: [] }, { s1: 'x' },
+    { s1: { ...fine, parent: undefined } }, { s1: { ...fine, parent: true } }, { s1: { ...fine, parent: 'bad id' } }, { s1: { ...fine, parent: 5 } },
+    { s1: { ...fine, group: false } }, { s1: { ...fine, group: 'bad id' } }, { s1: { ...fine, group: 5 } },
+    { s1: { ...fine, pinned: 'yes' } }, { s1: { ...fine, pinned: null } }, { s1: { ...fine, pinned: undefined } },
+    { s1: { ...fine, extra: true } }, { s1: { parent: false, group: null } },
+  ];
+  for (const before of bad) assert.throws(() => f.layout.restoreParent(PARENT, before), { status: 400, message: 'That undo is not one this server made.' }, JSON.stringify(before));
+  assert.equal(rewritten(f), false);
+});

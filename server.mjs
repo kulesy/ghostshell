@@ -16,7 +16,7 @@ import { chainOf, familiesOf } from './lib/families.mjs';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
 import { makeGroupUpdates, makeUpdateStore, pullsOf, scaled } from './lib/group-updates.mjs';
 import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, workFolder } from './lib/groups.mjs';
-import { makeLayout } from './lib/layout.mjs';
+import { MAX_TITLE, makeLayout, nameOf } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { pendingLines } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
@@ -165,9 +165,10 @@ function buildIndex({ archived = false } = {}) {
     rows.set(t.id, { id: t.id, title: (routine && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || UNTITLED, cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
       archived: false, lastActivityAt: t.mtime, sortAt: Math.max(t.mtime, edgeOf(t.id)), createdAt: started.get(t.id)?.at ?? 0, routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
   }
-  // A session started moments ago may not have written its file yet; after that, no file means it is gone.
+  // A session started moments ago may not have written its file yet; after that, no file means it is gone. A booked parent has no file
+  // until the owner writes in it, and stays until then.
   for (const s of started.values()) {
-    if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || UNTITLED, cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, sortAt: Math.max(s.at, edgeOf(s.id)), createdAt: s.at, routine: s.routine || null, source: 'capcom', state: stateOf(s.id, s.at) });
+    if (!rows.has(s.id) && (s.booked || now - s.at < 10 * 60_000)) rows.set(s.id, { id: s.id, title: s.title || UNTITLED, cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, sortAt: Math.max(s.at, edgeOf(s.id)), createdAt: s.at, routine: s.routine || null, source: 'capcom', state: stateOf(s.id, s.booked ? 0 : s.at) });
   }
 
   // Projects, groups and pins are Capcom's own and cover every session, whichever app started it. A group that is gone leaves its
@@ -439,6 +440,9 @@ function groupCtx(groupId) {
 // once before a no, since a transcript written a moment ago may not be in it yet.
 const hasTranscript = id => !!(transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id)));
 
+// A new parent is booked in started.json and has no transcript until the owner first writes in it, as a group's chat does.
+const isBooked = id => readStarted().some(s => s.id === id && s.booked);
+
 // Booked when the owner first opens the chat of a group or a built-in section. It makes the folder and writes the id and starts nothing, so it
 // costs no tokens, and it is synchronous, so two tabs opening it together get the same id.
 function bookGroupSession(groupId) {
@@ -610,8 +614,11 @@ function ensureChat(id, row, { mode } = {}) {
       return fresh;
     },
   };
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, subs: subCtx });
+  const booked = !groupId && isBooked(id);
+  const had = !!getChat(id);
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, ...(booked && { fresh: () => !hasTranscript(id) }), subs: subCtx });
   dropFastOnRefusal(chat);
+  if (booked && !had && cfg.desktopHandoff) afterTurn(chat, () => handOff(chat.id));
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
 }
@@ -718,10 +725,10 @@ function events(req, res, id) {
   writeMark(() => marks.opened(id, Date.now()));
   // Sessions running in Desktop or a terminal only show up as a growing file, so the file is watched too.
   let size = transcriptFor(id)?.size ?? -1;
-  // A group's session has no file until its first message, which a chat of ours sends, so the index is not rescanned for one while no chat of ours runs it.
-  const groupChat = !!findRow(id)?.groupSession;
+  // A group's session, or a booked parent, has no file until its first message, which a chat of ours sends, so the index is not rescanned for one while no chat of ours runs it.
+  const unwritten = !!findRow(id)?.groupSession || isBooked(id);
   const watch = setInterval(() => {
-    const t = transcriptFor(id) || (groupChat && !getChat(id) ? null : (indexTranscripts(cfg.projectsDir, 3000), transcriptFor(id)));
+    const t = transcriptFor(id) || (unwritten && !getChat(id) ? null : (indexTranscripts(cfg.projectsDir, 3000), transcriptFor(id)));
     if (!t) return;
     let now;
     try { now = fs.statSync(t.file).size; } catch { return; }
@@ -766,6 +773,19 @@ async function editLayout(req, res, change) {
   return send(res, 200, { id, group: now.assignments[id] || null, pinned: now.pinned.includes(id), ...extra });
 }
 
+// The sibling of editLayout for a change that is about several sessions, so the change names them itself.
+async function editMany(req, res, change) {
+  const body = await readJson(req);
+  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+  // A new password can land while the body is still arriving, so the session is checked again before the layout is written.
+  if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
+  try {
+    return send(res, 200, change(body));
+  } catch (e) {
+    return send(res, e.status || 500, { error: e.message });
+  }
+}
+
 // Archiving a chat Capcom runs stops it: a turn in progress is interrupted and its approvals denied, then the process closes.
 // With stop: false a running chat is refused with a 409 before anything is written, so the caller can ask first.
 function setArchived(id, archived, stop) {
@@ -807,6 +827,74 @@ function nest(id, parent) {
   if (rows.get(id).parent === root) return { parent: root };
   layout.nest(id, root, { relink: keepFamily(id, rows) });
   return { parent: buildIndex().rows.get(id).parent };
+}
+
+// The repo a session worked in, when it worked in one of its worktrees.
+const repoRoot = cwd => cwd.replace(/\/\.claude\/worktrees\/[^/]+\/?$/, '');
+
+// Where a new parent works: the repo the sessions share, else the repo of the one that ran last. A folder that is not on this Mac falls through to the next, then to home.
+function parentFolder(picked) {
+  const roots = picked.filter(r => r.cwd).sort((a, b) => b.lastActivityAt - a.lastActivityAt).map(r => repoRoot(r.cwd));
+  const candidates = roots.every(root => root === roots[0]) ? roots.slice(0, 1) : roots;
+  return candidates.find(isDirectory) ?? os.homedir();
+}
+
+// Makes a session that is booked and not run the parent of several, in one write. See docs/adr/20261022-nest-sessions-under-a-parent.md.
+// A picked session whose nearest shown parent is picked too keeps its link and rides along. The rest link straight to the new parent.
+function newParent({ ids, title, place }) {
+  if (!Array.isArray(ids) || ids.length < 2) throw refuse(400, 'Pick at least two sessions.');
+  if (!ids.every(id => typeof id === 'string' && /^[\w-]+$/.test(id))) throw refuse(400, 'Which sessions?');
+  if (new Set(ids).size < ids.length) throw refuse(400, 'Each session can be picked once.');
+  const { rows, groupSessions } = buildIndex();
+  for (const id of ids) {
+    if (groupSessions.has(id)) throw refuse(400, `A ${kindOf(groupSessions.get(id))}'s session stays with its ${kindOf(groupSessions.get(id))}.`);
+    if (!rows.has(id)) throw refuse(404, NO_SESSION);
+    if (rows.get(id).archived) throw refuse(400, 'An archived session cannot be nested.');
+  }
+  const picked = ids.map(id => rows.get(id));
+  const here = r => (r.pinned ? 'pinned' : r.group ?? 'loose');
+  const shared = picked.every(r => here(r) === here(picked[0])) ? picked[0] : null;
+  if (place == null && !shared) throw refuse(400, 'The sessions are in different places. Choose where it goes.');
+  if (place != null && (typeof place !== 'object' || typeof place.pinned !== 'boolean' || (place.group !== null && typeof place.group !== 'string'))) throw refuse(400, 'Where should it go?');
+  const home = place ?? { group: shared.group, pinned: shared.pinned };
+  const name = nameOf(title, MAX_TITLE);
+  const now = layout.read();
+  if (now.problem) throw refuse(500, now.problem);
+  if (!home.pinned && home.group !== null && !now.groups.some(g => g.id === home.group)) throw refuse(400, 'Unknown group.');
+
+  const chosen = new Set(ids);
+  const direct = ids.filter(id => !chosen.has(rows.get(id).via));
+  const parent = crypto.randomUUID();
+  const relinks = {};
+  for (const id of direct) for (const [kid, to] of Object.entries(keepFamily(id, rows))) if (!chosen.has(kid)) relinks[kid] = to;
+  const links = { ...relinks, ...Object.fromEntries(direct.map(id => [id, parent])) };
+  const own = linksNow();
+  const final = id => (Object.hasOwn(links, id) ? links[id] : own(id));
+  const known = new Map([...rows, [parent, { id: parent }]]);
+  for (const id of Object.keys(links)) {
+    const chain = chainOf(known, final, known.get(id));
+    if (final((chain.at(-1) ?? known.get(id)).id) === id) throw refuse(400, 'A session cannot nest under itself or its own child.');
+  }
+
+  const booking = { id: parent, cwd: parentFolder(picked), at: Date.now(), title: name, booked: true };
+  fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), booking]));
+  try {
+    const made = layout.newParent(parent, { title: name, group: home.pinned ? null : home.group, pinned: home.pinned, links, moved: direct });
+    return { id: parent, ...made, count: ids.length, group: home.pinned ? null : home.group, pinned: home.pinned };
+  } catch (e) {
+    fs.writeFileSync(startedFile, JSON.stringify(readStarted().filter(s => s.id !== parent)));
+    throw e;
+  }
+}
+
+// Takes a new parent back. Its booking goes when the owner has not written in it, which takes it out of the list. One he has written in is archived, since it holds his work.
+function undoParent({ id, before }) {
+  if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) throw refuse(400, 'Which session?');
+  if (!isBooked(id)) throw refuse(404, NO_SESSION);
+  layout.restoreParent(id, before);
+  if (hasTranscript(id)) return { id, ...setArchived(id, true) };
+  fs.writeFileSync(startedFile, JSON.stringify(readStarted().filter(s => s.id !== id)));
+  return { id, removed: true };
 }
 
 // A group's own chat is retired with the group, and one Capcom runs is stopped as archiving it would stop it, after the layout is written.
@@ -1191,8 +1279,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1246,6 +1334,8 @@ async function api(req, res, u) {
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
   if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: layout.rename(id, body.title) }));
+  if (req.method === 'POST' && u.pathname === '/api/layout/parent') return editMany(req, res, newParent);
+  if (req.method === 'POST' && u.pathname === '/api/layout/parent/undo') return editMany(req, res, undoParent);
   if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => setArchived(id, body.archived, body.stop));
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
@@ -1514,4 +1604,4 @@ setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates fa
 process.on('exit', () => terminal.killAll());
 for (const name of ['SIGTERM', 'SIGINT']) process.on(name, () => process.exit(128 + os.constants.signals[name]));
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
-if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));
+if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine && (!s.booked || hasTranscript(s.id))) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));

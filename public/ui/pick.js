@@ -1,3 +1,5 @@
+import { LOOSE_NAMES, TITLE_MAX } from './tree.js';
+
 // The rules of the sidebar's multi-select that need no page, so node can test them. A row is named by its id, and `order` is the ids of
 // the drawn rows in screen order. A selection is { ids, base, anchor }: `ids` is what is picked, `anchor` the row a Shift range runs
 // from, and `base` what was picked before that anchor was set, which every range is added to.
@@ -80,3 +82,56 @@ export function unarchiveNote({ restored, total, reason = '' }) {
   if (!restored) return `Not unarchived: ${sentence(reason)}`;
   return `Unarchived ${restored} of ${sessions(total)}. Not unarchived: ${sentence(reason)}`;
 }
+
+export const supportsNewParent = ix => !!ix?.features?.newParent;
+
+const TRAILING = /[\s\-:\u2010-\u2015\u2212]+$/u;
+
+// Cuts a title to `room` characters at a word boundary, or in the middle of a word when its first word is longer than that.
+function cutAt(title, room) {
+  const letters = [...title];
+  if (letters.length <= room) return title;
+  const words = title.split(' ');
+  let kept = '';
+  for (const word of words) {
+    const next = kept ? `${kept} ${word}` : word;
+    if ([...next].length > room) break;
+    kept = next;
+  }
+  return kept || letters.slice(0, room).join('');
+}
+
+// The title a new parent starts with: the words the titles begin with in common, in the first title's case, when that is two words or
+// eight characters. Otherwise the first title and how many more there are.
+export function parentTitle(titles, max = TITLE_MAX) {
+  const words = titles.map(t => t.trim().split(/\s+/).filter(Boolean));
+  const first = (words[0] ?? []).join(' ');
+  if (words.length < 2) return cutAt(first, max);
+  const lead = [];
+  for (const [at, word] of words[0].entries()) {
+    if (!words.every(w => w[at]?.toLowerCase() === word.toLowerCase())) break;
+    lead.push(word);
+  }
+  const common = lead.join(' ').replace(TRAILING, '');
+  if (common.split(' ').filter(Boolean).length >= 2 || [...common].length >= 8) return cutAt(common, max);
+  const more = ` and ${words.length - 1} more`;
+  return `${cutAt(first, max - [...more].length)}${more}`;
+}
+
+// The places the picked rows are in, once each in screen order, for the choice a new parent asks for when they differ. A row's `group` and
+// `pinned` are those of its family, and the loose list a new session lands in is Started here.
+export function placeOptions(rows, groups) {
+  const found = new Map();
+  for (const r of rows) {
+    const key = r.pinned ? 'pinned' : r.group ?? 'loose';
+    const label = r.pinned ? 'Pinned' : r.group ? groups.find(g => g.id === r.group)?.name ?? r.group : LOOSE_NAMES.started;
+    if (!found.has(key)) found.set(key, { key, label, place: { group: r.pinned ? null : r.group ?? null, pinned: !!r.pinned } });
+  }
+  return [...found.values()];
+}
+
+// The note once a new parent is made.
+export const parentNote = (title, count) => `Made \u201c${title}\u201d the parent of ${sessions(count)}.`;
+
+// What the note says once the parent is taken back: gone when it had no messages, archived when the owner had written in it.
+export const parentUndoNote = (title, { removed }) => (removed ? `Took back \u201c${title}\u201d.` : `Took back \u201c${title}\u201d and archived it, since it has messages.`);
