@@ -1059,7 +1059,7 @@ function askedIds(u) {
   return ids.length > MAX_SUMMARY_IDS ? `Ask for at most ${MAX_SUMMARY_IDS} sessions at a time.` : ids;
 }
 
-// GET api/summaries?ids=a,b,c answers for each id that is a session: the first sentence of its latest reply, when it was said, and what it waits on.
+// GET api/summaries?ids=a,b,c answers for each id that is a session: the first sentence of its latest reply, what that reply asks of the reader, when it was said, and what it waits on.
 // With detail=1 each also has the reply itself. An id that is no session, or is a group's chat, is left out without a word.
 function summariesApi(res, u) {
   const ids = askedIds(u);
@@ -1068,7 +1068,7 @@ function summariesApi(res, u) {
   const { rows } = buildIndex({ archived: true });
   const found = ids.filter(id => rows.has(id)).map(id => {
     const said = summaries.get(id, rows.get(id).cwd);
-    return [id, { line: said?.line ?? '', at: said?.at ?? null, pending: pendingLines(pendingOf(id)), ...(detail && { reply: said?.reply ?? '' }) }];
+    return [id, { line: said?.line ?? '', ask: said?.ask ?? '', at: said?.at ?? null, pending: pendingLines(pendingOf(id)), ...(detail && { reply: said?.reply ?? '' }) }];
   });
   return send(res, 200, { summaries: Object.fromEntries(found) });
 }

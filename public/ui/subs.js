@@ -1,5 +1,5 @@
 // The Sub sessions tab of a chat's side panel: the sessions nested under the chat, or the group's own sessions in a group's chat. Each is a
-// card with its state, when it last moved, the first sentence of its latest reply and its roll-up, and it opens to the whole reply and the
+// card with its state, when it last moved, what to do next about it and its roll-up, and it opens to the whole reply and the
 // sessions under it, to any depth. Summaries are read for the lines on screen only, and again for a line when it moves.
 import { md } from '../md.mjs';
 import { api } from './api.js';
@@ -14,7 +14,7 @@ import { UNTITLED } from './order.js';
 import { mainPull, statusOf } from './pull-rules.js';
 import { pullsOn, pullStore, usePullNeeds } from './pulls.js';
 import { createStore } from './store.js';
-import { batchesOf, drawnRows, KEPT, linesOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, summaryLine, trim, withPulls } from './sub-panel-rules.js';
+import { batchesOf, drawnRows, KEPT, linesOf, nextStep, partsOf, pillOf, splitWaiting, staleIds, stampOf, summaryLine, trim, withPulls } from './sub-panel-rules.js';
 import { rollupLine, rollupOf } from './sub-rules.js';
 import { everyRow } from './tree.js';
 
@@ -125,11 +125,12 @@ function Words({ text }) {
   return html`${before}${words ? html`<span class="sub-need">${words}</span>` : null}${after}`;
 }
 
-function Status({ id, pull, row }) {
+// The pull request's status and link, or only the link when `said` is the id of the next-step line that has said the status already.
+function Status({ id, pull, row, said }) {
   const { text, tone } = statusOf(pull, row);
   return html`<div class="sub-pull">
-    <p class="sub-status" id=${id} data-tone=${tone}>${text}</p>
-    <a class="pull-link" href=${pull.url} target="_blank" rel="noopener noreferrer" aria-describedby=${id}>${pull.url}</a>
+    ${said ? null : html`<p class="sub-status" id=${id} data-tone=${tone}>${text}</p>`}
+    <a class="pull-link" href=${pull.url} target="_blank" rel="noopener noreferrer" aria-describedby=${said || id}>${pull.url}</a>
   </div>`;
 }
 
@@ -145,12 +146,12 @@ function Line({ node, shared }) {
   const { rows, opened, active, flip, known, archive } = shared;
   const open = !!opened[row.id];
   const heard = said.get(row.id);
-  const waits = row.state === 'waiting' ? pendingLine(heard?.pending) : '';
   const roll = rollupLine(rollupOf(rows, row.id));
   const name = row.title || UNTITLED;
   const state = DOT_LABEL[row.dot] ?? STATE_LABEL[row.state];
   const pill = pillOf(row);
   const main = mainPull(known.get(row.id)?.pulls);
+  const step = nextStep(row, heard, main);
   const running = isRunning(row);
   const body = `sub-${row.id}`;
   const close = button => {
@@ -177,9 +178,9 @@ function Line({ node, shared }) {
         <time class="status-time">${when(row.lastActivityAt)}</time>
       </div>
       <span class="sub-pill" data-tone=${pill.tone}>${pill.label}</span>
-      ${heard?.line ? html`<p class="sub-said">${heard.line}</p>` : null}
-      ${waits ? html`<p class="sub-wait">${waits}</p>` : null}
-      ${main && !waits ? html`<${Status} id=${`${body}-status`} pull=${main} row=${row} />` : null}
+      ${step?.from === 'said' ? html`<p class="sub-said">${step.text}</p>` : null}
+      ${step && step.from !== 'said' ? html`<p class="sub-status sub-next" id=${`${body}-next`} data-tone=${step.tone}>${step.text}</p>` : null}
+      ${main && step?.from !== 'pending' ? html`<${Status} id=${`${body}-status`} pull=${main} row=${row} said=${step?.from === 'pull' ? `${body}-next` : null} />` : null}
       <div class="sub-foot">
         ${roll ? html`<p class="sub-roll"><${Words} text=${roll} /></p>` : null}
         <div class="sub-acts">

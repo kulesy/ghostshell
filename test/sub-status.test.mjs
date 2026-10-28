@@ -87,15 +87,15 @@ test('an id that is no session, or is a group\'s chat, is left out without a wor
   assert.equal(JSON.stringify(alone.body()).includes(WORK), false);
 });
 
-test('a session with nothing said yet is an empty line and no time, and one that has said something gives the first sentence of its latest reply and when', async () => {
+test('a session with nothing said yet is an empty line and no time, and one that has said something gives the first sentence of its latest reply, what it asks and when', async () => {
   const { s, token } = await ready();
-  assert.deepEqual(await summaries(s, token, 'top'), { top: { line: '', at: null, pending: [] } });
+  assert.deepEqual(await summaries(s, token, 'top'), { top: { line: '', ask: '', at: null, pending: [] } });
   says(s, 'kid', 'Old news. Not this one.', '2026-10-23T04:00:00.000Z');
-  says(s, 'kid', 'The tests pass. Merging next.', '2026-10-23T05:00:00.000Z');
-  assert.deepEqual(await summaries(s, token, 'kid'), { kid: { line: 'The tests pass.', at: Date.parse('2026-10-23T05:00:00.000Z'), pending: [] } });
+  says(s, 'kid', 'The tests pass. Merging next.\n\nShall I merge it?', '2026-10-23T05:00:00.000Z');
+  assert.deepEqual(await summaries(s, token, 'kid'), { kid: { line: 'The tests pass.', ask: 'Shall I merge it?', at: Date.parse('2026-10-23T05:00:00.000Z'), pending: [] } });
   says(s, 'kid', '**All** merged. Done.');
   const later = await summaries(s, token, 'kid');
-  assert.deepEqual([later.kid.line, later.kid.at], ['All merged.', null], 'a changed transcript is read again, and a reply with no time has none');
+  assert.deepEqual([later.kid.line, later.kid.ask, later.kid.at], ['All merged.', '', null], 'a changed transcript is read again, and a reply with no time has none');
 });
 
 test('detail adds the reply itself to each answer, and only with detail=1', async () => {
@@ -107,7 +107,7 @@ test('detail adds the reply itself to each answer, and only with detail=1', asyn
   const full = await summaries(s, token, 'kid,top', '&detail=1');
   assert.equal(full.kid.reply, 'The tests pass.\n\nMerging next, then the release.');
   assert.equal(full.kid.line, 'The tests pass.');
-  assert.deepEqual(full.top, { line: '', at: null, pending: [], reply: '' });
+  assert.deepEqual(full.top, { line: '', ask: '', at: null, pending: [], reply: '' });
   const cut = 'word '.repeat(2000);
   says(s, 'grand', cut);
   const clipped = (await summaries(s, token, 'grand', '&detail=1')).grand.reply;

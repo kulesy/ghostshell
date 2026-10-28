@@ -2,6 +2,7 @@
 // The rows are the index's, and `ix` is the page's whole list.
 import { fullToolLabel, plural } from './format.js';
 import { BUCKETS, groupOfSession, membersOf } from './group-rules.js';
+import { statusOf } from './pull-rules.js';
 import { descendantsOf, familyDot, orderLines, placeOf, rankOf, rollupLine, rollupOf, tally, treeOf } from './sub-rules.js';
 import { everyRow, withKids } from './tree.js';
 
@@ -72,6 +73,32 @@ export function pendingLine(pending) {
   if (first.tool === 'AskUserQuestion') return `Waiting for your answer${more}`;
   const what = [fullToolLabel(first.tool || ''), first.summary].filter(Boolean).join(': ');
   return `Waiting for you to approve ${what || 'a request'}${more}`;
+}
+
+// What the owner does next about a session, as { text, tone, from } for the one line under its pill, or null while the page has heard nothing of
+// it. `heard` is its summary, `pull` its main pull request or null. The first rule that fits wins, and a server that sends no `ask` gets the old first sentence.
+export function nextStep(row, heard, pull) {
+  if (!heard) return null;
+  const [first, ...rest] = Array.isArray(heard.pending) ? heard.pending : [];
+  if (row.state === 'waiting') {
+    if (!first) return { text: "Open it, it's waiting on you", tone: 'needs', from: 'pending' };
+    const more = rest.length ? ` (and ${rest.length} more)` : '';
+    const asks = first.tool === 'AskUserQuestion';
+    const what = (asks ? [first.summary] : [fullToolLabel(first.tool || ''), first.summary]).filter(Boolean).join(': ');
+    const text = asks ? `Answer its question${what ? `: ${what}` : ''}` : `Approve ${what || 'a request'}`;
+    return { text: text + more, tone: 'needs', from: 'pending' };
+  }
+  if (row.dot === 'error') return { text: 'Look at the error it stopped on', tone: 'error', from: 'error' };
+  const pulled = pull && statusOf(pull, row);
+  if (pulled?.you) return { text: pulled.text, tone: pulled.tone, from: 'pull' };
+  const asked = heard.ask && `${heard.ask.endsWith('?') ? 'Answer its question' : 'Reply to its offer'}: ${heard.ask}`;
+  // A session Desktop marks as awaiting has no live chat here, so nothing is pending for it.
+  if (row.dot === 'awaiting' && heard.ask !== undefined) return asked ? { text: asked, tone: 'needs', from: 'ask' } : { text: "Open it, it's waiting on you", tone: 'needs', from: 'pending' };
+  if (row.state === 'working' || row.state === 'active') return { text: "Nothing yet, it's working", tone: 'working', from: 'working' };
+  if (heard.ask === undefined) return heard.line ? { text: heard.line, tone: null, from: 'said' } : null;
+  if (asked) return { text: asked, tone: 'ready', from: 'ask' };
+  const open = pull && pull.state !== 'merged' && pull.state !== 'closed';
+  return { text: open ? 'Nothing for now' : "Nothing, it's done", tone: 'quiet', from: 'done' };
 }
 
 // The pill a card shows for a session's state: its words and the tone the page colours it by.

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { firstSentence, latestReply, makeSummaries } from '../lib/summaries.mjs';
+import { closingAsk, firstSentence, latestReply, makeSummaries } from '../lib/summaries.mjs';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-summaries-'));
 const files = new Map();
@@ -92,6 +92,43 @@ test('nothing in gives nothing out, and so does text that is only markup', () =>
   for (const bare of ['```\ncode only\n```', '---', '-', '#', '> ', '|---|---|']) assert.equal(firstSentence(bare), '', bare);
 });
 
+test('the closing ask is the last sentence of the last three lines that ends in a question mark or carries an offer', () => {
+  assert.equal(closingAsk('Done. Should I merge it?'), 'Should I merge it?');
+  assert.equal(closingAsk('Which branch? Either works. Tell me which.'), 'Which branch?');
+  assert.equal(closingAsk('Is it ready? Can you check? Thanks.'), 'Can you check?');
+  assert.equal(closingAsk('Is it ready?\nIt is not.'), 'Is it ready?');
+  assert.equal(closingAsk('Done.\n\nLet me know if the tests fail.'), 'Let me know if the tests fail.');
+  assert.equal(closingAsk('He asked "is it done?" Then left.'), 'He asked "is it done?"');
+  assert.equal(closingAsk('Did you mean "this one?"'), 'Did you mean "this one?"');
+  assert.equal(closingAsk('Is it done? (Maybe.)'), 'Is it done?');
+  assert.equal(closingAsk('One. Two? Three? Four? Five.'), 'Four?');
+});
+
+test('only the last three lines of prose are read, and a code block or a heading marker is not a line of them', () => {
+  assert.equal(closingAsk('Should I stop?\nOne.\nTwo.\nThree.'), '');
+  assert.equal(closingAsk('Should I stop?\nOne.\nTwo.'), 'Should I stop?');
+  assert.equal(closingAsk('Want me to run it?\n\n```bash\nnpm test\n```\n\n\nDone.'), 'Want me to run it?');
+  assert.equal(closingAsk('Shall I go?\n\n```bash\nwhy not?\n```'), 'Shall I go?');
+  assert.equal(closingAsk('```\nIs this code?\n```'), '');
+  assert.equal(closingAsk('- Fixed the build.\n- Want me to open a pull request?'), 'Want me to open a pull request?');
+  assert.equal(closingAsk('**Should I merge it?**'), 'Should I merge it?');
+});
+
+test('an offer is a phrase like want me to or let me know, whole words in any case, and a plain statement is not one', () => {
+  for (const offer of ['Want me to add a test.', 'SHALL I go on.', 'Should I continue.', 'Would you like a summary.', 'Do you want it merged.', 'Let me know when.', 'Say the word.', 'I can do more if you want.', "Done, if you'd like more."]) {
+    assert.equal(closingAsk(`Finished. ${offer}`), offer, offer);
+  }
+  for (const plain of ['It was not wanted.', 'The shall-I-not file is gone.', 'Letting me know is not needed.', 'All finished.', 'Unhappy to hear it.', 'Happy to report the tests pass.']) assert.equal(closingAsk(plain), '', plain);
+});
+
+test('a long ask is cut to the limit with an ellipsis, 160 characters unless another is given, and nothing in gives nothing out', () => {
+  const long = `${'word '.repeat(60)}ready?`;
+  assert.equal(closingAsk(long).length, 160);
+  assert.ok(closingAsk(long).endsWith('…'));
+  assert.equal(closingAsk('Is it ready or not?', 10), 'Is it rea…');
+  for (const empty of ['', '   ', '\n\n', null, undefined, 5, {}]) assert.equal(closingAsk(empty), '');
+});
+
 test('the latest reply is the last assistant message with words in it, whatever came after it', () => {
   transcript('plain', [user('go'), said('First reply.'), used('t1', 'Bash', { command: 'ls' }), said('Second reply. With more.'), thought('musing'), used('t2', 'Bash', { command: 'pwd' })]);
   assert.deepEqual(latestReply(files.get('plain'), '/work'), { text: 'Second reply. With more.', at: null });
@@ -147,7 +184,7 @@ test('a line longer than the limit ends the search with nothing found, and no mo
   transcript('inside', [user('go'), said('Just inside.'), user('x'.repeat(LIMIT - replyLine - line(0) - 1000))]);
   assert.equal(latestReply(files.get('inside'), '').text, 'Just inside.', 'one that starts a little after it is');
   const summaries = makeSummaries({ transcriptFor });
-  assert.deepEqual({ ...summaries.get('huge') }, { line: '', reply: '', at: null }, 'the summary is the one for a session that has said nothing');
+  assert.deepEqual({ ...summaries.get('huge') }, { line: '', ask: '', reply: '', at: null }, 'the summary is the one for a session that has said nothing');
 });
 
 test('a summary has the first sentence of the latest reply, the reply cut to 4,000 characters, and when it was said', () => {
@@ -160,13 +197,21 @@ test('a summary has the first sentence of the latest reply, the reply cut to 4,0
   assert.ok(got.reply.endsWith('…'));
   assert.equal(got.at, Date.parse('2026-10-23T05:30:00.000Z'));
   transcript('short', [user('go'), said('Short and sweet. Really.')]);
-  assert.deepEqual({ ...summaries.get('short') }, { line: 'Short and sweet.', reply: 'Short and sweet. Really.', at: null });
+  assert.deepEqual({ ...summaries.get('short') }, { line: 'Short and sweet.', ask: '', reply: 'Short and sweet. Really.', at: null });
+});
+
+test('a summary has the ask its reply closes on, empty when it asks nothing', () => {
+  const summaries = makeSummaries({ transcriptFor });
+  transcript('asks', [user('go'), said('The build passes.\n\nShall I open a pull request?')]);
+  assert.equal(summaries.get('asks').ask, 'Shall I open a pull request?');
+  transcript('tells', [user('go'), said('The build passes.')]);
+  assert.equal(summaries.get('tells').ask, '');
 });
 
 test('a session with no reply yet has an empty summary, and one with no transcript or a vanished file has none', () => {
   const summaries = makeSummaries({ transcriptFor });
   transcript('quiet', [user('go')]);
-  assert.deepEqual({ ...summaries.get('quiet') }, { line: '', reply: '', at: null });
+  assert.deepEqual({ ...summaries.get('quiet') }, { line: '', ask: '', reply: '', at: null });
   assert.equal(summaries.get('never-written'), null);
   files.set('gone', { id: 'gone', file: path.join(dir, 'gone.jsonl') });
   assert.equal(summaries.get('gone'), null);
