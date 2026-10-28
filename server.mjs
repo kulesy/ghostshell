@@ -500,6 +500,7 @@ const routines = makeScheduler({
 // session in its window. Read from Desktop's code on 14 Oct 2026, so re-check this after a Desktop update.
 
 const markStarted = (id, patch) => fs.writeFileSync(startedFile, JSON.stringify(readStarted().map(s => (s.id === id ? { ...s, ...patch } : s))));
+const spendUndo = id => fs.writeFileSync(startedFile, JSON.stringify(readStarted().map(s => { if (s.id !== id) return s; const { undo, ...rest } = s; return rest; })));
 const unbook = id => fs.writeFileSync(startedFile, JSON.stringify(readStarted().filter(s => s.id !== id)));
 const inDesktop = id => loadDesktop(cfg.desktopDir, 0).sessions.some(r => r.id === id);
 const shortTitle = text => { const t = text.replace(/\s+/g, ' ').trim(); return t.length > 60 ? `${t.slice(0, 60).replace(/\s+\S*$/, '')}…` : t; };
@@ -830,9 +831,16 @@ function parentFolder(picked) {
   return candidates.find(isDirectory) ?? os.homedir();
 }
 
+// The most sessions one new parent takes. editStructure reads a body of up to 64 KB, room for a pick far past this, so the refusal is the sentence and not a bad body.
+const MAX_PICKED = 100;
+
+// How long after a new parent is made its Undo works, so a page left open for hours cannot replay a snapshot over newer changes.
+const UNDO_WINDOW_MS = 10 * 60_000;
+
 // Makes a session that is booked and not run the parent of several, in one write. See docs/adr/20261022-nest-sessions-under-a-parent.md.
 // A picked session whose nearest shown parent is picked too keeps its link and rides along. The rest link straight to the new parent.
 function newParent({ ids, title, place }) {
+  if (Array.isArray(ids) && ids.length > MAX_PICKED) throw refuse(400, `Pick at most ${MAX_PICKED} sessions.`);
   if (!Array.isArray(ids) || ids.length < 2) throw refuse(400, 'Pick at least two sessions.');
   if (!ids.every(id => typeof id === 'string' && /^[\w-]+$/.test(id))) throw refuse(400, 'Which sessions?');
   if (new Set(ids).size < ids.length) throw refuse(400, 'Each session can be picked once.');
@@ -866,30 +874,32 @@ function newParent({ ids, title, place }) {
     if (final((chain.at(-1) ?? known.get(id)).id) === id) throw refuse(400, 'A session cannot nest under itself or its own child.');
   }
 
-  // The layout goes first, so a failure of either write leaves nothing behind: the booking is never written, or the layout is put back.
-  const made = layout.newParent(parent, { title: name, group: home.pinned ? null : home.group, pinned: home.pinned, links, moved: direct });
+  // The booking goes first, so the parent has a row from the moment its children link to it, and a crash after the layout write leaves a parent
+  // with no Undo and nothing worse. The snapshot is added once the layout is written.
+  fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: parent, cwd: parentFolder(picked), at: Date.now(), title: name, booked: true }]));
+  let made;
   try {
-    fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: parent, cwd: parentFolder(picked), at: Date.now(), title: name, booked: true, undo: made.before }]));
+    made = layout.newParent(parent, { title: name, group: home.pinned ? null : home.group, pinned: home.pinned, links, moved: direct });
   } catch (e) {
-    layout.restoreParent(parent, made.before);
+    try { unbook(parent); } catch (again) { console.error(`Could not take the booking of ${parent} back out: ${again.message}`); }
     throw e;
   }
+  try { markStarted(parent, { undo: made.before }); } catch (e) { console.error(`Could not keep the Undo of ${parent}: ${e.message}`); }
   return { id: parent, title: made.title, count: ids.length, group: home.pinned ? null : home.group, pinned: home.pinned };
 }
 
-// Takes a new parent back with the snapshot its booking holds, so a second Undo, from another tab, finds nothing and is a 404. The booking goes
-// when the owner has not written in the parent, which takes it out of the list. One he has written in, or that is working, is archived and
-// stopped, since it holds his work.
+// Takes a new parent back with the snapshot its booking holds, for ten minutes after it was made. The snapshot is spent before anything is
+// restored, so a failure part way cannot leave it to be replayed, and a second Undo from another tab is a 404. The booking goes when the owner
+// has not written in the parent, which takes it out of the list. One he has written in, or that is working, is archived and stopped.
 function undoParent({ id }) {
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) throw refuse(400, 'Which session?');
   const booking = readStarted().find(s => s.id === id && s.booked && s.undo);
   if (!booking) throw refuse(404, NO_SESSION);
+  if (Date.now() - booking.at > UNDO_WINDOW_MS) throw refuse(409, 'It is too late to undo that. Take the sessions out by hand.');
+  spendUndo(id);
   layout.restoreParent(id, booking.undo);
   const chat = getChat(id);
-  if (hasTranscript(id) || (chat && chat.state !== 'idle')) {
-    markStarted(id, { undo: undefined });
-    return { id, ...setArchived(id, true) };
-  }
+  if (hasTranscript(id) || (chat && chat.state !== 'idle')) return { id, ...setArchived(id, true) };
   chat?.stop();
   unbook(id);
   return { id, removed: true };
@@ -920,7 +930,7 @@ const STRUCTURE = new Map([
 ]);
 
 async function editStructure(req, res, change) {
-  const body = await readJson(req, 10_000);
+  const body = await readJson(req, 64_000);
   if (!body) return send(res, 400, { error: 'Send a JSON body.' });
   // A new password can land while the body is still arriving, so the session is checked again before the layout is written.
   if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });

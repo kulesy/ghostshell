@@ -310,6 +310,46 @@ test('Undo refuses a session that is not a booked parent and an id that is not o
   assert.deepEqual(snapshot(s), before);
 });
 
+const backdate = (s, id, minutes) => fs.writeFileSync(startedFile(s), JSON.stringify(JSON.parse(read(startedFile(s))).map(e => (e.id === id ? { ...e, at: Date.now() - minutes * 60_000 } : e))));
+
+test('Undo works for ten minutes after the parent was made and is refused after, with the sentence and nothing changed', async () => {
+  const { s, token } = await ready();
+  const late = (await make(s, token, { ids: ['loner', 'other'], title: 'Too late' })).body();
+  backdate(s, late.id, 11);
+  const before = snapshot(s);
+  const res = await undo(s, token, { id: late.id });
+  assert.deepEqual([res.status, res.body().error], [409, 'It is too late to undo that. Take the sessions out by hand.']);
+  assert.deepEqual(snapshot(s), before);
+  const inTime = (await make(s, token, { ids: ['peer', 'boss'], title: 'In time' })).body();
+  backdate(s, inTime.id, 9);
+  assert.deepEqual([(await undo(s, token, { id: inTime.id })).status, booked(s).map(e => e.id)], [200, [late.id]]);
+});
+
+test('Undo spends the snapshot before it restores anything, so a failure part way leaves nothing to replay', async () => {
+  const { s, token } = await ready();
+  const made = (await make(s, token, { ids: ['loner', 'other'], title: 'Spent' })).body();
+  assert.ok(undoOf(s)(made.id));
+  const good = read(s.layout);
+  fs.writeFileSync(s.layout, '{ not json');
+  const failed = await undo(s, token, { id: made.id });
+  assert.equal(failed.status >= 500, true, failed.text);
+  assert.equal('undo' in booked(s).find(e => e.id === made.id), false, 'the key is gone, not set to nothing');
+  fs.writeFileSync(s.layout, good);
+  assert.equal((await undo(s, token, { id: made.id })).status, 404, 'a stale tab cannot replay it over the layout as it is now');
+  assert.deepEqual(onDisk(s).parents, { loner: made.id, other: made.id });
+});
+
+test('a pick of more than 100 sessions is refused with a sentence before anything is read, even when the body is large', async () => {
+  const { s, token } = await ready();
+  const before = snapshot(s);
+  for (const count of [101, 400]) {
+    const ids = Array.from({ length: count }, (_, n) => `session-${String(n).padStart(32, '0')}`);
+    const res = await make(s, token, { ids, title: 'Everything' });
+    assert.deepEqual([res.status, res.body().error], [400, 'Pick at most 100 sessions.'], `${count} ids`);
+  }
+  assert.deepEqual(snapshot(s), before);
+});
+
 test('Undo takes a session that was nested under the parent afterwards out to the parent\'s place, in a group and in Pinned', async () => {
   const { s, token } = await ready();
   for (const [ids, place, later, check] of [
@@ -397,4 +437,16 @@ test('the title the owner gives wins over the first line of the transcript once 
   fs.writeFileSync(again.layout, JSON.stringify({ ...layout, titles: {} }));
   const without = await restart(again);
   assert.notEqual(await titleAfterRestart(without), 'Mine to keep', 'with no title of its own the list falls back to something else');
+});
+
+test('a booked parent is never named by the auto-titler, even after a turn has ended and the titler is on', async () => {
+  const { s, token } = await ready({ autoTitle: true });
+  const made = (await make(s, token, { ids: ['loner', 'other'], title: 'Mine to keep' })).body();
+  await post(s, token, `/api/sessions/${made.id}/send`, { text: 'begin a session' });
+  await until(() => hasFile(s, made.id));
+  await post(s, token, `/api/sessions/${made.id}/send`, { text: 'finish the turn' });
+  await until(async () => rowOf(await index(s, token), made.id)?.state === 'idle');
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(cliCalls(s).some(c => c.titled), false, 'the titler asked nothing');
+  assert.deepEqual(onDisk(s).titles, { [made.id]: 'Mine to keep' });
 });

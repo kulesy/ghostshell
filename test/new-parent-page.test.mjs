@@ -182,6 +182,7 @@ test('rows in different places ask for one: Create waits for a choice among only
   await page.until(`!!document.querySelector('${FORM} select')`);
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('${FORM} select option')].map(o => [o.textContent, o.disabled, o.selected])`), [['Choose where it goes', true, true], ['Work', false, false], ['Started here', false, false]]);
   assert.deepEqual(await page.evaluate(`(b => [b.disabled, b.getAttribute('aria-disabled')])(document.querySelector('${FORM} [type=submit]'))`), [false, 'true'], 'Create looks unavailable and can still be pressed');
+  await page.until(`document.activeElement === document.querySelector('${INPUT}')`);
   await page.press('Enter');
   await page.until(`document.activeElement === document.querySelector('${FORM} select')`);
   assert.equal(await page.evaluate(`!!document.querySelector('${FORM}')`), true, 'Enter moves the focus to the place and makes nothing');
