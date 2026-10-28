@@ -181,19 +181,26 @@ test('rows in different places ask for one: Create waits for a choice among only
   await page.click('.pick-new');
   await page.until(`!!document.querySelector('${FORM} select')`);
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('${FORM} select option')].map(o => [o.textContent, o.disabled, o.selected])`), [['Choose where it goes', true, true], ['Work', false, false], ['Started here', false, false]]);
-  assert.equal(await page.evaluate(`document.querySelector('${FORM} [type=submit]').disabled`), true);
+  assert.deepEqual(await page.evaluate(`(b => [b.disabled, b.getAttribute('aria-disabled')])(document.querySelector('${FORM} [type=submit]'))`), [false, 'true'], 'Create looks unavailable and can still be pressed');
   await page.press('Enter');
-  assert.equal(await page.evaluate(`!!document.querySelector('${FORM}')`), true, 'Enter does nothing until a place is chosen');
+  await page.until(`document.activeElement === document.querySelector('${FORM} select')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('${FORM}')`), true, 'Enter moves the focus to the place and makes nothing');
+  assert.deepEqual(layoutOf().titles, {});
   await page.evaluate(`(select => { select.value = 'cg-work'; select.dispatchEvent(new Event('change', { bubbles: true })); })(document.querySelector('${FORM} select'))`);
-  await page.until(`!document.querySelector('${FORM} [type=submit]').disabled`);
+  await page.until(`!document.querySelector('${FORM} [type=submit]').hasAttribute('aria-disabled')`);
   await page.click(`${FORM} [type=submit]`);
   await page.until(`!document.querySelector('.pick-bar')`);
   const made = Object.keys(layoutOf().titles)[0];
   assert.equal(layoutOf().assignments[made], 'cg-work');
   await page.until(`!!document.querySelector('${ROW(made)}')`);
+  const session = await signIn(app);
+  assert.equal((await request(app, 'POST', '/api/layout/parent/undo', { headers: as(session.token), json: { id: made } })).status, 200, 'another tab takes it back first');
   await undo(page);
   await page.until(`!document.querySelector('${ROW(made)}')`);
-  assert.equal(layoutOf().assignments.peer, 'cg-work', 'Undo puts the group back');
+  await page.until(`document.querySelector('${NOTE} [data-title]')?.textContent.startsWith('Not undone')`);
+  assert.equal(await noteText(page), 'Not undone: No session with that id on this Mac.');
+  assert.equal(await page.evaluate(`!!document.querySelector('${NOTE} [data-action]')`), false, 'nothing is left to retry, so no Undo');
+  assert.equal(layoutOf().assignments.peer, 'cg-work', 'the group is back');
 });
 
 test('on a phone the form fits the screen and the menu does the whole job', { skip, timeout }, async t => {

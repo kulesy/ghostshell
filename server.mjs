@@ -39,6 +39,7 @@ import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming
 import { esc } from './public/md.mjs';
 import { isIssueUrl, isPullUrl } from './public/ui/pull-url.js';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
+import { placeKey } from './public/ui/pick.js';
 import { titleText } from './public/ui/quote-rules.js';
 import { SECTION_IDS, SECTIONS, sectionById, sectionOf, sectionSessions } from './public/ui/sections.js';
 import { withKids } from './public/ui/tree.js';
@@ -440,8 +441,10 @@ function groupCtx(groupId) {
 // once before a no, since a transcript written a moment ago may not be in it yet.
 const hasTranscript = id => !!(transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id)));
 
-// A new parent is booked in started.json and has no transcript until the owner first writes in it, as a group's chat does.
+// A new parent is booked in started.json and has no transcript until the owner first writes in it, as a group's chat does. `booked` stays
+// after that, so it says only that New parent made the session.
 const isBooked = id => readStarted().some(s => s.id === id && s.booked);
+const awaitsFirstMessage = id => isBooked(id) && !hasTranscript(id);
 
 // Booked when the owner first opens the chat of a group or a built-in section. It makes the folder and writes the id and starts nothing, so it
 // costs no tokens, and it is synchronous, so two tabs opening it together get the same id.
@@ -497,6 +500,7 @@ const routines = makeScheduler({
 // session in its window. Read from Desktop's code on 14 Oct 2026, so re-check this after a Desktop update.
 
 const markStarted = (id, patch) => fs.writeFileSync(startedFile, JSON.stringify(readStarted().map(s => (s.id === id ? { ...s, ...patch } : s))));
+const unbook = id => fs.writeFileSync(startedFile, JSON.stringify(readStarted().filter(s => s.id !== id)));
 const inDesktop = id => loadDesktop(cfg.desktopDir, 0).sessions.some(r => r.id === id);
 const shortTitle = text => { const t = text.replace(/\s+/g, ' ').trim(); return t.length > 60 ? `${t.slice(0, 60).replace(/\s+\S*$/, '')}…` : t; };
 
@@ -618,7 +622,7 @@ function ensureChat(id, row, { mode } = {}) {
   const had = !!getChat(id);
   const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, ...(booked && { fresh: () => !hasTranscript(id) }), subs: subCtx });
   dropFastOnRefusal(chat);
-  if (booked && !had && cfg.desktopHandoff) afterTurn(chat, () => handOff(chat.id));
+  if (booked && !had && cfg.desktopHandoff) afterTurn(chat, () => { if (isBooked(id) && !Object.hasOwn(layout.read().archived, id)) handOff(id); });
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
 }
@@ -726,7 +730,7 @@ function events(req, res, id) {
   // Sessions running in Desktop or a terminal only show up as a growing file, so the file is watched too.
   let size = transcriptFor(id)?.size ?? -1;
   // A group's session, or a booked parent, has no file until its first message, which a chat of ours sends, so the index is not rescanned for one while no chat of ours runs it.
-  const unwritten = !!findRow(id)?.groupSession || isBooked(id);
+  const unwritten = !!findRow(id)?.groupSession || awaitsFirstMessage(id);
   const watch = setInterval(() => {
     const t = transcriptFor(id) || (unwritten && !getChat(id) ? null : (indexTranscripts(cfg.projectsDir, 3000), transcriptFor(id)));
     if (!t) return;
@@ -771,19 +775,6 @@ async function editLayout(req, res, change) {
   }
   const now = layout.read();
   return send(res, 200, { id, group: now.assignments[id] || null, pinned: now.pinned.includes(id), ...extra });
-}
-
-// The sibling of editLayout for a change that is about several sessions, so the change names them itself.
-async function editMany(req, res, change) {
-  const body = await readJson(req);
-  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
-  // A new password can land while the body is still arriving, so the session is checked again before the layout is written.
-  if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
-  try {
-    return send(res, 200, change(body));
-  } catch (e) {
-    return send(res, e.status || 500, { error: e.message });
-  }
 }
 
 // Archiving a chat Capcom runs stops it: a turn in progress is interrupted and its approvals denied, then the process closes.
@@ -852,8 +843,7 @@ function newParent({ ids, title, place }) {
     if (rows.get(id).archived) throw refuse(400, 'An archived session cannot be nested.');
   }
   const picked = ids.map(id => rows.get(id));
-  const here = r => (r.pinned ? 'pinned' : r.group ?? 'loose');
-  const shared = picked.every(r => here(r) === here(picked[0])) ? picked[0] : null;
+  const shared = picked.every(r => placeKey(r) === placeKey(picked[0])) ? picked[0] : null;
   if (place == null && !shared) throw refuse(400, 'The sessions are in different places. Choose where it goes.');
   if (place != null && (typeof place !== 'object' || typeof place.pinned !== 'boolean' || (place.group !== null && typeof place.group !== 'string'))) throw refuse(400, 'Where should it go?');
   const home = place ?? { group: shared.group, pinned: shared.pinned };
@@ -876,24 +866,32 @@ function newParent({ ids, title, place }) {
     if (final((chain.at(-1) ?? known.get(id)).id) === id) throw refuse(400, 'A session cannot nest under itself or its own child.');
   }
 
-  const booking = { id: parent, cwd: parentFolder(picked), at: Date.now(), title: name, booked: true };
-  fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), booking]));
+  // The layout goes first, so a failure of either write leaves nothing behind: the booking is never written, or the layout is put back.
+  const made = layout.newParent(parent, { title: name, group: home.pinned ? null : home.group, pinned: home.pinned, links, moved: direct });
   try {
-    const made = layout.newParent(parent, { title: name, group: home.pinned ? null : home.group, pinned: home.pinned, links, moved: direct });
-    return { id: parent, ...made, count: ids.length, group: home.pinned ? null : home.group, pinned: home.pinned };
+    fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: parent, cwd: parentFolder(picked), at: Date.now(), title: name, booked: true, undo: made.before }]));
   } catch (e) {
-    fs.writeFileSync(startedFile, JSON.stringify(readStarted().filter(s => s.id !== parent)));
+    layout.restoreParent(parent, made.before);
     throw e;
   }
+  return { id: parent, title: made.title, count: ids.length, group: home.pinned ? null : home.group, pinned: home.pinned };
 }
 
-// Takes a new parent back. Its booking goes when the owner has not written in it, which takes it out of the list. One he has written in is archived, since it holds his work.
-function undoParent({ id, before }) {
+// Takes a new parent back with the snapshot its booking holds, so a second Undo, from another tab, finds nothing and is a 404. The booking goes
+// when the owner has not written in the parent, which takes it out of the list. One he has written in, or that is working, is archived and
+// stopped, since it holds his work.
+function undoParent({ id }) {
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) throw refuse(400, 'Which session?');
-  if (!isBooked(id)) throw refuse(404, NO_SESSION);
-  layout.restoreParent(id, before);
-  if (hasTranscript(id)) return { id, ...setArchived(id, true) };
-  fs.writeFileSync(startedFile, JSON.stringify(readStarted().filter(s => s.id !== id)));
+  const booking = readStarted().find(s => s.id === id && s.booked && s.undo);
+  if (!booking) throw refuse(404, NO_SESSION);
+  layout.restoreParent(id, booking.undo);
+  const chat = getChat(id);
+  if (hasTranscript(id) || (chat && chat.state !== 'idle')) {
+    markStarted(id, { undo: undefined });
+    return { id, ...setArchived(id, true) };
+  }
+  chat?.stop();
+  unbook(id);
   return { id, removed: true };
 }
 
@@ -907,7 +905,7 @@ function removeGroup(id) {
   return { ...group, ...(stopped && { stopped: true }) };
 }
 
-// Projects and groups change by POST only, each with a JSON body, and a GET to these paths is a 404 that changes nothing.
+// Projects, groups and new parents change by POST only, each with a JSON body, and a GET to these paths is a 404 that changes nothing.
 const STRUCTURE = new Map([
   ['/api/layout/project/add', b => layout.addProject(b.name)],
   ['/api/layout/project/rename', b => layout.renameProject(b.id, b.name)],
@@ -917,6 +915,8 @@ const STRUCTURE = new Map([
   ['/api/layout/group/move', b => layout.moveGroup(b.id, b.project ?? null)],
   ['/api/layout/group/order', b => layout.orderGroup(b.id, { before: b.before, after: b.after })],
   ['/api/layout/group/remove', b => removeGroup(b.id)],
+  ['/api/layout/parent', newParent],
+  ['/api/layout/parent/undo', undoParent],
 ]);
 
 async function editStructure(req, res, change) {
@@ -1334,8 +1334,6 @@ async function api(req, res, u) {
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
   if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: layout.rename(id, body.title) }));
-  if (req.method === 'POST' && u.pathname === '/api/layout/parent') return editMany(req, res, newParent);
-  if (req.method === 'POST' && u.pathname === '/api/layout/parent/undo') return editMany(req, res, undoParent);
   if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => setArchived(id, body.archived, body.stop));
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
@@ -1604,4 +1602,4 @@ setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates fa
 process.on('exit', () => terminal.killAll());
 for (const name of ['SIGTERM', 'SIGINT']) process.on(name, () => process.exit(128 + os.constants.signals[name]));
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
-if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine && (!s.booked || hasTranscript(s.id))) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));
+if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine && !awaitsFirstMessage(s.id)) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));

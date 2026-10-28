@@ -5,6 +5,7 @@ import { placeOptions, parentTitle, sessions } from './pick.js';
 import { UNTITLED } from './order.js';
 import { TITLE_MAX } from './tree.js';
 
+// Create stays pressable while a place is still to choose, and pressing it then moves the focus to the select, so a keyboard or a screen reader is told what is missing.
 // `onCreate(title, place, { ring })` resolves false when the server refused, and the form stays open. `place` is undefined when the rows
 // share one. `ring` says the keyboard made it, so the focus it hands on shows its ring.
 export function ParentForm({ rows, groups, onCreate, onCancel }) {
@@ -29,7 +30,7 @@ export function ParentForm({ rows, groups, onCreate, onCancel }) {
             ${options.map(o => html`<option key=${o.key} value=${o.key}>${o.label}</option>`)}
           </select>`
           : null}
-        <button class="btn" data-size="sm" type="submit" disabled=${asks && !found}>Create</button>
+        <button class="btn" data-size="sm" type="submit" aria-disabled=${asks && !found ? 'true' : undefined}>Create</button>
         <button class="btn" data-variant="ghost" data-size="sm" type="button" onClick=${() => onCancel(false)}>Cancel</button>
       </div>
     <//>

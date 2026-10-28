@@ -605,14 +605,15 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     setMaking(null);
     fold(made.id, false);
     setAfter({ to: rowOf(made.id), ring });
-    say(parentNote(made.title, ids.length), { action: undoParentAction({ id: made.id, title: made.title, before: made.before, ids }) });
+    say(parentNote(made.title, ids.length), { action: undoParentAction({ id: made.id, title: made.title, ids }) });
     return true;
   }
 
-  // Takes a new parent back. The page goes off the parent if it was open, and a failed Undo keeps its button to try again.
+  // Takes a new parent back. The page goes off the parent if it was open, and a failed Undo keeps its button to try again, unless the
+  // server has nothing left to undo, as when another tab took it back.
   async function undoParent(note) {
-    const { problem, made } = await edit('api/layout/parent/undo', { id: note.id, before: note.before });
-    if (problem) return say(`Not undone: ${problem}`, { problem: true, action: undoParentAction(note) });
+    const { problem, made, status } = await edit('api/layout/parent/undo', { id: note.id });
+    if (problem) return say(`Not undone: ${problem}`, { problem: true, ...(status !== 404 && { action: undoParentAction(note) }) });
     if (location.hash === sessionHash(note.id)) location.hash = '#/';
     setAfter({ to: note.ids.map(rowOf).join(', ') });
     say(parentUndoNote(note.title, made));

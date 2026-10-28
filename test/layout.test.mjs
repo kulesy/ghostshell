@@ -716,19 +716,25 @@ test('putting a new parent back drops the group of a session whose group has gon
   assert.equal('s1' in now.parents, false);
 });
 
-test('putting a new parent back refuses anything newParent could not have made, and writes nothing', () => {
+test('putting a new parent back takes a session nested under it since out to the parent\'s place, and only a link to the parent', () => {
   const f = folder(FAMILY);
-  backdate(f);
-  const fine = { parent: false, group: null, pinned: false };
-  const bad = [
-    undefined, null, [], 'x', 5,
-    { 'a b': fine }, { '../x': fine }, { '': fine },
-    { s1: null }, { s1: [] }, { s1: 'x' },
-    { s1: { ...fine, parent: undefined } }, { s1: { ...fine, parent: true } }, { s1: { ...fine, parent: 'bad id' } }, { s1: { ...fine, parent: 5 } },
-    { s1: { ...fine, group: false } }, { s1: { ...fine, group: 'bad id' } }, { s1: { ...fine, group: 5 } },
-    { s1: { ...fine, pinned: 'yes' } }, { s1: { ...fine, pinned: null } }, { s1: { ...fine, pinned: undefined } },
-    { s1: { ...fine, extra: true } }, { s1: { parent: false, group: null } },
-  ];
-  for (const before of bad) assert.throws(() => f.layout.restoreParent(PARENT, before), { status: 400, message: 'That undo is not one this server made.' }, JSON.stringify(before));
-  assert.equal(rewritten(f), false);
+  const made = f.layout.newParent(PARENT, { title: 'Login work', group: 'cg-b', links: { s1: PARENT }, moved: ['s1'] });
+  f.layout.nest('s4', PARENT);
+  f.layout.nest('s6', 'boss');
+  f.layout.restoreParent(PARENT, made.before);
+  const now = f.onDisk();
+  assert.deepEqual([now.parents.s4, now.assignments.s4, now.pinned.includes('s4')], [null, 'cg-b', false], 'a group parent gives its group');
+  assert.deepEqual([now.parents.s6, now.parents.s1, now.assignments.s1], ['boss', undefined, 'cg-a'], 'a link elsewhere and a restored entry are as they were');
+  const pinned = f.layout.newParent('4e2d9a1b-6c3f-4b08-8f7a-1c5d3e9b2a40', { title: 'Pinned parent', pinned: true, links: { s5: PARENT }, moved: ['s5'] });
+  f.layout.nest('s7', '4e2d9a1b-6c3f-4b08-8f7a-1c5d3e9b2a40');
+  f.layout.restoreParent('4e2d9a1b-6c3f-4b08-8f7a-1c5d3e9b2a40', pinned.before);
+  assert.deepEqual([f.onDisk().parents.s7, f.onDisk().pinned.includes('s7'), 's7' in f.onDisk().assignments], [null, true, false], 'a pinned parent pins it');
+});
+
+test('putting a new parent back with nothing to put back still takes the title and place away', () => {
+  const f = folder(FAMILY);
+  f.layout.newParent(PARENT, { title: 'Login work', group: 'cg-a', links: { s1: PARENT }, moved: ['s1'] });
+  f.layout.restoreParent(PARENT, undefined);
+  assert.equal(PARENT in f.onDisk().titles, false);
+  assert.equal(PARENT in f.onDisk().assignments, false);
 });

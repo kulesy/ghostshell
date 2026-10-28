@@ -118,12 +118,15 @@ export function parentTitle(titles, max = TITLE_MAX) {
   return `${cutAt(first, max - [...more].length)}${more}`;
 }
 
+// Which place a row shows in: Pinned, a group by its id, or the loose list. The server decides whether a new parent needs asking with it too.
+export const placeKey = r => (r.pinned ? 'pinned' : r.group ?? 'loose');
+
 // The places the picked rows are in, once each in screen order, for the choice a new parent asks for when they differ. A row's `group` and
 // `pinned` are those of its family, and the loose list a new session lands in is Started here.
 export function placeOptions(rows, groups) {
   const found = new Map();
   for (const r of rows) {
-    const key = r.pinned ? 'pinned' : r.group ?? 'loose';
+    const key = placeKey(r);
     const label = r.pinned ? 'Pinned' : r.group ? groups.find(g => g.id === r.group)?.name ?? r.group : LOOSE_NAMES.started;
     if (!found.has(key)) found.set(key, { key, label, place: { group: r.pinned ? null : r.group ?? null, pinned: !!r.pinned } });
   }
@@ -133,5 +136,10 @@ export function placeOptions(rows, groups) {
 // The note once a new parent is made.
 export const parentNote = (title, count) => `Made \u201c${title}\u201d the parent of ${sessions(count)}.`;
 
-// What the note says once the parent is taken back: gone when it had no messages, archived when the owner had written in it.
-export const parentUndoNote = (title, { removed }) => (removed ? `Took back \u201c${title}\u201d.` : `Took back \u201c${title}\u201d and archived it, since it has messages.`);
+// What the note says once the parent is taken back: gone when it had no messages, archived when the owner had written in it, and stopped
+// too when it was working.
+export const parentUndoNote = (title, { removed, stopped }) => {
+  const name = `\u201c${title}\u201d`;
+  if (removed) return `Took back ${name}.`;
+  return stopped ? `Took back ${name}, stopped it and archived it, since it was working.` : `Took back ${name} and archived it, since it has messages.`;
+};

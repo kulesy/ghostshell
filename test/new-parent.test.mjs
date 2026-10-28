@@ -27,6 +27,7 @@ const SESSIONS = [
 
 const post = (s, token, route, json, headers) => request(s, 'POST', route, { headers: { ...as(token), ...headers }, json });
 const make = (s, token, json, headers) => post(s, token, '/api/layout/parent', json, headers);
+const undoOf = s => id => booked(s).find(e => e.id === id)?.undo;
 const undo = (s, token, json) => post(s, token, '/api/layout/parent/undo', json);
 const read = file => fs.readFileSync(file, 'utf8');
 const onDisk = s => JSON.parse(read(s.layout));
@@ -55,7 +56,8 @@ test('a new parent is booked: it has an id, a title of its own, no process and n
   const made = res.body();
   assert.match(made.id, UUID);
   assert.deepEqual([made.title, made.count, made.group, made.pinned], ['Login work', 2, null, false]);
-  assert.deepEqual(booked(s), [{ id: made.id, cwd: booked(s)[0].cwd, at: booked(s)[0].at, title: 'Login work', booked: true }]);
+  assert.deepEqual(booked(s), [{ id: made.id, cwd: booked(s)[0].cwd, at: booked(s)[0].at, title: 'Login work', booked: true, undo: undoOf(s)(made.id) }]);
+  assert.equal('before' in made, false, 'the snapshot stays on the server');
   assert.deepEqual(onDisk(s).titles, { [made.id]: 'Login work' });
   assert.deepEqual(onDisk(s).parents, { loner: made.id, other: made.id });
   const ix = await index(s, token);
@@ -67,10 +69,10 @@ test('a new parent is booked: it has an id, a title of its own, no process and n
   assert.deepEqual(cliCalls(s), [], 'no process started, so no tokens spent');
 });
 
-test('the answer carries a snapshot of every entry the write changed, and the booking is one session in started.json beside the others', async () => {
+test('the booking holds a snapshot of every entry the write changed, and is one session in started.json beside the others', async () => {
   const { s, token } = await ready({ layout: { parents: { loner: null } } });
   const made = (await make(s, token, { ids: ['loner', 'pin'], title: 'Two', place: { group: null, pinned: false } })).body();
-  assert.deepEqual(made.before, { loner: { parent: null, group: null, pinned: false }, pin: { parent: false, group: null, pinned: true } });
+  assert.deepEqual(undoOf(s)(made.id), { loner: { parent: null, group: null, pinned: false }, pin: { parent: false, group: null, pinned: true } });
   assert.deepEqual(JSON.parse(read(startedFile(s))).map(e => e.id), ['mine', made.id]);
 });
 
@@ -107,7 +109,7 @@ test('sessions in different places need a place: it is refused without one, and 
     const res = await make(s, token, { ids: ['peer', 'other'], title: `To ${JSON.stringify(place)}`, place });
     assert.equal(res.status, 200, res.text);
     assert.deepEqual([res.body().group, res.body().pinned], [place.group, place.pinned]);
-    await undo(s, token, { id: res.body().id, before: res.body().before });
+    await undo(s, token, { id: res.body().id });
   }
 });
 
@@ -156,7 +158,7 @@ test('an unselected child under a selected nested session stays with the session
   const { s, token } = await ready();
   const made = (await make(s, token, { ids: ['mid', 'peer'], title: 'Mid and peer' })).body();
   assert.deepEqual(onDisk(s).parents, { leaf: 'boss', mid: made.id, peer: made.id });
-  assert.deepEqual(made.before.leaf, { parent: false, group: null, pinned: false }, 'the relinked child is in the snapshot');
+  assert.deepEqual(undoOf(s)(made.id).leaf, { parent: false, group: null, pinned: false }, 'the relinked child is in the snapshot');
   const ix = await index(s, token);
   assert.deepEqual(titles(rowOf(ix, 'boss').children).sort(), ['Kid', 'Leaf']);
   assert.deepEqual(titles(rowOf(ix, made.id).children), ['Mid', 'Peer']);
@@ -205,11 +207,11 @@ test('sessions in different repos give the parent the repo of the one that ran l
   ] });
   const first = (await make(s, token, { ids: ['a', 'b', 'c'], title: 'Mixed' })).body();
   assert.equal(booked(s).find(e => e.id === first.id).cwd, repos[1], 'B ran last');
-  await undo(s, token, { id: first.id, before: first.before });
+  await undo(s, token, { id: first.id });
   fs.rmSync(repos[1], { recursive: true });
   const second = (await make(s, token, { ids: ['a', 'b', 'c'], title: 'Mixed again' })).body();
   assert.equal(booked(s).find(e => e.id === second.id).cwd, repos[0], 'B is gone, so A, the next to have run');
-  await undo(s, token, { id: second.id, before: second.before });
+  await undo(s, token, { id: second.id });
   fs.rmSync(repos[0], { recursive: true });
   fs.rmSync(repos[2], { recursive: true });
   const third = (await make(s, token, { ids: ['a', 'b', 'c'], title: 'None left' })).body();
@@ -255,7 +257,7 @@ test('the route needs a sign-in, the same origin and a JSON body, as the other l
   const before = snapshot(s);
   const body = { ids: ['loner', 'other'], title: 'Nope' };
   assert.equal((await request(s, 'POST', '/api/layout/parent', { json: body })).status, 401);
-  assert.equal((await request(s, 'POST', '/api/layout/parent/undo', { json: { id: 'x', before: {} } })).status, 401);
+  assert.equal((await request(s, 'POST', '/api/layout/parent/undo', { json: { id: 'x' } })).status, 401);
   assert.equal((await make(s, token, body, { origin: 'https://evil.example' })).status, 403);
   assert.equal((await request(s, 'GET', '/api/layout/parent', { headers: as(token) })).status, 404);
   assert.equal((await request(s, 'POST', '/api/layout/parent', { headers: { ...as(token), 'content-type': 'application/json' }, form: undefined })).status, 400);
@@ -268,12 +270,13 @@ test('Undo with no message in the parent restores the layout exactly and takes t
   const kept = file => ({ parents: {}, assignments: {}, pinned: [], titles: {}, ...Object.fromEntries(['parents', 'assignments', 'pinned', 'titles'].filter(k => k in JSON.parse(file)).map(k => [k, JSON.parse(file)[k]])) });
   const made = (await make(s, token, { ids: ['boss', 'mid', 'loner', 'pin'], title: 'Everything', place: { group: 'cg-home', pinned: false } })).body();
   assert.notDeepEqual(snapshot(s), files);
-  const res = await undo(s, token, { id: made.id, before: made.before });
+  const res = await undo(s, token, { id: made.id });
   assert.deepEqual([res.status, res.body()], [200, { id: made.id, removed: true }]);
   assert.deepEqual(kept(snapshot(s)[0]), kept(files[0]), 'the layout is as it was');
   assert.equal(booked(s).length, 0);
   assert.equal(rowOf(await index(s, token), made.id), undefined);
-  assert.equal((await undo(s, token, { id: made.id, before: made.before })).status, 404, 'a second Undo finds nothing');
+  const again = await undo(s, token, { id: made.id });
+  assert.deepEqual([again.status, again.body().error], [404, 'No session with that id on this Mac.'], 'a second Undo, from another tab, finds nothing');
 });
 
 test('Undo after the owner wrote in the parent archives it and restores the links', async () => {
@@ -281,8 +284,10 @@ test('Undo after the owner wrote in the parent archives it and restores the link
   const made = (await make(s, token, { ids: ['loner', 'other'], title: 'Worked in' })).body();
   assert.equal((await post(s, token, `/api/sessions/${made.id}/send`, { text: 'begin a session' })).status, 200);
   await until(() => hasFile(s, made.id));
-  const res = await undo(s, token, { id: made.id, before: made.before });
-  assert.deepEqual([res.status, res.body().archived], [200, true]);
+  assert.equal((await post(s, token, `/api/sessions/${made.id}/send`, { text: 'finish the turn' })).status, 200);
+  await until(async () => rowOf(await index(s, token), made.id)?.state === 'idle');
+  const res = await undo(s, token, { id: made.id });
+  assert.deepEqual([res.status, res.body().archived, res.body().stopped], [200, true, undefined]);
   const now = onDisk(s);
   assert.deepEqual([now.parents, now.titles, Object.keys(now.archived)], [{}, {}, [made.id]]);
   const ix = await index(s, token);
@@ -290,22 +295,49 @@ test('Undo after the owner wrote in the parent archives it and restores the link
   assert.deepEqual(ix.started.map(r => r.id), ['mine']);
   assert.deepEqual(ix.ungrouped.map(r => r.id).sort(), ['loner', 'other'].sort(), 'the sessions are back where they were');
   assert.equal(booked(s).length, 1, 'the booking stays for a session that has messages');
+  assert.equal(undoOf(s)(made.id), undefined, 'but its snapshot goes, so a second Undo finds nothing');
+  assert.equal((await undo(s, token, { id: made.id })).status, 404);
 });
 
-test('Undo refuses an undo that this server could not have made, a session that is not a booked parent, and an id that is not one', async () => {
+test('Undo refuses a session that is not a booked parent and an id that is not one, and writes nothing', async () => {
   const { s, token } = await ready();
-  const made = (await make(s, token, { ids: ['loner', 'other'], title: 'Mine' })).body();
+  await make(s, token, { ids: ['loner', 'other'], title: 'Mine' });
   const before = snapshot(s);
-  const fine = { parent: false, group: null, pinned: false };
-  for (const bad of [undefined, null, [], { 'a b': fine }, { loner: { ...fine, pinned: 'yes' } }, { loner: { ...fine, extra: 1 } }, { loner: { parent: 5, group: null, pinned: false } }, { loner: 'x' }]) {
-    const res = await undo(s, token, { id: made.id, before: bad });
-    assert.deepEqual([res.status, res.body().error], [400, 'That undo is not one this server made.'], JSON.stringify(bad));
-  }
-  assert.equal((await undo(s, token, { id: 'loner', before: made.before })).status, 404, 'an ordinary session is not undone');
-  assert.equal((await undo(s, token, { id: 'mine', before: made.before })).status, 404, 'nor is one started here');
-  assert.equal((await undo(s, token, { id: '../x', before: made.before })).status, 400);
-  assert.equal((await undo(s, token, { before: made.before })).status, 400);
+  assert.equal((await undo(s, token, { id: 'loner' })).status, 404, 'an ordinary session is not undone');
+  assert.equal((await undo(s, token, { id: 'mine' })).status, 404, 'nor is one started here');
+  assert.equal((await undo(s, token, { id: '../x' })).status, 400);
+  assert.equal((await undo(s, token, {})).status, 400);
   assert.deepEqual(snapshot(s), before);
+});
+
+test('Undo takes a session that was nested under the parent afterwards out to the parent\'s place, in a group and in Pinned', async () => {
+  const { s, token } = await ready();
+  for (const [ids, place, later, check] of [
+    [['boss', 'peer'], undefined, 'loner', now => now.assignments.loner === 'cg-work' && !now.pinned.includes('loner')],
+    [['loner', 'other'], { group: null, pinned: true }, 'mine', now => now.pinned.includes('mine') && !('mine' in now.assignments)],
+  ]) {
+    const made = (await make(s, token, { ids, title: 'Grows', ...(place && { place }) })).body();
+    assert.equal((await post(s, token, '/api/layout/nest', { id: later, parent: made.id })).status, 200);
+    assert.equal(onDisk(s).parents[later], made.id);
+    assert.equal((await undo(s, token, { id: made.id })).status, 200);
+    const now = onDisk(s);
+    assert.equal(now.parents[later], null, `${later} no longer links to a parent that is gone`);
+    assert.ok(check(now), JSON.stringify(now));
+    const row = rowOf(await index(s, token), later);
+    assert.ok(row && !row.parent, 'it shows as a top level session');
+    for (const id of ids) assert.equal(now.parents[id] === made.id, false);
+  }
+});
+
+test('Undo while the parent is working stops its chat and archives it, keeps the booking, and says it stopped', async () => {
+  const { s, token } = await ready();
+  const made = (await make(s, token, { ids: ['loner', 'other'], title: 'Busy' })).body();
+  assert.equal((await post(s, token, `/api/sessions/${made.id}/send`, { text: 'begin a session' })).status, 200);
+  await until(() => startsOf(s).length === 1);
+  const res = await undo(s, token, { id: made.id });
+  assert.deepEqual([res.status, res.body().archived, res.body().stopped], [200, true, true]);
+  assert.deepEqual([onDisk(s).parents, Object.keys(onDisk(s).archived)], [{}, [made.id]]);
+  assert.equal(booked(s).length, 1);
 });
 
 test('a booked parent stays in the list after ten minutes with no transcript, and across a restart, where an ordinary started session would be dropped', async () => {
@@ -351,12 +383,18 @@ test('the tools of a parent that has only just been written in already list its 
   assert.match(text, /- Other loner \[other\]/);
 });
 
-test('a title the owner gives is never replaced by the auto-titler', async () => {
-  const { s, token } = await ready({ autoTitle: true });
+test('the title the owner gives wins over the first line of the transcript once there is one, and would not without it', async () => {
+  const { s, token } = await ready();
   const made = (await make(s, token, { ids: ['loner', 'other'], title: 'Mine to keep' })).body();
   await post(s, token, `/api/sessions/${made.id}/send`, { text: 'begin a session' });
   await until(() => hasFile(s, made.id));
-  await new Promise(resolve => setTimeout(resolve, 300));
-  assert.equal(cliCalls(s).some(c => c.titled), false, 'the titler asked nothing');
-  assert.equal(rowOf(await index(s, token), made.id).title, 'Mine to keep');
+  const dir = fs.readdirSync(transcripts(s)).find(d => fs.existsSync(path.join(transcripts(s), d, `${made.id}.jsonl`)));
+  assert.match(read(path.join(transcripts(s), dir, `${made.id}.jsonl`)), /begin a session/, 'the first line is not the title');
+  const titleAfterRestart = async server => rowOf(await index(server, (await signIn(server)).token), made.id)?.title;
+  const again = await restart(s);
+  assert.equal(await titleAfterRestart(again), 'Mine to keep');
+  const layout = onDisk(again);
+  fs.writeFileSync(again.layout, JSON.stringify({ ...layout, titles: {} }));
+  const without = await restart(again);
+  assert.notEqual(await titleAfterRestart(without), 'Mine to keep', 'with no title of its own the list falls back to something else');
 });
