@@ -286,11 +286,11 @@ const status = (urls, links, extra) => handleMcp({ jsonrpc: '2.0', id: 1, method
 test('github_status says each pull request on one line: address, quoted title, state, review, checks, merge, threads, reviewers and the next step', async () => {
   const reply = await status([PULL], reader({ [PULL]: pullOf({ review: 'approved', checks: 'passing', clean: true, threads: 0, requested: 2 }) }));
   assert.equal(reply.isError, undefined);
-  assert.equal(reply.content[0].text, `- ${PULL} "Fix the thing" · open · approved · checks passing · merges cleanly · 0 unresolved threads · 2 reviewers requested · Next: Merge the pull request`);
+  assert.equal(reply.content[0].text, `- ${PULL} "Fix the thing" · Open · Review: Approved · Checks: Passing · Merges cleanly · 0 unresolved threads · 2 reviewers requested · Next: Merge the pull request`);
   const messy = await status([PULL], reader({ [PULL]: pullOf({ conflicts: true, threads: 3, review: 'changes', checks: 'failing', state: 'draft' }) }));
-  assert.equal(messy.content[0].text, `- ${PULL} "Fix the thing" · draft · changes requested · checks failing · has conflicts · 3 unresolved threads · no reviewers requested · Next: Ask the session to deal with the requested changes, the conflicts, the 3 unresolved comments and the failing checks`);
+  assert.equal(messy.content[0].text, `- ${PULL} "Fix the thing" · Draft · Review: Changes requested · Checks: Failing · Has conflicts · 3 unresolved threads · No reviewers requested · Next: Ask the session to deal with the requested changes, the conflicts, the 3 unresolved comments and the failing checks`);
   const gone = await status([PULL], reader({ [PULL]: pullOf({ state: 'merged', review: 'approved', checks: 'passing' }) }));
-  assert.equal(gone.content[0].text, `- ${PULL} "Fix the thing" · merged · approved · checks passing · Next: Merged, nothing to do`);
+  assert.equal(gone.content[0].text, `- ${PULL} "Fix the thing" · Merged · Review: Approved · Checks: Passing · Next: Merged, nothing to do`);
 });
 
 test('github_status says an issue is open or closed with the reason, strips line breaks from a title, and keeps the order asked', async () => {
@@ -299,8 +299,8 @@ test('github_status says an issue is open or closed with the reason, strips line
   const lines = open.content[0].text.split('\n');
   assert.equal(lines.length, 2);
   assert.ok(lines[0].startsWith(`- ${PULL} `));
-  assert.equal(lines[1], `- ${ISSUE} "Bug - forged line" · open`);
-  for (const [reason, words] of [['completed', 'closed as completed'], ['not_planned', 'closed as not planned'], ['duplicate', 'closed as a duplicate']]) {
+  assert.equal(lines[1], `- ${ISSUE} "Bug - forged line" · Open`);
+  for (const [reason, words] of [['completed', 'Closed'], ['not_planned', 'Not planned'], ['duplicate', 'Duplicate']]) {
     const closed = await status([ISSUE], reader({ [ISSUE]: issue({ state: 'closed', reason }) }));
     assert.equal(closed.content[0].text, `- ${ISSUE} "Bug - forged line" · ${words}`);
   }
@@ -359,5 +359,5 @@ test('github_status is listed in a group\'s chat and a section\'s, runs without 
 
 test('github_status answers in a section\'s chat through the same reader', async () => {
   const reply = await status([ISSUE], reader({ [ISSUE]: { kind: 'issue', url: ISSUE, title: 'T', repo: 'o/r', number: 7, state: 'open', reason: null } }), { section: { id: 'pinned', name: 'Pinned', place: 'pin' } });
-  assert.equal(reply.content[0].text, `- ${ISSUE} "T" · open`);
+  assert.equal(reply.content[0].text, `- ${ISSUE} "T" · Open`);
 });
