@@ -192,12 +192,13 @@ function buildIndex({ archived = false } = {}) {
   }
 
   // A group's or section's session belongs to it alone, so its row leaves `rows` here and no list, family, count or search sees it. A session
-  // with no transcript yet gets a row from the layout.
+  // with no transcript yet gets a row from the layout. A deleted group's chat is marked `retired`, which send_session cannot reach.
+  const retired = new Set(own.retired.map(g => g.session));
   const groupSessions = new Map();
   for (const g of ownedChats) {
     const row = rows.get(g.session) ?? { lastActivityAt: 0, sortAt: 0, createdAt: 0, state: stateOf(g.session, 0) };
     rows.delete(g.session);
-    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, via: null, groupSession: g.id });
+    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, via: null, groupSession: g.id, ...(retired.has(g.session) && { retired: true }) });
   }
 
   // A family shows in the place of its holder, the topmost session its links reach, so a child takes the place its holder has now.
@@ -349,12 +350,14 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 // What a chat is waiting on for the owner's say-so.
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
-// What an ordinary chat reaches the sessions under it through, and sends to them with. Each call looks the index up again, so a session archived or nested since is seen
-// as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for.
+// What a chat reaches the sessions under it through, and what every chat sends to any session with. Each call looks the index up again, so a session archived or nested since is seen
+// as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for. The sessions of groups and sections
+// are listed too, so one can send and be sent to, and none is ever below another. A deleted group's chat is left out, as nothing would answer its tools.
 function subCtx(sessionId) {
   return {
     lookup({ archived }) {
-      const listed = [...buildIndex({ archived }).rows.values()];
+      const { rows, groupSessions } = buildIndex({ archived });
+      const listed = [...rows.values(), ...[...groupSessions.values()].filter(r => !r.retired)];
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
@@ -607,7 +610,7 @@ function ensureChat(id, row, { mode } = {}) {
       return fresh;
     },
   };
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, subs: groupId ? undefined : subCtx });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, subs: subCtx });
   dropFastOnRefusal(chat);
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;

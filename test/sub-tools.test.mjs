@@ -62,7 +62,7 @@ function subsFor(rows, { self = 'top', pending = () => [], summaries = {}, send 
 }
 const refused = (run, expected) => assert.throws(run, { refusal: true, message: expected });
 const NOT_BELOW = 'That session is not one of the sub sessions of this session. Use list_sub_sessions to see the ones you can reach.';
-const NO_SESSION = 'No session with that id on this Mac. A chat has no tool that lists sessions outside its sub sessions, so the id has to come from the owner or from the text you are working on.';
+const NO_SESSION = 'No session with that id on this Mac. A chat lists only the sessions list_sub_sessions gives, so any other id has to come from the owner or from the text you are working on.';
 
 test('the list leads with the count and what needs you, then the tree two spaces in for each level, each session with its roll-up and the first sentence of its latest reply, the busiest first', () => {
   const subs = subsFor(ROWS, { summaries: { a: 'A waits on you.', a1: 'A1 is running the tests.' } });
@@ -185,14 +185,14 @@ const GROUP_TOOLS = ['list_group_sessions', 'read_group_session', 'start_group_s
 const rpc = (method, params, ctx) => handleMcp({ jsonrpc: '2.0', id: 7, method, params }, ctx);
 const names = reply => reply.result.tools.map(t => t.name);
 
-test('the sub session tools are listed to an ordinary chat that is given them, after the tools every chat has, and to no group\'s chat', () => {
+test('the sub session tools are listed to an ordinary chat that is given them, after the tools every chat has, and a group\'s chat is given the send alone', () => {
   const subs = subsFor(ROWS);
   const every = names(rpc('tools/list', {}, {}));
   assert.deepEqual(names(rpc('tools/list', {}, { subs })), [...every, ...SUB_TOOLS]);
   assert.deepEqual(names(rpc('tools/list', {}, {})).filter(n => SUB_TOOLS.includes(n)), [], 'a chat with no callbacks is offered none');
   const group = { lookup: () => null };
   assert.deepEqual(names(rpc('tools/list', {}, { group, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS]);
-  assert.deepEqual(names(rpc('tools/list', {}, { group, subs, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS], 'a group\'s chat keeps its own three and is given no more');
+  assert.deepEqual(names(rpc('tools/list', {}, { group, subs, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS, 'send_session'], 'a group\'s chat keeps its own three and is given the send');
   for (const tool of rpc('tools/list', {}, { subs }).result.tools) assert.ok(tool.description.length < 420, `${tool.name} is sent with every request, so its description stays short`);
   const [list, read, send] = rpc('tools/list', {}, { subs }).result.tools.slice(-3);
   assert.deepEqual(send.inputSchema.required, ['session_id', 'message']);
@@ -213,14 +213,14 @@ test('only the two sub session tools that read are allowed without asking, and t
   }
 });
 
-test('an ordinary chat is answered by the tools, and a group\'s chat or a chat with no callbacks is told they do not exist', () => {
+test('an ordinary chat is answered by the tools, a chat with no callbacks is told they do not exist, and a group\'s chat by the send alone', () => {
   const subs = subsFor(ROWS, { summaries: { a: 'A waits on you.' } });
   const listed = rpc('tools/call', { name: 'list_sub_sessions', arguments: { limit: 1 } }, { subs });
   assert.equal(listed.result.isError, undefined);
   assert.match(listed.result.content[0].text, /^Session "Session top": 4 sub sessions \(1 needs you, 1 working\)\n\n- Session a \[a\]/);
   assert.match(rpc('tools/call', { name: 'read_sub_session', arguments: { session_id: 'a' } }, { subs }).result.content[0].text, /^Session "Session a" \[a\]/);
-  for (const ctx of [{}, { group: { lookup: () => null }, cwd: '/tmp/group' }, { group: { lookup: () => null }, subs }]) {
-    for (const name of SUB_TOOLS) {
+  for (const [ctx, tools] of [[{}, SUB_TOOLS], [{ group: { lookup: () => null }, cwd: '/tmp/group' }, SUB_TOOLS], [{ group: { lookup: () => null }, subs }, READ_TOOLS]]) {
+    for (const name of tools) {
       const { result } = rpc('tools/call', { name, arguments: { session_id: 'a', message: 'hi' } }, ctx);
       assert.deepEqual(result, { content: [{ type: 'text', text: `GhostShell has no tool called ${name}.` }], isError: true });
     }
@@ -318,7 +318,7 @@ test('an empty message, one that is not text and one over 20000 characters are r
   assert.match(send({ session_id: 'b', message: 'x'.repeat(20_000) }, { send: sender('idle') }), /^Delivered/);
 });
 
-test('the tool call gives the outcome as text, a refusal as an error, and a chat that is no group\'s alone can call it', () => {
+test('the tool call gives the outcome as text, a refusal as an error, and a chat with no callbacks or a deleted group\'s cannot send', () => {
   sent.length = 0;
   const subs = subsFor(ROWS, { send: sender('idle') });
   const call = (ctx, args) => rpc('tools/call', { name: 'send_session', arguments: args }, ctx).result;
@@ -327,8 +327,48 @@ test('the tool call gives the outcome as text, a refusal as an error, and a chat
   assert.deepEqual(call({ subs }, { session_id: 'nobody', message: 'hi' }), { content: [{ type: 'text', text: NO_SESSION }], isError: true });
   assert.deepEqual(call({ subs }, { session_id: 'a2', message: 'hi' }).isError, true);
   assert.deepEqual(sent.map(([id]) => id), ['b', 'far1']);
-  for (const ctx of [{}, { group: { lookup: () => null }, subs }]) assert.equal(call(ctx, { session_id: 'b', message: 'hi' }).content[0].text, 'GhostShell has no tool called send_session.');
+  assert.equal(call({}, { session_id: 'b', message: 'hi' }).content[0].text, 'GhostShell has no tool called send_session.');
+  assert.deepEqual(call({ group: { lookup: () => null }, subs }, { session_id: 'b', message: 'hi' }), { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });
   assert.deepEqual(sent.map(([id]) => id), ['b', 'far1'], 'only the first two calls sent');
+});
+
+// A group's chat is in the index as a row of its own that is below no session, and its members are any sessions in the group.
+const GROUP_CHAT = row('chat', null, { title: 'Needs Review', groupSession: 'g1' });
+const groupWith = (members, section) => ({ ...(section && { section }), lookup: () => ({ name: 'Needs Review', members: members.map(id => ROWS.find(r => r.id === id)), ...(section && { section }) }) });
+const fromGroup = (args, { members = ['b', 'a2'], group = groupWith(members), send: deliver = sender('idle') } = {}) =>
+  rpc('tools/call', { name: 'send_session', arguments: args }, { group, subs: subsFor([...ROWS, GROUP_CHAT], { self: 'chat', send: deliver }) }).result;
+
+test('a group\'s chat sends to an idle member as another session, waking it, and the reply points at read_group_session', () => {
+  sent.length = 0;
+  const result = fromGroup({ session_id: 'b', message: 'Josh left review comments.' });
+  assert.equal(result.isError, undefined);
+  assert.equal(result.content[0].text, 'Delivered to "Session b" [b]. It was idle, so it has started a turn to read your message. This call did not wait for a reply: use read_group_session later to see it.');
+  assert.deepEqual(sent, [['b', '<session-message from="chat" from-name="Needs Review (another session)">\nJosh left review comments.\n</session-message>']]);
+});
+
+test('a group\'s chat can send to a session outside it, which it is told it cannot read back, and a section\'s chat is told the same of its own', () => {
+  sent.length = 0;
+  assert.match(fromGroup({ session_id: 'far1', message: 'hi' }).content[0].text, /^Delivered to "Session far1" \[far1\]\. .* read_group_session reaches only this group's sessions, so you cannot read it\. The owner sees the reply in that session's own chat\.$/);
+  const section = groupWith(['b'], { id: 'pinned', name: 'Pinned', place: 'pin' });
+  assert.match(fromGroup({ session_id: 'sib', message: 'hi' }, { group: section }).content[0].text, /read_group_session reaches only this section's sessions/);
+  assert.match(fromGroup({ session_id: 'b', message: 'hi' }, { group: section, send: sender('working') }).content[0].text, /^Queued for "Session b" \[b\]\. It is running a turn.*use read_group_session later to see it\.$/);
+  assert.deepEqual(sent.map(([id]) => id), ['far1', 'sib', 'b']);
+});
+
+test('a group\'s chat is refused the same as any chat for an archived member, an unknown id or itself, the unknown one naming list_group_sessions, and nothing is sent', () => {
+  sent.length = 0;
+  const text = args => fromGroup(args).content[0].text;
+  assert.equal(text({ session_id: 'a2', message: 'hi' }), 'Refused: "Session a2" [a2] is archived. Ask the owner to unarchive it, then send again.');
+  assert.equal(text({ session_id: 'nobody', message: 'hi' }), 'No session with that id on this Mac. A chat lists only the sessions list_group_sessions gives, so any other id has to come from the owner or from the text you are working on.');
+  assert.equal(text({ session_id: 'chat', message: 'hi' }), 'A session cannot send a message to itself.');
+  assert.deepEqual(sent, []);
+});
+
+test('an ordinary session can send to a group\'s chat, as another session', () => {
+  sent.length = 0;
+  const text = sendSession({ session_id: 'chat', message: 'Ready for review.' }, subsFor([...ROWS, GROUP_CHAT], { self: 'b', send: sender('idle') }));
+  assert.match(text, /^Delivered to "Needs Review" \[chat\]\. .*read_sub_session reaches only sub sessions, so you cannot read it\./);
+  assert.equal(noticeFrom(sent[0][1]).title, 'Message from Session b (another session)');
 });
 
 test('the approval card names the recipient by title and shows the start of the message on one line', () => {

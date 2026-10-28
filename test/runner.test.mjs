@@ -1000,7 +1000,7 @@ const groupCli = dir => {
 
 const GROUP_ID = '11111111-2222-4333-8444-555555555555';
 // What a group's chat is made to ask about, whatever the mode. Spelled out here so a change to the list is a change to a test.
-const GROUP_ASKS = ['mcp__capcom__start_group_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage'];
+const GROUP_ASKS = ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage'];
 const groupChat = (t, { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-')), id = GROUP_ID, ...options } = {}) => {
   const recorded = groupCli(dir);
   const cwd = path.join(dir, 'groups', 'cg-1');
@@ -1188,7 +1188,7 @@ test('a tool call from an ordinary chat is refused by the tool server as unknown
 const SUB_SEND = 'mcp__capcom__send_session';
 const subsOf = (rows = [{ id: 'kid', title: 'Review - dialogs' }]) => () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: rows.map(r => ({ via: 'me', ...r })) }), pending: () => [], summary: () => null });
 
-test('an ordinary chat that has sub sessions asks before every send to one, a group chat and one with no sub sessions are not given that rule, and Chrome\'s stays beside it', async t => {
+test('an ordinary chat that has sub sessions asks before every send to one, a group chat asks for it in its own list, one with no sub sessions is given no rule, and Chrome\'s stays beside it', async t => {
   const rules = async (id, options) => {
     const { chat, recorded } = groupChat(t, { id, ...options });
     chat.send('hi', []);
@@ -1199,7 +1199,7 @@ test('an ordinary chat that has sub sessions asks before every send to one, a gr
   assert.deepEqual(await rules('11111111-2222-4333-8444-000000000050', { subs: subsOf() }), [SUB_SEND]);
   assert.deepEqual(await rules('11111111-2222-4333-8444-000000000051', { subs: subsOf(), chrome: true }), ['mcp__claude-in-chrome', SUB_SEND]);
   assert.equal(await rules('11111111-2222-4333-8444-000000000052', {}), undefined, 'a chat with no sub sessions to reach is given no rule');
-  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000053', { group: {}, subs: subsOf() }), GROUP_ASKS, 'a group chat keeps its own list');
+  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000053', { group: {}, subs: subsOf() }), GROUP_ASKS, 'a group chat keeps its own list, which has the send in it');
 });
 
 test('in an ordinary chat a send to a sub session always shows a card, in any mode, naming the recipient and the start of the message, with no Always allow even when the CLI offers one, while the reads need no card', async t => {
@@ -1219,6 +1219,19 @@ test('in an ordinary chat a send to a sub session always shows a card, in any mo
     await slow(() => recorded.answers().some(a => a.request_id === 'ask-send_session'));
     const answer = recorded.answers().find(a => a.request_id === 'ask-send_session').response;
     assert.deepEqual([answer.behavior, answer.updatedPermissions], ['allow', undefined], 'Always allow keeps no rule for it');
+  }
+});
+
+test('in a group chat a send always shows a card too, in any mode, naming the recipient, with no Always allow, while its reads of sub sessions are not allowed', async t => {
+  const modes = ['manual', 'bypassPermissions', 'auto'];
+  for (const mode of modes) {
+    const { chat, recorded } = groupChat(t, { group: {}, subs: subsOf(), mode, id: `11111111-2222-4333-8444-00000000008${modes.indexOf(mode)}` });
+    chat.send('ask read_sub_session', []);
+    chat.send(`ask send_session ${JSON.stringify({ session_id: 'kid', message: 'Please rebase' })}`, []);
+    await slow(() => chat.status().pending.length === 2);
+    const card = chat.status().pending.find(p => p.tool === SUB_SEND);
+    assert.deepEqual([card.always, card.summary], [false, 'to "Review - dialogs": Please rebase'], mode);
+    assert.equal(recorded.answers().some(a => a.request_id.startsWith('ask-')), false, mode);
   }
 });
 

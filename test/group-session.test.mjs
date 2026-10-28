@@ -82,7 +82,7 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   assert.equal(flagOf(started, '--session-id'), id);
   assert.equal(started.includes('--resume'), false);
   assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in GhostShell\./);
-  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-7), ['mcp__capcom__start_group_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-8), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
   assert.equal(flagOf(started, '--setting-sources'), 'user');
   assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
 
@@ -210,6 +210,56 @@ test('a group\'s chat is allowed to list and read with no card, while starting a
   }
 });
 
+const resumed = (s, id) => startsOf(s).filter(c => c.started.includes('--resume') && flagOf(c.started, '--resume') === id);
+const delivered = s => cliCalls(s).filter(c => typeof c.user === 'string' && c.user.startsWith('<session-message'));
+
+test('a group\'s chat offers send_session, and a send to an idle member with no process resumes it and arrives as a message from the group\'s chat', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await sendTo(s, token, WORK, 'list the tools');
+  await until(() => replies(s).length === 1);
+  assert.ok(replies(s)[0].result.tools.some(t => t.name === 'send_session'));
+  assert.equal(resumed(s, 'a').length, 0);
+  const text = textOf(await callTool(s, token, WORK, 'send_session', { session_id: 'a', message: 'Josh left review comments.' }));
+  assert.equal(text, 'Delivered to "Member A" [a]. It was idle, so it has started a turn to read your message. This call did not wait for a reply: use read_group_session later to see it.');
+  await until(() => resumed(s, 'a').length === 1 && delivered(s).length === 1);
+  assert.equal(delivered(s)[0].user, `<session-message from="${WORK}" from-name="Work (another session)">\nJosh left review comments.\n</session-message>`);
+});
+
+test('a group\'s chat can send to a session outside the group, is refused an archived member, and a member can send back to the group\'s chat', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  const away = textOf(await callTool(s, token, WORK, 'send_session', { session_id: 'away', message: 'Hello.' }));
+  assert.match(away, /^Delivered to "Member of another group" \[away\]\..*read_group_session reaches only this group's sessions, so you cannot read it\./);
+  const old = await callTool(s, token, WORK, 'send_session', { session_id: 'old', message: 'hi' });
+  assert.deepEqual([old.result.isError, textOf(old)], [true, 'Refused: "Archived member" [old] is archived. Ask the owner to unarchive it, then send again.']);
+  await until(() => resumed(s, 'away').length === 1 && delivered(s).length === 1);
+  assert.equal(resumed(s, 'old').length, 0);
+
+  await sendTo(s, token, WORK, 'finish the turn');
+  await sendTo(s, token, 'a', 'begin a session');
+  const back = textOf(await callTool(s, token, 'a', 'send_session', { session_id: WORK, message: 'Comments addressed.' }));
+  assert.match(back, /^(Delivered to|Queued for) "Work" \[[0-9a-f-]+\]\./);
+  await until(() => delivered(s).some(c => c.user.includes('Comments addressed.')));
+  assert.match(delivered(s).find(c => c.user.includes('Comments addressed.')).user, /^<session-message from="a" from-name="Member A \(another session\)">/);
+});
+
+test('a send from a group\'s chat shows a card naming the member, with no Always allow, and the CLI is not answered until the owner decides', async () => {
+  const { s, token } = await booked({ sessions: [...SESSIONS, { id: 'kid', title: 'Own PR 4546', group: 'cg-work', ago: 4 }] });
+  await sendTo(s, token, WORK, 'begin a session');
+  const viewer = listen(s, token, WORK);
+  try {
+    await until(() => viewer.events.length);
+    await sendTo(s, token, WORK, 'ask to send to a sub');
+    await until(() => viewer.events.some(e => e.type === 'approval'));
+    const [card] = viewer.events.filter(e => e.type === 'approval').map(e => e.data);
+    assert.deepEqual([card.tool, card.always, card.summary], ['mcp__capcom__send_session', false, 'to "Own PR 4546": Please rebase']);
+    assert.equal(cliCalls(s).some(c => c.requestId === 'perm-send'), false);
+  } finally {
+    viewer.close();
+  }
+});
+
 test('a session started by the group\'s chat runs in the folder it gave, with its prompt, and lands in the group, and a bad folder is refused', async () => {
   const { s, token } = await booked();
   await sendTo(s, token, WORK, 'begin a session');
@@ -312,6 +362,17 @@ test('a group deleted by hand while its chat runs takes its tools with it', asyn
 });
 
 const removeGroup = (s, token, id) => post(s, token, '/api/layout/group/remove', { id });
+
+test('after its group is deleted, a send to the group\'s chat is refused as no session, and its chat cannot send either', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await sendTo(s, token, WORK, 'finish the turn');
+  assert.equal((await removeGroup(s, token, 'cg-work')).status, 200);
+  assert.ok(onDisk(s).retired.some(g => g.session === WORK));
+  assert.match(textOf(await callTool(s, token, 'loose', 'send_session', { session_id: WORK, message: 'hi' })), /^No session with that id on this Mac\./);
+  assert.equal(textOf(await callTool(s, token, WORK, 'send_session', { session_id: 'loose', message: 'hi' })), 'This group no longer exists.');
+  assert.equal(delivered(s).length, 0);
+});
 const stateOfWork = async (s, token) => (await get(s, token, '/api/sessions')).groups.find(g => g.id === 'cg-work').session.state;
 const touched = s => cliCalls(s).filter(c => c.response || c.control === 'interrupt' || c.closed);
 // The layout as the fake CLI found it when the interrupt reached it, which shows whether the server had written it by then.
@@ -376,7 +437,7 @@ test('after its group is deleted, a chat that is sent a message after a restart 
   const { started, cwd } = startsOf(s)[1];
   assert.equal(flagOf(started, '--resume'), WORK, 'its transcript is kept, so it resumes');
   assert.equal(flagOf(started, '--setting-sources'), 'user', 'a settings file in its folder is still never loaded');
-  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-7), ['mcp__capcom__start_group_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-8), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
   assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in GhostShell\./);
   assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
   assert.deepEqual(reply.result, { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });

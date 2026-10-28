@@ -441,7 +441,7 @@ test('a section\'s chat starts the CLI with --session-id, the section\'s guide, 
   assert.match(flagOf(refused.started, '--append-system-prompt'), /"Routines"\. It holds the runs of the routines/);
   assert.match(flagOf(refused.started, '--append-system-prompt'), /start_group_session and spawn_task are refused in this chat/);
   for (const { started } of [pinned, refused]) {
-    assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-7), ['mcp__capcom__start_group_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+    assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-8), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
     assert.equal(flagOf(started, '--setting-sources'), 'user');
   }
   assert.equal(fs.realpathSync(pinned.cwd), fs.realpathSync(path.join(s.state, 'groups', 'pinned')));
