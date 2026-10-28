@@ -189,7 +189,7 @@ test('the button lights while the section\'s session waits for the owner, and ca
   const chat = booked.body().id;
   const sent = text => request(app, 'POST', `/api/sessions/${chat}/send`, { headers: as(token), json: { text } });
   assert.equal((await sent('begin a session')).status, 200);
-  assert.equal((await sent('ask for approval')).status, 200);
+  assert.equal((await sent('ask to run a write')).status, 200);
   await until(async () => (await request(app, 'GET', '/api/sessions', { headers: as(token) })).body().sections.find(s => s.id === 'other').session.state === 'waiting');
   const page = await appPage(t);
   await page.until(`!!document.querySelector('.chat-open[href="#/g/other"][data-state="waiting"] .lamp')`);

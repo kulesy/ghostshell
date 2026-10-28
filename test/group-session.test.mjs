@@ -399,7 +399,7 @@ test('deleting a group whose chat is mid-turn writes the layout, then interrupts
 
 test('deleting a group whose chat waits on an approval denies it first, and one whose chat is idle closes it and says it stopped nothing', async () => {
   const waiting = await booked();
-  await sendTo(waiting.s, waiting.token, WORK, 'ask for approval');
+  await sendTo(waiting.s, waiting.token, WORK, 'ask to run a write');
   await until(async () => (await stateOfWork(waiting.s, waiting.token)) === 'waiting');
   assert.equal((await removeGroup(waiting.s, waiting.token, 'cg-work')).body().stopped, true);
   await until(() => cliCalls(waiting.s).some(c => c.closed));

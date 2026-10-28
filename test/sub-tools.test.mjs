@@ -181,7 +181,7 @@ test('what a session waits on is one line each for the page, with the tool and t
 
 const READ_TOOLS = ['list_sub_sessions', 'read_sub_session'];
 const SUB_TOOLS = [...READ_TOOLS, 'send_session'];
-const GROUP_TOOLS = ['list_group_sessions', 'read_group_session', 'start_group_session'];
+const GROUP_TOOLS = ['list_group_sessions', 'read_group_session', 'github_status', 'start_group_session'];
 const rpc = (method, params, ctx) => handleMcp({ jsonrpc: '2.0', id: 7, method, params }, ctx);
 const names = reply => reply.result.tools.map(t => t.name);
 
@@ -192,7 +192,7 @@ test('the sub session tools are listed to an ordinary chat that is given them, a
   assert.deepEqual(names(rpc('tools/list', {}, {})).filter(n => SUB_TOOLS.includes(n)), [], 'a chat with no callbacks is offered none');
   const group = { lookup: () => null };
   assert.deepEqual(names(rpc('tools/list', {}, { group, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS]);
-  assert.deepEqual(names(rpc('tools/list', {}, { group, subs, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS, 'send_session'], 'a group\'s chat keeps its own three and is given the send');
+  assert.deepEqual(names(rpc('tools/list', {}, { group, subs, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS, 'send_session'], 'a group\'s chat keeps its own four and is given the send');
   for (const tool of rpc('tools/list', {}, { subs }).result.tools) assert.ok(tool.description.length < 420, `${tool.name} is sent with every request, so its description stays short`);
   const [list, read, send] = rpc('tools/list', {}, { subs }).result.tools.slice(-3);
   assert.deepEqual(send.inputSchema.required, ['session_id', 'message']);
