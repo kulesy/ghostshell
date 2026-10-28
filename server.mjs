@@ -349,12 +349,15 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 // What a chat is waiting on for the owner's say-so.
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
-// What an ordinary chat reaches the sessions under it through, and sends to them with. Each call looks the index up again, so a session archived or nested since is seen
-// as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for.
+// What a chat reaches the sessions under it through, and what every chat sends to any session with. Each call looks the index up again, so a session archived or nested since is seen
+// as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for. The sessions of groups and sections
+// are listed too, so one can send and be sent to, and none is ever below another. A deleted group's chat is left out, as nothing would answer its tools.
 function subCtx(sessionId) {
   return {
     lookup({ archived }) {
-      const listed = [...buildIndex({ archived }).rows.values()];
+      const { rows, groupSessions } = buildIndex({ archived });
+      const retired = new Set(layout.read().retired.map(g => g.session));
+      const listed = [...rows.values(), ...[...groupSessions.values()].filter(r => !retired.has(r.id))];
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
@@ -607,7 +610,7 @@ function ensureChat(id, row, { mode } = {}) {
       return fresh;
     },
   };
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, subs: groupId ? undefined : subCtx });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, subs: subCtx });
   dropFastOnRefusal(chat);
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
