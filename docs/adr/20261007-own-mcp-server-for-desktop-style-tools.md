@@ -45,6 +45,8 @@ Capcom allows its own tools by exact name, with no approval card.
 
 **Amended 2026-10-27, sending to a session.** That chat gets a third tool, `send_session`, which starts or queues a turn in any other session. Its reads still reach sub sessions alone. It asks with a card every time, in every mode, with no Always allow, as the group tools that start work do (see the same record).
 
+**Amended 2026-10-28, sending from a group's chat.** The chat of a group or a built-in section gets `send_session` too, with the same card, so every chat can message any other session (see [Give each group a session of its own](20261023-a-session-for-each-group.md)).
+
 ### Consequences
 
 - ✅ Chips, chapters and widgets work in Capcom. The owner can also start chips that Desktop sessions made.
