@@ -26,7 +26,7 @@ const chevron = () => html`<svg viewBox="0 0 24 24" width="16" height="16" fill=
 const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
 
 // The button on the Routines header in Home, drawn as the header button of a group's chat is.
-export const ManageRoutines = ({ current }) => html`<a class="more chat-open" href=${ROUTINES_HASH} aria-label="Manage routines" data-tip="Manage routines" aria-current=${current ? 'page' : null}>${draw(icons.calendarClock)}</a>`;
+export const ManageRoutines = ({ current }) => html`<a class="more head-tool" href=${ROUTINES_HASH} aria-label="Manage routines" data-tip="Manage routines" aria-current=${current ? 'page' : null}>${draw(icons.calendarClock)}</a>`;
 
 // ---- actions, shared with Home's row menu --------------------------------------------------------
 

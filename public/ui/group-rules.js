@@ -86,11 +86,24 @@ export function parseNewRoute(hash) {
   try { return { group: decodeURIComponent(hash.slice(6)) || null }; } catch { return { group: null }; }
 }
 
-// The group a new session starts in: the one the address names while it is a group the owner made. Before the list has loaded the
-// address is taken as it stands, and a built-in section never counts.
+// The group a new session starts in: the one the address names while it is a group the owner made, or Pinned, which pins it. Before the list
+// has loaded the address is taken as it stands, and no other built-in section counts.
 export function draftGroup(ix, id) {
-  if (!id || sectionById(id)) return null;
+  if (!id) return null;
+  if (sectionById(id)) return pinsOnStart(id) ? id : null;
   return !ix || ix.groups.some(g => g.id === id) ? id : null;
+}
+
+// Whether a new session page that names this section pins the session it starts, as Pinned's chat does.
+export const pinsOnStart = id => sectionById(id)?.place === 'pin';
+
+// What the new session button on a header starts a session in: its group, Pinned, or no group for Started here, which a session in no group
+// shows in. Ungrouped is loose too, but it lists Claude Desktop's sessions, and the other sections hold none started here, so each has no
+// button and this is undefined.
+export function startsFrom(group) {
+  if (!group.section) return group.id;
+  if (pinsOnStart(group.id)) return group.id;
+  return group.id === 'started' ? null : undefined;
 }
 
 // The group or section whose own session this is, or null. A link to that session opens it.

@@ -1,7 +1,7 @@
 // Run with `npm test`. How a group's sessions fall into the parts of its panel and of the list tool, and the summary line over them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newRoute, paneOf, parseNewRoute, RECENT_MS, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups } from '../public/ui/group-rules.js';
+import { BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newRoute, paneOf, parseNewRoute, RECENT_MS, startsFrom, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups } from '../public/ui/group-rules.js';
 import { supportsSections } from '../public/ui/sections.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -207,13 +207,23 @@ test('an address that is not the new session page gives none, and one with a gro
   assert.deepEqual(parseNewRoute('#/new/%E0%A4%A'), { group: null });
 });
 
-test('a new session starts in the group of the address only while it is a group the owner made, and a section or an unknown id means none', () => {
+test('a new session starts in the group of the address only while it is a group the owner made or Pinned, and any other section or an unknown id means none', () => {
   const list = { groups: [{ id: 'cg-a', name: 'A' }] };
   assert.equal(draftGroup(list, 'cg-a'), 'cg-a');
   assert.equal(draftGroup(list, 'cg-gone'), null);
-  assert.equal(draftGroup(list, 'pinned'), null);
+  assert.equal(draftGroup(list, 'pinned'), 'pinned', 'Pinned pins the session');
+  assert.equal(draftGroup(list, 'ungrouped'), null);
+  assert.equal(draftGroup(list, 'routines'), null);
   assert.equal(draftGroup(list, null), null);
   assert.equal(draftGroup(null, 'cg-a'), 'cg-a', 'before the list has loaded the address stands');
-  assert.equal(draftGroup(null, 'pinned'), null);
+  assert.equal(draftGroup(null, 'pinned'), 'pinned');
+  assert.equal(draftGroup(null, 'ungrouped'), null);
   assert.equal(draftGroup(null, null), null);
+});
+
+test('a header\'s new session button starts in its group, pinned for Pinned and in no group for Started here, and the other sections have none', () => {
+  assert.equal(startsFrom({ id: 'cg-a', name: 'A' }), 'cg-a');
+  assert.equal(startsFrom({ id: 'pinned', section: true }), 'pinned');
+  assert.equal(startsFrom({ id: 'started', section: true }), null);
+  for (const id of ['routines', 'ungrouped', 'other']) assert.equal(startsFrom({ id, section: true }), undefined, id);
 });

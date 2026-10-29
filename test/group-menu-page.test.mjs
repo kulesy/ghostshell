@@ -166,8 +166,8 @@ test('a server that can edit groups gives each group in Home Move up and Move do
 test('the button at the end of the header opens the same menu, and Delete group is drawn as a destructive item', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin);
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
-  assert.equal(await page.evaluate(`${head('Backlog')}.closest('.bar').querySelector('.more').getAttribute('aria-label')`), 'Actions for Backlog');
-  await page.evaluate(`${head('Backlog')}.closest('.bar').querySelector('.more').setAttribute('data-picked', '')`);
+  assert.equal(await page.evaluate(`${head('Backlog')}.closest('.bar').querySelector('.more[aria-haspopup]').getAttribute('aria-label')`), 'Actions for Backlog');
+  await page.evaluate(`${head('Backlog')}.closest('.bar').querySelector('.more[aria-haspopup]').setAttribute('data-picked', '')`);
   await page.click('.more[data-picked]');
   await page.until(`!!document.querySelector('${MENU}')`);
   assert.deepEqual(await menuOf(page), ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move up', 'Move down', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
@@ -203,7 +203,7 @@ test('a server that does not say it can edit groups gets the menu it had, which 
 
   const alone = await appPage(t, olderLone.origin);
   await alone.until(`document.querySelectorAll('${GROUP_HEADS}').length === 1`);
-  assert.equal(await alone.evaluate(`document.querySelectorAll('.bar.has-menu, .bar > button.more').length`), 0, 'no button');
+  assert.equal(await alone.evaluate(`document.querySelectorAll('.bar.has-menu, .bar > .more[aria-haspopup]').length`), 0, 'no button');
   await alone.evaluate(`document.querySelector('.bar').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))`);
   await new Promise(done => setTimeout(done, 200));
   assert.equal(await hasMenu(alone), false, 'and no menu on a right click');
@@ -240,7 +240,7 @@ test('Rename puts a box with the name in place of the header, and Enter saves it
   await page.until(`${FOCUSED} === 'Open tasks'`);
   assert.equal(await page.evaluate(`document.querySelectorAll('.bar[data-handle="cg-b"]').length`), 1, 'it can be carried again');
   assert.equal(onDisk(s).groups[1].name, 'Open tasks');
-  assert.equal(await page.evaluate(`${head('Open tasks')}.closest('.bar').querySelector('.more').getAttribute('aria-label')`), 'Actions for Open tasks');
+  assert.equal(await page.evaluate(`${head('Open tasks')}.closest('.bar').querySelector('.more[aria-haspopup]').getAttribute('aria-label')`), 'Actions for Open tasks');
   assert.deepEqual(page.problems, []);
 });
 
@@ -301,9 +301,9 @@ test('on a phone the button is there to touch without a hover, and opens the men
   const page = await appPage(t, app.origin, { phone: true });
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
   assert.equal(await page.evaluate(`matchMedia('(hover: none)').matches && matchMedia('(pointer: coarse)').matches`), true);
-  const buttons = await page.evaluate(`[...document.querySelectorAll('.bar > button.more')].map(el => { const r = el.getBoundingClientRect(); return [getComputedStyle(el).opacity, r.width > 0 && r.height > 0 && r.right <= innerWidth && getComputedStyle(el, '::after').content !== 'none']; })`);
+  const buttons = await page.evaluate(`[...document.querySelectorAll('.bar > .more[aria-haspopup]')].map(el => { const r = el.getBoundingClientRect(); return [getComputedStyle(el).opacity, r.width > 0 && r.height > 0 && r.right <= innerWidth && getComputedStyle(el, '::after').content !== 'none']; })`);
   assert.deepEqual(buttons, [['1', true], ['1', true], ['1', true]]);
-  await page.evaluate(`${head('Notes')}.closest('.bar').querySelector('.more').setAttribute('data-picked', '')`);
+  await page.evaluate(`${head('Notes')}.closest('.bar').querySelector('.more[aria-haspopup]').setAttribute('data-picked', '')`);
   await page.click('.more[data-picked]');
   await page.until(`!!document.querySelector('${MENU}')`);
   assert.deepEqual(await menuOf(page), ['Rename', SEPARATOR, 'New session', SEPARATOR, 'Move up', SEPARATOR, 'Move to Capcom', SEPARATOR, 'Delete group']);
@@ -353,7 +353,7 @@ test('New session opens the new session page with the group chosen, shown in a c
   assert.deepEqual(page.problems, []);
 });
 
-test('the + menu and its New session start outside any group, and an address naming no group the owner made shows no chip', { skip, timeout }, async t => {
+test('the + menu and its New session start outside any group, and an address naming no group the owner made shows no chip, and Pinned shows its own', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { hash: '#/new/cg-a' });
   await page.until(`!!document.querySelector('${CHIP}')`);
   await page.evaluate(`document.querySelector('.add').setAttribute('data-picked', '')`);
@@ -361,12 +361,26 @@ test('the + menu and its New session start outside any group, and an address nam
   await page.until(`!!document.querySelector('${MENU}')`);
   await choose(page, 'New session');
   await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}')`);
-  for (const hash of ['#/new/pinned', '#/new/cg-gone']) {
+  for (const hash of ['#/new/ungrouped', '#/new/cg-gone']) {
     await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
     await page.until(`document.querySelector('#title')?.textContent === 'New session'`);
     await new Promise(done => setTimeout(done, 300));
     assert.equal(await page.evaluate(`!!document.querySelector('${CHIP}')`), false, hash);
   }
+  assert.deepEqual(page.problems, []);
+});
+
+test('a new session page for Pinned shows a Pinned chip that starts without pinning, and the group chip is unchanged', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/new/pinned' });
+  await page.until(`!!document.querySelector('${CHIP}')`);
+  assert.equal(await text(page, `${CHIP} .name`), 'Pinned');
+  assert.deepEqual(await page.evaluate(`(b => [b.getAttribute('aria-label'), b.dataset.tip])(document.querySelector('#startOutside'))`), ['Start without pinning', 'Start without pinning']);
+  assert.equal(await page.evaluate(`document.querySelector('${CHIP} svg path').getAttribute('d').startsWith('M12 17v5')`), true, 'a pin, not a folder');
+  await page.click('#startOutside');
+  await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}')`);
+  await page.evaluate(`location.hash = '#/new/cg-a'`);
+  await page.until(`!!document.querySelector('${CHIP}')`);
+  assert.deepEqual(await page.evaluate(`(b => [b.getAttribute('aria-label'), b.dataset.tip])(document.querySelector('#startOutside'))`), ['Start outside Reviewing', 'Start outside the group']);
   assert.deepEqual(page.problems, []);
 });
 
@@ -400,7 +414,7 @@ test('a first message sent after the chip is cleared places the session in no gr
 test('on a phone New session from the menu closes it and shows the new session page, with the chip big enough to touch', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { phone: true });
   await page.until(`document.querySelectorAll('${GROUP_HEADS}').length === 3`);
-  await page.evaluate(`${head('Notes')}.closest('.bar').querySelector('.more').setAttribute('data-picked', '')`);
+  await page.evaluate(`${head('Notes')}.closest('.bar').querySelector('.more[aria-haspopup]').setAttribute('data-picked', '')`);
   await page.click('.more[data-picked]');
   await page.until(`!!document.querySelector('${MENU}')`);
   await choose(page, 'New session');
@@ -420,6 +434,19 @@ test('the first message from a new session started in a group puts the session i
   await page.until(`location.hash.startsWith('#/s/')`);
   assert.equal(await page.evaluate('location.hash'), '#/s/begun-by-the-fake');
   assert.equal(onDisk(s).assignments['begun-by-the-fake'], 'cg-c');
+  assert.deepEqual(page.problems, []);
+});
+
+test('the first message from a new session started in Pinned pins the session and puts it in no group', { skip, timeout }, async t => {
+  const s = await furnished();
+  const page = await appPage(t, s.origin, { hash: '#/new/pinned' });
+  await page.until(`!!document.querySelector('${CHIP}')`);
+  await typeInto(page, 'begin a session');
+  await page.click('#send');
+  await page.until(`location.hash.startsWith('#/s/')`);
+  assert.equal(await page.evaluate('location.hash'), '#/s/begun-by-the-fake');
+  assert.ok(onDisk(s).pinned.includes('begun-by-the-fake'));
+  assert.equal(onDisk(s).assignments['begun-by-the-fake'], undefined);
   assert.deepEqual(page.problems, []);
 });
 

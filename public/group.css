@@ -1,30 +1,51 @@
-.has-chat .group-head .count { margin-right: 1.75rem; }
+.has-tool button.group-head .count { margin-right: 1.75rem; }
 
-.has-chat:is(.has-menu, .has-two) .group-head .count { margin-right: 3.25rem; }
+.has-tool.has-menu button.group-head .count { margin-right: 3.25rem; }
 
-.bar.has-menu > .chat-open { right: 3rem; }
+.bar.has-menu > .head-tool { right: 3rem; }
 
-.bar.has-two > .chat-open:has(~ .chat-open) { right: 3rem; }
+.head-tool { text-decoration: none; }
 
-.chat-open { text-decoration: none; }
+.head-tool[aria-current="page"] { opacity: 1; background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
 
-.chat-open:is([data-state], [aria-current="page"]) { opacity: 1; }
+a.group-head { padding-right: 2rem; text-decoration: none; }
 
-.chat-open[aria-current="page"] { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+.bar > a.group-head .count { margin-right: 0; }
 
-.chat-open .lamp {
-  position: absolute;
-  top: 0;
-  right: 0;
-  translate: 25% -25%;
+.has-tool > a.group-head { padding-right: 3.75rem; }
+
+.has-tool.has-menu > a.group-head { padding-right: 5.25rem; }
+
+a.group-head[aria-current="page"] { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+
+a.group-head[aria-current="page"] .name { color: inherit; }
+
+.bar > .fold { top: calc(50% - 0.625rem); right: 0.375rem; }
+
+@media (pointer: fine) {
+  a.group-head { padding-right: 1.75rem; }
+
+  .has-tool > a.group-head { padding-right: 3.5rem; }
+
+  .has-tool.has-menu > a.group-head { padding-right: 5rem; }
+
+  .bar > .fold { right: 0.125rem; }
 }
 
 @media (pointer: coarse) {
-  .has-chat:is(.has-menu, .has-two) .group-head .count { margin-right: 4.25rem; }
+  .bar > .fold { right: 0.25rem; }
 
-  .bar.has-menu > .chat-open { right: 4.5rem; }
+  .bar:has(> .fold) > .more { right: 3rem; }
 
-  .bar.has-two > .chat-open:has(~ .chat-open) { right: 4.5rem; }
+  .bar.has-menu:has(> .fold) > .head-tool { right: 5.75rem; }
+
+  .has-tool > a.group-head { padding-right: 5rem; }
+
+  .has-tool.has-menu > a.group-head { padding-right: 7.75rem; }
+
+  .has-tool.has-menu button.group-head .count { margin-right: 4.25rem; }
+
+  .bar.has-menu:not(:has(> .fold)) > .head-tool { right: 4.5rem; }
 }
 
 .group-status {
