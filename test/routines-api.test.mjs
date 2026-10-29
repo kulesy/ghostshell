@@ -419,3 +419,12 @@ test('emoji titles go through a rename into routines.json and back unchanged', a
     assert.deepEqual([group.title, group.latest.title], [title, title]);
   }
 });
+
+test('a title in routines.json that is not text gives way to the routine\'s id', async () => {
+  const c = await open([{ id: 'd1', title: 'Title at the run', routine: 'desk', ago: 5 }]);
+  const data = JSON.parse(c.raw());
+  data.routines[0].title = 5;
+  fs.writeFileSync(path.join(c.s.state, 'routines.json'), JSON.stringify(data));
+  const [group] = (await sessionsOf(c)).routines;
+  assert.deepEqual([group.title, group.latest.title], ['desk', 'desk']);
+});

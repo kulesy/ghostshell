@@ -478,6 +478,15 @@ test('every group lists its sessions A to Z by title, whatever sort it came with
   assert.deepEqual(out['cg-e'], []);
 });
 
+test('a routine sorts by its own title, not the name its latest run was given on its own', () => {
+  const run = (id, routine, title) => person(id, { routine, title });
+  const routines = [
+    { name: 'mail', title: 'Mail drafts', latest: run('m1', 'mail', 'Zebra, one run'), earlier: [] },
+    { name: 'gone', latest: run('g1', 'gone', 'Nest'), earlier: [] },
+  ];
+  assert.deepEqual(sortByTitle({ ...SERVED, routines }).routines.map(g => g.name), ['mail', 'gone']);
+});
+
 test('a group that came Z to A by title goes A to Z', () => {
   const backwards = { ...SERVED, groups: [{ id: 'cg-z', name: 'Backwards', project: null, sort: { by: 'alpha', ascending: true }, sessions: ['cat', 'bee', 'ant'].map(id => person(id, { group: 'cg-z' })) }] };
   assert.deepEqual(groupsOf(sortByTitle(backwards))['cg-z'], ['ant', 'bee', 'cat']);

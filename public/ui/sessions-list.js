@@ -826,7 +826,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     renamingGroup: form?.kind === 'rename-group' ? form.group : null,
     rowMenu: (id, button, entry) => (shown?.session === id && shown.anchor === button && !entry ? setShown(null) : latestMenu.current(id, button, null, entry)),
     newGroup: (p, back) => { projects.pick(p.id); setForm({ kind: 'group', project: p.id, back }); },
-    sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? titledRoutine(ix, r.id)?.title ?? r.title} was=${titledRoutine(ix, r.id)?.title ?? r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`,
+    sessionForm: r => { const routine = titledRoutine(ix, r.id); return html`<${NameForm} label=${routine ? 'Rename routine' : 'Rename session'} value=${form.sent ?? routine?.title ?? r.title} was=${routine?.title ?? r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`; },
     routineMenu: r => ({
       label: `Actions for ${r.title}`,
       items: routineItems(r, { editable: supportsRoutineEdits(ix), refresh: refreshRoutines, back: () => box.current.querySelector(`a.row[data-idle="${CSS.escape(r.id)}"]`) }),

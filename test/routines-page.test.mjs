@@ -735,6 +735,7 @@ test('a double click on the routine\'s row opens the box with the routine\'s tit
   await page.evaluate(`document.querySelector('a.row[data-id="n1"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))`);
   await nameBox(page);
   assert.equal(await valueOf(page, '.name-form input'), 'Nightly check');
+  assert.equal(await page.evaluate(`document.querySelector('.name-form input').getAttribute('aria-label')`), 'Rename routine');
   await page.press('Escape');
   await page.until(`!document.querySelector('.name-form')`);
   assert.equal(await rowTitle(page, 'n1'), 'Nightly check');
