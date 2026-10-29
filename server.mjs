@@ -35,6 +35,7 @@ import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
+import { lockHolder } from './lib/restart.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
 import { isIssueUrl, isPullUrl } from './public/ui/pull-url.js';
@@ -507,6 +508,7 @@ const routines = makeScheduler({
   check: routineProblem,
   fieldProblems: routineProblems,
   idTaken: routineIdTaken,
+  restarting: () => lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
   start: (r, text) => newSession({ cwd: r.cwd, text, mode: r.mode, model: r.model, effort: r.effort, title: r.title, routine: r.id }),
   working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
   waiting: id => getChat(id)?.state === 'waiting',

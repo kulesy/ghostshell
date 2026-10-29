@@ -22,6 +22,7 @@ let older;
 let plain;
 let lonely;
 let named;
+let queued;
 let browser;
 
 // A proxy to `target` that leaves `leave` out of the features the list says, as a server that started before they existed does.
@@ -100,6 +101,25 @@ async function unrun() {
   return restart(first);
 }
 
+// A server with two routines whose start failed and is queued to try again in ten minutes, one with an earlier run and one with none. It goes yearly on 1 January so it does
+// not fire during a test.
+async function retrying() {
+  const first = await start({ sessions: [{ id: 'a1', title: 'Alpha run', routine: 'alpha', ago: 5 }, { id: 'r1', title: 'Earlier run', routine: 'ran', ago: 90, errorAgo: 89 }], claude: true });
+  const work = path.join(first.home, 'work');
+  fs.mkdirSync(work);
+  fs.mkdirSync(path.join(first.state, 'routines'));
+  const at = ms => new Date(Date.now() + ms).toISOString();
+  const routine = (id, title) => {
+    fs.writeFileSync(path.join(first.state, 'routines', `${id}.md`), `Do ${title}.\n`);
+    return {
+      id, title, cron: '0 3 1 1 *', jitterSeconds: 0, file: path.join(first.state, 'routines', `${id}.md`), cwd: work, model: null, effort: null, mode: null,
+      enabled: true, armedAt: at(-60_000), lastRunAt: at(-60_000), lastError: 'spawn claude ENOENT', retry: { fireAt: at(-60_000), tries: 1, nextAt: at(600_000) },
+    };
+  };
+  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({ routines: [routine('queued', 'Queued check'), routine('ran', 'Ran check')] }, null, 2));
+  return restart(first);
+}
+
 // A server for renaming from the sidebar: a routine with a latest run and two earlier ones, one of which was renamed in the layout, and a
 // run of a routine that routines.json no longer holds. The routine goes yearly on 1 January so it does not fire during a test.
 async function renamable() {
@@ -127,6 +147,7 @@ before(async () => {
   if (skip) return;
   app = await furnished();
   named = await renamable();
+  queued = await retrying();
   older = await without(app, 'routineEdits');
   plain = await without(app, 'routineFiles');
   lonely = await unrun();
@@ -799,5 +820,33 @@ test('the row of a run whose routine is gone is renamed as a session, in the lay
   await page.press('Enter');
   await page.until(`!document.querySelector('.name-form') && document.querySelector('a.row[data-id="g1"] .row-title')?.textContent === 'Kept run'`);
   assert.equal(layoutTitles().g1, 'Kept run');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a routine whose start failed and is queued says when it will try again, in the sidebar and on the page, and Run now stays on', { skip, timeout }, async t => {
+  const WORDS = /^Retrying, next try (tomorrow )?at \d\d:\d\d$/;
+  const page = await appPage(t, queued.origin, { hash: '#/routines' });
+  await page.until(`!!document.querySelector('${row('queued')} .routine-alert')`);
+  const alert = await text(page, `${row('queued')} .routine-alert`);
+  assert.match(alert, /^Retrying, next try (tomorrow )?at \d\d:\d\d\. The last try said: spawn claude ENOENT$/);
+  assert.equal(await page.evaluate(`document.querySelector('${row('queued')} .routine-alert').dataset.tone`), 'warning');
+  assert.equal(await page.evaluate(`document.querySelector('${row('queued')} .routine-actions .btn').disabled`), false);
+  assert.equal(await page.evaluate(`document.querySelector('${row('queued')} .routine-running')`), null);
+  await page.evaluate(`location.hash = ''`);
+  await page.until(`!!document.querySelector('a.row[data-idle="queued"]')`);
+  assert.match(await text(page, 'a.row[data-idle="queued"] .row-idle'), WORDS);
+  assert.equal(await page.evaluate(`document.querySelector('a.row[data-idle="queued"]').dataset.tip`), 'The last try said: spawn claude ENOENT');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a routine with a run that is queued to retry says so on its run\'s row, in place of the dot, and leads its tooltip with what the last try said', { skip, timeout }, async t => {
+  const page = await appPage(t, queued.origin);
+  await page.until(`!!document.querySelector('a.row[data-id="r1"]')`);
+  assert.equal(await page.evaluate(`document.querySelector('a.row[data-id="r1"]').dataset.tip`).then(Boolean), true);
+  const words = await text(page, 'a.row[data-id="r1"] .row-idle');
+  assert.match(words, /^Retrying, next try (tomorrow )?at \d\d:\d\d$/);
+  assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="r1"] .row-dot')`), false);
+  assert.match(await page.evaluate(`document.querySelector('a.row[data-id="r1"]').dataset.tip`), /^The last try said: spawn claude ENOENT( · |$)/);
+  assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="a1"] .row-idle')`), false, 'a routine that is not queued is drawn as before');
   assert.deepEqual(page.problems, []);
 });

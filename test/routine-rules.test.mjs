@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ago, byTitle, choices, deleteDetail, effortChoices, FIELDS, fireTime, formOf, idleWords, isEarlierRun, jitterOf, jitterWords, modelChoices, newForm, promptHint, promptSource, refusals, requestOf, routineFor, routineHash,
+  ago, byTitle, choices, deleteDetail, effortChoices, FIELDS, fireTime, formOf, idleWords, isEarlierRun, jitterOf, jitterWords, modelChoices, newForm, promptHint, promptSource, refusals, requestOf, retryTip, retryWords, routineFor, routineHash,
   routineRoute, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, titledRoutine, unrunRoutines, wasOf,
 } from '../public/ui/routine-rules.js';
 
@@ -382,4 +382,23 @@ test('the quiet part of a routine with no run says Off, when it last ran, or tha
   assert.equal(idleWords(failed, SUNDAY), "Couldn't start 12 min ago");
   assert.equal(idleWords({ ...failed, lastSessionId: 'abc' }, SUNDAY), 'Last run 12 min ago');
   assert.equal(idleWords({ ...failed, enabled: false }, SUNDAY), 'Off');
+});
+
+test('a failed start that is queued says when the next try is, in the Mac\'s clock, with the day when it is not today', () => {
+  const retry = (nextAt, extra) => ({ fireAt: '2026-10-25T11:45:00+11:00', tries: 2, nextAt, ...extra });
+  assert.equal(retryWords(retry('2026-10-25T12:05:30+11:00'), SUNDAY), 'Retrying, next try at 12:05');
+  assert.equal(retryWords(retry('2026-10-26T00:05:00+11:00'), SUNDAY), 'Retrying, next try tomorrow at 00:05');
+  assert.equal(retryWords(retry('2026-10-27T00:05:00+11:00'), SUNDAY), 'Retrying, next try Tue 27 Oct at 00:05');
+  for (const bad of [null, undefined, {}, retry('soon')]) assert.equal(retryWords(bad, SUNDAY), 'Retrying', String(bad));
+});
+
+test('a routine with no run that is switched on and queued to retry says so in place of Couldn\'t start, and its tip is what the last try said', () => {
+  const queued = { ...MORNING, lastRunAt: '2026-10-25T11:48:00+11:00', lastError: 'spawn claude ENOENT', retry: { fireAt: '2026-10-25T11:48:00+11:00', tries: 1, nextAt: '2026-10-25T12:01:00+11:00' } };
+  assert.equal(idleWords(queued, SUNDAY), 'Retrying, next try at 12:01');
+  assert.equal(retryTip(queued), 'The last try said: spawn claude ENOENT');
+  assert.equal(idleWords({ ...queued, enabled: false }, SUNDAY), 'Off');
+  assert.equal(retryTip({ ...queued, enabled: false }), null);
+  assert.equal(idleWords({ ...queued, retry: null }, SUNDAY), "Couldn't start 12 min ago", 'a server that sends no retry reads as before');
+  assert.equal(idleWords({ ...queued, retry: undefined }, SUNDAY), "Couldn't start 12 min ago");
+  assert.equal(retryTip({ ...queued, retry: undefined }), null);
 });

@@ -115,6 +115,18 @@ export function skippedWords(skipped, now = Date.now()) {
   return `Skipped the run${due ? ` due ${inSentence(due)}` : ''}: ${skipped.reason}.`;
 }
 
+// A failed start that is queued to run again: "Retrying, next try at 07:43", with the day before the time when it is not today.
+export function retryWords(retry, now = Date.now()) {
+  const due = fireTime(retry?.nextAt, now);
+  if (!due) return 'Retrying';
+  const [day, at] = due.split(', ');
+  const on = day === 'Today' ? '' : `${/^(Tomorrow|Yesterday)$/.test(day) ? day.toLowerCase() : day} `;
+  return `Retrying, next try ${on}at ${at}`;
+}
+
+// What a queued retry's row says on hover, which is what the last try said, or null when nothing is queued.
+export const retryTip = r => (r.enabled === true && r.retry && r.lastError ? `The last try said: ${r.lastError}` : null);
+
 const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
 
 export const byTitle = routines => [...routines].sort((a, b) => collator.compare(String(a.title ?? a.id ?? ''), String(b.title ?? b.id ?? '')) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -276,9 +288,10 @@ export function ago(iso, now = Date.now()) {
 }
 
 // The quiet part of a routine's row in the sidebar: Off wins, then when it last ran, then that it has not. A try that failed before
-// a session began sets the time too, so an error with no session is a start that failed.
+// a session began sets the time too, so an error with no session is a start that failed. One queued to retry says when it will.
 export function idleWords(r, now = Date.now()) {
   if (r.enabled !== true) return 'Off';
+  if (r.retry) return retryWords(r.retry, now);
   const last = ago(r.lastRunAt, now);
   if (!last) return "Hasn't run yet";
   return r.lastError && !r.lastSessionId ? `Couldn't start ${last}` : `Last run ${last}`;
