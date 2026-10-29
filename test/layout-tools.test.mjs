@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { archiveSession, findSessions, groupNamed, layoutSummary, listChips, moveSession, setSessionTitle, unarchiveSession } from '../lib/layout-tools.mjs';
-import { handleMcp, LAYOUT_READ_NAMES, LAYOUT_WRITE_NAMES, SEND_NAME, SUB_READ_NAMES, TOOL_NAMES } from '../lib/tools.mjs';
+import { handleMcp, LAYOUT_READ_NAMES, LAYOUT_WRITE_NAMES, SEND_NAME, SUB_READ_NAMES, TOOL_NAMES, TREE_WRITE_NAMES } from '../lib/tools.mjs';
 
 const NOW = Date.parse('2026-10-28T06:00:00.000Z');
 const MINUTE = 60_000;
@@ -263,12 +263,20 @@ test('the six tools are listed to every chat that is given callbacks, an ordinar
   for (const ctx of [{}, { group }, { group: section }]) assert.deepEqual(names(rpc('tools/list', {}, ctx)).filter(n => LAYOUT.includes(n)), [], 'no callbacks, no tools');
 });
 
-test('each write says the owner approves every call, every description is short and plain, and the send tools point at find_sessions', () => {
+test('each write says when the owner approves it, every description is short and plain, and the send tools point at find_sessions', () => {
   const tools = rpc('tools/list', {}, { subs: subsFor() }).result.tools;
+  const inTree = /owner approves it unless it is this session, your parent, a sibling or a session below this one\./;
   for (const tool of tools.filter(t => LAYOUT.includes(t.name))) {
     assert.ok(tool.description.length < 420, `${tool.name} is sent with every request, so its description stays short`);
     assert.doesNotMatch(tool.description, /[–—]|Capcom/);
-    assert.equal(/owner approves every call/.test(tool.description), ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group'].includes(tool.name), tool.name);
+    assert.equal(/owner approves every call/.test(tool.description), ['archive_session', 'unarchive_session'].includes(tool.name), tool.name);
+    assert.equal(inTree.test(tool.description), ['set_session_title', 'move_session_to_group'].includes(tool.name), tool.name);
+  }
+  for (const group of [{ lookup: () => null }, { section: { id: 'pinned', name: 'Pinned', place: 'pin' }, lookup: () => null }]) {
+    for (const tool of rpc('tools/list', {}, { subs: subsFor(), group }).result.tools.filter(t => LAYOUT_WRITE_NAMES.includes(`mcp__capcom__${t.name}`))) {
+      assert.match(tool.description, /owner approves every call/, `a group's or section's ${tool.name} asks every time`);
+      assert.doesNotMatch(tool.description, inTree, tool.name);
+    }
   }
   const send = tools.find(t => t.name === 'send_session');
   assert.match(send.description, /find_sessions/);
@@ -286,6 +294,7 @@ test('each write says the owner approves every call, every description is short 
 
 test('the writes are named for the runner to hold for a card, the reads are named to run without one, and none is a tool every chat is allowed', () => {
   assert.deepEqual(LAYOUT_WRITE_NAMES, ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group'].map(n => `mcp__capcom__${n}`));
+  assert.deepEqual(TREE_WRITE_NAMES, ['set_session_title', 'move_session_to_group'].map(n => `mcp__capcom__${n}`), 'archiving and unarchiving ask for every target');
   assert.deepEqual(LAYOUT_READ_NAMES, ['list_chips', 'find_sessions'].map(n => `mcp__capcom__${n}`));
   for (const name of [...LAYOUT_WRITE_NAMES, ...LAYOUT_READ_NAMES]) {
     assert.equal(TOOL_NAMES.includes(name), false, `${name} would be allowed in a chat that has no callbacks`);

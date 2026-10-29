@@ -168,6 +168,26 @@ for (const mode of ['manual', 'bypassPermissions', 'auto']) {
   });
 }
 
+test('a rename or move of the caller, its parent or a sub session goes with no card from the server\'s own nesting, and an archive of a sub session still shows one', async () => {
+  const { s, token } = await ready();
+  const allowed = [['top', 'set_session_title', { session_id: 'top', title: 'Mine' }], ['top', 'set_session_title', { session_id: 'kid', title: 'Below' }], ['kid', 'set_session_title', { session_id: 'top', title: 'Above' }], ['top', 'move_session_to_group', { session_id: 'kid', group: 'Home' }]];
+  const viewers = ['top', 'kid'].map(id => listen(s, token, id));
+  try {
+    await until(() => viewers.every(v => v.events.length));
+    for (const [id, tool, input] of allowed) {
+      const had = cliCalls(s).filter(c => c.requestId === `perm-${tool}`).length;
+      await sendTo(s, token, id, `ask to use ${tool} ${JSON.stringify(input)}`);
+      await until(() => cliCalls(s).filter(c => c.requestId === `perm-${tool}`).length > had);
+      assert.equal(cliCalls(s).findLast(c => c.requestId === `perm-${tool}`).response, 'allow', `${id} ${tool} ${input.session_id}`);
+    }
+    await sendTo(s, token, 'top', 'ask to use archive_session {"session_id":"kid"}');
+    await until(() => viewers[0].events.some(e => e.type === 'approval'));
+    assert.deepEqual(viewers.flatMap(v => v.events.filter(e => e.type === 'approval').map(e => e.data.tool)), ['mcp__capcom__archive_session'], 'only the archive raised a card');
+  } finally {
+    for (const v of viewers) v.close();
+  }
+});
+
 test('the card for a move into the group of the chat that asks says that chat can then read the session, and a move for another chat or into another group does not', async () => {
   const { s, token } = await ready();
   const card = async (id, input) => {

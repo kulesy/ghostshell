@@ -1,6 +1,6 @@
 # Give sessions tools to find, archive, rename and move sessions, and read chips
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-30
 - Deciders: The owner
 - Date: 2026-10-28
 - Tags: tools, mcp, layout, archive, chips, permissions, groups
@@ -16,7 +16,7 @@ How does a session archive, rename, move and look up sessions and chips without 
 ## Decision Drivers
 
 - The server's state and `layout.json` must never disagree, so a tool writes through the code the layout routes run, not around it.
-- Anything that changes another session's place, name or archive is the owner's call. Text a session reads in a transcript is information and never permission, so every write needs a card in every permission mode.
+- Anything that changes another session's place, name or archive is the owner's call. Text a session reads in a transcript is information and never permission, so every write needs a card in every permission mode. Amended 2026-10-30: a rename or move within the caller's own tree goes without one.
 - A session that only looks something up should not interrupt the owner.
 - A group's or section's chat can already message any session with a card ([Give each group a session of its own](20261023-a-session-for-each-group.md)), so it gets these tools on the same terms.
 - Reading a transcript stays with the tools that already read one: a group's chat reads its group's sessions, and an ordinary chat reads its sub sessions. Finding a session gives titles and state and nothing from inside it.
@@ -59,12 +59,18 @@ Chosen option: "Six tools on the `capcom` server, with the writes held to a card
 - **`send_session`.** Its archived refusal names the way forward: `Unarchive it with unarchive_session, which the owner approves, then send again.` Its description, a group's description and the "No session with that id" refusal stop saying that no tool lists other sessions and point at `find_sessions`.
 - **The chat window.** The header of an open session has Archive in the row of tools beside the sub sessions and terminal buttons. It runs the sidebar row's flow (`closeSession` in `public/ui/close.js`): an idle session is archived at once with a note that has Undo, and a running one asks "Stop and archive" first. For an archived session the button reads Unarchive and calls the same `archive(id, false)` as the sidebar. A group's chat, a section's chat and a new session have no button. The list the page holds has no archived rows, so a chat the list does not hold is looked up in `api/archived`, which every server has, and the button waits for the answer. The page needs no new server route, so it works against the server that is running now.
 - **Checked** with the fake CLI in the server tests: each write landed in `layout.json` as the route writes it and the server's own list agreed, a running session and a session running in another app were refused and left alone, the card named the session with its id, the card for a group's chat moving a session into its own group said so, the ask rules reached the spawn arguments, and the fake CLI raised `can_use_tool` for each write in the manual, Bypass and Auto modes and Capcom held every one for a card with no Always allow and ran none unasked. The fake CLI raises the request in every mode, so those tests show that Capcom never auto-allows a write and not that the real CLI asks in Bypass and Auto. The chat window's buttons were checked in the headless Chromium of the page tests, including that the button reads Unarchive after an archive from it. Not checked with a real model, with the real CLI in Bypass or Auto for these tools, in Safari or on a phone.
+- **Amended 2026-10-30, no card for a rename or move within the caller's own tree.** The owner asked "Why do we need to hit allow for a session to be renamed?". A session marks its own title while it works and when it finishes, and each of those renames raised a card. He chose no card for `set_session_title` and `move_session_to_group` when the target is the caller itself, its parent, a session below it at any depth, or a sibling under the same parent, and a card for any other target. `archive_session` and `unarchive_session` keep their card for every target, the caller's own tree included.
+  - **One tree.** The runner allows these two with no card when `inOwnTree` in `lib/subs.mjs` finds the target in the caller's tree, the check `send_session` uses (see the 2026-10-29 amendment of [Roll a session's sub session status up to every parent](20261023-roll-sub-session-status-up.md)). Its `self` option counts the caller as in its own tree, which a rename or move asks for and a send does not, since a send to itself is refused. The tree comes from the nesting links in the index at the time of the call, archived sessions included, and the model gives nothing but the target's id. `TREE_WRITE_NAMES` in `lib/tools.mjs` names the two tools.
+  - **Group and section chats.** Each of their renames and moves still asks. A group's or section's chat has nothing nested under it, so it has no tree, and the 2026-10-29 amendment left its sends to its own members carded for the same reason. Its tool descriptions say the owner approves every call, and an ordinary chat's say when it does.
+  - **Still asked.** The ask rules are unchanged, so each call still reaches GhostShell as a permission request in Bypass and Auto, and the card that does show still has no Always allow.
+  - **Cost.** Text in a sub session's transcript that steers the chat above it can now rename that chat's family, or move any of them into another group, before the owner sees it. A move takes a session out of the tree, so a later call on it asks again. A move into a group's own group lets that group's chat read the session, and the owner sees no card for it when an ordinary chat makes the move. Nothing is archived, stopped or deleted without a card.
+  - **Checked** by unit tests of the tree with and without `self`, by the fake CLI in the runner tests in the manual, Bypass and Auto modes (a rename of itself and of a sub session and a move of a sub session went with no card, a rename or move of a session outside the tree and an archive or unarchive of a sub session each held a card, and a group's chat in Bypass held a card for both), and in the server tests from the real nesting, from a parent down and from a sub session up. The real CLI in Bypass and Auto was not checked for these tools.
 
 ### Consequences
 
 - ✅ A session that is refused for an archived target has a tool for the next step, and the owner sees a card for it.
 - ✅ The server and the file cannot disagree, because there is one writer and the tools use it.
-- ✅ Every change to another session's place, name or archive shows the owner a card in every mode.
+- ✅ Every archive and unarchive, and every rename or move outside the caller's own tree, shows the owner a card in every mode (amended 2026-10-30).
 - ✅ The owner can archive or unarchive the session in front of them without going back to the list.
 - ❌ Six more tool descriptions go with every request of every chat.
 - ❌ A chat that a transcript steers cannot be stopped from asking for a change. The card is the only gate, and a card is easy to approve in a hurry. This holds most for a group's chat asking to move a session into its own group, which then lets it read that session.

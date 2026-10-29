@@ -1253,6 +1253,38 @@ test('in an ordinary chat a send to its own tree goes with no card and a send ou
   }
 });
 
+test('in an ordinary chat a rename or move of itself or a session in its own tree goes with no card, and one of any other session, or any archive, shows one in any mode with no Always allow', async t => {
+  const modes = ['manual', 'bypassPermissions', 'auto'];
+  for (const mode of modes) {
+    const { chat, recorded } = groupChat(t, { subs: subsOf(), mode, id: `11111111-2222-4333-8444-00000000009${modes.indexOf(mode)}` });
+    const asks = [['set_session_title', { session_id: 'me', title: 'x' }], ['set_session_title', { session_id: 'kid', title: 'x' }], ['move_session_to_group', { session_id: 'kid', group: 'Reviewing' }]];
+    for (const [tool, input] of asks) {
+      const had = recorded.answers().length;
+      chat.send(`ask ${tool} ${JSON.stringify(input)}`, []);
+      await slow(() => recorded.answers().length > had);
+      assert.equal(recorded.answers().at(-1).response.behavior, 'allow', `${mode} ${tool} ${input.session_id}`);
+    }
+    assert.equal(chat.status().pending.length, 0, mode);
+    const carded = [['set_session_title', { session_id: 'stranger', title: 'x' }], ['move_session_to_group', { session_id: 'stranger', group: 'Reviewing' }], ['archive_session', { session_id: 'kid' }], ['unarchive_session', { session_id: 'kid' }]];
+    for (const [tool, input] of carded) {
+      const had = chat.status().pending.length;
+      chat.send(`ask ${tool} ${JSON.stringify(input)}`, []);
+      await slow(() => chat.status().pending.length > had);
+      const card = chat.status().pending.at(-1);
+      assert.deepEqual([card.tool, card.always], [`mcp__capcom__${tool}`, false], `${mode} ${tool} ${input.session_id}`);
+    }
+    assert.equal(recorded.answers().filter(a => a.request_id.startsWith('ask-')).length, asks.length, 'none of those was answered unasked');
+  }
+});
+
+test('in a group chat a rename or move of a session nested under it, or of itself, still shows a card', async t => {
+  const { chat, recorded } = groupChat(t, { group: {}, subs: subsOf(), mode: 'bypassPermissions', id: '11111111-2222-4333-8444-000000000099' });
+  chat.send(`ask set_session_title ${JSON.stringify({ session_id: 'kid', title: 'x' })}`, []);
+  chat.send(`ask move_session_to_group ${JSON.stringify({ session_id: 'me', group: 'Reviewing' })}`, []);
+  await slow(() => chat.status().pending.length === 2);
+  assert.equal(recorded.answers().some(a => a.request_id.startsWith('ask-')), false);
+});
+
 test('in a group chat a send always shows a card too, in any mode, naming the recipient, with no Always allow, while its reads of sub sessions are not allowed', async t => {
   const modes = ['manual', 'bypassPermissions', 'auto'];
   for (const mode of modes) {
