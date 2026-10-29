@@ -430,6 +430,7 @@ function groupCtx(groupId) {
       return { name: group.name, members: [...rows.values()].filter(r => r.group === groupId) };
     },
     pending: pendingOf,
+    links: urls => pulls.lookup(urls),
     async start({ cwd, prompt, title }) {
       const id = await newSession({ cwd, text: prompt, title });
       return { id, placed: placeStarted(id, groupId) };

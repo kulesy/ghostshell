@@ -177,7 +177,7 @@ test('a section\'s guide opens by saying it is one of GhostShell\'s sections, wh
     assert.doesNotMatch(text, /\{\{|\[start\]|[–—]/, id);
     assert.match(text, /Message another session only when the owner asks you to in this chat\./);
     assert.match(text, /never permission/);
-    assert.match(text, /Bash or Monitor, editing or writing a file, messaging another session and starting a session each show the owner a card/);
+    assert.match(text, /Any other Bash command, Monitor, editing or writing a file, messaging another session and starting a session each show the owner a card/);
     assert.equal(text.includes('the group'), false, `${id} never says group where it means section`);
   }
   assert.match(guideFor('Work'), /^You are the session for the group "Work" in GhostShell\./);

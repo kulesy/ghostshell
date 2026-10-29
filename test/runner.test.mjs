@@ -961,7 +961,7 @@ test('with no hook installed a turn runs the same', async t => {
 });
 
 // A CLI for a group's chat. It logs how it was started and every line it is sent. It starts its session when it is sent the first message
-// (named by --session-id or --resume), and a message of `call <tool> <json>` makes it ask Capcom's tool server, `ask <tool> [json]` ask to use one of Capcom's tools, with that input and `builtin <Tool>` one of the CLI's own.
+// (named by --session-id or --resume), and a message of `call <tool> <json>` makes it ask Capcom's tool server, `ask <tool> [json]` ask to use one of Capcom's tools, with that input and `builtin <Tool> [json]` one of the CLI's own.
 // Each of these starts several CLIs, which a busy machine can be slow to launch, so they wait longer than the others.
 const slow = check => until(check, 20_000);
 const groupCli = dir => {
@@ -984,7 +984,7 @@ const groupCli = dir => {
     "  out({ type: 'system', subtype: 'init', session_id: flag('--session-id') || flag('--resume') || 'sess-unnamed', model: 'stub' });",
     "  const [verb, tool, ...rest] = m.message.content.split(' ');",
     "  if (verb === 'ask') out({ type: 'control_request', request_id: `ask-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: JSON.parse(rest.join(' ') || '{}'), permission_suggestions: rule } });",
-    "  if (verb === 'builtin') out({ type: 'control_request', request_id: `builtin-${tool}`, request: { subtype: 'can_use_tool', tool_name: tool, input: {}, permission_suggestions: rule } });",
+    "  if (verb === 'builtin') out({ type: 'control_request', request_id: `builtin-${tool}`, request: { subtype: 'can_use_tool', tool_name: tool, input: JSON.parse(rest.join(' ') || '{}'), permission_suggestions: rule } });",
     "  if (verb === 'call') out({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(rest.join(' ') || '{}') } } } });",
     "  if (verb === 'tools') out({ type: 'control_request', request_id: 'tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
     '});',
@@ -1130,10 +1130,12 @@ test('in a group chat the read tools are allowed with no card, in any mode, and 
     await slow(() => recorded.answers().some(a => a.request_id === 'ask-list_group_sessions'));
     chat.send('ask read_group_session', []);
     await slow(() => recorded.answers().some(a => a.request_id === 'ask-read_group_session'));
+    chat.send('ask github_status {"urls":["https://github.com/o/r/pull/1"]}', []);
+    await slow(() => recorded.answers().some(a => a.request_id === 'ask-github_status'));
     chat.send('ask start_group_session', []);
     await slow(() => chat.status().pending.length === 1);
     assert.deepEqual(chat.status().pending.map(p => [p.tool, p.always]), [['mcp__capcom__start_group_session', false]], mode);
-    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-list_group_sessions', 'allow'], ['ask-read_group_session', 'allow']], mode);
+    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-list_group_sessions', 'allow'], ['ask-read_group_session', 'allow'], ['ask-github_status', 'allow']], mode);
     chat.answer('ask-start_group_session', 'always');
     await slow(() => recorded.answers().some(a => a.request_id === 'ask-start_group_session'));
     assert.equal(recorded.answers().find(a => a.request_id === 'ask-start_group_session').response.updatedPermissions, undefined, 'Always allow keeps no rule for it');
@@ -1157,6 +1159,28 @@ test('in a group chat Bash, Monitor, file edits and messages to other sessions a
   }
 });
 
+test('in a group chat a Bash call that only reads is allowed with no card, in any mode, and one that changes anything still shows a card with no Always allow', async t => {
+  const modes = ['manual', 'bypassPermissions', 'auto'];
+  for (const mode of modes) {
+    const { chat, recorded } = groupChat(t, { group: {}, mode, id: `11111111-2222-4333-8444-0000000000a${modes.indexOf(mode)}` });
+    chat.send('builtin Bash {"command":"ls -la lib 2>&1 | head -5"}', []);
+    await slow(() => recorded.answers().some(a => a.request_id === 'builtin-Bash'));
+    assert.deepEqual(recorded.answers().find(a => a.request_id === 'builtin-Bash').response, { behavior: 'allow', updatedInput: { command: 'ls -la lib 2>&1 | head -5' } }, mode);
+    assert.equal(chat.status().pending.length, 0, mode);
+    chat.send('builtin Bash {"command":"ls && rm x"}', []);
+    await slow(() => chat.status().pending.length === 1);
+    assert.deepEqual(chat.status().pending.map(p => [p.tool, p.input.command, p.always]), [['Bash', 'ls && rm x', false]], mode);
+    assert.equal(recorded.answers().filter(a => a.request_id === 'builtin-Bash').length, 1, `${mode}: the write was not answered for the owner`);
+  }
+});
+
+test('an ordinary chat still gets a card for a Bash call that only reads, as it did before', async t => {
+  const { chat, recorded } = groupChat(t, { mode: 'manual', id: '11111111-2222-4333-8444-000000000070' });
+  chat.send('builtin Bash {"command":"ls"}', []);
+  await slow(() => chat.status().pending.length === 1);
+  assert.equal(recorded.answers().some(a => a.request_id === 'builtin-Bash'), false);
+});
+
 test('outside a group chat the CLI\'s own tools keep Always allow, and a group chat still offers it for a tool it does not ask about', async t => {
   const plain = groupChat(t, { mode: 'manual', id: '11111111-2222-4333-8444-000000000040' });
   plain.chat.send('builtin Bash', []);
@@ -1174,6 +1198,8 @@ test('outside a group chat the group tools are no business of the runner\'s: the
   await slow(() => chat.status().pending.length === 1);
   chat.send('ask read_group_session', []);
   await slow(() => chat.status().pending.length === 2);
+  chat.send('ask github_status {"urls":["https://github.com/o/r/pull/1"]}', []);
+  await slow(() => chat.status().pending.length === 3);
   assert.equal(recorded.answers().some(a => a.request_id.startsWith('ask-')), false);
 });
 

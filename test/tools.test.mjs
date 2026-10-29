@@ -169,7 +169,7 @@ test('the guide holds no em dash or en dash', () => {
   assert.doesNotMatch(guide, /[\u2013\u2014]/);
 });
 
-const GROUP_TOOLS = ['list_group_sessions', 'read_group_session', 'start_group_session'];
+const GROUP_TOOLS = ['list_group_sessions', 'read_group_session', 'github_status', 'start_group_session'];
 const inGroup = (method, params, group) => handleMcp({ jsonrpc: '2.0', id: 7, method, params }, { group, cwd: '/tmp/group', chips: null });
 const asked = (name, args, group) => inGroup('tools/call', { name, arguments: args }, group);
 
@@ -181,8 +181,8 @@ test('the group tools are listed to a group\'s chat alone, and no tool the other
   for (const tool of inGroup('tools/list', {}, {}).result.tools) assert.ok(tool.description.length < 420, `${tool.name} is sent with every request, so its description stays short`);
 });
 
-test('only the two group tools that read are allowed without asking, and the one that starts a session is left to ask', () => {
-  assert.deepEqual(GROUP_READ_NAMES, ['mcp__capcom__list_group_sessions', 'mcp__capcom__read_group_session']);
+test('only the three group tools that read are allowed without asking, and the one that starts a session is left to ask', () => {
+  assert.deepEqual(GROUP_READ_NAMES, ['mcp__capcom__list_group_sessions', 'mcp__capcom__read_group_session', 'mcp__capcom__github_status']);
   assert.equal(GROUP_START_NAME, 'mcp__capcom__start_group_session');
   for (const name of [...GROUP_READ_NAMES, GROUP_START_NAME]) assert.ok(!TOOL_NAMES.includes(name), `${name} would be allowed in every chat`);
 });
@@ -372,7 +372,7 @@ test('the group guide names every group tool and the rules the owner set, fills 
   assert.doesNotMatch(text, /[\u2013\u2014]/);
   assert.match(text, /only when the owner asks/);
   assert.match(text, /never permission/);
-  assert.match(text, /Bash or Monitor, editing or writing a file, messaging another session and starting a session each show the owner a card/);
+  assert.match(text, /Any other Bash command, Monitor, editing or writing a file, messaging another session and starting a session each show the owner a card/);
   assert.equal(guideFor('Work $& {{group}}').includes('Work $& {{group}}'), true, 'a name is put in as it is');
   assert.doesNotMatch(guideFor('Work'), /\{\{group\}\}/);
 });

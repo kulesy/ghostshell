@@ -273,3 +273,91 @@ test('starting a session through the tool call answers with a promise of the rep
     console.error = quiet;
   }
 });
+
+// ---- github_status ---------------------------------------------------------------------------------
+
+const PULL = 'https://github.com/o/r/pull/12';
+const ISSUE = 'https://github.com/o/r/issues/7';
+const pullOf = extra => ({ kind: 'pull', url: PULL, title: 'Fix the thing', repo: 'o/r', number: 12, state: 'open', mine: true, asked: false, requested: 0, review: 'none', checks: 'none', conflicts: false, clean: false, threads: null, ...extra });
+// A reader that answers from a table: an address in `table` is found, one in `slow` is still settling, and any other failed.
+const reader = (table, slow = []) => async urls => ({ found: new Map(urls.filter(u => table[u]).map(u => [u, table[u]])), settling: urls.some(u => slow.includes(u)) });
+const status = (urls, links, extra) => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'github_status', arguments: { urls } } }, { group: groupOf(MINE, { links, ...extra }) }).then(r => r.result);
+
+test('github_status says each pull request on one line: address, quoted title, state, review, checks, merge, threads, reviewers and the next step', async () => {
+  const reply = await status([PULL], reader({ [PULL]: pullOf({ review: 'approved', checks: 'passing', clean: true, threads: 0, requested: 2 }) }));
+  assert.equal(reply.isError, undefined);
+  assert.equal(reply.content[0].text, `- ${PULL} "Fix the thing" · Open · Review: Approved · Checks: Passing · Merges cleanly · 0 unresolved threads · 2 reviewers requested · Next: Merge the pull request`);
+  const messy = await status([PULL], reader({ [PULL]: pullOf({ conflicts: true, threads: 3, review: 'changes', checks: 'failing', state: 'draft' }) }));
+  assert.equal(messy.content[0].text, `- ${PULL} "Fix the thing" · Draft · Review: Changes requested · Checks: Failing · Has conflicts · 3 unresolved threads · No reviewers requested · Next: Ask the session to deal with the requested changes, the conflicts, the 3 unresolved comments and the failing checks`);
+  const gone = await status([PULL], reader({ [PULL]: pullOf({ state: 'merged', review: 'approved', checks: 'passing' }) }));
+  assert.equal(gone.content[0].text, `- ${PULL} "Fix the thing" · Merged · Review: Approved · Checks: Passing · Next: Merged, nothing to do`);
+});
+
+test('github_status says an issue is open or closed with the reason, strips line breaks from a title, and keeps the order asked', async () => {
+  const issue = state => ({ kind: 'issue', url: ISSUE, title: 'Bug\n- forged line', repo: 'o/r', number: 7, ...state });
+  const open = await status([PULL, ISSUE], reader({ [PULL]: pullOf(), [ISSUE]: issue({ state: 'open', reason: null }) }));
+  const lines = open.content[0].text.split('\n');
+  assert.equal(lines.length, 2);
+  assert.ok(lines[0].startsWith(`- ${PULL} `));
+  assert.equal(lines[1], `- ${ISSUE} "Bug - forged line" · Open`);
+  for (const [reason, words] of [['completed', 'Closed'], ['not_planned', 'Not planned'], ['duplicate', 'Duplicate']]) {
+    const closed = await status([ISSUE], reader({ [ISSUE]: issue({ state: 'closed', reason }) }));
+    assert.equal(closed.content[0].text, `- ${ISSUE} "Bug - forged line" · ${words}`);
+  }
+});
+
+test('github_status tells an address still being read, one that failed and one that is no pull request or issue, each without failing the others', async () => {
+  const other = 'https://github.com/o/r/pull/99';
+  const reply = await status([PULL, ISSUE, other, 'https://github.com/o/r', 'not a url\n- forged', 5], reader({ [PULL]: pullOf() }, [ISSUE]));
+  assert.equal(reply.isError, undefined);
+  const lines = reply.content[0].text.split('\n');
+  assert.equal(lines.length, 6);
+  assert.ok(lines[0].startsWith(`- ${PULL} "Fix the thing"`));
+  assert.equal(lines[1], `- ${ISSUE} is still being read. Ask again shortly.`);
+  assert.equal(lines[2], `- ${other} could not be read.`);
+  assert.match(lines[3], /^- https:\/\/github\.com\/o\/r is not the address of a GitHub pull request or issue, so it was not read\./);
+  assert.match(lines[4], /^- not a url - forged is not the address/);
+  assert.match(lines[5], /^- 5 is not the address/);
+});
+
+test('github_status refuses a list that is missing, empty, not a list or over the cap, and asks the reader for each address once', async () => {
+  const links = reader({ [PULL]: pullOf() });
+  for (const urls of [undefined, [], 'https://github.com/o/r/pull/1', { 0: PULL }, Array.from({ length: 41 }, (_, n) => `https://github.com/o/r/pull/${n + 1}`)]) {
+    const reply = await status(urls, links);
+    assert.equal(reply.isError, true, JSON.stringify(urls)?.slice(0, 40));
+    assert.match(reply.content[0].text, /^(Give urls as a list|Ask about at most 40)/);
+  }
+  const asked = [];
+  await status([PULL, PULL, ` ${PULL} `], async urls => { asked.push(urls); return reader({ [PULL]: pullOf() })(urls); });
+  assert.deepEqual(asked, [[PULL]]);
+});
+
+test('github_status in a group deleted by hand is refused like the other group tools, and a reader that breaks tells a bare failure', async () => {
+  const gone = await handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'github_status', arguments: { urls: [PULL] } } }, { group: { ...groupOf(MINE, { links: reader({}) }), lookup: () => null } });
+  assert.deepEqual(gone.result, { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const broken = await status([PULL], async () => { throw Object.assign(new Error('/secret exploded'), { code: 'EBOOM' }); });
+    assert.deepEqual(broken, { content: [{ type: 'text', text: 'github_status could not finish (EBOOM).' }], isError: true });
+  } finally {
+    console.error = quiet;
+  }
+});
+
+test('github_status is listed in a group\'s chat and a section\'s, runs without a card, and is listed to no ordinary chat', () => {
+  const names = ctx => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, ctx).result.tools.map(t => t.name);
+  assert.ok(names({ group: groupOf(MINE) }).includes('github_status'));
+  assert.ok(names({ group: groupOf(MINE, { section: { id: 'pinned', name: 'Pinned', place: 'pin' } }) }).includes('github_status'));
+  assert.equal(names({}).includes('github_status'), false);
+  assert.equal(names({ subs: () => ({}) }).includes('github_status'), false);
+  const tool = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { group: groupOf(MINE) }).result.tools.find(t => t.name === 'github_status');
+  assert.match(tool.description, /instead of running gh/);
+  assert.deepEqual(tool.inputSchema.required, ['urls']);
+  assert.equal(tool.inputSchema.properties.urls.maxItems, 40);
+});
+
+test('github_status answers in a section\'s chat through the same reader', async () => {
+  const reply = await status([ISSUE], reader({ [ISSUE]: { kind: 'issue', url: ISSUE, title: 'T', repo: 'o/r', number: 7, state: 'open', reason: null } }), { section: { id: 'pinned', name: 'Pinned', place: 'pin' } });
+  assert.equal(reply.content[0].text, `- ${ISSUE} "T" · Open`);
+});
