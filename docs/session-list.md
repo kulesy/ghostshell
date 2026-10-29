@@ -19,7 +19,7 @@ The message icon with a + on a header starts a new session there. A group's star
 
 Every section, groups included, lists its sessions A to Z by title, whatever sort you set in Claude Desktop. A family goes by its head's title, and a routine by its name, with its earlier runs newest first under it. Sessions with no title come last.
 
-A group shows when it is empty, so a new group can be found and filled. A project with no groups says so beside a New group button. The other sections show only when they hold a session, so an empty section has no chat button either.
+A group shows when it is empty, so a new group can be found and filled. A project with no groups says so beside a New group button. The other sections show only when they hold a session, so an empty section has no header to open its chat from either.
 
 ### Rows and marks
 

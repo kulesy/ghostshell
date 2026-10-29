@@ -2,6 +2,7 @@
 // the components only draw what is in its store and call what it returns.
 import { api } from './api.js';
 import { mergeContext } from './context-rules.js';
+import { pinsOnStart } from './group-rules.js';
 import { HOME } from './env.js';
 import { leadingMentions } from './files.js';
 import { payload } from './images.js';
@@ -403,7 +404,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
       onCreated();
       let notPlaced = null;
       // Placed before this function reads the list; a refresh elsewhere can still draw it ungrouped for a moment. A failure still opens it.
-      const pinning = group === 'pinned';
+      const pinning = pinsOnStart(group);
       if (group) {
         try { await (pinning ? api('api/layout/pin', { id: created, pinned: true }) : api('api/layout/move', { id: created, group })); } catch (err) { notPlaced = err; }
       }

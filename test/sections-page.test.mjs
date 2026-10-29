@@ -202,7 +202,8 @@ test('the header lights while the section\'s session waits for the owner, and ca
   assert.deepEqual(page.problems, []);
 });
 
-// The header link runs under the buttons at the end of its bar, so only the buttons are held apart, and the count must end before the first.
+// The header link runs under the buttons at the end of its bar, so only the buttons are held apart, and what the header draws, its count and a
+// lamp, must end before the first.
 const FIT = `(bar => {
   const [, ...tools] = [...bar.children].map(el => el.getBoundingClientRect());
   const bounds = bar.getBoundingClientRect();
@@ -210,7 +211,7 @@ const FIT = `(bar => {
     count: tools.length,
     apart: tools.every((a, i) => tools.slice(i + 1).every(b => a.right <= b.left + 0.5 || b.right <= a.left + 0.5)),
     inside: tools.every(r => r.left >= bounds.left - 0.5 && r.right <= bounds.right + 0.5 && r.top >= bounds.top - 0.5 && r.bottom <= bounds.bottom + 0.5),
-    clear: bar.querySelector('.count').getBoundingClientRect().right <= tools[0].left + 0.5,
+    clear: bar.querySelector('.count').getBoundingClientRect().right <= tools[0].left + 0.5 && (head => head.getBoundingClientRect().right - parseFloat(getComputedStyle(head).paddingRight) <= tools[0].left + 0.5)(bar.querySelector('.group-head')),
   };
 })`;
 

@@ -149,12 +149,14 @@ for (const [label, fold, key] of [['the first group', false, 'cg-a'], ['a folded
       await page.until(`document.querySelector('${foldOf('cg-a')}').getAttribute('aria-expanded') === 'false'`);
     }
     const groups = JSON.stringify(onDisk(server).groups);
+    const hash = await page.evaluate('location.hash');
     for (const dy of [6, 8]) {
       const release = await page.hold(`.bar:has(.group-head[data-key="${key}"])`, dy);
       await release();
       await page.until(`document.querySelectorAll('.bar.lifted').length === 0`);
     }
     assert.equal(JSON.stringify(onDisk(server).groups), groups);
+    assert.equal(await page.evaluate('location.hash'), hash, 'a drag is never a click on the header');
     assert.equal(await page.evaluate(`${NAMES}.join()`), 'Reviewing,Backlog,Notes');
     assert.equal(await page.evaluate(`document.querySelector('[data-sonner-toast]')`), null);
     assert.deepEqual(page.problems, []);

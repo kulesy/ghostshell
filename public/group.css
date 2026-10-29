@@ -1,6 +1,6 @@
-.has-tool .group-head .count { margin-right: 1.75rem; }
+.has-tool button.group-head .count { margin-right: 1.75rem; }
 
-.has-tool.has-menu .group-head .count { margin-right: 3.25rem; }
+.has-tool.has-menu button.group-head .count { margin-right: 3.25rem; }
 
 .bar.has-menu > .head-tool { right: 3rem; }
 
@@ -10,6 +10,12 @@
 
 a.group-head { padding-right: 2rem; text-decoration: none; }
 
+.bar > a.group-head .count { margin-right: 0; }
+
+.has-tool > a.group-head { padding-right: 3.75rem; }
+
+.has-tool.has-menu > a.group-head { padding-right: 5.25rem; }
+
 a.group-head[aria-current="page"] { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
 
 a.group-head[aria-current="page"] .name { color: inherit; }
@@ -18,6 +24,10 @@ a.group-head[aria-current="page"] .name { color: inherit; }
 
 @media (pointer: fine) {
   a.group-head { padding-right: 1.75rem; }
+
+  .has-tool > a.group-head { padding-right: 3.5rem; }
+
+  .has-tool.has-menu > a.group-head { padding-right: 5rem; }
 
   .bar > .fold { right: 0.125rem; }
 }
@@ -29,11 +39,11 @@ a.group-head[aria-current="page"] .name { color: inherit; }
 
   .bar.has-menu:has(> .fold) > .head-tool { right: 5.75rem; }
 
-  .bar:has(> .fold):is(.has-menu, .has-tool) .group-head .count { margin-right: 2.5rem; }
+  .has-tool > a.group-head { padding-right: 5rem; }
 
-  .bar.has-menu.has-tool:has(> .fold) .group-head .count { margin-right: 5.25rem; }
+  .has-tool.has-menu > a.group-head { padding-right: 7.75rem; }
 
-  .has-tool.has-menu:not(:has(> .fold)) .group-head .count { margin-right: 4.25rem; }
+  .has-tool.has-menu button.group-head .count { margin-right: 4.25rem; }
 
   .bar.has-menu:not(:has(> .fold)) > .head-tool { right: 4.5rem; }
 }

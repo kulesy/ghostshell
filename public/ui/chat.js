@@ -14,7 +14,7 @@ import { Panel, useAgentsOffered, useShownTab } from './panel.js';
 import { toggleTab } from './panel-state.js';
 import { runFromClick } from './run.js';
 import { QuoteDock, useQuoting } from './quote.js';
-import { draftGroup, groupById } from './group-rules.js';
+import { draftGroup, groupById, pinsOnStart } from './group-rules.js';
 import { createChat } from './session.js';
 import { keyHint, shortcut } from './shortcuts.js';
 import { usePullNeeds, usePullStatus } from './pulls.js';
@@ -82,7 +82,7 @@ function ChatHead({ ctrl, kind, rename }) {
   const refocus = useRef(false);
   const { session, status, outside, terminal, group } = useFields(ctrl.store, 'session', 'status', 'outside', 'terminal', 'group');
   const draft = !!ctrl.draft;
-  const pinning = draft && group === 'pinned';
+  const pinning = draft && pinsOnStart(group);
   const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? (pinning ? 'Pinned' : null) : null));
   const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
   const agents = useAgentsOffered(ctrl);

@@ -106,7 +106,7 @@ function Head({ id, name, count, open, toggle, menu, chat, extra, handle, form, 
     ${from !== undefined ? html`<${NewHereButton} group=${chat} start=${() => newSession(from)} />` : null}
     ${extra}
     ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
-    ${chat ? html`<${FoldButton} label=${`Sessions in ${name}`} open=${open} controls=${`rows-${id}`} onClick=${() => toggle(id, open)} />` : null}
+    ${chat ? html`<${FoldButton} label=${`Sessions in ${name}`} open=${open} controls=${count ? `rows-${id}` : null} onClick=${() => toggle(id, open)} />` : null}
   </div>`;
 }
 
