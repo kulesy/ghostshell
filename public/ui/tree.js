@@ -85,13 +85,14 @@ const reorder = (row, sort) => (row.children ? { ...row, children: sortFamily(ro
 const byTitle = list => sortRows(list.map(r => reorder(r, TITLE_SORT)), TITLE_SORT);
 
 // The list with every section sorted by title, which later edits then follow through the sort each list now holds. The server sends
-// each list in Desktop's sort. A routine goes by the title of its latest run, and its earlier runs stay as they came.
+// each list in Desktop's sort. A routine goes by the title its row shows, and its earlier runs stay as they came.
+const routineHead = g => (g.title === undefined ? g.latest : { ...g.latest, title: g.title });
 export const sortByTitle = ix => ({
   ...ix,
   sorts: { pinned: TITLE_SORT, routines: TITLE_SORT, sessions: TITLE_SORT },
   pinned: byTitle(ix.pinned),
   groups: ix.groups.map(g => ({ ...g, sort: TITLE_SORT, sessions: byTitle(g.sessions) })),
-  routines: [...ix.routines].sort((a, b) => comparator(TITLE_SORT)(a.latest, b.latest)),
+  routines: [...ix.routines].sort((a, b) => comparator(TITLE_SORT)(routineHead(a), routineHead(b))),
   started: byTitle(ix.started),
   ungrouped: byTitle(ix.ungrouped),
   other: byTitle(ix.other),

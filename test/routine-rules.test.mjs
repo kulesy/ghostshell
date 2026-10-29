@@ -3,8 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ago, byTitle, choices, deleteDetail, effortChoices, FIELDS, fireTime, formOf, idleWords, jitterOf, jitterWords, modelChoices, newForm, promptHint, promptSource, refusals, requestOf, routineFor, routineHash,
-  routineRoute, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, unrunRoutines, wasOf,
+  ago, byTitle, choices, deleteDetail, effortChoices, FIELDS, fireTime, formOf, idleWords, isEarlierRun, jitterOf, jitterWords, modelChoices, newForm, promptHint, promptSource, refusals, requestOf, routineFor, routineHash,
+  routineRoute, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, titledRoutine, unrunRoutines, wasOf,
 } from '../public/ui/routine-rules.js';
 
 test('a server that does not set routineEdits leaves the page read-only', () => {
@@ -291,6 +291,18 @@ test('only the latest run of a routine that routines.json holds has a routine, a
   assert.equal(routineFor(ix, null, 's2'), undefined);
   assert.equal(routineFor(null, routines, 's2'), undefined);
   assert.equal(routineFor({ routines: [] }, routines, 's2'), undefined);
+});
+
+test('a routine\'s row renames the routine only when the server says its title, and an earlier run is known by its place', () => {
+  const ix = { routines: [
+    { name: 'morning', title: 'Morning', latest: { id: 's2' }, earlier: [{ id: 's1' }] },
+    { name: 'gone', latest: { id: 's9' }, earlier: [{ id: 's8' }] },
+  ] };
+  assert.equal(titledRoutine(ix, 's2').name, 'morning');
+  for (const id of ['s1', 's9', 's8', 'nope']) assert.equal(titledRoutine(ix, id), undefined, id);
+  assert.equal(titledRoutine(null, 's2'), undefined);
+  assert.deepEqual(['s1', 's8', 's2', 's9', 'nope'].map(id => isEarlierRun(ix, id)), [true, true, false, false, false]);
+  assert.equal(isEarlierRun(null, 's1'), false);
 });
 
 // ---- routines with no run in the sidebar ---------------------------------------------------------
