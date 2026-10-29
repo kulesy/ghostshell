@@ -95,16 +95,32 @@ test('an archived session, itself and an id that is no session are refused, and 
   assert.equal(resumed(s, 'loose').length, 1);
 });
 
-test('the chat above asks first, in every mode, with a card that names the recipient, and nothing is sent until it is approved', async () => {
+test('a send within the sender\'s own tree goes with no card, from the parent down and from a sub session up', async () => {
+  const { s, token } = await ready();
+  const viewer = listen(s, token, 'top');
+  try {
+    await until(() => viewer.events.length);
+    await sendTo(s, token, 'top', 'ask to send to a sub');
+    await until(() => cliCalls(s).some(c => c.requestId === 'perm-send'));
+    assert.equal(cliCalls(s).find(c => c.requestId === 'perm-send').response, 'allow');
+    await sendTo(s, token, 'grand', 'ask to send to kid');
+    await until(() => cliCalls(s).filter(c => c.requestId === 'perm-send').length === 2);
+    assert.equal(viewer.events.some(e => e.type === 'approval'), false);
+  } finally {
+    viewer.close();
+  }
+});
+
+test('a send outside the sender\'s own tree asks first, in every mode, with a card that names the recipient, and nothing is sent until it is approved', async () => {
   const { s, token } = await ready();
   assert.equal((await post(s, token, '/api/sessions/top/mode', { mode: 'bypassPermissions' })).status, 200);
   const viewer = listen(s, token, 'top');
   try {
     await until(() => viewer.events.length);
-    await sendTo(s, token, 'top', 'ask to send to a sub');
+    await sendTo(s, token, 'top', 'ask to send to loose');
     await until(() => viewer.events.some(e => e.type === 'approval'));
     const [card] = viewer.events.filter(e => e.type === 'approval').map(e => e.data);
-    assert.deepEqual([card.tool, card.always, card.summary], ['mcp__capcom__send_session', false, 'to "Review - dialogs": Please rebase']);
+    assert.deepEqual([card.tool, card.always, card.summary], ['mcp__capcom__send_session', false, 'to "Loose": Please rebase']);
     assert.equal(cliCalls(s).some(c => c.requestId === 'perm-send'), false, 'the CLI is not answered until the owner decides');
     assert.equal((await post(s, token, '/api/sessions/top/approve', { requestId: 'perm-send', decision: 'always' })).status, 200);
     await until(() => cliCalls(s).some(c => c.requestId === 'perm-send'));
