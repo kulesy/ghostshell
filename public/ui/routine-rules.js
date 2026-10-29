@@ -119,6 +119,8 @@ export function skippedWords(skipped, now = Date.now()) {
 export function retryWords(retry, now = Date.now()) {
   const due = fireTime(retry?.nextAt, now);
   if (!due) return 'Retrying';
+  // Past its time, the try is held back by a restart, a run still working or the limit.
+  if (Date.parse(retry.nextAt) <= now) return 'Retrying, next try soon';
   const [day, at] = due.split(', ');
   const on = day === 'Today' ? '' : `${/^(Tomorrow|Yesterday)$/.test(day) ? day.toLowerCase() : day} `;
   return `Retrying, next try ${on}at ${at}`;

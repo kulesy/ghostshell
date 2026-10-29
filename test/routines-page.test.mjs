@@ -839,13 +839,13 @@ test('a routine whose start failed and is queued says when it will try again, in
   assert.deepEqual(page.problems, []);
 });
 
-test('a routine with a run that is queued to retry says so on its run\'s row, in place of the dot, and leads its tooltip with what the last try said', { skip, timeout }, async t => {
+test('a routine with a run that is queued to retry says so on its run\'s row, beside its own error mark, and leads its tooltip with what the last try said', { skip, timeout }, async t => {
   const page = await appPage(t, queued.origin);
   await page.until(`!!document.querySelector('a.row[data-id="r1"]')`);
   assert.equal(await page.evaluate(`document.querySelector('a.row[data-id="r1"]').dataset.tip`).then(Boolean), true);
   const words = await text(page, 'a.row[data-id="r1"] .row-idle');
   assert.match(words, /^Retrying, next try (tomorrow )?at \d\d:\d\d$/);
-  assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="r1"] .row-dot')`), false);
+  assert.equal(await page.evaluate(`document.querySelector('a.row[data-id="r1"] .row-dot')?.dataset.dot`), 'error', 'the run\'s own error stays');
   assert.match(await page.evaluate(`document.querySelector('a.row[data-id="r1"]').dataset.tip`), /^The last try said: spawn claude ENOENT( · |$)/);
   assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="a1"] .row-idle')`), false, 'a routine that is not queued is drawn as before');
   assert.deepEqual(page.problems, []);

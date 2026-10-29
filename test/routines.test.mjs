@@ -1462,7 +1462,7 @@ test('a retry that starts clears the queue and records the session, and the sche
   const saved = r.demo();
   assert.deepEqual([saved.retry, saved.lastSessionId, saved.lastError], [null, 's2', null]);
   assert.equal(Date.parse(saved.armedAt), FRIDAY + MINUTE);
-  assert.equal(r.logs.at(-1), 'Routine demo: started session s2 (retry 2 for 2026-10-16 07:42:17)');
+  assert.equal(r.logs.at(-1), 'Routine demo: started session s2 (try 2 for 2026-10-16 07:42:17)');
   await r.tickAt(FRIDAY + 2 * HOUR);
   assert.equal(r.calls.length, 2);
   await r.tickAt(MONDAY + 5000);
@@ -1681,4 +1681,42 @@ test('switching off, or a change of schedule, drops the queued retry, and a rout
   await hand.tickAt(FRIDAY + 2 * MINUTE);
   assert.equal(hand.demo().retry, null);
   assert.equal(hand.calls.length, 1);
+});
+
+test('the wait is counted from when the start failed, so a start that takes a minute to fail does not shorten it', async () => {
+  const r = rig();
+  r.onStart = async () => { r.clock.t += MINUTE; throw new Error('Claude did not start within 60 seconds'); };
+  await r.tickAt(FRIDAY);
+  assert.equal(Date.parse(r.demo().lastRunAt), FRIDAY);
+  assert.equal(r.demo().retry.nextAt, localIso(FRIDAY + 2 * MINUTE));
+  await r.tickAt(FRIDAY + 2 * MINUTE - 1000);
+  assert.equal(r.calls.length, 1);
+  await r.tickAt(FRIDAY + 2 * MINUTE);
+  assert.equal(r.calls.length, 2);
+  assert.equal(r.demo().retry.nextAt, localIso(FRIDAY + 2 * MINUTE + MINUTE + 2 * MINUTE));
+});
+
+test('the tries carry on when the Mac changes time zone mid-retry, and a count that is not a whole number starts again', async () => {
+  const zoned = rig();
+  failing(zoned);
+  await zoned.tickAt(FRIDAY);
+  const was = zoned.demo().retry;
+  process.env.TZ = 'Asia/Kolkata';
+  try {
+    zoned.store.update('demo', { retry: { ...was, nextAt: localIso(FRIDAY + MINUTE) } });
+    assert.notEqual(zoned.demo().retry.fireAt, localIso(FRIDAY));
+    await zoned.tickAt(FRIDAY + MINUTE);
+  } finally {
+    process.env.TZ = 'Australia/Sydney';
+  }
+  assert.equal(zoned.demo().retry.tries, 2);
+  assert.equal(Date.parse(zoned.demo().retry.nextAt), FRIDAY + 3 * MINUTE);
+  for (const tries of ['3', 0, -1, 1.5, null, NaN, undefined]) {
+    const r = rig();
+    failing(r);
+    await r.tickAt(FRIDAY);
+    r.store.update('demo', { retry: { ...r.demo().retry, tries, nextAt: localIso(FRIDAY + MINUTE) } });
+    await r.tickAt(FRIDAY + MINUTE);
+    assert.deepEqual([r.demo().retry.tries, r.demo().retry.nextAt], [1, localIso(FRIDAY + 2 * MINUTE)], String(tries));
+  }
 });

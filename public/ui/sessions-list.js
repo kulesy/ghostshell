@@ -38,7 +38,7 @@ const sessionHash = id => `#/s/${encodeURIComponent(id)}`;
 // Where the session is and when it last ran: a mouse reads it in the row's tooltip and a touch screen, which has none, on a second line.
 // The line stays in the row for a screen reader either way, so the CSS only hides it from the eye.
 // `dot` stands in for the row's own mark, as a folded family's does. `note` stands in the row's end for a run that is not timed, with
-// `tip` ahead of the tooltip, as a routine's queued retry does in place of an error mark.
+// `tip` ahead of the tooltip, as a routine's queued retry does.
 function RowLink({ r, title = r.title, dot = r.dot, note, tip, current, lifted, marked, picked, drop, over }) {
   const timed = r.turnStart != null;
   useClock(timed, r.turnStart);
@@ -133,7 +133,7 @@ function Routine({ g, routine, rowProps, open, onToggle, tree }) {
   const list = `runs-${g.latest.id}`;
   const queued = routine?.enabled === true && routine.retry ? routine : null;
   return html`<li class=${earlier ? 'has-fold' : null}>
-    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} title=${title} dot=${queued && g.latest.dot === 'error' ? null : g.latest.dot} note=${queued && retryWords(queued.retry)} tip=${queued && retryTip(queued)} ...${rowProps(g.latest)} /><${RowMore} r=${g.latest} title=${title} tree=${tree} />`}
+    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} title=${title} note=${queued && retryWords(queued.retry)} tip=${queued && retryTip(queued)} ...${rowProps(g.latest)} /><${RowMore} r=${g.latest} title=${title} tree=${tree} />`}
     ${earlier && !renaming ? html`<${FoldButton} label=${runs} open=${open} controls=${list} onClick=${() => onToggle(g.name)} />` : null}
     ${earlier && open ? html`<ul class="sub-rows earlier-runs" id=${list}>${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${when(r.lastActivityAt)} ...${rowProps(r)} tree=${tree} />`)}</ul>` : null}
   </li>`;

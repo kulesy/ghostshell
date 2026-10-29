@@ -390,6 +390,8 @@ test('a failed start that is queued says when the next try is, in the Mac\'s clo
   assert.equal(retryWords(retry('2026-10-26T00:05:00+11:00'), SUNDAY), 'Retrying, next try tomorrow at 00:05');
   assert.equal(retryWords(retry('2026-10-27T00:05:00+11:00'), SUNDAY), 'Retrying, next try Tue 27 Oct at 00:05');
   for (const bad of [null, undefined, {}, retry('soon')]) assert.equal(retryWords(bad, SUNDAY), 'Retrying', String(bad));
+  assert.equal(retryWords(retry('2026-10-25T11:59:00+11:00'), SUNDAY), 'Retrying, next try soon', 'a try that is due is held back by something');
+  assert.equal(retryWords(retry('2026-10-25T12:00:00+11:00'), SUNDAY), 'Retrying, next try soon');
 });
 
 test('a routine with no run that is switched on and queued to retry says so in place of Couldn\'t start, and its tip is what the last try said', () => {
