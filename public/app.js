@@ -203,14 +203,14 @@ function App() {
     }
   }, []);
 
-  // A change to a project or group. It resolves with { problem, made }: the reason when the server refuses, or an empty string and
-  // the project or group the server made, changed or removed. Either way the list is loaded again before it resolves.
+  // A change to a project or group. It resolves with { problem, made, status }: the reason and the HTTP status when the server refuses, or an
+  // empty string and the project or group the server made, changed or removed. Either way the list is loaded again before it resolves.
   const edit = useCallback(async (path, body) => {
     writing.current++;
     try {
       return { problem: '', made: await api(path, body) };
     } catch (e) {
-      return { problem: e.message, made: null };
+      return { problem: e.message, made: null, status: e.status };
     } finally {
       writing.current--;
       await loadIndex();

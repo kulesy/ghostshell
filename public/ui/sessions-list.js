@@ -15,7 +15,8 @@ import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
-import { anchorAt, archiveNote, extend, inOrder, NO_PICK, prune, sessions, stayAfter, step, stopDetail, toggle as toggleRow, unarchiveNote } from './pick.js';
+import { ParentForm } from './parent-form.js';
+import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndoNote, prune, sessions, stayAfter, step, stopDetail, supportsNewParent, toggle as toggleRow, unarchiveNote } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { idleWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, unrunRoutines } from './routine-rules.js';
 import { ManageRoutines, routineItems } from './routines.js';
@@ -283,6 +284,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const [back, setBack] = useState(null);
   const [after, setAfter] = useState(null);
   const [pick, setPick] = useState(NO_PICK);
+  const [making, setMaking] = useState(null);
   const nav = useRef(null);
   const box = useRef(null);
   const opened = useRef(0);
@@ -418,6 +420,11 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const drawn = box.current.getClientRects().length ? drawnIds() : [];
     if (prune(pick, drawn) !== pick) setPick(now => prune(now, drawn));
   });
+
+  // The form for a new parent belongs to the rows picked when it opened, so a pick that changes closes it.
+  useLayoutEffect(() => {
+    if (making && (making.ids.length !== pick.ids.length || !making.ids.every(id => pick.ids.includes(id)))) setMaking(null);
+  }, [pick]);
 
   // Sends one change to the layout. It resolves with what the server made, changed or removed, or with null when it refused,
   // and then shows the reason at the top of the list.
@@ -577,6 +584,43 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
 
   const undoManyAction = (ids, reopen) => ({ label: 'Undo', onClick: () => undoMany({ ids, reopen }) });
 
+  // Opens the form that names a new parent for the picked rows, where the pick bar was. `back` is where the focus returns to if it is cancelled.
+  const startParent = ids => {
+    const rows = ids.map(id => findRow(ix, id)).filter(Boolean);
+    if (rows.length > 1) setMaking({ ids: rows.map(r => r.id) });
+  };
+
+  const closeMaking = (away, ...focus) => { setMaking(null); if (!away) setBack(focus); };
+
+  // Makes the new parent. On success the pick ends, the family opens and the focus goes to the parent's row, and the note offers Undo.
+  // A refusal says why and leaves the pick and the form as they were.
+  async function makeParent(text, place, { ring }) {
+    const ids = making.ids;
+    const { problem, made } = await edit('api/layout/parent', { ids, title: clean(text), ...(place && { place }) });
+    if (problem) {
+      problemNote(problem);
+      return false;
+    }
+    setPick(NO_PICK);
+    setMaking(null);
+    fold(made.id, false);
+    setAfter({ to: rowOf(made.id), ring });
+    say(parentNote(made.title, ids.length), { action: undoParentAction({ id: made.id, title: made.title, ids }) });
+    return true;
+  }
+
+  // Takes a new parent back. The page goes off the parent if it was open. A failed Undo keeps its button to try again only when the server
+  // could not do it, and not when it refuses, as when another tab took it back or the ten minutes are over.
+  async function undoParent(note) {
+    const { problem, made, status } = await edit('api/layout/parent/undo', { id: note.id });
+    if (problem) return say(`Not undone: ${problem}`, { problem: true, ...(!status || status >= 500 ? { action: undoParentAction(note) } : {}) });
+    if (location.hash === sessionHash(note.id)) location.hash = '#/';
+    setAfter({ to: note.ids.map(rowOf).join(', ') });
+    say(parentUndoNote(note.title, made));
+  }
+
+  const undoParentAction = note => ({ label: 'Undo', onClick: () => undoParent(note) });
+
   // The menu of a row, opened by a right click or a long press at the pointer, or by the menu key under the row. Move to and Nest under
   // open a menu beside it with a search box. A chat the list shows running is stopped as it is archived, and the item says so. Archive
   // on a chat that turns out to be running asks first, as the key does.
@@ -598,6 +642,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         entry,
         label: `Actions for ${sessions(chosen.length)}`,
         items: [
+          ...(supportsNewParent(ix) ? [{ label: 'New parent session', icon: icons.indentIncrease, run: () => startParent(chosen) }] : []),
           { label: `Archive ${sessions(chosen.length)}`, icon: icons.archive, danger: chosen.some(c => { const row = findRow(ix, c); return row && isRunning(row); }), hint: archiveHint(), run: () => archiveMany(chosen, { back }) },
           { label: 'Clear selection', icon: icons.x, run: () => setPick(NO_PICK) },
         ],
@@ -935,9 +980,12 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <span class="sr" role="status">${pick.ids.length ? `${pick.ids.length} selected` : ''}</span>
-    ${pick.ids.length
+    ${pick.ids.length && making
+      ? html`<${ParentForm} rows=${making.ids.map(id => findRow(ix, id)).filter(Boolean)} groups=${ix.groups} onCreate=${makeParent} onCancel=${away => closeMaking(away, '.pick-new')} />`
+      : pick.ids.length
       ? html`<div class="pick-bar" role="group" aria-label="Selection">
         <span class="pick-count">${pick.ids.length} selected</span>
+        ${pick.ids.length > 1 && supportsNewParent(ix) ? html`<button class="btn pick-new" data-variant="outline" data-size="sm" type="button" onClick=${() => startParent(inOrder(pick, drawnIds()))}>${draw(icons.indentIncrease)}New parent</button>` : null}
         <button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${e => archiveMany(inOrder(pick, drawnIds()), { ring: e.detail === 0 })}>${draw(icons.archive)}Archive</button>
         <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Clear selection" data-tip="Clear selection" onClick=${clearPick}>${draw(icons.x)}</button>
       </div>`

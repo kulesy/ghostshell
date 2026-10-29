@@ -15,8 +15,9 @@ const BLANK_BLUR_GRACE_MS = 10000;
 
 // A bare box for a name, in place of the title or button it names. Enter and the focus leaving save it, Esc cancels, and an empty name or
 // one no different from `was` cancels without asking the server. `onSubmit(text, away)` resolves false when the server refused, and the
-// box stays open. `away` says the focus left, so the caller leaves it where the person put it.
-export function NameForm({ label, placeholder, value = '', was = value, max = 80, grace = BLANK_BLUR_GRACE_MS, onSubmit, onCancel }) {
+// box stays open. `away` says the focus left, so the caller leaves it where the person put it. With `blurSaves` false the focus leaving the
+// box saves nothing, for a form whose `children` are controls beside it, and the caller's own buttons save and cancel.
+export function NameForm({ label, placeholder, value = '', was = value, max = 80, grace = BLANK_BLUR_GRACE_MS, blurSaves = true, onSubmit, onCancel, children = null }) {
   const [text, setText] = useState(value);
   const input = useRef(null);
   const form = useRef(null);
@@ -65,7 +66,7 @@ export function NameForm({ label, placeholder, value = '', was = value, max = 80
   // A window that loses the focus blurs the box too, and the name is saved only when the focus goes somewhere on the page. A blur that
   // names no element and follows no press is the emoji picker or another panel, so it waits `grace` for the box to get the focus back.
   const blur = e => {
-    if (!document.hasFocus()) return;
+    if (!blurSaves || !document.hasFocus()) return;
     if (e.relatedTarget || pointed.current) return finish(true, true);
     disarm();
     const timer = setTimeout(() => {
@@ -83,5 +84,6 @@ export function NameForm({ label, placeholder, value = '', was = value, max = 80
   return html`<form class="name-form" ref=${form} onSubmit=${e => { e.preventDefault(); finish(false, true); }} onKeyDown=${escapeCancels(() => finish(false, false))}>
     <input class="input" ref=${input} type="text" value=${text} placeholder=${placeholder} aria-label=${label} autocomplete="off" enterkeyhint="done"
       onInput=${take} onCompositionEnd=${take} onFocus=${focus} onBlur=${blur} />
+    ${children}
   </form>`;
 }

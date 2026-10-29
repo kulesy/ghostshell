@@ -1,9 +1,9 @@
 // Run with `npm test`. The rules of the sidebar's multi-select that need no page: how Shift-click, Cmd-click and Shift+Arrow grow and
 // shrink a selection round its anchor, which rows are dropped when they stop being drawn, where the focus goes once a batch leaves, and
-// what the notes and the question say.
+// what the notes and the question say, and the title and the places a new parent for the picked rows starts with.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { anchorAt, archiveNote, extend, inOrder, NO_PICK, only, prune, sessions, step, stayAfter, stopDetail, toggle, unarchiveNote } from '../public/ui/pick.js';
+import { anchorAt, archiveNote, extend, inOrder, NO_PICK, only, parentNote, parentTitle, parentUndoNote, placeKey, placeOptions, prune, sessions, step, stayAfter, stopDetail, supportsNewParent, toggle, unarchiveNote } from '../public/ui/pick.js';
 
 const ORDER = ['a', 'b', 'c', 'd', 'e', 'f'];
 const sorted = state => inOrder(state, ORDER);
@@ -226,6 +226,67 @@ test('the unarchive note counts the sessions brought back, and names how many ca
 });
 
 test('no note or question uses an em dash or an en dash', () => {
-  const text = [stopDetail(1), stopDetail(3), archiveNote({ archived: 1, total: 2, stopped: 1, reason: 'x' }), unarchiveNote({ restored: 1, total: 2, reason: 'x' })].join(' ');
+  const text = [stopDetail(1), stopDetail(3), archiveNote({ archived: 1, total: 2, stopped: 1, reason: 'x' }), unarchiveNote({ restored: 1, total: 2, reason: 'x' }), parentNote('Login', 3), parentUndoNote('Login', { removed: true }), parentUndoNote('Login', { removed: false }), parentUndoNote('Login', { removed: false, stopped: true })].join(' ');
   assert.doesNotMatch(text, /[\u2013\u2014]/);
+});
+
+test('a new parent\'s title is the words the titles begin with, compared without case and spelled as the first title spells them', () => {
+  assert.equal(parentTitle(['Fix login bug', 'fix LOGIN flow', 'Fix login redirect']), 'Fix login');
+  assert.equal(parentTitle(['Refactoring the parser', 'refactoring tests']), 'Refactoring');
+  assert.equal(parentTitle(['Review Tina PR 12', 'Review Tina PR 13']), 'Review Tina PR');
+});
+
+test('a new parent\'s title drops the spaces, hyphens, colons and dashes the common words end in', () => {
+  assert.equal(parentTitle(['Fix login - part 1', 'Fix login - part 2']), 'Fix login - part');
+  assert.equal(parentTitle(['Fix login - a', 'Fix login - b']), 'Fix login');
+  assert.equal(parentTitle(['Fix login: a', 'Fix login: b']), 'Fix login');
+  assert.equal(parentTitle(['Fix login \u2013 a', 'Fix login \u2014 b', 'Fix login \u2015 c']), 'Fix login');
+});
+
+test('a common start of one word under eight characters is not used, and one word of eight is', () => {
+  assert.equal(parentTitle(['Refactor a', 'Refactor b']), 'Refactor');
+  assert.equal(parentTitle(['Fix: a', 'Fix: b']), 'Fix: a and 1 more');
+  assert.equal(parentTitle(['Alpha', 'Beta', 'Gamma']), 'Alpha and 2 more');
+  assert.equal(parentTitle(['Fix it now', 'Fix this']), 'Fix it now and 1 more');
+  assert.equal(parentTitle(['Same words', 'Same words', 'same WORDS']), 'Same words');
+});
+
+test('a title that has to be cut to fit leaves the room for "and N more" and ends on a word boundary', () => {
+  const long = 'word '.repeat(40).trim();
+  const title = parentTitle([long, 'other'], 120);
+  assert.ok([...title].length <= 120, `${[...title].length}`);
+  assert.match(title, /^(word )+word and 1 more$/);
+  const unbroken = parentTitle(['x'.repeat(130), 'y'], 120);
+  assert.equal([...unbroken].length, 120);
+  assert.ok(unbroken.endsWith(' and 1 more'));
+  assert.equal(parentTitle(['one', 'two'], 20), 'one and 1 more');
+  assert.equal(parentTitle(['y'.repeat(130), 'y'.repeat(130)], 120), 'y'.repeat(120), 'a common start is cut to the limit too');
+});
+
+test('a new parent\'s title counts characters, so an emoji is one', () => {
+  const title = parentTitle(['\u{1F600}'.repeat(60), 'z'], 50);
+  assert.equal([...title].length, 50);
+});
+
+test('the places among the picked rows are listed once each in screen order, with a group by its name, Pinned, and Started here for the loose ones', () => {
+  const groups = [{ id: 'cg-a', name: 'Reviewing' }, { id: 'cg-b', name: 'Backlog' }];
+  const rows = [{ id: 'a', group: 'cg-b', pinned: false }, { id: 'b', group: null, pinned: true }, { id: 'c', group: 'cg-b', pinned: false }, { id: 'd', group: null, pinned: false }, { id: 'e', group: null, pinned: false, routine: 'nightly' }];
+  assert.deepEqual(placeOptions(rows, groups), [
+    { key: 'cg-b', label: 'Backlog', place: { group: 'cg-b', pinned: false } },
+    { key: 'pinned', label: 'Pinned', place: { group: null, pinned: true } },
+    { key: 'loose', label: 'Started here', place: { group: null, pinned: false } },
+  ]);
+  assert.equal(placeOptions([rows[0], rows[2]], groups).length, 1, 'rows in one place need no choice');
+});
+
+test('the page shows the new parent only when the server says it can make one', () => {
+  assert.equal(supportsNewParent({ features: { newParent: true } }), true);
+  assert.equal(supportsNewParent({ features: {} }), false);
+  assert.equal(supportsNewParent(null), false);
+  assert.equal(parentNote('Login', 3), 'Made \u201cLogin\u201d the parent of 3 sessions.');
+});
+
+test('a row\'s place is Pinned, its group or the loose list, and the undo note says when the parent was stopped', () => {
+  assert.deepEqual([{ pinned: true, group: 'g' }, { pinned: false, group: 'g' }, { pinned: false, group: null }, {}].map(placeKey), ['pinned', 'g', 'loose', 'loose']);
+  assert.equal(parentUndoNote('Login', { removed: false, stopped: true }), 'Took back \u201cLogin\u201d, stopped it and archived it, since it was working.');
 });

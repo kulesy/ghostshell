@@ -103,6 +103,8 @@ Drop a row on the middle of another row to nest it there. A row takes a nest onl
 
 Nest under in any session's menu opens a second menu of the other top level sessions in the same section, so a phone nests without a drag. Its search box finds a session by its title, and works as the one in Move to does.
 
+To nest several sessions under a new one, pick them and choose New parent in the bar or New parent session in a picked row's menu. The bar becomes a box with a title already filled in, and when the sessions are in different places a select asks where the parent goes. The new parent starts with no messages and costs nothing until you write in it, and the note after has an Undo.
+
 Nesting goes one level deep: a session that holds others takes them along when you nest it, and a drop on a nested row nests under that row's parent. A routine's run and an archived session cannot be a parent.
 
 ### Where a nested session shows
