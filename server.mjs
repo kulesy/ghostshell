@@ -352,7 +352,7 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 // What a chat is waiting on for the owner's say-so.
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
-// What a chat reaches the sessions under it through, and what every chat sends to any session with. Each call looks the index up again, so a session archived or nested since is seen
+// What a chat reaches the sessions under it through, and what every chat sends to, archives, unarchives, renames and moves any session with. Each call looks the index up again, so a session archived or nested since is seen
 // as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for. The sessions of groups and sections
 // are listed too, so one can send and be sent to, and none is ever below another. A deleted group's chat is left out, as nothing would answer its tools.
 function subCtx(sessionId) {
@@ -372,6 +372,21 @@ function subCtx(sessionId) {
       ensureChat(row.id, row).send(text);
       return was;
     },
+    // The same changes the layout routes make, so a tool's and the owner's cannot differ. A session another app runs is left alone, and a running chat of Capcom's is not stopped.
+    archive(id) {
+      const row = editableRow(id);
+      if (!getChat(id)?.proc && row.state === 'active') return 'elsewhere';
+      try {
+        CHANGES.archived(id, true, false);
+      } catch (e) {
+        if (e.status === 409) return 'running';
+        throw e;
+      }
+      return 'done';
+    },
+    unarchive: id => { editableRow(id); CHANGES.archived(id, false); },
+    rename: (id, title) => { editableRow(id); return CHANGES.rename(id, title); },
+    move: (id, group) => { editableRow(id); CHANGES.move(id, group); },
   };
 }
 
@@ -420,6 +435,7 @@ function sectionMembers(section) {
 function groupCtx(groupId) {
   const section = sectionById(groupId);
   return {
+    id: groupId,
     stateDir: cfg.stateDir,
     ...(section && { section }),
     lookup() {
@@ -759,6 +775,14 @@ const NO_SESSION = 'No session with that id on this Mac.';
 const kindOf = row => (SECTION_IDS.includes(row.groupSession) ? 'section' : 'group');
 const refuse = (status, message) => Object.assign(new Error(message), { status });
 
+// The row of a session whose place, title and archive the owner or a tool may change. A group's or section's chat stays with it.
+function editableRow(id) {
+  const row = typeof id === 'string' ? findRow(id) : null;
+  if (!row) throw refuse(404, NO_SESSION);
+  if (row.groupSession) throw refuse(400, `A ${kindOf(row)}'s session stays with its ${kindOf(row)}.`);
+  return row;
+}
+
 async function editLayout(req, res, change) {
   const body = await readJson(req);
   if (!body) return send(res, 400, { error: 'Send a JSON body.' });
@@ -766,11 +790,9 @@ async function editLayout(req, res, change) {
   if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
   const { id } = body;
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Which session?' });
-  const row = findRow(id);
-  if (!row) return send(res, 404, { error: NO_SESSION });
-  if (row.groupSession) return send(res, 400, { error: `A ${kindOf(row)}'s session stays with its ${kindOf(row)}.` });
   let extra;
   try {
+    editableRow(id);
     extra = change(id, body);
   } catch (e) {
     return send(res, e.status || 500, { error: e.message });
@@ -797,6 +819,13 @@ function setArchived(id, archived, stop) {
   chat?.stop();
   return { archived, ...(stopped && { stopped: true }) };
 }
+
+// What the routes and a chat's tools both do to a session's title, place and archive.
+const CHANGES = {
+  move: (id, group) => layout.move(id, group ?? null, leaving(id)),
+  rename: (id, title) => layout.rename(id, title),
+  archived: setArchived,
+};
 
 // Nests a session under another, or takes it out when `parent` is null. A family is one level deep, so a drop on a child nests under that
 // child's parent. The answer carries the parent the list now shows.
@@ -1341,11 +1370,11 @@ async function api(req, res, u) {
   // POSTs, so a page on another site can never start a CLI through them (the same-origin check covers POSTs only).
   if (req.method === 'POST' && u.pathname === '/api/commands') return askLists(req, res, 'commands', listCommands);
   if (req.method === 'POST' && u.pathname === '/api/models') return askLists(req, res, 'models', listModels);
-  if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null, leaving(id)));
+  if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => CHANGES.move(id, body.group));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
-  if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: layout.rename(id, body.title) }));
-  if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => setArchived(id, body.archived, body.stop));
+  if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: CHANGES.rename(id, body.title) }));
+  if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => CHANGES.archived(id, body.archived, body.stop));
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
     const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, model: postedModel, effort: postedEffort } = JSON.parse(await readBody(req) || '{}');

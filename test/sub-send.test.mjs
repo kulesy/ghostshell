@@ -81,7 +81,7 @@ test('an archived session, itself and an id that is no session are refused, and 
   const { s, token } = await ready();
   const archived = await callTool(s, token, 'top', 'send_session', { session_id: 'gone', message: 'hi' });
   assert.equal(archived.result.isError, true);
-  assert.equal(textOf(archived), 'Refused: "Gone" [gone] is archived. Ask the owner to unarchive it, then send again.');
+  assert.equal(textOf(archived), 'Refused: "Gone" [gone] is archived. Unarchive it with unarchive_session, which the owner approves, then send again.');
   assert.equal(textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'top', message: 'hi' })), 'A session cannot send a message to itself.');
   assert.match(textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'nobody', message: 'hi' })), /^No session with that id on this Mac\./);
   assert.equal((await callTool(s, token, 'top', 'read_sub_session', { session_id: 'loose' })).result.content[0].text, NOT_BELOW, 'a read still reaches only sub sessions');

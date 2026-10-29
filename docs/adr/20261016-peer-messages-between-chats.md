@@ -1,6 +1,6 @@
 # Show messages between chats by sender, and show a held message with no way to approve it
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-27 and 2026-10-28
 - Deciders: Eli
 - Date: 2026-10-16
 - Tags: peer-messages, cross-session, notices, approvals, stream-json
@@ -41,6 +41,7 @@ Chosen option: "Show holds and deliveries as the CLI reports them, and offer no 
 - **Escaping.** Names, addresses and text reach the page as text through its templates. `label()` also turns line breaks, bidirectional marks and zero-width characters in a name or address into spaces.
 - **Checked** with Haiku 5.5 in throwaway headless chats. On CLI 2.1.301: the hold and its causes, the parity rule, an idle receiver starting a turn, delivery while mid-turn, the delivery reports, the four refused requests and the two releases. On 2.1.302, after an update: the hold, the four refused requests, the release by mode, the dialog that was never sent, the deadline and the mid-turn delivery. The `ListAgents` row was checked on a synthetic transcript only.
 - **Amended 2026-10-27, messages from a session.** A turn on stdin whose text is a `<cross-session-message>` tag is taken by the CLI as a peer message and held with the cause `no-mode-asserted`, then dropped at stdin close (CLI 2.1.310, checked with Haiku 5.5). So `send_session` wraps its text in `<session-message from="..." from-name="...">`, which the CLI passes through as a normal turn (checked with Haiku 5.5 on a bare CLI process for this name, which answered the message and held nothing), and `lib/notices.mjs` draws it as the same "Message from" notice. The tool reaches any session on the Mac, not only the ones below the sender, and the owner approves each send. The held frame carries a `uuid` and no `message_uuid`, so the runner's `hold()` ignores it and the card never shows. That gap was left as it is. See [Roll a session's sub session status up to every parent](20261023-roll-sub-session-status-up.md).
+- **Amended 2026-10-28, an archived recipient.** `send_session` still refuses an archived session, and its refusal now names `unarchive_session`, which the owner approves on a card, as the next step. The "No session with that id" refusal and the tool's description point at `find_sessions` to look an id up by title. See [Give sessions tools to find, archive, rename and move sessions, and read chips](20261028-layout-tools-for-sessions.md).
 - **What approving would need.** The CLI would send a headless host that declared `peer_inbound_approval` the `request_user_dialog` it already raises in a terminal session, with the sender, the cause and the text in its payload. Capcom would then draw Allow and Deny on the card, post the click through the same-origin check, and answer with `{behavior: 'completed', result: {behavior: 'approve'}}` or `deny`, as the CLI's schemas describe it (read from the schemas, not exercised). It would declare the kind then and not before, and each Allow would be the owner's click on one message.
 
 ### Consequences

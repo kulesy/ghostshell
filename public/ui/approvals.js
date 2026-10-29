@@ -20,6 +20,13 @@ function chromeCard(tool, i) {
 
 const capitalised = s => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
 
+const LAYOUT_CARDS = {
+  mcp__capcom__archive_session: 'Claude wants to archive another session',
+  mcp__capcom__unarchive_session: 'Claude wants to unarchive a session',
+  mcp__capcom__set_session_title: 'Claude wants to rename a session',
+  mcp__capcom__move_session_to_group: 'Claude wants to move a session to a group',
+};
+
 // Says exactly what is about to happen, so the answer is an informed one.
 function cardParts(p, names, place) {
   const i = p.input || {};
@@ -33,6 +40,7 @@ function cardParts(p, names, place) {
   if (p.tool === 'Agent' || p.tool === 'Task') return { title: 'Claude wants to start a subagent', fields: [['Task', i.description], ['Prompt', clip(i.prompt, 12)]] };
   if (p.tool === 'mcp__capcom__start_group_session') return { title: `Claude wants to start a session in this ${place}`, fields: [['Folder', i.cwd], ['Title', i.title], ['First message', clip(i.prompt, 12)]] };
   if (p.tool === 'mcp__capcom__send_session') return { title: 'Claude wants to message another session', path: p.summary, fields: [['Message', clip(i.message, 12)]] };
+  if (Object.hasOwn(LAYOUT_CARDS, p.tool)) return { title: LAYOUT_CARDS[p.tool], path: p.summary, fields: [] };
   if (p.tool === 'SendMessage') return { title: 'Claude wants to message another session', fields: [['To', i.to], ['Message', clip(i.message, 12)]] };
   const chrome = chromeTool(p.tool);
   if (chrome !== null) return chromeCard(chrome, i);

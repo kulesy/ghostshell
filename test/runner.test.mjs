@@ -1000,7 +1000,8 @@ const groupCli = dir => {
 
 const GROUP_ID = '11111111-2222-4333-8444-555555555555';
 // What a group's chat is made to ask about, whatever the mode. Spelled out here so a change to the list is a change to a test.
-const GROUP_ASKS = ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage'];
+const LAYOUT_WRITES = ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group'].map(n => `mcp__capcom__${n}`);
+const GROUP_ASKS = ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage'];
 const groupChat = (t, { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-')), id = GROUP_ID, ...options } = {}) => {
   const recorded = groupCli(dir);
   const cwd = path.join(dir, 'groups', 'cg-1');
@@ -1222,8 +1223,8 @@ test('an ordinary chat that has sub sessions asks before every send to one, a gr
     const { started } = recorded.starts()[0];
     return started.includes('--settings') ? JSON.parse(flagOf(started, '--settings')).permissions.ask : undefined;
   };
-  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000050', { subs: subsOf() }), [SUB_SEND]);
-  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000051', { subs: subsOf(), chrome: true }), ['mcp__claude-in-chrome', SUB_SEND]);
+  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000050', { subs: subsOf() }), [SUB_SEND, ...LAYOUT_WRITES]);
+  assert.deepEqual(await rules('11111111-2222-4333-8444-000000000051', { subs: subsOf(), chrome: true }), ['mcp__claude-in-chrome', SUB_SEND, ...LAYOUT_WRITES]);
   assert.equal(await rules('11111111-2222-4333-8444-000000000052', {}), undefined, 'a chat with no sub sessions to reach is given no rule');
   assert.deepEqual(await rules('11111111-2222-4333-8444-000000000053', { group: {}, subs: subsOf() }), GROUP_ASKS, 'a group chat keeps its own list, which has the send in it');
 });

@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { as, cliCalls, listen, request, restart, signIn, start, until as waitFor } from './harness.mjs';
 
+const LAYOUT_WRITES = ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group'].map(n => `mcp__capcom__${n}`);
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NOT_HERE = 'That session is not in this group. Use list_group_sessions to see the ones you can reach.';
@@ -82,7 +83,7 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   assert.equal(flagOf(started, '--session-id'), id);
   assert.equal(started.includes('--resume'), false);
   assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in GhostShell\./);
-  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-8), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-12), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
   assert.equal(flagOf(started, '--setting-sources'), 'user');
   assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
 
@@ -93,7 +94,7 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   const ordinary = startsOf(s)[1].started;
   assert.equal(flagOf(ordinary, '--permission-mode'), mode, 'it starts in the mode a new session in its folder gets');
   for (const flag of ['--session-id', '--append-system-prompt', '--setting-sources']) assert.equal(ordinary.includes(flag), false, `an ordinary session has no ${flag}`);
-  assert.deepEqual(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.filter(rule => rule !== 'mcp__claude-in-chrome'), ['mcp__capcom__send_session'], 'an ordinary session asks only about sending to a sub session');
+  assert.deepEqual(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.filter(rule => rule !== 'mcp__claude-in-chrome'), ['mcp__capcom__send_session', ...LAYOUT_WRITES], 'an ordinary session asks only about sending to a session and about changing the layout');
 
   const again = await restart(s);
   const second = await signIn(again);
@@ -232,7 +233,7 @@ test('a group\'s chat can send to a session outside the group, is refused an arc
   const away = textOf(await callTool(s, token, WORK, 'send_session', { session_id: 'away', message: 'Hello.' }));
   assert.match(away, /^Delivered to "Member of another group" \[away\]\..*read_group_session reaches only this group's sessions, so you cannot read it\./);
   const old = await callTool(s, token, WORK, 'send_session', { session_id: 'old', message: 'hi' });
-  assert.deepEqual([old.result.isError, textOf(old)], [true, 'Refused: "Archived member" [old] is archived. Ask the owner to unarchive it, then send again.']);
+  assert.deepEqual([old.result.isError, textOf(old)], [true, 'Refused: "Archived member" [old] is archived. Unarchive it with unarchive_session, which the owner approves, then send again.']);
   await until(() => resumed(s, 'away').length === 1 && delivered(s).length === 1);
   assert.equal(resumed(s, 'old').length, 0);
 
@@ -437,7 +438,7 @@ test('after its group is deleted, a chat that is sent a message after a restart 
   const { started, cwd } = startsOf(s)[1];
   assert.equal(flagOf(started, '--resume'), WORK, 'its transcript is kept, so it resumes');
   assert.equal(flagOf(started, '--setting-sources'), 'user', 'a settings file in its folder is still never loaded');
-  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-8), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-12), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
   assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in GhostShell\./);
   assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
   assert.deepEqual(reply.result, { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });
