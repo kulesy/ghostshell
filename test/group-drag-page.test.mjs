@@ -33,6 +33,7 @@ after(async () => {
 
 const LIST = `!document.querySelector('#boot') && !!document.querySelector('.list-foot')`;
 const bar = name => `[...document.querySelectorAll('.bar')].find(el => el.querySelector('.name').textContent === ${JSON.stringify(name)})`;
+const foldOf = key => `.bar:has(.group-head[data-key="${key}"]) .fold`;
 const NAMES = `[...document.querySelectorAll('.group-head[data-key^="cg-"] .name')].map(el => el.textContent)`;
 
 async function appPage(t, { docked = false } = {}) {
@@ -71,16 +72,30 @@ test('a header carried to the bottom of the groups draws the line under the last
   assert.deepEqual(page.problems, []);
 });
 
-test('a header let go where it already is draws no line and changes nothing, and a plain click folds the group', { skip, timeout }, async t => {
+test('a header let go where it already is draws no line and changes nothing, and a click on its chevron folds the group', { skip, timeout }, async t => {
   const { page, server } = await appPage(t);
   const before = JSON.stringify(onDisk(server).groups);
+  const hash = await page.evaluate('location.hash');
   const release = await page.carry(`.bar:has(.group-head[data-key="cg-b"])`, `(r => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 + 12 }))(document.querySelector('.group-head[data-key="cg-b"]').getBoundingClientRect())`);
   assert.equal(await page.evaluate(`document.querySelectorAll('.group[data-line]').length`), 0);
   await release();
   assert.equal(JSON.stringify(onDisk(server).groups), before);
-  assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="cg-b"]').getAttribute('aria-expanded')`), 'true');
-  await page.click('.group-head[data-key="cg-b"]');
-  await page.until(`document.querySelector('.group-head[data-key="cg-b"]').getAttribute('aria-expanded') === 'false'`);
+  assert.equal(await page.evaluate('location.hash'), hash, 'a drop is not a click on the link');
+  assert.equal(await page.evaluate(`document.querySelector('${foldOf('cg-b')}').getAttribute('aria-expanded')`), 'true');
+  await page.click(foldOf('cg-b'));
+  await page.until(`document.querySelector('${foldOf('cg-b')}').getAttribute('aria-expanded') === 'false'`);
+  assert.equal(await page.evaluate('location.hash'), hash, 'and folding does not open the group\'s session');
+});
+
+test('a header carried to another place and dropped never opens the group\'s session', { skip, timeout }, async t => {
+  const { page, server } = await appPage(t);
+  const hash = await page.evaluate('location.hash');
+  const release = await page.carry(HEAD_A, bottomOf('Notes'));
+  await release();
+  await page.until(`${NAMES}.join() === 'Backlog,Notes,Reviewing'`);
+  assert.deepEqual(order(server), ['Backlog', 'Notes', 'Reviewing']);
+  assert.equal(await page.evaluate('location.hash'), hash);
+  assert.deepEqual(page.problems, []);
 });
 
 test('with the sidebar shut a Move to strip of the projects shows during the drag and a drop on one moves the group there', { skip, timeout }, async t => {
@@ -130,8 +145,8 @@ for (const [label, fold, key] of [['the first group', false, 'cg-a'], ['a folded
   test(`a small drag of ${label} let go with the sidebar shut sends nothing and changes nothing`, { skip, timeout }, async t => {
     const { page, server } = await appPage(t);
     if (fold) {
-      await page.click('.group-head[data-key="cg-a"]');
-      await page.until(`document.querySelector('.group-head[data-key="cg-a"]').getAttribute('aria-expanded') === 'false'`);
+      await page.click(foldOf('cg-a'));
+      await page.until(`document.querySelector('${foldOf('cg-a')}').getAttribute('aria-expanded') === 'false'`);
     }
     const groups = JSON.stringify(onDisk(server).groups);
     for (const dy of [6, 8]) {

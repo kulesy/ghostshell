@@ -11,7 +11,9 @@ The list shows one view at a time, which you pick in the [projects sidebar](#the
 - Home shows routines first, then pinned sessions, your groups that are in no project, the sessions started here, ungrouped ones and terminal sessions.
 - A project's view shows pinned sessions, then that project's groups, with no header for the project, because the sidebar already names it.
 
-Each group's header, and each of Home's built-in sections (Routines, Pinned, Started here, Ungrouped and Terminal and other), has a button that opens a chat of its own, which shows the status of its sessions in its [Sub sessions tab](tools.md#group-and-section-sessions). Pinned's button shows in every view. A built-in section has no menu, so its header has the chat button alone, and Routines has it beside the button that manages routines.
+A click on a group's header, or on one of Home's built-in sections (Routines, Pinned, Started here, Ungrouped and Terminal and other), opens a chat of its own, which shows the status of its sessions in its [Sub sessions tab](tools.md#group-and-section-sessions). The header carries a lamp while that chat works or waits for you, and a Cmd or Ctrl click opens it in a new tab, as a row does. The chevron at the end of the header folds the section.
+
+The message icon with a + on a header starts a new session there. A group's starts it in the group, Pinned's pins it, and Started here's starts it in no group, which is where such a session shows. Routines, Ungrouped and Terminal and other have no such button, because a session started in GhostShell lands in none of them. Pinned's header shows in every view. A built-in section has no menu, and Routines has the button that manages routines.
 
 ### Order
 
@@ -49,6 +51,7 @@ A tooltip with the folder, branch, state and when the session last ran opens on 
 New sessions start from any of these:
 
 - New session, the first item in the + menu at the top of the list.
+- The new session button on a group's header, or on Pinned's or Started here's.
 - The search's New session action.
 - Ctrl+N.
 - Cmd+N in the installed app.
@@ -204,7 +207,7 @@ Projects are an optional level above groups, so a project holds groups and a gro
 
 Every step below is a menu, so a phone can do all of them. A project's or a group's name runs to 80 characters at most, and two projects may share one.
 
-Group headers fold, and the browser remembers which are folded. A group's name is bold, and a line separates each group from the one above. The + at the top of the list starts a session, or makes a group in the view you are in: at the top level in Home, and in the project in a project's view.
+Group headers fold from the chevron at their end, and the browser remembers which are folded. Against a server without group sessions there is no chat to open, so a click on the header folds it. A group's name is bold, and a line separates each group from the one above. The + at the top of the list starts a session, or makes a group in the view you are in: at the top level in Home, and in the project in a project's view.
 
 ### A project's menu
 
@@ -218,13 +221,13 @@ A project's menu is on its row in the projects sidebar: New group here, Rename a
 
 Move to in a group's menu moves it into a project, between projects or back to Home, and shows only when there is somewhere to move it. A note then says where the group went, and the list stays on the view it was in. A right click or the menu key on a group's header opens the same menu.
 
-Drag a group's header to move the group with its sessions, folded or open. Only your own groups have a handle: Pinned, Routines, Started here, Ungrouped and Terminal and other do not, and neither does a group with nowhere to go. A mouse drags after a few pixels of movement, so a click still folds the group and the dots still open its menu. A finger drags after a long press, so a swipe still scrolls the list, and a long press let go without moving opens the group's menu.
+Drag a group's header to move the group with its sessions, folded or open. Only your own groups have a handle: Pinned, Routines, Started here, Ungrouped and Terminal and other do not, and neither does a group with nowhere to go. A mouse drags after a few pixels of movement, so a click still opens the group's chat and the dots still open its menu. A drag never opens the chat. A finger drags after a long press, so a swipe still scrolls the list, and a long press let go without moving opens the group's menu.
 
 - Between the groups of the view, a line shows where the group will land, and a drop saves that order. The group lands after the groups whose headers are above the pointer, so there is no gap in a group that is open. A drop where the group already is does nothing, and so does a drop over a fixed section or outside the list.
 - Onto a project or Home moves the group there, as the menu does. With the projects sidebar open its rows are the targets, and the one under the pointer lights up. With it shut, a Move to strip of Home and the projects replaces the header's row while the group is carried, so the list does not move. The view the group is in is left out.
 - Esc cancels, and a note says where the group went or why the server refused. After a reorder the focus is on the group's header.
 
-The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with Rename and then New session, which opens the new session page with the group chosen (`#/new/<group>`). The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. The + menu and Ctrl+N or Cmd+N start a session with no group, as before.
+The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with Rename and then New session, which opens the new session page with the group chosen (`#/new/<group>`), as the new session button on the header does. The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. Pinned's button opens `#/new/pinned` instead, where the chip shows a pin and its button reads Start without pinning, and the first message starts the session and pins it with `api/layout/pin`. The + menu and Ctrl+N or Cmd+N start a session with no group, as before.
 
 ## The projects sidebar
 
@@ -370,7 +373,7 @@ The up and down arrows move through the section headers and the sessions, and Ho
 - The menu key or Shift+F10 opens its menu.
 - On a Mac, Cmd+A archives it.
 
-With no chat open, up or down steps into the list. Tab reaches the dots on a header, and Enter or Space on them opens the menu.
+With no chat open, up or down steps into the list. Enter on a header opens its chat. Tab reaches the buttons on a header, and Enter or Space on the dots opens the menu.
 
 ### Menus
 

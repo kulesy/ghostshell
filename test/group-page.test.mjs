@@ -105,21 +105,71 @@ const text = (page, selector) => page.evaluate(`document.querySelector(${JSON.st
 const summary = page => text(page, '.group-status .status-sum');
 const archivedReads = page => page.evaluate(`performance.getEntriesByType('resource').filter(e => e.name.includes('api/archived')).length`);
 
-test('each group\'s header has a button that opens the group\'s session, with its name in the label and the tip', { skip, timeout }, async t => {
+test('each group\'s header is a link that opens the group\'s session, with its name in the label, and has a chevron and a new session button', { skip, timeout }, async t => {
   const page = await appPage(t);
-  await page.until(`document.querySelectorAll('.bar.has-chat').length === 2`);
-  const buttons = await page.evaluate(`[...document.querySelectorAll('.bar.has-chat .chat-open')].map(a => [a.localName, a.getAttribute('href'), a.getAttribute('aria-label'), a.dataset.tip, a.querySelector('.lamp') === null])`);
-  assert.deepEqual(buttons, [
-    ['a', '#/g/cg-work', 'Open Work\'s session', 'Open Work\'s session', true],
-    ['a', '#/g/cg-home', 'Open Home\'s session', 'Open Home\'s session', true],
+  await page.until(`document.querySelectorAll('a.group-head').length === 2`);
+  const heads = await page.evaluate(`[...document.querySelectorAll('a.group-head')].map(a => [a.getAttribute('href'), a.getAttribute('aria-label'), a.hasAttribute('aria-expanded'), a.querySelector('.lamp') === null, a.draggable])`);
+  assert.deepEqual(heads, [
+    ['#/g/cg-work', 'Open Work\'s session', false, true, false],
+    ['#/g/cg-home', 'Open Home\'s session', false, true, false],
   ]);
+  const tools = await page.evaluate(`[...document.querySelectorAll('.bar:has(a.group-head)')].map(bar => [...bar.children].map(el => el.localName + '.' + el.className.split(' ').join('.')))`);
+  assert.deepEqual(tools[0], ['a.group-head', 'button.more.head-tool', 'button.more', 'button.fold']);
+  const fold = await page.evaluate(`(b => [b.getAttribute('aria-label'), b.getAttribute('aria-expanded'), b.getAttribute('aria-controls'), !!document.getElementById(b.getAttribute('aria-controls'))])(document.querySelector('.bar:has(a.group-head[data-key="cg-work"]) .fold'))`);
+  assert.deepEqual(fold, ['Sessions in Work', 'true', 'rows-cg-work', true]);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.head-tool')].map(b => [b.getAttribute('aria-label'), b.dataset.tip])`), [['New session in Work', 'New session in Work'], ['New session in Home', 'New session in Home']]);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a click on a group\'s header opens its session and leaves the group open, and its chevron folds and opens the group without leaving the page', { skip, timeout }, async t => {
+  const page = await appPage(t);
+  await page.until(`document.querySelectorAll('a.group-head').length === 2`);
+  const FOLD = '.bar:has(a.group-head[data-key="cg-work"]) .fold';
+  const open = `document.querySelector('${FOLD}').getAttribute('aria-expanded')`;
+  const hash = await page.evaluate('location.hash');
+  await page.click('a.group-head[data-key="cg-work"]');
+  await page.until(`location.hash === '#/g/cg-work'`);
+  assert.equal(await page.evaluate(open), 'true');
+  assert.equal(await page.evaluate(`!!document.querySelector('.rows#rows-cg-work')`), true);
+  await go(page, hash);
+  await page.click(FOLD);
+  await page.until(`${open} === 'false'`);
+  assert.equal(await page.evaluate(`location.hash`), hash, 'folding does not open the session');
+  assert.equal(await page.evaluate(`!!document.querySelector('#rows-cg-work')`), false);
+  await page.click(FOLD);
+  await page.until(`${open} === 'true' && !!document.querySelector('#rows-cg-work')`);
+  assert.equal(await page.evaluate(`location.hash`), hash);
+  assert.deepEqual(page.problems, []);
+});
+
+test('Enter on a focused header opens its session, and Left and Right on it fold and open the group through its chevron', { skip, timeout }, async t => {
+  const page = await appPage(t);
+  await page.until(`document.querySelectorAll('a.group-head').length === 2`);
+  const open = `document.querySelector('.bar:has(a.group-head[data-key="cg-work"]) .fold').getAttribute('aria-expanded')`;
+  await page.evaluate(`document.querySelector('a.group-head[data-key="cg-work"]').focus()`);
+  await page.press('ArrowLeft');
+  await page.until(`${open} === 'false'`);
+  await page.press('ArrowRight');
+  await page.until(`${open} === 'true'`);
+  assert.equal(await page.evaluate(`location.hash`), '');
+  await page.press('Enter');
+  await page.until(`location.hash === '#/g/cg-work'`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('the new session button on a group\'s header opens the new session page in that group', { skip, timeout }, async t => {
+  const page = await appPage(t);
+  await page.until(`document.querySelectorAll('a.group-head').length === 2`);
+  await page.click('.bar:has(a.group-head[data-key="cg-home"]) .head-tool');
+  await page.until(`location.hash === '#/new/cg-home' && document.querySelector('.start-group .name')?.textContent === 'Home'`);
   assert.deepEqual(page.problems, []);
 });
 
 test('a server that does not say it can run group sessions has no such button, and its group page says to restart it', { skip, timeout }, async t => {
   const page = await appPage(t, older.origin);
   await page.until(`document.querySelectorAll('.group-head').length === 2`);
-  assert.equal(await page.evaluate(`document.querySelectorAll('.chat-open').length`), 0);
+  assert.equal(await page.evaluate(`document.querySelectorAll('a.group-head, .head-tool, .fold').length`), 0, 'the header folds the group as it did');
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('button.group-head')].every(b => b.getAttribute('aria-expanded') === 'true')`), true);
   await go(page, '#/g/cg-work');
   await page.until(`!!document.querySelector('[data-slot="empty-title"]')`);
   assert.equal(await text(page, '[data-slot="empty-title"]'), 'Restart GhostShell to talk to a group');
@@ -127,16 +177,16 @@ test('a server that does not say it can run group sessions has no such button, a
   assert.deepEqual(page.problems, []);
 });
 
-test('the button opens the group\'s session, headed Group session, with the status of the group over the transcript', { skip, timeout }, async t => {
+test('the header opens the group\'s session, headed Group session, with the status of the group over the transcript', { skip, timeout }, async t => {
   const page = await appPage(t, unsummarised.origin);
-  await page.until(`!!document.querySelector('.bar.has-chat .chat-open')`);
-  await page.click('.bar.has-chat .chat-open');
+  await page.until(`!!document.querySelector('a.group-head')`);
+  await page.click('a.group-head');
   await page.until(`!!document.querySelector('.group-status .status-sum')`);
   assert.equal(await page.evaluate('location.hash'), '#/g/cg-work');
   assert.equal(await text(page, '.chat-head h2'), 'Work');
   assert.match(await text(page, '.chat-head .chat-meta'), /^Group session\b/);
   assert.equal(await summary(page), '1 recent · 2 more');
-  assert.equal(await page.evaluate(`document.querySelector('.chat-open').getAttribute('aria-current')`), 'page');
+  assert.equal(await page.evaluate(`document.querySelector('a.group-head').getAttribute('aria-current')`), 'page');
   assert.equal(await page.evaluate(`(s => s.previousElementSibling.classList.contains('chat-head') && s.nextElementSibling.matches('.scroller'))(document.querySelector('.group-status'))`), true, 'the status sits between the header and the transcript');
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.group-status .status-row')].map(a => [a.getAttribute('href'), a.querySelector('.status-title').textContent])`), [['#/s/recent', 'Recent member']]);
   assert.deepEqual(page.problems, []);

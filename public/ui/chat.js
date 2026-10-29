@@ -82,7 +82,8 @@ function ChatHead({ ctrl, kind, rename }) {
   const refocus = useRef(false);
   const { session, status, outside, terminal, group } = useFields(ctrl.store, 'session', 'status', 'outside', 'terminal', 'group');
   const draft = !!ctrl.draft;
-  const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? null : null));
+  const pinning = draft && group === 'pinned';
+  const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? (pinning ? 'Pinned' : null) : null));
   const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
   const agents = useAgentsOffered(ctrl);
   const state = status?.state || 'idle';
@@ -117,7 +118,7 @@ function ChatHead({ ctrl, kind, rename }) {
             ${renamable ? html`<button class="btn chat-rename" type="button" data-variant="ghost" data-size="icon-xs" ref=${pencil} aria-label=${rename.label} data-tip=${rename.label} onClick=${() => setRenaming(true)}>${draw(icons.pencil, 'icon')}</button>` : null}`}
       </div>
       <p class="chat-meta" id="meta">${meta}</p>
-      ${draft && groupName ? html`<span class="start-group">${draw(icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${`Start outside ${groupName}`} data-tip="Start outside the group" onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
+      ${draft && groupName ? html`<span class="start-group">${draw(pinning ? icons.pin : icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${pinning ? 'Start without pinning' : `Start outside ${groupName}`} data-tip=${pinning ? 'Start without pinning' : 'Start outside the group'} onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>
     ${archivable || terminal || subs || agents ? html`<div class="chat-tools">${archivable ? html`<${ArchiveButton} id=${ctrl.id} state=${state} title=${session.title} />` : null}${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${agents && !subs && !terminal ? html`<${AgentsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
   </header>`;

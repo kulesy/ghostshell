@@ -1,5 +1,6 @@
-// Run with `npm test`. The built-in sections of Home in the real page against the real server: the button with its lamp on each header, none against a server
-// that has no section sessions, no menu on a built-in header, two buttons that fit on Routines even on a phone, the chat a button opens and its Sub sessions tab.
+// Run with `npm test`. The built-in sections of Home in the real page against the real server: the header that opens each section's session, with its lamp, a plain
+// header against a server that has no section sessions, no menu on a built-in header, the new session button on Pinned and Started here, the
+// buttons that fit on a header even on a phone, the chat a header opens and its Sub sessions tab.
 // It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -100,23 +101,25 @@ const text = (page, selector) => page.evaluate(`document.querySelector(${JSON.st
 const barOf = name => `[...document.querySelectorAll('.bar')].find(b => b.querySelector('.name')?.textContent === ${JSON.stringify(name)})`;
 const HEADERS = `[...document.querySelectorAll('.bar')].map(b => b.querySelector('.name')?.textContent)`;
 
-test('every built-in section\'s header has a button that opens its session, with the section named in the label, and none has a menu', { skip, timeout }, async t => {
+test('every built-in section\'s header opens its session, with the section named in the label, and none has a menu', { skip, timeout }, async t => {
   const page = await appPage(t);
-  await page.until(`document.querySelectorAll('.bar.has-chat').length === 6`);
+  await page.until(`document.querySelectorAll('.bar a.group-head').length === 6`);
   assert.deepEqual(await page.evaluate(HEADERS), ['Routines', 'Pinned', 'Work', 'Started here', 'Ungrouped', 'Terminal and other']);
   const buttons = await page.evaluate(`${JSON.stringify(NAMES)}.map(name => {
     const bar = [...document.querySelectorAll('.bar')].find(b => b.querySelector('.name')?.textContent === name);
-    return [name, [...bar.querySelectorAll('.chat-open')].map(a => [a.getAttribute('href'), a.getAttribute('aria-label')]), bar.querySelectorAll('button.more').length];
+    const head = bar.querySelector('a.group-head');
+    return [name, [head.getAttribute('href'), head.getAttribute('aria-label'), head.hasAttribute('aria-expanded')], [...bar.querySelectorAll('.head-tool')].map(a => [a.localName, a.getAttribute('aria-label')]), bar.querySelectorAll('.more[aria-haspopup]').length];
   })`);
   assert.deepEqual(buttons, [
-    ['Routines', [['#/g/routines', 'Open the Routines section\'s session'], ['#/routines', 'Manage routines']], 0],
-    ['Pinned', [['#/g/pinned', 'Open the Pinned section\'s session']], 0],
-    ['Started here', [['#/g/started', 'Open the Started here section\'s session']], 0],
-    ['Ungrouped', [['#/g/ungrouped', 'Open the Ungrouped section\'s session']], 0],
-    ['Terminal and other', [['#/g/other', 'Open the Terminal and other section\'s session']], 0],
+    ['Routines', ['#/g/routines', 'Open the Routines section\'s session', false], [['a', 'Manage routines']], 0],
+    ['Pinned', ['#/g/pinned', 'Open the Pinned section\'s session', false], [['button', 'New session in Pinned']], 0],
+    ['Started here', ['#/g/started', 'Open the Started here section\'s session', false], [['button', 'New session in Started here']], 0],
+    ['Ungrouped', ['#/g/ungrouped', 'Open the Ungrouped section\'s session', false], [], 0],
+    ['Terminal and other', ['#/g/other', 'Open the Terminal and other section\'s session', false], [], 0],
   ]);
-  assert.equal(await page.evaluate(`(${barOf('Work')}).querySelectorAll('button.more').length`), 1, 'a group keeps its menu');
-  assert.equal(await page.evaluate(`(${barOf('Work')}).querySelector('.chat-open').getAttribute('aria-label')`), 'Open Work\'s session');
+  assert.equal(await page.evaluate(`(${barOf('Work')}).querySelectorAll('.more[aria-haspopup]').length`), 1, 'a group keeps its menu');
+  assert.equal(await page.evaluate(`(${barOf('Work')}).querySelector('a.group-head').getAttribute('aria-label')`), 'Open Work\'s session');
+  assert.equal(await page.evaluate(`document.querySelectorAll('.chat-open').length`), 0);
   assert.deepEqual(page.problems, []);
 });
 
@@ -124,7 +127,7 @@ test('a section with no sessions is not drawn, so it has no button either', { sk
   const page = await appPage(t, '', { origin: sparse.origin });
   await page.until(`document.querySelectorAll('.bar').length === 2`);
   assert.deepEqual(await page.evaluate(HEADERS), ['Pinned', 'Ungrouped']);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.chat-open')].map(a => a.getAttribute('href'))`), ['#/g/pinned', '#/g/ungrouped']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('a.group-head')].map(a => a.getAttribute('href'))`), ['#/g/pinned', '#/g/ungrouped']);
   assert.deepEqual(page.problems, []);
 });
 
@@ -132,15 +135,16 @@ test('Pinned shows its button in a project view too, as the pinned sessions show
   const page = await appPage(t, '', { origin: scoped.origin, scope: 'cp-x' });
   await page.until(`document.querySelectorAll('.bar').length === 2`);
   assert.deepEqual(await page.evaluate(HEADERS), ['Pinned', 'Inside']);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.chat-open')].map(a => a.getAttribute('href'))`), ['#/g/pinned', '#/g/cg-p']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('a.group-head')].map(a => a.getAttribute('href'))`), ['#/g/pinned', '#/g/cg-p']);
   assert.deepEqual(page.problems, []);
 });
 
-test('a server with no section sessions has no such buttons, keeps the group\'s, and its section page says to restart it', { skip, timeout }, async t => {
+test('a server with no section sessions has plain folding headers for the sections, keeps the group\'s link, and its section page says to restart it', { skip, timeout }, async t => {
   const page = await appPage(t, '', { origin: older.origin });
   await page.until(`document.querySelectorAll('.bar').length === 6`);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.chat-open')].map(a => a.getAttribute('href'))`), ['#/routines', '#/g/cg-work']);
-  assert.equal(await page.evaluate(`(${barOf('Routines')}).classList.contains('has-two')`), false);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('a.group-head, a.head-tool')].map(a => a.getAttribute('href'))`), ['#/routines', '#/g/cg-work']);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('.bar')].filter(b => b.querySelector('button.group-head[aria-expanded]')).length`), 5, 'a section with no session folds from its header');
+  assert.equal(await page.evaluate(`(${barOf('Routines')}).querySelectorAll('.fold, .head-tool').length`), 1, 'only Manage routines');
   await page.evaluate(`location.hash = '#/g/pinned'`);
   await page.until(`!!document.querySelector('[data-slot="empty-title"]')`);
   assert.equal(await text(page, '[data-slot="empty-title"]'), 'Restart GhostShell to talk to a section');
@@ -149,10 +153,10 @@ test('a server with no section sessions has no such buttons, keeps the group\'s,
   assert.deepEqual(page.problems, []);
 });
 
-test('the button opens the section\'s session, headed Section session, with the Sub sessions tab rolling up what the section holds as a group\'s does', { skip, timeout }, async t => {
+test('the header opens the section\'s session, headed Section session, with the Sub sessions tab rolling up what the section holds as a group\'s does', { skip, timeout }, async t => {
   const page = await appPage(t);
-  await page.until(`!!document.querySelector('.bar.has-chat .chat-open')`);
-  await page.click(`.bar .chat-open[href="#/g/pinned"]`);
+  await page.until(`!!document.querySelector('a.group-head')`);
+  await page.click(`a.group-head[href="#/g/pinned"]`);
   await page.until(`!!document.querySelector('#panel .subs-sum')`);
   assert.equal(await page.evaluate('location.hash'), '#/g/pinned');
   assert.equal(await text(page, '.chat-head h2'), 'Pinned');
@@ -162,7 +166,7 @@ test('the button opens the section\'s session, headed Section session, with the 
   assert.equal(section, '1 session, 1 waiting on you');
   assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-label')`), 'Sub sessions: 1, 1 waiting on you');
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('#panel .sub-title')].map(a => [a.getAttribute('href'), a.firstChild.textContent])`), [['#/s/pinned-one', 'Pinned one']]);
-  assert.equal(await page.evaluate(`document.querySelector('.chat-open[aria-current="page"]')?.getAttribute('href')`), '#/g/pinned');
+  assert.equal(await page.evaluate(`document.querySelector('a.group-head[aria-current="page"]')?.getAttribute('href')`), '#/g/pinned');
   await page.evaluate(`location.hash = '#/g/cg-work'`);
   await page.until(`document.querySelector('.chat-head h2')?.textContent === 'Work' && !!document.querySelector('#panel .subs-sum')`);
   assert.equal(await text(page, '.subs-sum'), section, 'the group of the same session says the same');
@@ -183,7 +187,7 @@ test('a link to a section\'s own session opens the section, and a session in the
   assert.deepEqual(page.problems, []);
 });
 
-test('the button lights while the section\'s session waits for the owner, and carries the lamp in its label', { skip, timeout }, async t => {
+test('the header lights while the section\'s session waits for the owner, and carries the lamp in its label', { skip, timeout }, async t => {
   const { token } = await signIn(app);
   const booked = await request(app, 'POST', '/api/groups/other/session', { headers: as(token), json: {} });
   const chat = booked.body().id;
@@ -192,44 +196,59 @@ test('the button lights while the section\'s session waits for the owner, and ca
   assert.equal((await sent('ask to run a write')).status, 200);
   await until(async () => (await request(app, 'GET', '/api/sessions', { headers: as(token) })).body().sections.find(s => s.id === 'other').session.state === 'waiting');
   const page = await appPage(t);
-  await page.until(`!!document.querySelector('.chat-open[href="#/g/other"][data-state="waiting"] .lamp')`);
-  assert.equal(await page.evaluate(`document.querySelector('.chat-open[href="#/g/other"]').getAttribute('aria-label')`), 'Open the Terminal and other section\'s session, needs you');
-  assert.equal(await page.evaluate(`document.querySelectorAll('.chat-open .lamp').length`), 1, 'only that section\'s button is lit');
+  await page.until(`!!document.querySelector('a.group-head[href="#/g/other"] .lamp[data-state="waiting"]')`);
+  assert.equal(await page.evaluate(`document.querySelector('a.group-head[href="#/g/other"]').getAttribute('aria-label')`), 'Open the Terminal and other section\'s session, needs you');
+  assert.equal(await page.evaluate(`document.querySelectorAll('a.group-head .lamp').length`), 1, 'only that section\'s header is lit');
   assert.deepEqual(page.problems, []);
 });
 
-// The buttons of a header sit on its right end and the count before them, so a second button must not cover the first or the count.
+// The header link runs under the buttons at the end of its bar, so only the buttons are held apart, and the count must end before the first.
 const FIT = `(bar => {
-  const [a, b] = [...bar.querySelectorAll('.chat-open')].map(el => el.getBoundingClientRect());
-  const count = bar.querySelector('.count').getBoundingClientRect();
-  const head = bar.getBoundingClientRect();
-  return { two: !!b, apart: b ? a.right <= b.left + 0.5 : true, clear: count.right <= a.left + 0.5, inside: (b ?? a).right <= head.right + 0.5 && a.left >= head.left };
+  const [, ...tools] = [...bar.children].map(el => el.getBoundingClientRect());
+  const bounds = bar.getBoundingClientRect();
+  return {
+    count: tools.length,
+    apart: tools.every((a, i) => tools.slice(i + 1).every(b => a.right <= b.left + 0.5 || b.right <= a.left + 0.5)),
+    inside: tools.every(r => r.left >= bounds.left - 0.5 && r.right <= bounds.right + 0.5 && r.top >= bounds.top - 0.5 && r.bottom <= bounds.bottom + 0.5),
+    clear: bar.querySelector('.count').getBoundingClientRect().right <= tools[0].left + 0.5,
+  };
 })`;
 
-test('Routines fits both its buttons and its count, on a wide screen and on a phone, and the other built-ins fit theirs', { skip, timeout }, async t => {
+test('the buttons on Routines, Pinned and a group with a menu fit beside the header and its count, on a wide screen and on a phone', { skip, timeout }, async t => {
   const wide = await appPage(t);
-  await wide.until(`document.querySelectorAll('.bar.has-chat').length === 6`);
-  assert.deepEqual(await wide.evaluate(`${FIT}(${barOf('Routines')})`), { two: true, apart: true, clear: true, inside: true });
-  assert.equal(await wide.evaluate(`(${barOf('Routines')}).classList.contains('has-two')`), true);
-  for (const name of NAMES.slice(1)) assert.deepEqual(await wide.evaluate(`${FIT}(${barOf(name)})`), { two: false, apart: true, clear: true, inside: true }, name);
-  assert.deepEqual(await wide.evaluate(`${FIT}(${barOf('Work')})`).then(r => r.clear), true);
-
+  await wide.until(`document.querySelectorAll('.bar a.group-head').length === 6`);
   const phone = await appPage(t, '', { phone: true });
-  await phone.until(`document.querySelectorAll('.bar.has-chat').length === 6`);
-  assert.deepEqual(await phone.evaluate(`${FIT}(${barOf('Routines')})`), { two: true, apart: true, clear: true, inside: true });
-  for (const name of NAMES.slice(1)) assert.deepEqual(await phone.evaluate(`${FIT}(${barOf(name)})`), { two: false, apart: true, clear: true, inside: true }, name);
-  assert.equal(await phone.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true);
-  assert.deepEqual(wide.problems, []);
-  assert.deepEqual(phone.problems, []);
+  await phone.until(`document.querySelectorAll('.bar a.group-head').length === 6`);
+  for (const [label, page] of [['wide', wide], ['phone', phone]]) {
+    for (const [name, count] of [['Routines', 2], ['Pinned', 2], ['Ungrouped', 1], ['Work', 3]]) {
+      assert.deepEqual(await page.evaluate(`${FIT}(${barOf(name)})`), { count, apart: true, inside: true, clear: true }, `${label} ${name}`);
+    }
+    assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true, label);
+    assert.deepEqual(page.problems, []);
+  }
 });
 
-test('on a phone a tap on a section\'s button opens its session', { skip, timeout }, async t => {
+test('on a phone a tap on a section\'s header opens its session', { skip, timeout }, async t => {
   const phone = await appPage(t, '', { phone: true });
-  await phone.until(`!!document.querySelector('.chat-open[href="#/g/ungrouped"]')`);
-  await phone.tap('.chat-open[href="#/g/ungrouped"]');
+  await phone.until(`!!document.querySelector('a.group-head[href="#/g/ungrouped"]')`);
+  await phone.tap('a.group-head[href="#/g/ungrouped"]');
   await phone.until(`location.hash === '#/g/ungrouped' && document.querySelector('.chat-head h2')?.textContent === 'Ungrouped'`);
   assert.match(await text(phone, '.chat-head .chat-meta'), /^Section session\b/);
   assert.deepEqual(phone.problems, []);
+});
+
+test('the new session button starts a session in a group, pinned for Pinned and in no group for Started here, and Routines, Ungrouped and Terminal and other have none', { skip, timeout }, async t => {
+  const page = await appPage(t);
+  await page.until(`document.querySelectorAll('.bar a.group-head').length === 6`);
+  for (const [name, hash] of [['Work', '#/new/cg-work'], ['Pinned', '#/new/pinned'], ['Started here', '#/new']]) {
+    await page.evaluate(`location.hash = ''`);
+    await page.click(`.bar:has(.name) .head-tool[aria-label="New session in ${name}"]`);
+    await page.until(`location.hash === ${JSON.stringify(hash)} && document.querySelector('#title')?.textContent === 'New session'`);
+  }
+  for (const name of ['Routines', 'Ungrouped', 'Terminal and other']) {
+    assert.equal(await page.evaluate(`(${barOf(name)}).querySelectorAll('button.head-tool').length`), 0, name);
+  }
+  assert.deepEqual(page.problems, []);
 });
 
 test('the card that asks to start a session says section in a section\'s chat and group in a group\'s', { skip, timeout }, async t => {

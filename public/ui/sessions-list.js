@@ -8,9 +8,9 @@ import { dragRows, pointIn } from './drag.js';
 import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
-import { GroupChatButton } from './group-button.js';
+import { GroupChatHead, NewHereButton } from './group-button.js';
 import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } from './group-drag-rules.js';
-import { deleteDetail, groupById, newRoute, parseNewRoute, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
+import { deleteDetail, groupById, newRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
@@ -88,8 +88,9 @@ const MoveStrip = ({ targets, over }) => html`<div class="move-strip" aria-hidde
 </div>`;
 
 // The header of a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
-// The same menu opens on a right click, at the pointer, or the menu key, under the button. `chat` is the group, when its header has the
-// button that opens the group's own session, or a built-in section's, and `extra` another small button of the same kind. A built-in section
+// The same menu opens on a right click, at the pointer, or the menu key, under the button. `chat` is the group, or a built-in section, when
+// it has a session of its own: the header then opens that session, the chevron beside it folds the section, and a button starts a new session
+// there if the section can hold one. Without `chat` the header folds the section. `extra` is another small button. A built-in section
 // has no menu: none of a group's actions fits it. `handle` is the group's id when the header can be dragged. `form` is the rename box that
 // takes the header's place, and a header with it has no handle, so it cannot be carried while the name is typed.
 function Head({ id, name, count, open, toggle, menu, chat, extra, handle, form, current, tree }) {
@@ -97,11 +98,15 @@ function Head({ id, name, count, open, toggle, menu, chat, extra, handle, form, 
   const trigger = opener((button, entry) => pop(button, null, entry));
   const shown = tree.shown?.key === id;
   if (form) return html`<div class="bar">${form}</div>`;
-  return html`<div class=${['bar', menu && 'has-menu', (chat || extra) && 'has-chat', chat && extra && 'has-two'].filter(Boolean).join(' ')} data-handle=${handle || null} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
-    <button class="group-head" type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
-    ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
-    ${chat ? html`<${GroupChatButton} group=${chat} current=${current === chat.session?.id} />` : null}
+  const from = chat ? startsFrom(chat) : undefined;
+  return html`<div class=${['bar', menu && 'has-menu', (from !== undefined || extra) && 'has-tool'].filter(Boolean).join(' ')} data-handle=${handle || null} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more[aria-haspopup]'), pointIn(e.currentTarget, e)); })}>
+    ${chat
+      ? html`<${GroupChatHead} group=${chat} name=${name} count=${count} current=${current === chat.session?.id} />`
+      : html`<button class="group-head" type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>`}
+    ${from !== undefined ? html`<${NewHereButton} group=${chat} start=${() => newSession(from)} />` : null}
     ${extra}
+    ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
+    ${chat ? html`<${FoldButton} label=${`Sessions in ${name}`} open=${open} controls=${`rows-${id}`} onClick=${() => toggle(id, open)} />` : null}
   </div>`;
 }
 
@@ -109,7 +114,7 @@ function Section({ id, name, count, collapsed, toggle, drop, over, lifted, line,
   const open = !collapsed[id];
   return html`<section class="group" data-drop=${drop ? id : null} data-over=${over || null} data-lifted=${lifted || null} data-line=${line || null}>
     <${Head} id=${id} name=${name} count=${count} open=${open} toggle=${toggle} menu=${menu} chat=${chat} extra=${extra} handle=${handle} form=${form} current=${current} tree=${tree} />
-    ${open && children ? html`<ul class="rows">${children}</ul>` : null}</section>`;
+    ${open && children ? html`<ul class="rows" id=${`rows-${id}`}>${children}</ul>` : null}</section>`;
 }
 
 // The button at the end of a row that folds the rows nested under it in and out. The list it controls is drawn only while it is open.
@@ -237,7 +242,7 @@ function walk(e, box) {
   if (!here || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
   const opening = e.key === 'ArrowRight';
   const item = here.parentElement;
-  const fold = here.matches('.group-head') ? here : item.querySelector(':scope > .fold');
+  const fold = here.matches('[aria-expanded]') ? here : item.querySelector(':scope > .fold');
   // A nested row goes left to the row it is nested under, and a row with its fold open goes right to the first one nested under it.
   const owner = item.parentElement.closest('.sub-rows')?.parentElement.querySelector(':scope > a.row');
   if (fold && (fold.getAttribute('aria-expanded') === 'true') !== opening) { e.preventDefault(); fold.click(); }
@@ -941,7 +946,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   latestHeader.current = (id, bar, point) => {
     const g = groupById(ix, id);
     const menu = g && tree.groupMenu(g);
-    if (menu) pop(id, menu, bar.querySelector('.more'), { point });
+    if (menu) pop(id, menu, bar.querySelector('.more[aria-haspopup]'), { point });
   };
 
   const groupDrag = drag?.kind === 'group' ? drag : null;

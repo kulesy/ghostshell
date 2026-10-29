@@ -1685,7 +1685,7 @@ body.dragging .rows .more { opacity: 0; }
     color: var(--sidebar-accent-foreground);
   }
 
-  .group-head:hover ~ .more, .row:hover ~ :is(.more, .fold), .scope:hover ~ .more { color: var(--sidebar-accent-foreground); }
+  .group-head:hover ~ :is(.more, .fold), .row:hover ~ :is(.more, .fold), .scope:hover ~ .more { color: var(--sidebar-accent-foreground); }
 }
 
 @media (pointer: fine) {

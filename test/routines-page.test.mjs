@@ -496,8 +496,8 @@ test('a route for a routine that is not there says so and leads back to the list
 test('Home has a Manage routines button in the Routines header, a Routines link in the footer, and the row of a routine has Run now, Pause, Edit and Delete first, then a separator', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin);
   await page.until(`!!document.querySelector('.group-head[data-key="routines"]')`);
-  assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.bar').querySelector('a.more[href="#/routines"]').getAttribute('href')`), '#/routines');
-  assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.bar').querySelector('a.more[href="#/routines"]').getAttribute('aria-label')`), 'Manage routines');
+  assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.bar').querySelector('a.head-tool[href="#/routines"]').getAttribute('href')`), '#/routines');
+  assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.bar').querySelector('a.head-tool[href="#/routines"]').getAttribute('aria-label')`), 'Manage routines');
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => [a.textContent, a.getAttribute('href')])`), [['Routines', '#/routines'], ['Passkeys', '#/passkeys']]);
   await page.until(`!!document.querySelector('a.row[data-id="r1"]')`);
   await page.evaluate(`(el => { const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.x + 40, clientY: r.y + r.height / 2 })); })(document.querySelector('a.row[data-id="r1"]'))`);
@@ -517,7 +517,7 @@ test('the footer link opens the page and is marked as the current one', { skip, 
   await page.click('.list-foot .foot-links a');
   await page.until(`location.hash === '#/routines' && !!document.querySelector('.routine-list')`);
   assert.equal(await page.evaluate(`document.querySelector('.list-foot .foot-links a').getAttribute('aria-current')`), 'page');
-  assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.bar').querySelector('a.more[href="#/routines"]').getAttribute('aria-current')`), 'page');
+  assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.bar').querySelector('a.head-tool[href="#/routines"]').getAttribute('aria-current')`), 'page');
   assert.deepEqual(page.problems, []);
 });
 

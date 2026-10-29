@@ -86,11 +86,19 @@ export function parseNewRoute(hash) {
   try { return { group: decodeURIComponent(hash.slice(6)) || null }; } catch { return { group: null }; }
 }
 
-// The group a new session starts in: the one the address names while it is a group the owner made. Before the list has loaded the
-// address is taken as it stands, and a built-in section never counts.
+// The group a new session starts in: the one the address names while it is a group the owner made, or Pinned, which pins it. Before the list
+// has loaded the address is taken as it stands, and no other built-in section counts.
 export function draftGroup(ix, id) {
-  if (!id || sectionById(id)) return null;
+  if (!id) return null;
+  if (sectionById(id)) return id === 'pinned' ? id : null;
   return !ix || ix.groups.some(g => g.id === id) ? id : null;
+}
+
+// What the new session button on a header starts a session in: its group, Pinned, or no group for Started here, which a session in no group
+// shows in. Every other section holds sessions started elsewhere or none at all, so it has no such button and this is undefined.
+export function startsFrom(group) {
+  if (!group.section) return group.id;
+  return { pinned: 'pinned', started: null }[group.id];
 }
 
 // The group or section whose own session this is, or null. A link to that session opens it.
