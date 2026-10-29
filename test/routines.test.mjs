@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CATCH_UP_MS, dueAction, localIso, makeRoutines, makeScheduler, makeZoneFollower, PREAMBLE, routineId, stamp, upcoming, wrapPrompt } from '../lib/routines.mjs';
+import { CATCH_UP_MS, dueAction, localIso, makeRoutines, makeScheduler, makeZoneFollower, PREAMBLE, RETRY_BACKOFF_MS, routineId, stamp, upcoming, wrapPrompt } from '../lib/routines.mjs';
 import { nextFire } from '../lib/cron.mjs';
 import { readHead } from '../lib/transcripts.mjs';
 
@@ -24,7 +24,7 @@ const fixture = (file, cwd, extra = {}) => ({
 });
 
 // Puts routines in routines.json as a person editing the file would: switched off, with nothing run yet unless the entry says so.
-const BLANK = { enabled: false, armedAt: null, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null };
+const BLANK = { enabled: false, armedAt: null, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null, retry: null };
 const put = (state, list) => fs.writeFileSync(path.join(state, 'routines.json'), `${JSON.stringify({ routines: list.map(x => ({ ...BLANK, ...x })) }, null, 2)}\n`);
 
 // One routine on a real routines.json in a scratch folder, switched on at `armed`, with a scheduler on a clock we move by hand.
@@ -406,7 +406,7 @@ test('a run now works for a routine that is switched off, and uses up fires alre
   assert.equal(late.calls.length, 1, 'a manual run after the fire time takes its place');
 });
 
-test('a session that fails to start is recorded and not retried into a second run', async () => {
+test('a session that fails to start is recorded and queued, and the retry starts one run, not two', async () => {
   const r = rig();
   r.onStart = async () => { throw new Error('Claude did not start within 60 seconds'); };
   await r.tickAt(FRIDAY);
@@ -416,13 +416,16 @@ test('a session that fails to start is recorded and not retried into a second ru
   assert.equal(Date.parse(saved.lastRunAt), FRIDAY);
   assert.deepEqual(r.warns, ['Routine demo: could not start (Claude did not start within 60 seconds)']);
   await r.tickAt(FRIDAY + 30_000);
-  await r.tickAt(FRIDAY + HOUR);
-  assert.equal(r.calls.length, 1);
+  assert.equal(r.calls.length, 1, 'not before the wait is over');
   assert.equal(r.sched.list().routines[0].running, false);
   r.onStart = null;
-  await r.tickAt(MONDAY + 1000);
+  await r.tickAt(FRIDAY + 60_000);
   assert.equal(r.calls.length, 2);
-  assert.equal(r.demo().lastError, null, 'the next success clears the error');
+  assert.equal(r.demo().lastError, null, 'the success clears the error');
+  assert.equal(r.demo().retry, null);
+  await r.tickAt(FRIDAY + HOUR);
+  await r.tickAt(MONDAY + 1000);
+  assert.equal(r.calls.length, 3, 'then the next fire, once');
   r.onStart = async () => { throw new Error('boom'); };
   await assert.rejects(r.sched.runNow('demo'), /boom/);
   assert.equal(r.demo().lastError, 'boom');
@@ -538,7 +541,7 @@ test('a routines.json that cannot be read stops the check without throwing, and 
 test('the list shows each routine with its next fire in local time, whether it is running, and what is wrong with it', () => {
   const r = rig({ enabled: false });
   const [item] = r.sched.list().routines;
-  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'enabled', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'running', 'next', 'problem']);
+  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'enabled', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'retry', 'running', 'next', 'problem']);
   assert.deepEqual([item.id, item.title, item.enabled, item.running, item.problem], ['demo', 'Demo routine', false, false, null]);
   assert.equal(item.next, '2026-10-16T07:42:17+11:00');
   r.store.update('demo', { cron: 'nonsense' });
@@ -1368,7 +1371,7 @@ test('the store adds and removes routines, and refuses an id that is there, one 
   const dir = fs.mkdtempSync(path.join(base, 'store-'));
   const store = makeRoutines(dir);
   const routine = { id: 'a', title: 'A', cron: '0 0 * * *', jitterSeconds: 0, file: store.promptFile('a'), cwd: dir, model: null, effort: null, mode: null, enabled: true, armedAt: localIso(T0) };
-  assert.deepEqual(store.add(routine), { ...routine, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null });
+  assert.deepEqual(store.add(routine), { ...routine, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null, retry: null });
   assert.throws(() => store.add(routine), refused(409));
   assert.deepEqual(store.read().routines.map(x => x.id), ['a']);
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'routines.json'), 'utf8')).routines[0]).slice(0, 4), ['id', 'title', 'cron', 'jitterSeconds']);
@@ -1411,4 +1414,309 @@ test('an edit never stops or changes a run that is working, and the next run use
   await r.tickAt(MONDAY + 5000);
   assert.deepEqual([r.calls[1].routine.title, r.calls[1].routine.model, r.calls[1].routine.effort, r.calls[1].routine.mode], ['Renamed', 'opus', 'high', 'plan']);
   assert.ok(r.calls[1].text.includes('\nA new prompt.\n</scheduled-task>'));
+});
+
+// ---- a failed start is queued and tried again ------------------------------------------------------
+
+const failing = (r, message = 'spawn claude ENOENT') => { r.onStart = async () => { throw new Error(message); }; };
+const MINUTE = 60_000;
+
+test('a failed scheduled start queues the fire, with the tries so far and when the next one is', async () => {
+  const r = rig();
+  failing(r);
+  await r.tickAt(FRIDAY);
+  assert.deepEqual(r.demo().retry, { fireAt: localIso(FRIDAY), tries: 1, nextAt: localIso(FRIDAY + MINUTE) });
+  assert.equal(r.demo().lastError, 'spawn claude ENOENT');
+  assert.equal(r.logs.at(-1), 'Routine demo: will try the 2026-10-16 07:42:17 run again at 2026-10-16 07:43:17');
+  assert.equal(r.sched.list().routines[0].running, false, 'a queued fire is not a run');
+  assert.deepEqual(r.sched.list().routines[0].retry, r.demo().retry);
+});
+
+test('the wait grows 1, 2, 5, 10 minutes and then stays at 15', async () => {
+  assert.deepEqual(RETRY_BACKOFF_MS, [1, 2, 5, 10, 15].map(m => m * MINUTE));
+  const r = rig();
+  failing(r);
+  let t = FRIDAY;
+  const waits = [];
+  await r.tickAt(t);
+  for (let tries = 1; tries <= 6; tries++) {
+    const { nextAt, tries: seen } = r.demo().retry;
+    assert.equal(seen, tries);
+    waits.push((Date.parse(nextAt) - t) / MINUTE);
+    t = Date.parse(nextAt);
+    await r.tickAt(t - 1000);
+    assert.equal(r.calls.length, tries, 'not a second early');
+    await r.tickAt(t);
+  }
+  assert.deepEqual(waits, [1, 2, 5, 10, 15, 15]);
+  assert.equal(r.calls.length, 7);
+  assert.equal(r.logs.filter(l => /will try/.test(l)).length, 7);
+});
+
+test('a retry that starts clears the queue and records the session, and the schedule goes on', async () => {
+  const r = rig();
+  failing(r);
+  await r.tickAt(FRIDAY);
+  r.onStart = null;
+  await r.tickAt(FRIDAY + MINUTE);
+  const saved = r.demo();
+  assert.deepEqual([saved.retry, saved.lastSessionId, saved.lastError], [null, 's2', null]);
+  assert.equal(Date.parse(saved.armedAt), FRIDAY + MINUTE);
+  assert.equal(r.logs.at(-1), 'Routine demo: started session s2 (try 2 for 2026-10-16 07:42:17)');
+  await r.tickAt(FRIDAY + 2 * HOUR);
+  assert.equal(r.calls.length, 2);
+  await r.tickAt(MONDAY + 5000);
+  assert.equal(r.calls.length, 3);
+});
+
+test('a retry that is 12 hours past its fire is dropped and recorded as skipped, and one that would be is not queued', async () => {
+  const r = rig();
+  failing(r);
+  await r.tickAt(FRIDAY);
+  r.clock.t = FRIDAY + CATCH_UP_MS - 5 * MINUTE;
+  r.store.update('demo', { retry: { fireAt: localIso(FRIDAY), tries: 9, nextAt: localIso(FRIDAY + CATCH_UP_MS - 4 * MINUTE) }, armedAt: localIso(FRIDAY + CATCH_UP_MS - 10 * MINUTE) });
+  await r.tickAt(FRIDAY + CATCH_UP_MS - 4 * MINUTE);
+  assert.equal(r.demo().retry, null, 'the next wait of 15 minutes would pass the limit');
+  assert.deepEqual(r.demo().skipped, { fireAt: localIso(FRIDAY), at: localIso(FRIDAY + CATCH_UP_MS - 4 * MINUTE), reason: 'could not start within the 12 h limit' });
+  assert.equal(r.logs.at(-1), 'Routine demo: gave up the 2026-10-16 07:42:17 run (could not start within the 12 h limit)');
+  const calls = r.calls.length;
+  await r.tickAt(FRIDAY + CATCH_UP_MS + HOUR);
+  assert.equal(r.calls.length, calls);
+
+  const idle = rig();
+  idle.store.update('demo', { armedAt: localIso(FRIDAY + MINUTE), retry: { fireAt: localIso(FRIDAY), tries: 3, nextAt: localIso(FRIDAY + 6 * HOUR) } });
+  await idle.tickAt(FRIDAY + CATCH_UP_MS);
+  assert.equal(idle.calls.length, 0);
+  assert.equal(idle.demo().retry, null, 'a retry still waiting when the limit passes is dropped too');
+  assert.equal(idle.demo().skipped.reason, 'could not start within the 12 h limit');
+});
+
+test('the next scheduled fire takes over from a queued retry', async () => {
+  const r = rig({ cron: '0 * * * *', jitter: 0 });
+  failing(r);
+  await r.tickAt(at(2026, 10, 16, 7));
+  r.store.update('demo', { retry: { ...r.demo().retry, nextAt: localIso(at(2026, 10, 16, 9)) } });
+  r.onStart = null;
+  await r.tickAt(at(2026, 10, 16, 8, 0, 5));
+  assert.equal(r.calls.length, 2);
+  assert.equal(r.logs.at(-1), 'Routine demo: started session s2 (due 2026-10-16 08:00:00)');
+  assert.equal(r.demo().retry, null);
+  assert.equal(r.demo().lastSessionId, 's2');
+});
+
+test('a new fire that fails starts its own count, and one that is skipped still drops the old retry', async () => {
+  const r = rig({ cron: '0 * * * *', jitter: 0 });
+  failing(r);
+  await r.tickAt(at(2026, 10, 16, 7));
+  r.store.update('demo', { retry: { ...r.demo().retry, tries: 4, nextAt: localIso(at(2026, 10, 16, 9)) } });
+  await r.tickAt(at(2026, 10, 16, 8));
+  assert.deepEqual(r.demo().retry, { fireAt: localIso(at(2026, 10, 16, 8)), tries: 1, nextAt: localIso(at(2026, 10, 16, 8, 1)) });
+
+  const busy = rig({ cron: '0 * * * *', jitter: 0 });
+  failing(busy);
+  await busy.tickAt(at(2026, 10, 16, 7));
+  busy.onStart = null;
+  busy.working.add('earlier');
+  busy.store.update('demo', { lastSessionId: 'earlier', retry: { ...busy.demo().retry, nextAt: localIso(at(2026, 10, 16, 9)) } });
+  await busy.tickAt(at(2026, 10, 16, 8));
+  assert.equal(busy.demo().retry, null);
+  assert.equal(busy.demo().skipped.reason, 'the previous run is still working');
+});
+
+test('no retry starts while a restart is under way, and it starts once the restart is over', async () => {
+  const r = rig();
+  let restarting = true;
+  r.boot = () => r.sched;
+  r.sched = makeScheduler({ store: r.store, now: () => r.clock.t, log: l => r.logs.push(l), warn: l => r.warns.push(l), restarting: () => restarting,
+    start: async (routine, text) => { const id = `s${r.calls.length + 1}`; r.calls.push({ routine, text, id }); if (r.onStart) await r.onStart(routine); return id; }, working: () => false });
+  failing(r);
+  await r.tickAt(FRIDAY);
+  r.onStart = null;
+  for (const t of [FRIDAY + MINUTE, FRIDAY + 2 * MINUTE, FRIDAY + 3 * MINUTE]) await r.tickAt(t);
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.logs.filter(l => /while GhostShell restarts/.test(l)).length, 1, 'said once, not on each check');
+  assert.ok(r.demo().retry);
+  restarting = false;
+  await r.tickAt(FRIDAY + 4 * MINUTE);
+  assert.equal(r.calls.length, 2);
+  assert.equal(r.demo().retry, null);
+});
+
+test('a retry waits while the routine is running, or a run is still starting, and never makes a second run', async () => {
+  const r = rig({ cron: '0 7 * * *', jitter: 0 });
+  failing(r);
+  await r.tickAt(at(2026, 10, 16, 7));
+  r.onStart = null;
+  r.working.add('other');
+  r.store.update('demo', { lastSessionId: 'other' });
+  await r.tickAt(at(2026, 10, 16, 7, 5));
+  await r.tickAt(at(2026, 10, 16, 7, 6));
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.logs.filter(l => /while the routine is running/.test(l)).length, 1);
+  r.working.clear();
+  let release;
+  r.onStart = () => new Promise(done => { release = done; });
+  const run = r.sched.runNow('demo');
+  assert.equal(r.calls.length, 2);
+  await r.tickAt(at(2026, 10, 16, 7, 8));
+  assert.equal(r.calls.length, 2, 'the run now that is starting holds the retry back');
+  release();
+  await run;
+  assert.equal(r.demo().retry, null, 'and the run now that started used the queued fire up');
+  await r.tickAt(at(2026, 10, 16, 7, 20));
+  assert.equal(r.calls.length, 2);
+});
+
+test('a retry waits for a free place under the limit and keeps its turn', async () => {
+  const r = rig();
+  r.sched = makeScheduler({ store: r.store, now: () => r.clock.t, log: l => r.logs.push(l), warn: l => r.warns.push(l), limit: 1, working: id => r.working.has(id),
+    start: async (routine, text) => { const id = `s${r.calls.length + 1}`; r.calls.push({ routine, text, id }); if (r.onStart) await r.onStart(routine); return id; } });
+  failing(r);
+  await r.tickAt(FRIDAY);
+  r.onStart = null;
+  const other = { id: 'other', title: 'Other', cron: '0 0 1 1 *', jitterSeconds: 0, file: r.file, cwd: r.state, enabled: true, armedAt: localIso(T0), lastSessionId: 'busy' };
+  const data = JSON.parse(fs.readFileSync(path.join(r.state, 'routines.json'), 'utf8'));
+  fs.writeFileSync(path.join(r.state, 'routines.json'), JSON.stringify({ routines: [...data.routines, { ...BLANK, ...other }] }));
+  r.working.add('busy');
+  await r.tickAt(FRIDAY + 2 * MINUTE);
+  await r.tickAt(FRIDAY + 3 * MINUTE);
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.logs.filter(l => /waiting for a free place to retry/.test(l)).length, 1);
+  r.working.clear();
+  await r.tickAt(FRIDAY + 4 * MINUTE);
+  assert.equal(r.calls.length, 2);
+});
+
+test('the queue is in routines.json, so a restart carries on with the same retry and does not repeat a run', async () => {
+  const r = rig();
+  failing(r);
+  await r.tickAt(FRIDAY);
+  const queued = r.demo().retry;
+  r.sched = makeScheduler({ store: makeRoutines(r.state), now: () => r.clock.t, log: l => r.logs.push(l), warn: l => r.warns.push(l), working: () => false,
+    start: async (routine, text) => { const id = `s${r.calls.length + 1}`; r.calls.push({ routine, text, id }); return id; } });
+  await r.tickAt(FRIDAY + 30_000);
+  assert.equal(r.calls.length, 1);
+  assert.deepEqual(r.demo().retry, queued);
+  await r.tickAt(FRIDAY + 2 * MINUTE);
+  assert.equal(r.calls.length, 2);
+  assert.equal(r.demo().retry, null);
+  await r.tickAt(FRIDAY + 3 * MINUTE);
+  assert.equal(r.calls.length, 2);
+});
+
+test('an older routines.json saved over a retry that has since started does not start the fire again', async () => {
+  const r = rig();
+  failing(r);
+  await r.tickAt(FRIDAY);
+  const queued = fs.readFileSync(path.join(r.state, 'routines.json'), 'utf8');
+  r.onStart = null;
+  await r.tickAt(FRIDAY + MINUTE);
+  assert.equal(r.calls.length, 2);
+  fs.writeFileSync(path.join(r.state, 'routines.json'), queued);
+  await r.tickAt(FRIDAY + 5 * MINUTE);
+  assert.equal(r.calls.length, 2);
+  assert.equal(r.demo().retry, null);
+});
+
+test('a refusal is a problem with the routine, not a failed start, so nothing is queued', async () => {
+  const r = rig();
+  r.store.update('demo', { cwd: '/no/such/folder' });
+  await r.tickAt(FRIDAY);
+  assert.equal(r.demo().retry, null);
+  assert.match(r.demo().lastError, /folder does not exist/);
+  r.store.update('demo', { cwd: r.state, file: path.join(r.state, 'gone.md') });
+  await r.tickAt(MONDAY + 5000);
+  assert.equal(r.demo().retry, null);
+  assert.equal(r.calls.length, 0);
+});
+
+test('a failed run now leaves a queued fire queued, and one that starts clears it', async () => {
+  const r = rig();
+  failing(r);
+  await r.tickAt(FRIDAY);
+  const queued = r.demo().retry;
+  failing(r, 'still broken');
+  r.clock.t = FRIDAY + 30_000;
+  await assert.rejects(r.sched.runNow('demo'), /still broken/);
+  assert.deepEqual(r.demo().retry, queued);
+  assert.equal(r.demo().lastError, 'still broken');
+  r.store.update('demo', { cwd: '/no/such/folder' });
+  await assert.rejects(r.sched.runNow('demo'), e => e.status === 400);
+  assert.deepEqual(r.demo().retry, queued, 'a refused run now leaves it too');
+  r.store.update('demo', { cwd: r.state });
+  r.onStart = null;
+  await r.sched.runNow('demo');
+  assert.equal(r.demo().retry, null);
+  await r.tickAt(FRIDAY + 5 * MINUTE);
+  assert.equal(r.calls.length, 3, 'the queued fire is not run on top of the run now');
+});
+
+test('a failed run now with nothing queued queues nothing', async () => {
+  const r = rig();
+  failing(r);
+  await assert.rejects(r.sched.runNow('demo'), /ENOENT/);
+  assert.equal(r.demo().retry, null);
+});
+
+test('switching off, or a change of schedule, drops the queued retry, and a routine found off with one has it cleared', async () => {
+  const queue = async () => { const r = rig(); failing(r); await r.tickAt(FRIDAY); assert.ok(r.demo().retry); return r; };
+  const off = await queue();
+  off.sched.setEnabled('demo', false);
+  assert.equal(off.demo().retry, null);
+  off.sched.setEnabled('demo', true);
+  assert.equal(off.demo().retry, null);
+  const edited = await queue();
+  edited.sched.edit('demo', { title: 'New title' });
+  assert.ok(edited.demo().retry, 'a title change leaves it');
+  edited.sched.edit('demo', { cron: '0 8 * * *' });
+  assert.equal(edited.demo().retry, null);
+  const flipped = await queue();
+  flipped.sched.edit('demo', { enabled: false });
+  assert.equal(flipped.demo().retry, null);
+  const jitter = await queue();
+  jitter.sched.edit('demo', { jitterSeconds: 5 });
+  assert.equal(jitter.demo().retry, null);
+  const hand = await queue();
+  hand.store.update('demo', { enabled: false });
+  await hand.tickAt(FRIDAY + 2 * MINUTE);
+  assert.equal(hand.demo().retry, null);
+  assert.equal(hand.calls.length, 1);
+});
+
+test('the wait is counted from when the start failed, so a start that takes a minute to fail does not shorten it', async () => {
+  const r = rig();
+  r.onStart = async () => { r.clock.t += MINUTE; throw new Error('Claude did not start within 60 seconds'); };
+  await r.tickAt(FRIDAY);
+  assert.equal(Date.parse(r.demo().lastRunAt), FRIDAY);
+  assert.equal(r.demo().retry.nextAt, localIso(FRIDAY + 2 * MINUTE));
+  await r.tickAt(FRIDAY + 2 * MINUTE - 1000);
+  assert.equal(r.calls.length, 1);
+  await r.tickAt(FRIDAY + 2 * MINUTE);
+  assert.equal(r.calls.length, 2);
+  assert.equal(r.demo().retry.nextAt, localIso(FRIDAY + 2 * MINUTE + MINUTE + 2 * MINUTE));
+});
+
+test('the tries carry on when the Mac changes time zone mid-retry, and a count that is not a whole number starts again', async () => {
+  const zoned = rig();
+  failing(zoned);
+  await zoned.tickAt(FRIDAY);
+  const was = zoned.demo().retry;
+  process.env.TZ = 'Asia/Kolkata';
+  try {
+    zoned.store.update('demo', { retry: { ...was, nextAt: localIso(FRIDAY + MINUTE) } });
+    assert.notEqual(zoned.demo().retry.fireAt, localIso(FRIDAY));
+    await zoned.tickAt(FRIDAY + MINUTE);
+  } finally {
+    process.env.TZ = 'Australia/Sydney';
+  }
+  assert.equal(zoned.demo().retry.tries, 2);
+  assert.equal(Date.parse(zoned.demo().retry.nextAt), FRIDAY + 3 * MINUTE);
+  for (const tries of ['3', 0, -1, 1.5, null, NaN, undefined]) {
+    const r = rig();
+    failing(r);
+    await r.tickAt(FRIDAY);
+    r.store.update('demo', { retry: { ...r.demo().retry, tries, nextAt: localIso(FRIDAY + MINUTE) } });
+    await r.tickAt(FRIDAY + MINUTE);
+    assert.deepEqual([r.demo().retry.tries, r.demo().retry.nextAt], [1, localIso(FRIDAY + 2 * MINUTE)], String(tries));
+  }
 });

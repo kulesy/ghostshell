@@ -1,6 +1,6 @@
 # Capcom runs routines itself, from Desktop's prompt files
 
-- Status: Accepted, partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md)
+- Status: Accepted, partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md), amended 2026-10-29
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: routines, scheduler, claude-desktop, launchd
@@ -36,8 +36,18 @@ Chosen option: "Capcom's own scheduler", because it needs neither Desktop nor a 
 - A fire time is the cron in the Mac's local time, which Capcom follows if the zone changes, plus the routine's jitter. Capcom checks every 30 seconds, and once at start. A routine that is due starts a session through the same function as a new chat, in its folder with its mode, model and effort, titled with the routine's title. Such a session is never handed to Desktop. The list groups it under Routines by routine id, beside Desktop's runs of the same routine.
 - If Capcom was not running at a fire time, the latest missed fire runs once as soon as it is up, provided it is under 12 hours late. A later one is skipped and logged. Several missed fires make one run.
 - A fire that comes while the routine's previous run is still working, or waiting for an approval, is skipped and logged, not held over. A run now is refused in the same case.
-- The attempt is written to `routines.json` before the session starts, and the next fire is worked out from it. A restart cannot repeat a run, and a failed start is recorded and waits for the next fire.
+- The attempt is written to `routines.json` before the session starts, and the next fire is worked out from it. A restart cannot repeat a run, and a failed start is recorded and retried, as the amendment below sets out.
 - `GET api/routines` lists the routines with their next fire. `POST api/routines/<id>/run` runs one now, and `POST api/routines/<id>/enabled` switches one on or off.
+
+**Amended 2026-10-29.** The owner asked that a routine that could not start be queued to try again, since a start that failed while the CLI was being updated lost the whole run until the next fire.
+
+- A start that throws queues its fire. `routines.json` keeps one queued fire for each routine, as `retry` with the fire, the tries so far and the time of the next try, and the error stays in `lastError`. The queue survives a restart, but a restart that lands while a start is still in progress loses that fire, as a run cut short by a restart is not started again.
+- The wait after the first four failed tries is 1, 2, 5 and 10 minutes, and 15 minutes after each later one.
+- The retry stops in three ways: the run starts, the next try would come 12 hours or more after the fire (it is then recorded as skipped), or the routine's next scheduled fire comes due and takes over.
+- Only a failed start queues. A routine refused for a bad schedule, prompt file or folder does not, because trying again would fail the same way.
+- A retry waits while the restart helper's `restart.lock` is held by a live restart, so a retry does not start a run that the restart is about to cut short. It also waits while a run of the routine is working or starting, so a routine never has two runs, and for a free place under the limit of 3.
+- A fire skipped because the previous run is still working stays a plain skip. The owner chose this, because the run still working already covers that work and queueing the fire would run the routine twice back to back.
+- A failed Run now leaves a queued fire queued, and a Run now that starts clears it. Switching a routine off, on, or changing its schedule drops the queue.
 
 ### Consequences
 

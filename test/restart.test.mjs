@@ -2,13 +2,13 @@
 // --foreground against a fake server, fake chats and a fake launchctl. Nothing here touches the real launchd job or port.
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chatsOf, guard, isChat, isIdle, labelOf, lastTurnEntry, parseArgs, parseEtime, parsePs, projectDirName, resumeId } from '../lib/restart.mjs';
+import { chatsOf, guard, isChat, isIdle, labelOf, lastTurnEntry, lockHolder, parseArgs, parseEtime, parsePs, projectDirName, resumeId } from '../lib/restart.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -16,6 +16,22 @@ test('arguments default to waiting 30 minutes for the standard label, and each f
   assert.deepEqual(parseArgs([]), { now: false, foreground: false, wait: 30, label: null });
   assert.deepEqual(parseArgs(['--now', '--foreground', '--wait', '0.05', '--label=com.example.x']), { now: true, foreground: true, wait: 0.05, label: 'com.example.x' });
   assert.equal(parseArgs(['--wait=2']).wait, 2);
+});
+
+test('the lock is held by a live pid other than the caller, and by no one when the file is missing, empty, stale or the caller\'s own', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-lock-test-'));
+  const lock = path.join(dir, 'restart.lock');
+  assert.equal(lockHolder(lock), null, 'no file');
+  fs.writeFileSync(lock, '');
+  assert.equal(lockHolder(lock), null, 'no pid');
+  fs.writeFileSync(lock, 'soon');
+  assert.equal(lockHolder(lock), null, 'not a pid');
+  fs.writeFileSync(lock, String(process.ppid));
+  assert.equal(lockHolder(lock), process.ppid, 'a live process');
+  assert.equal(lockHolder(lock, process.ppid), null, 'the caller\'s own pid');
+  const gone = spawnSync(process.execPath, ['-e', '0']);
+  fs.writeFileSync(lock, String(gone.pid));
+  assert.equal(lockHolder(lock), null, 'a pid that has exited');
 });
 
 test('bad arguments come back as an error', () => {

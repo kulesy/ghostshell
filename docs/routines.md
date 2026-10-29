@@ -17,7 +17,7 @@ Either way, a run drops any frontmatter at the top of the file and sends the res
 
 ## The Routines page
 
-The Routines page lists every routine, including those that have never run. Open it from the calendar button on Home's Routines heading, the Routines link in the footer, a routine's row menu, or the Routines chip in Ctrl+K. Each row shows the title, the schedule in words with the cron beside it, the next fire time and the last run, which opens its session. A routine that cannot run says why in red.
+The Routines page lists every routine, including those that have never run. Open it from the calendar button on Home's Routines heading, the Routines link in the footer, a routine's row menu, or the Routines chip in Ctrl+K. Each row shows the title, the schedule in words with the cron beside it, the next fire time and the last run, which opens its session. A routine that cannot run says why in red. One whose start failed and is waiting to try again says when in amber.
 
 Each row has a switch, Run now, and a menu with Edit and Delete. A routine's row on Home has Run now, Pause or Resume, Edit and Delete in its right-click and ... menus. A routine with no runs has the same menus there. Its row says "Hasn't run yet", "Last run" and how long ago if its runs were archived, "Couldn't start" and how long ago if its last try failed, or "Off" when it is paused.
 
@@ -104,6 +104,14 @@ A routine that is due starts a new session in its folder with its permission mod
 
 If GhostShell was not running at a fire time, the latest missed fire runs once as soon as GhostShell is up, provided it is under 12 hours late. GhostShell skips a later one and logs it. However many fires were missed, that is at most one run.
 
+## A start that fails
+
+If a scheduled run cannot start, for example because the Claude CLI was being updated, GhostShell queues that fire and tries it again. It keeps one queued fire for each routine in `routines.json`, as `retry`, so it survives a restart. A restart that lands while a start is still in progress loses that fire, as a run cut short by a restart is not started again. The wait after the first four failed tries is 1, 2, 5 and 10 minutes, and 15 minutes after every later one. The sidebar and the Routines page show when the next try is and what the last one said.
+
+The retry stops when the run starts, when the next try would come 12 hours or more after the fire (GhostShell records the fire as skipped), or when the routine's next scheduled fire comes due, which takes over. It also waits while a restart of GhostShell is under way, while a run of the routine is still working, and while three routines are already running. Run now ignores a queued retry. A Run now that fails leaves the queued fire queued, and one that starts takes its place.
+
+Only a start that fails is queued. A routine that cannot run because its schedule, prompt file or folder is wrong is not, because trying again would fail the same way. The Routines page shows what is wrong on its row. A fire skipped because the previous run is still working is not queued either, because that run covers the work.
+
 ## One at a time
 
 GhostShell skips and logs a fire that comes while the routine's previous run is still working. It does not hold the fire over until the run ends. GhostShell stops a previous run that is only waiting for an answer, and the new run starts in its place.
@@ -114,7 +122,7 @@ At most three routines run at the same time, so fewer of them fight over one Chr
 
 ## Restarts
 
-`routines.json` records when each routine was switched on and last ran, and GhostShell works out the next fire from that. A restart does not repeat a run, and GhostShell catches up a run that came due while it was down, as in [missed runs](#missed-runs). A restart can cut a run in progress short, and GhostShell does not start that run again. GhostShell records a run that cannot start in `lastError`, and it waits for the routine's next fire.
+`routines.json` records when each routine was switched on and last ran, and GhostShell works out the next fire from that. A restart does not repeat a run, and GhostShell catches up a run that came due while it was down, as in [missed runs](#missed-runs). A restart can cut a run in progress short, and GhostShell does not start that run again. GhostShell records a run that cannot start in `lastError` and queues it to try again, as in [a start that fails](#a-start-that-fails).
 
 ## A wrong file
 

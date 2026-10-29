@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { cfg } from '../lib/config.mjs';
-import { FALLBACK_LABEL, guard, labelOf, launchdList, listenerPid, MIN_UPTIME_MS, parseArgs, POLL_MS, psRows, runningChats, USAGE } from '../lib/restart.mjs';
+import { FALLBACK_LABEL, guard, labelOf, launchdList, listenerPid, lockHolder, MIN_UPTIME_MS, parseArgs, POLL_MS, psRows, runningChats, USAGE } from '../lib/restart.mjs';
 
 if (process.platform !== 'darwin') { console.error('launchd is macOS only.'); process.exit(1); }
 
@@ -20,12 +20,7 @@ const pollMs = Number(process.env.CAPCOM_RESTART_POLL_MS || POLL_MS);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = text => console.log(`${new Date().toISOString()} ${text}`);
 
-function lockHolder() {
-  const pid = Number(fs.readFileSync(lockFile, 'utf8').trim() || 0);
-  if (!(pid > 0) || pid === process.pid) return null;
-  try { process.kill(pid, 0); return pid; } catch (e) { return e.code === 'EPERM' ? pid : null; }
-}
-const holder = fs.existsSync(lockFile) ? lockHolder() : null;
+const holder = fs.existsSync(lockFile) ? lockHolder(lockFile, process.pid) : null;
 if (holder) { console.error(`A restart is already under way (pid ${holder}). See ${logFile}.`); process.exit(1); }
 
 if (!opts.foreground) {
@@ -37,7 +32,7 @@ if (!opts.foreground) {
 }
 
 try { fs.writeFileSync(lockFile, String(process.pid), { flag: 'wx' }); } catch {
-  if (lockHolder()) { console.error(`A restart is already under way. See ${logFile}.`); process.exit(1); }
+  if (lockHolder(lockFile, process.pid)) { console.error(`A restart is already under way. See ${logFile}.`); process.exit(1); }
   fs.writeFileSync(lockFile, String(process.pid));
 }
 const unlock = () => { try { if (Number(fs.readFileSync(lockFile, 'utf8')) === process.pid) fs.unlinkSync(lockFile); } catch {} };

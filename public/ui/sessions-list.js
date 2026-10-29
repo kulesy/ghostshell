@@ -18,7 +18,7 @@ import { UNTITLED } from './order.js';
 import { ParentForm } from './parent-form.js';
 import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndoNote, prune, sessions, stayAfter, step, stopDetail, supportsNewParent, toggle as toggleRow, unarchiveNote } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
-import { idleWords, isEarlierRun, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
+import { idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
 import { ManageRoutines, renameRoutine, routineItems } from './routines.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
@@ -37,21 +37,24 @@ const sessionHash = id => `#/s/${encodeURIComponent(id)}`;
 // A working row's time sits there too, from `turnStart`, which stampTurns puts on this page's clock. The mark is the server's `dot`.
 // Where the session is and when it last ran: a mouse reads it in the row's tooltip and a touch screen, which has none, on a second line.
 // The line stays in the row for a screen reader either way, so the CSS only hides it from the eye.
-// `dot` stands in for the row's own mark, as a folded family's does.
-function RowLink({ r, title = r.title, dot = r.dot, current, lifted, marked, picked, drop, over }) {
+// `dot` stands in for the row's own mark, as a folded family's does. `note` stands in the row's end for a run that is not timed, with
+// `tip` ahead of the tooltip, as a routine's queued retry does.
+function RowLink({ r, title = r.title, dot = r.dot, note, tip, current, lifted, marked, picked, drop, over }) {
   const timed = r.turnStart != null;
   useClock(timed, r.turnStart);
   const last = when(r.lastActivityAt);
   const where = [folderName(r.cwd, HOME), r.branch, DOT_LABEL[r.dot] ?? STATE_LABEL[r.state]].filter(Boolean).join(' · ');
   const at = title === last ? '' : last;
   const detail = [where, at].filter(Boolean).join(' · ');
+  const noted = !!note && !over && !timed;
+  const hover = [tip, detail].filter(Boolean).join(' · ');
   return html`<a class="row" href=${sessionHash(r.id)} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} data-picked=${picked || null}
     data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} aria-current=${current === r.id ? 'page' : null}
-    data-tip=${detail || null} data-tip-side="right" data-tip-delay="700">
+    data-tip=${hover || null} data-tip-side="right" data-tip-delay="700">
     ${dot ? html`<span class="row-dot" data-dot=${dot} aria-hidden="true">${dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}
     <span class="row-title">${title || UNTITLED}</span>${picked ? html`<span class="sr">, selected</span>` : null}
-    ${over ? html`<span class="row-nest">Nest here</span>` : timed ? html`<span class="row-run" aria-hidden="true">${duration(Date.now() - r.turnStart)}</span>` : null}
-    ${detail ? html`<span class="row-meta">${where ? html`<span class="row-where">${where}</span>` : null}${at ? html`<time class="row-time">${where ? ' · ' : ''}${at}</time>` : null}</span>` : null}</a>`;
+    ${over ? html`<span class="row-nest">Nest here</span>` : timed ? html`<span class="row-run" aria-hidden="true">${duration(Date.now() - r.turnStart)}</span>` : noted ? html`<span class="row-nest row-idle">${note}</span>` : null}
+    ${detail && !noted ? html`<span class="row-meta">${where ? html`<span class="row-where">${where}</span>` : null}${at ? html`<time class="row-time">${where ? ' · ' : ''}${at}</time>` : null}</span>` : null}</a>`;
 }
 
 // The dots button at the end of a session's row, beside the link. It opens the row's menu under itself, for a pointer with no right
@@ -122,14 +125,15 @@ const FoldButton = ({ label, open, controls, onClick }) => html`<button class="f
 
 // The latest run of a routine, with the earlier ones folded away until asked for.
 // A routine's row opens its latest run and shows the routine's title. The arrow at its end folds the earlier runs out underneath, each by its date.
-function Routine({ g, rowProps, open, onToggle, tree }) {
+function Routine({ g, routine, rowProps, open, onToggle, tree }) {
   const earlier = g.earlier.length;
   const runs = `${earlier} earlier run${earlier > 1 ? 's' : ''}`;
   const renaming = tree.renaming === g.latest.id;
   const title = g.title ?? g.latest.title;
   const list = `runs-${g.latest.id}`;
+  const queued = routine?.enabled === true && routine.retry ? routine : null;
   return html`<li class=${earlier ? 'has-fold' : null}>
-    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} title=${title} ...${rowProps(g.latest)} /><${RowMore} r=${g.latest} title=${title} tree=${tree} />`}
+    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} title=${title} note=${queued && retryWords(queued.retry)} tip=${queued && retryTip(queued)} ...${rowProps(g.latest)} /><${RowMore} r=${g.latest} title=${title} tree=${tree} />`}
     ${earlier && !renaming ? html`<${FoldButton} label=${runs} open=${open} controls=${list} onClick=${() => onToggle(g.name)} />` : null}
     ${earlier && open ? html`<ul class="sub-rows earlier-runs" id=${list}>${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${when(r.lastActivityAt)} ...${rowProps(r)} tree=${tree} />`)}</ul>` : null}
   </li>`;
@@ -147,7 +151,8 @@ function IdleRoutine({ r, editable, tree }) {
     tree.pop(key, tree.routineMenu(r), e.currentTarget.querySelector('.more'), { point: pointIn(e.currentTarget, e) });
   };
   return html`<li onContextMenu=${popAt}>
-    <a class="row" href=${editable ? routineHash(r.id) : ROUTINES_HASH} data-idle=${r.id} draggable=${false} data-menu=${open || null}>
+    <a class="row" href=${editable ? routineHash(r.id) : ROUTINES_HASH} data-idle=${r.id} draggable=${false} data-menu=${open || null}
+      data-tip=${retryTip(r)} data-tip-side="right" data-tip-delay="700">
       <span class="row-title">${r.title}</span><span class="row-nest row-idle">${idleWords(r)}</span></a>
     <button class="more" type="button" aria-label=${label} data-tip=${label} aria-haspopup="menu" aria-expanded=${open} aria-controls=${open ? layerId(tree.shown.id) : null} data-state=${open ? 'open' : 'closed'} ...${trigger}>${dots()}</button>
   </li>`;
@@ -207,7 +212,7 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   const idle = home ? unrunRoutines(ix, routines) : [];
   const parts = [
     home && section('routines', 'Routines', [...ix.routines, ...idle], [
-      ...ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`),
+      ...ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} routine=${routines?.routines?.find(r => r.id === g.name)} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`),
       ...idle.map(r => html`<${IdleRoutine} key=${`idle:${r.id}`} r=${r} editable=${supportsRoutineEdits(ix)} tree=${tree} />`),
     ], { drop: false, chat: groupById(ix, 'routines'), extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned), { chat: groupById(ix, 'pinned') }),

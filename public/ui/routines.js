@@ -9,7 +9,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import {
   byTitle, choices, deleteDetail, effortChoices, fireTime, formOf, jitterOf, JITTER_PROBLEM, modelChoices, newForm, NEW_ROUTINE_HASH,
-  promptHint, promptSource, refusals, requestOf, routineHash, routineRoute, ROUTINES_HASH, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, wasOf,
+  promptHint, promptSource, refusals, requestOf, retryWords, routineHash, routineRoute, ROUTINES_HASH, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, wasOf,
 } from './routine-rules.js';
 import { say } from './toast.js';
 import { neighbour } from './tree.js';
@@ -131,7 +131,8 @@ function RoutineRow({ r, now, editable, busy, open, menuId, onSwitch, onRun, onM
       <p class="routine-schedule">${words ? html`<span>${words}</span>` : null}${r.cron ? html`<code class="routine-cron">${r.cron}</code>` : null}</p>
       <p class="routine-times"><span>${next}</span><span>${last}</span></p>
       ${r.problem ? html`<${Alert}>${r.problem}<//>` : null}
-      ${r.lastError ? html`<${Alert}>The last run did not start: ${r.lastError}<//>` : null}
+      ${r.retry && r.enabled === true ? html`<${Alert} tone="warning">${retryWords(r.retry, now)}. The last try said: ${r.lastError}<//>`
+        : r.lastError ? html`<${Alert}>The last run did not start: ${r.lastError}<//>` : null}
       ${skipped ? html`<p class="routine-quiet">${skipped}</p>` : null}
     </div>
     <div class="routine-actions">
