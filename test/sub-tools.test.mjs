@@ -62,7 +62,7 @@ function subsFor(rows, { self = 'top', pending = () => [], summaries = {}, send 
 }
 const refused = (run, expected) => assert.throws(run, { refusal: true, message: expected });
 const NOT_BELOW = 'That session is not one of the sub sessions of this session. Use list_sub_sessions to see the ones you can reach.';
-const NO_SESSION = 'No session with that id on this Mac. A chat lists only the sessions list_sub_sessions gives, so any other id has to come from the owner or from the text you are working on.';
+const NO_SESSION = 'No session with that id on this Mac. Use find_sessions to look one up by its title.';
 
 test('the list leads with the count and what needs you, then the tree two spaces in for each level, each session with its roll-up and the first sentence of its latest reply, the busiest first', () => {
   const subs = subsFor(ROWS, { summaries: { a: 'A waits on you.', a1: 'A1 is running the tests.' } });
@@ -181,6 +181,7 @@ test('what a session waits on is one line each for the page, with the tool and t
 
 const READ_TOOLS = ['list_sub_sessions', 'read_sub_session'];
 const SUB_TOOLS = [...READ_TOOLS, 'send_session'];
+const LAYOUT_TOOLS = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group'];
 const GROUP_TOOLS = ['list_group_sessions', 'read_group_session', 'github_status', 'start_group_session'];
 const rpc = (method, params, ctx) => handleMcp({ jsonrpc: '2.0', id: 7, method, params }, ctx);
 const names = reply => reply.result.tools.map(t => t.name);
@@ -188,13 +189,13 @@ const names = reply => reply.result.tools.map(t => t.name);
 test('the sub session tools are listed to an ordinary chat that is given them, after the tools every chat has, and a group\'s chat is given the send alone', () => {
   const subs = subsFor(ROWS);
   const every = names(rpc('tools/list', {}, {}));
-  assert.deepEqual(names(rpc('tools/list', {}, { subs })), [...every, ...SUB_TOOLS]);
-  assert.deepEqual(names(rpc('tools/list', {}, {})).filter(n => SUB_TOOLS.includes(n)), [], 'a chat with no callbacks is offered none');
+  assert.deepEqual(names(rpc('tools/list', {}, { subs })), [...every, ...SUB_TOOLS, ...LAYOUT_TOOLS]);
+  assert.deepEqual(names(rpc('tools/list', {}, {})).filter(n => [...SUB_TOOLS, ...LAYOUT_TOOLS].includes(n)), [], 'a chat with no callbacks is offered none');
   const group = { lookup: () => null };
   assert.deepEqual(names(rpc('tools/list', {}, { group, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS]);
-  assert.deepEqual(names(rpc('tools/list', {}, { group, subs, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS, 'send_session'], 'a group\'s chat keeps its own four and is given the send');
+  assert.deepEqual(names(rpc('tools/list', {}, { group, subs, cwd: '/tmp/group' })), [...every, ...GROUP_TOOLS, 'send_session', ...LAYOUT_TOOLS], 'a group\'s chat keeps its own four and is given the send and the layout tools');
   for (const tool of rpc('tools/list', {}, { subs }).result.tools) assert.ok(tool.description.length < 420, `${tool.name} is sent with every request, so its description stays short`);
-  const [list, read, send] = rpc('tools/list', {}, { subs }).result.tools.slice(-3);
+  const [list, read, send] = rpc('tools/list', {}, { subs }).result.tools.slice(-9, -6);
   assert.deepEqual(send.inputSchema.required, ['session_id', 'message']);
   assert.deepEqual(Object.keys(list.inputSchema.properties), ['include_archived', 'limit']);
   assert.deepEqual([list.inputSchema.properties.limit.minimum, list.inputSchema.properties.limit.maximum], [1, 200]);
@@ -306,7 +307,7 @@ test('a message to itself and one to an id that is no session are refused, and n
 
 test('an archived sub session is refused with the reason, so the parent asks the owner to unarchive it, and nothing is sent', () => {
   sent.length = 0;
-  refused(() => send({ session_id: 'a2', message: 'hi' }, { send: sender('idle') }), 'Refused: "Session a2" [a2] is archived. Ask the owner to unarchive it, then send again.');
+  refused(() => send({ session_id: 'a2', message: 'hi' }, { send: sender('idle') }), 'Refused: "Session a2" [a2] is archived. Unarchive it with unarchive_session, which the owner approves, then send again.');
   assert.deepEqual(sent, []);
 });
 
@@ -355,11 +356,11 @@ test('a group\'s chat can send to a session outside it, which it is told it cann
   assert.deepEqual(sent.map(([id]) => id), ['far1', 'sib', 'b']);
 });
 
-test('a group\'s chat is refused the same as any chat for an archived member, an unknown id or itself, the unknown one naming list_group_sessions, and nothing is sent', () => {
+test('a group\'s chat is refused the same as any chat for an archived member, an unknown id or itself, the unknown one pointing at find_sessions, and nothing is sent', () => {
   sent.length = 0;
   const text = args => fromGroup(args).content[0].text;
-  assert.equal(text({ session_id: 'a2', message: 'hi' }), 'Refused: "Session a2" [a2] is archived. Ask the owner to unarchive it, then send again.');
-  assert.equal(text({ session_id: 'nobody', message: 'hi' }), 'No session with that id on this Mac. A chat lists only the sessions list_group_sessions gives, so any other id has to come from the owner or from the text you are working on.');
+  assert.equal(text({ session_id: 'a2', message: 'hi' }), 'Refused: "Session a2" [a2] is archived. Unarchive it with unarchive_session, which the owner approves, then send again.');
+  assert.equal(text({ session_id: 'nobody', message: 'hi' }), NO_SESSION);
   assert.equal(text({ session_id: 'chat', message: 'hi' }), 'A session cannot send a message to itself.');
   assert.deepEqual(sent, []);
 });

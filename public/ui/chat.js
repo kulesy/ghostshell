@@ -1,5 +1,6 @@
 // The chat pane: header, transcript and the dock under it. It owns one chat controller for as long as it is on screen.
 import { Approvals } from './approvals.js';
+import { ArchiveButton } from './chat-archive.js';
 import { copyText } from './clipboard.js';
 import { Composer } from './composer.js';
 import { HOME } from './env.js';
@@ -92,6 +93,7 @@ function ChatHead({ ctrl, kind, rename }) {
     : session ? [...place, settingsLine(status)].filter(Boolean).join('  ') : '';
   const title = draft ? 'New session' : session?.title || 'Session';
   const renamable = !!rename && !draft && !!session;
+  const archivable = !draft && !kind && !!session;
   useLayoutEffect(() => { if (!renamable) setRenaming(false); }, [renamable]);
   useLayoutEffect(() => {
     if (!renaming && refocus.current) pencil.current?.focus({ preventScroll: true });
@@ -117,7 +119,7 @@ function ChatHead({ ctrl, kind, rename }) {
       <p class="chat-meta" id="meta">${meta}</p>
       ${draft && groupName ? html`<span class="start-group">${draw(icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${`Start outside ${groupName}`} data-tip="Start outside the group" onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>
-    ${terminal || subs || agents ? html`<div class="chat-tools">${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${agents && !subs && !terminal ? html`<${AgentsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
+    ${archivable || terminal || subs || agents ? html`<div class="chat-tools">${archivable ? html`<${ArchiveButton} id=${ctrl.id} state=${state} title=${session.title} />` : null}${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${agents && !subs && !terminal ? html`<${AgentsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
   </header>`;
 }
 

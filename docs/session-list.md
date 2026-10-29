@@ -302,6 +302,10 @@ Right-click a session in the list, or press the menu key or Shift+F10 on it, for
 
 When the chat is working or waiting for an approval, the item reads Stop and archive: the turn ends, the approval is denied and the chat's process closes. The list can take up to 15 seconds to show that a turn has started, so if Archive finds the chat running, it asks first.
 
+### Archive from the chat
+
+The header of an open session has an Archive button first among its tools. It follows the same rules: an idle session is archived at once with a note that offers Undo, and a working one asks "Stop and archive" first. The chat stays open afterwards, and the button reads Unarchive, which brings the session back as the archived list's Unarchive does. A group's chat, a section's chat and a new session have no button. The list the page holds has no archived rows, so a chat that is not in it is looked up in the archived list once, and the button shows when that answers.
+
 ### Cmd+A
 
 On a Mac, Cmd+A archives too, and the menu shows the key beside the item, except on a touch screen. The key archives the first of these that exists:

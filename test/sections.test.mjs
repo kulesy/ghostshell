@@ -11,6 +11,7 @@ import { SECTION_IDS, SECTIONS, sectionById, sectionOf, sectionSessions } from '
 import { everyRow, withKids } from '../public/ui/tree.js';
 import { as, cliCalls, request, signIn, start, until as waitFor } from './harness.mjs';
 
+const LAYOUT_WRITES = ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group'].map(n => `mcp__capcom__${n}`);
 const CHATS = {
   routines: '1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c01',
   pinned: '1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c02',
@@ -441,7 +442,7 @@ test('a section\'s chat starts the CLI with --session-id, the section\'s guide, 
   assert.match(flagOf(refused.started, '--append-system-prompt'), /"Routines"\. It holds the runs of the routines/);
   assert.match(flagOf(refused.started, '--append-system-prompt'), /start_group_session and spawn_task are refused in this chat/);
   for (const { started } of [pinned, refused]) {
-    assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-8), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+    assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-12), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
     assert.equal(flagOf(started, '--setting-sources'), 'user');
   }
   assert.equal(fs.realpathSync(pinned.cwd), fs.realpathSync(path.join(s.state, 'groups', 'pinned')));

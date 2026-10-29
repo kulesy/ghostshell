@@ -1,6 +1,6 @@
 # Serve Desktop-style tools from Capcom's own MCP server
 
-- Status: Accepted, amended 2026-10-19 and 2026-10-23
+- Status: Accepted, amended 2026-10-19, 2026-10-23, 2026-10-27 and 2026-10-28
 - Deciders: Eli
 - Date: 2026-10-07
 - Tags: tools, mcp, chips, widgets, security
@@ -46,6 +46,8 @@ Capcom allows its own tools by exact name, with no approval card.
 **Amended 2026-10-27, sending to a session.** That chat gets a third tool, `send_session`, which starts or queues a turn in any other session. Its reads still reach sub sessions alone. It asks with a card every time, in every mode, with no Always allow, as the group tools that start work do (see the same record).
 
 **Amended 2026-10-28, sending from a group's chat.** The chat of a group or a built-in section gets `send_session` too, with the same card, so every chat can message any other session (see [Give each group a session of its own](20261023-a-session-for-each-group.md)).
+
+**Amended 2026-10-28, layout tools.** Every chat given `ctx.subs` also gets six tools: `archive_session`, `unarchive_session`, `set_session_title`, `move_session_to_group`, `list_chips` and `find_sessions`. The four writes run the server's own functions and show a card in every mode with no Always allow, and the two reads run with no card (see [Give sessions tools to find, archive, rename and move sessions, and read chips](20261028-layout-tools-for-sessions.md)).
 
 ### Consequences
 
