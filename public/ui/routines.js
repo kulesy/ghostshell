@@ -54,6 +54,18 @@ export async function switchRoutine(r, on, refresh) {
   return done;
 }
 
+// Renames the routine itself. Resolves with whether the server took the name, and says why not when it did not.
+export async function renameRoutine(id, title, refresh) {
+  try {
+    await api(routineUrl(id), { title }, 'PATCH');
+  } catch (e) {
+    say(refusals(e).fields.title ?? e.message, { problem: true });
+    return false;
+  }
+  await refresh();
+  return true;
+}
+
 // Asks first, because the schedule goes. Cancel has the focus, so Enter does no harm. `done` runs once the server has deleted it.
 export function deleteRoutine(r, { refresh, back, done }) {
   ask({

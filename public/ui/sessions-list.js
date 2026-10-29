@@ -17,8 +17,8 @@ import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
 import { anchorAt, archiveNote, extend, inOrder, NO_PICK, prune, sessions, stayAfter, step, stopDetail, toggle as toggleRow, unarchiveNote } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
-import { idleWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, unrunRoutines } from './routine-rules.js';
-import { ManageRoutines, routineItems } from './routines.js';
+import { idleWords, isEarlierRun, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
+import { ManageRoutines, renameRoutine, routineItems } from './routines.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
@@ -55,8 +55,8 @@ function RowLink({ r, title = r.title, dot = r.dot, current, lifted, marked, pic
 
 // The dots button at the end of a session's row, beside the link. It opens the row's menu under itself, for a pointer with no right
 // click to use, and shows while the pointer is over the row or the focus is in it.
-function RowMore({ r, tree }) {
-  const label = `Actions for ${r.title || UNTITLED}`;
+function RowMore({ r, title = r.title, tree }) {
+  const label = `Actions for ${title || UNTITLED}`;
   const open = tree.shown?.key === 'row' && tree.shown.session === r.id;
   const trigger = opener((button, entry) => tree.rowMenu(r.id, button, entry));
   return html`<button class="more" type="button" aria-label=${label} data-tip=${label} aria-haspopup="menu" aria-expanded=${open} aria-controls=${open ? layerId(tree.shown.id) : null} data-state=${open ? 'open' : 'closed'} ...${trigger}>${dots()}</button>`;
@@ -115,16 +115,17 @@ function Section({ id, name, count, collapsed, toggle, drop, over, lifted, line,
 const FoldButton = ({ label, open, controls, onClick }) => html`<button class="fold" type="button" aria-expanded=${open} aria-controls=${open ? controls : null} aria-label=${label} data-tip=${label} onClick=${onClick}>${chevron()}</button>`;
 
 // The latest run of a routine, with the earlier ones folded away until asked for.
-// A routine's row opens its latest run. The arrow at its end folds the earlier runs out underneath.
+// A routine's row opens its latest run and shows the routine's title. The arrow at its end folds the earlier runs out underneath, each by its date.
 function Routine({ g, rowProps, open, onToggle, tree }) {
   const earlier = g.earlier.length;
   const runs = `${earlier} earlier run${earlier > 1 ? 's' : ''}`;
   const renaming = tree.renaming === g.latest.id;
+  const title = g.title ?? g.latest.title;
   const list = `runs-${g.latest.id}`;
   return html`<li class=${earlier ? 'has-fold' : null}>
-    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} ...${rowProps(g.latest)} /><${RowMore} r=${g.latest} tree=${tree} />`}
+    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} title=${title} ...${rowProps(g.latest)} /><${RowMore} r=${g.latest} title=${title} tree=${tree} />`}
     ${earlier && !renaming ? html`<${FoldButton} label=${runs} open=${open} controls=${list} onClick=${() => onToggle(g.name)} />` : null}
-    ${earlier && open ? html`<ul class="sub-rows earlier-runs" id=${list}>${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${r.renamed ? r.title : when(r.lastActivityAt)} ...${rowProps(r)} tree=${tree} />`)}</ul>` : null}
+    ${earlier && open ? html`<ul class="sub-rows earlier-runs" id=${list}>${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${when(r.lastActivityAt)} ...${rowProps(r)} tree=${tree} />`)}</ul>` : null}
   </li>`;
 }
 
@@ -533,12 +534,13 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     say(problem || (parent ? `Nested “${title}” under “${parentTitle}”.` : `Moved “${title}” out of “${parentTitle}”.`), { problem: !!problem });
   }
 
-  // Gives a session a title of its own. The form keeps what was sent, so a reload that draws the row somewhere else draws the form
-  // there with it, ready to try again.
+  // Gives a session a title of its own, or the routine its new title when the row is a routine's. The form keeps what was sent, so a
+  // reload that draws the row somewhere else draws the form there with it, ready to try again.
   async function renameRow(r, text, away) {
     const mine = f => f?.kind === 'session' && f.session === r.id;
     setForm(f => (mine(f) ? { ...f, sent: text } : f));
-    const done = await change('api/layout/rename', { id: r.id, title: clean(text) });
+    const routine = titledRoutine(ix, r.id);
+    const done = routine ? await renameRoutine(routine.name, clean(text), refreshRoutines) : await change('api/layout/rename', { id: r.id, title: clean(text) });
     if (done) closeSaved(mine, away, rowOf(r.id));
     return !!done;
   }
@@ -629,7 +631,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       label: `Actions for ${title}`,
       items: [
         ...(routine ? [...routineItems(routine, { editable: supportsRoutineEdits(ix), refresh: refreshRoutines, back: () => box.current.querySelector(rowOf(id)) }), { separator: true }] : []),
-        { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'session', session: id }) },
+        ...(isEarlierRun(ix, id) ? [] : [{ label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'session', session: id }) }]),
         ...(parent ? [{ label: `Move out of “${parent.title || UNTITLED}”`, icon: icons.indentDecrease, run: () => nestSession(id, title, null, parent.title || UNTITLED) }] : []),
         ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(nestItem), find: q => findSessions(under, q).map(f => nestItem(f.row)), findLabel: 'Search sessions' }] : []),
         ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places, find: q => findPlaces(targets, q).map(p => ({ ...choice(p.label, p.section, p.where), value: p.value })), findLabel: 'Search places' }] : []),
@@ -824,7 +826,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     renamingGroup: form?.kind === 'rename-group' ? form.group : null,
     rowMenu: (id, button, entry) => (shown?.session === id && shown.anchor === button && !entry ? setShown(null) : latestMenu.current(id, button, null, entry)),
     newGroup: (p, back) => { projects.pick(p.id); setForm({ kind: 'group', project: p.id, back }); },
-    sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} was=${r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`,
+    sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? titledRoutine(ix, r.id)?.title ?? r.title} was=${titledRoutine(ix, r.id)?.title ?? r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`,
     routineMenu: r => ({
       label: `Actions for ${r.title}`,
       items: routineItems(r, { editable: supportsRoutineEdits(ix), refresh: refreshRoutines, back: () => box.current.querySelector(`a.row[data-idle="${CSS.escape(r.id)}"]`) }),
@@ -910,7 +912,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const renameAt = e => {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const id = e.target.closest?.('a.row[data-id]')?.dataset.id;
-    if (id) setForm({ kind: 'session', session: id });
+    if (id && !isEarlierRun(ix, id)) setForm({ kind: 'session', session: id });
   };
 
   return html`<${Fragment}>

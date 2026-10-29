@@ -48,6 +48,7 @@ const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passk
 const chips = makeChips(cfg.stateDir);
 const layout = makeLayout(cfg.stateDir);
 const marks = makeMarks(cfg.stateDir);
+const routineStore = makeRoutines(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
 const uploads = makeUploads(cfg.stateDir);
 const summaries = makeSummaries({ transcriptFor });
@@ -177,6 +178,8 @@ function buildIndex({ archived = false } = {}) {
   const pins = new Set(own.pinned);
   const unarchived = new Set(own.unarchived);
   const chipTitles = chips.titles();
+  // A routine's run shows the routine's title as it is now. A routine that routines.json no longer holds keeps the title its run started with.
+  const routineTitles = new Map(routineStore.read().routines.map(r => [r.id, r.title]));
   for (const r of rows.values()) {
     r.group = groupIds.has(own.assignments[r.id]) ? own.assignments[r.id] : null;
     r.pinned = pins.has(r.id);
@@ -188,6 +191,7 @@ function buildIndex({ archived = false } = {}) {
     // applied before the sorts so a group goes by them.
     const title = ownTitle(own, r.id);
     if (title) { r.title = title; r.renamed = true; }
+    else if (routineTitles.has(r.routine)) r.title = routineTitles.get(r.routine);
     else if (chipTitles.has(r.id)) r.title = chipTitles.get(r.id);
   }
 
@@ -248,7 +252,7 @@ function buildIndex({ archived = false } = {}) {
   const byLatest = comparator(sorts.routines);
   const routines = new Map();
   for (const r of top.filter(r => r.routine && !r.group && !r.pinned).sort(comparator(DEFAULT_SORT))) {
-    if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, latest: r, earlier: [] });
+    if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, ...(routineTitles.has(r.routine) && { title: routineTitles.get(r.routine) }), latest: r, earlier: [] });
     else if (routines.get(r.routine).earlier.length < 12 || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
   }
   const loose = sortRows(top.filter(r => !r.group && !r.routine && !r.pinned), sorts.sessions);
@@ -475,7 +479,7 @@ const routineIdTaken = id => [...buildIndex().rows.values()].some(r => r.routine
 
 // A run is a new session like any other, except that it is never handed to Desktop, whose window it would open at fire time.
 const routines = makeScheduler({
-  store: makeRoutines(cfg.stateDir),
+  store: routineStore,
   check: routineProblem,
   fieldProblems: routineProblems,
   idTaken: routineIdTaken,

@@ -10,9 +10,9 @@ const PROMPT_FILE = '---\nname: desk\ndescription: A routine with a prompt file 
 const NEW = { title: 'Morning check', cron: '30 7 * * 1-5', jitterSeconds: 737, prompt: 'Look at the board.' };
 
 // A signed-in server whose routines.json already holds one routine, which reads its prompt from a SKILL.md outside the state folder.
-// `sessions` are the runs the session list already holds.
-async function open(sessions) {
-  const first = await start({ claude: true, sessions });
+// `sessions` are the runs the session list already holds, and `layout` is written over the layout file.
+async function open(sessions, layout) {
+  const first = await start({ claude: true, sessions, layout });
   const work = path.join(first.home, 'work');
   const desk = path.join(first.home, 'desktop', 'desk', 'SKILL.md');
   fs.mkdirSync(work);
@@ -374,5 +374,48 @@ test('a hand-edited routine whose prompt file or folder is not a full path shows
     data.routines[0].cwd = cwd;
     fs.writeFileSync(path.join(c.s.state, 'routines.json'), JSON.stringify(data));
     assert.equal((await routinesOf(c))[0].problem, why);
+  }
+});
+
+// The routine 'desk' is in routines.json with the title 'File routine', and 'past-run' is not.
+const sessionsOf = async c => (await read(c, '/api/sessions')).body();
+const runTitles = list => list.map(r => r.title);
+
+test('a routine\'s group says its title from routines.json, and a run row follows it unless the run was renamed in the layout', async () => {
+  const c = await open([
+    { id: 'd1', title: 'Title at the first run', routine: 'desk', ago: 5 },
+    { id: 'd2', title: 'Title at the second run', routine: 'desk', ago: 65 },
+    { id: 'd3', title: 'Own name in the layout', routine: 'desk', ago: 125 },
+  ], { titles: { d3: 'Own name' } });
+  const [group] = (await sessionsOf(c)).routines;
+  assert.deepEqual([group.name, group.title, group.latest.title, runTitles(group.earlier)], ['desk', 'File routine', 'File routine', ['File routine', 'Own name']]);
+  assert.deepEqual([group.latest.renamed, group.earlier[0].renamed, group.earlier[1].renamed], [undefined, undefined, true]);
+  const renamed = await write(c, 'PATCH', '/api/routines/desk', { title: 'Brand new name' });
+  assert.equal(renamed.status, 200, renamed.text);
+  const [after] = (await sessionsOf(c)).routines;
+  assert.deepEqual([after.title, after.latest.title, runTitles(after.earlier)], ['Brand new name', 'Brand new name', ['Brand new name', 'Own name']]);
+  assert.equal((await routinesOf(c))[0].title, 'Brand new name', 'and the Routines page reads the same name');
+});
+
+test('the group of a routine that routines.json no longer holds has no title and its runs keep the title they started with', async () => {
+  const c = await open([{ id: 'p1', title: 'Title at the run', routine: 'past-run', ago: 5 }]);
+  const [group] = (await sessionsOf(c)).routines;
+  assert.equal(Object.hasOwn(group, 'title'), false);
+  assert.equal(group.latest.title, 'Title at the run');
+  fs.writeFileSync(path.join(c.s.state, 'routines.json'), '{ not json');
+  const [unread] = (await sessionsOf(c)).routines;
+  assert.equal(Object.hasOwn(unread, 'title'), false, 'and a routines.json that cannot be read gives none either');
+  assert.equal(unread.latest.title, 'Title at the run');
+});
+
+test('emoji titles go through a rename into routines.json and back unchanged', async () => {
+  const c = await open([{ id: 'd1', title: 'First', routine: 'desk', ago: 5 }]);
+  for (const title of ['📥 Tina inboxes', '⏳ Timesheet', '🇩🇪 German word', '✅ Done']) {
+    const res = await write(c, 'PATCH', '/api/routines/desk', { title });
+    assert.equal(res.status, 200, res.text);
+    assert.equal(JSON.parse(c.raw()).routines[0].title, title);
+    assert.equal((await routinesOf(c))[0].title, title);
+    const [group] = (await sessionsOf(c)).routines;
+    assert.deepEqual([group.title, group.latest.title], [title, title]);
   }
 });

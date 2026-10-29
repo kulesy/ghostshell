@@ -1,6 +1,6 @@
 # Manage routines from a page, and keep the prompts GhostShell writes in its own folder
 
-- Status: Accepted, partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md)
+- Status: Accepted, partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md), amended 2026-10-29
 - Deciders: Eli
 - Date: 2026-10-24
 - Tags: routines, scheduler, prompt-files, api, security
@@ -47,6 +47,8 @@ Chosen option: "Keep each prompt GhostShell writes in a file of its own in Ghost
 - ❌ A deleted routine leaves its prompt file behind, and the next routine with the same title gets a numbered id. Nothing cleans the folder up.
 - ❌ A script that called the run or enabled routes without an `Origin` header now gets a 403.
 - ❌ The folder is a typed path with no picker, so a typo shows only as a problem beside the field.
+
+**Amended 2026-10-29.** The owner renamed a routine's row in the sidebar and found only that one run renamed, while the routine kept its old title. A routine's row on Home now stands for the routine. Its Rename sends `PATCH api/routines/<id>` with the new title, so `routines.json` holds it and the Routines page shows it. Every run of a routine that `routines.json` holds shows the routine's current title, read on each list, in place of the title it started with. A run renamed on its own keeps its own title, and a run of a deleted routine keeps the title it started with, and its row renames that run as before. An earlier run's row shows its date only and has no Rename, since the list would never show the name. A run can still be renamed from the pencil in its own chat, which names that run alone. The list sends the routine's title with each routine, so a page on a server without it renames the run as it did before.
 
 ## Pros and Cons of the Options
 

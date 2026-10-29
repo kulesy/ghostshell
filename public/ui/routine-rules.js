@@ -242,6 +242,13 @@ export function routineFor(ix, routines, rowId) {
   return group && routines?.routines?.find(r => r.id === group.name);
 }
 
+// The routine group whose row is the run `rowId`, when the server says the routine's title, which renaming that row changes.
+// A server that does not say it leaves the row renaming its run.
+export const titledRoutine = (ix, rowId) => ix?.routines?.find(g => g.latest?.id === rowId && g.title !== undefined);
+
+// Whether `rowId` is one of the earlier runs folded under a routine's row, which show their date and are renamed from their own chat.
+export const isEarlierRun = (ix, rowId) => !!ix?.routines?.some(g => g.earlier.some(r => r.id === rowId));
+
 // ---- routines with no run in the sidebar ---------------------------------------------------------
 
 // The routines that have no row anywhere in the list, in title order. A run that is pinned or in a group is still a run, so it counts.

@@ -21,6 +21,7 @@ let app;
 let older;
 let plain;
 let lonely;
+let named;
 let browser;
 
 // A proxy to `target` that leaves `leave` out of the features the list says, as a server that started before they existed does.
@@ -99,9 +100,33 @@ async function unrun() {
   return restart(first);
 }
 
+// A server for renaming from the sidebar: a routine with a latest run and two earlier ones, one of which was renamed in the layout, and a
+// run of a routine that routines.json no longer holds. The routine goes yearly on 1 January so it does not fire during a test.
+async function renamable() {
+  const first = await start({
+    sessions: [
+      { id: 'n1', title: 'Title at the third run', routine: 'nightly', ago: 5 },
+      { id: 'n2', title: 'Title at the second run', routine: 'nightly', ago: 65 },
+      { id: 'n3', title: 'Title at the first run', routine: 'nightly', ago: 125 },
+      { id: 'g1', title: 'Title of a deleted routine', routine: 'deleted', ago: 8 },
+    ],
+    layout: { titles: { n3: 'Own name for one run' } },
+    claude: true,
+  });
+  const work = path.join(first.home, 'work');
+  fs.mkdirSync(work);
+  fs.mkdirSync(path.join(first.state, 'routines'));
+  fs.writeFileSync(path.join(first.state, 'routines', 'nightly.md'), 'Do the nightly check.\n');
+  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({
+    routines: [{ id: 'nightly', title: 'Nightly check', cron: '0 3 1 1 *', jitterSeconds: 0, file: path.join(first.state, 'routines', 'nightly.md'), cwd: work, model: null, effort: null, mode: null, enabled: false }],
+  }, null, 2));
+  return restart(first);
+}
+
 before(async () => {
   if (skip) return;
   app = await furnished();
+  named = await renamable();
   older = await without(app, 'routineEdits');
   plain = await without(app, 'routineFiles');
   lonely = await unrun();
@@ -655,5 +680,123 @@ test('on a phone a routine with no run is as tall as any row, says its state on 
   const more = await box('li:has(> a.row[data-idle="idle"]) > .more');
   assert.ok(more.height >= 20, 'the dots button is the size of the others');
   assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true);
+  assert.deepEqual(page.problems, []);
+});
+
+// ---- renaming a routine from its row in the sidebar ----------------------------------------------
+
+const rowTitle = (page, id) => text(page, `a.row[data-id="${id}"] .row-title`);
+const namedRows = page => page.evaluate(`[...document.querySelectorAll('a.row[data-id]')].map(a => [a.dataset.id, a.querySelector('.row-title').textContent])`);
+const settled = page => page.until(`!!document.querySelector('a.row[data-id="n1"]') && !!document.querySelector('a.row[data-id="g1"]')`);
+const openFold = async page => {
+  await page.click('li.has-fold > .fold');
+  await page.until(`!!document.querySelector('.earlier-runs a.row')`);
+};
+const nameBox = page => page.until(`document.activeElement?.closest('.name-form') !== null && document.activeElement.tagName === 'INPUT'`);
+const nightly = () => JSON.parse(fs.readFileSync(path.join(named.state, 'routines.json'), 'utf8')).routines.find(r => r.id === 'nightly').title;
+const layoutTitles = () => JSON.parse(fs.readFileSync(path.join(named.state, 'layout.json'), 'utf8')).titles ?? {};
+
+test('a routine\'s row shows the routine\'s title, its earlier runs show their date even when one was renamed, and a deleted routine\'s run keeps its start title', { skip, timeout }, async t => {
+  const page = await appPage(t, named.origin);
+  await settled(page);
+  assert.equal(await rowTitle(page, 'n1'), 'Nightly check');
+  assert.equal(await rowTitle(page, 'g1'), 'Title of a deleted routine');
+  await openFold(page);
+  const dates = await page.evaluate(`[...document.querySelectorAll('.earlier-runs a.row .row-title')].map(el => el.textContent)`);
+  assert.equal(dates.length, 2);
+  assert.equal(dates.some(title => /Own name|Nightly check|Title at/.test(title)), false, dates.join(' | '));
+  assert.deepEqual(page.problems, []);
+});
+
+test('an earlier run has no Rename in its menu and a double click on it opens no box, and the routine\'s row has both', { skip, timeout }, async t => {
+  const page = await appPage(t, named.origin);
+  await settled(page);
+  await openFold(page);
+  const earlier = '.earlier-runs a.row[data-id="n2"]';
+  await contextMenu(page, earlier);
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  const items = await menuOf(page);
+  assert.equal(items.includes('Rename'), false, items.join(', '));
+  assert.equal(items.includes('Archive'), true);
+  await page.press('Escape');
+  await page.until(`!document.querySelector('${MENU}')`);
+  await page.evaluate(`document.querySelector('${earlier}').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))`);
+  await new Promise(done => setTimeout(done, 150));
+  assert.equal(await page.evaluate(`!!document.querySelector('.name-form')`), false);
+  await contextMenu(page, 'a.row[data-id="n1"]');
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  assert.equal((await menuOf(page)).includes('Rename'), true);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a double click on the routine\'s row opens the box with the routine\'s title, and Esc leaves the title as it was', { skip, timeout }, async t => {
+  const page = await appPage(t, named.origin);
+  await settled(page);
+  await page.evaluate(`document.querySelector('a.row[data-id="n1"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))`);
+  await nameBox(page);
+  assert.equal(await valueOf(page, '.name-form input'), 'Nightly check');
+  await page.press('Escape');
+  await page.until(`!document.querySelector('.name-form')`);
+  assert.equal(await rowTitle(page, 'n1'), 'Nightly check');
+  assert.equal(nightly(), 'Nightly check');
+  assert.deepEqual(page.problems, []);
+});
+
+test('Rename on the routine\'s row renames the routine: routines.json, the row and the Routines page change, and no run gets a title of its own', { skip, timeout }, async t => {
+  const page = await appPage(t, named.origin);
+  await settled(page);
+  await contextMenu(page, 'a.row[data-id="n1"]');
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  await pick(page, MENU, 'Rename');
+  await nameBox(page);
+  assert.equal(await valueOf(page, '.name-form input'), 'Nightly check');
+  await page.insert('📥 Tina inboxes');
+  await page.press('Enter');
+  await page.until(`!document.querySelector('.name-form') && document.querySelector('a.row[data-id="n1"] .row-title')?.textContent === '📥 Tina inboxes'`);
+  assert.equal(nightly(), '📥 Tina inboxes');
+  assert.deepEqual(layoutTitles(), { n3: 'Own name for one run' });
+  await page.evaluate(`location.hash = '#/routines'`);
+  await page.until(`document.querySelector('.routine-title')?.textContent === '📥 Tina inboxes'`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('flag, hourglass and tick emoji keep their form through a rename of the routine', { skip, timeout }, async t => {
+  const page = await appPage(t, named.origin);
+  await settled(page);
+  for (const title of ['🇩🇪 German word', '⏳ Timesheet', '✅ Done']) {
+    await page.evaluate(`document.querySelector('a.row[data-id="n1"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))`);
+    await nameBox(page);
+    await page.insert(title);
+    await page.press('Enter');
+    await page.until(`!document.querySelector('.name-form') && document.querySelector('a.row[data-id="n1"] .row-title')?.textContent === ${JSON.stringify(title)}`);
+    assert.equal(nightly(), title);
+  }
+  assert.deepEqual(page.problems, []);
+});
+
+test('a refused routine title keeps the box open with the problem shown, and the routine is unchanged', { skip, timeout }, async t => {
+  const page = await appPage(t, named.origin);
+  await settled(page);
+  const before = nightly();
+  await page.evaluate(`document.querySelector('a.row[data-id="n1"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))`);
+  await nameBox(page);
+  await page.insert('⁠');
+  await page.press('Enter');
+  assert.equal(await toast(page), 'Give the routine a title.');
+  assert.equal(await page.evaluate(`!!document.querySelector('.name-form')`), true);
+  assert.equal(nightly(), before);
+  assert.deepEqual(page.problems, []);
+});
+
+test('the row of a run whose routine is gone is renamed as a session, in the layout', { skip, timeout }, async t => {
+  const page = await appPage(t, named.origin);
+  await settled(page);
+  await page.evaluate(`document.querySelector('a.row[data-id="g1"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))`);
+  await nameBox(page);
+  assert.equal(await valueOf(page, '.name-form input'), 'Title of a deleted routine');
+  await page.insert('Kept run');
+  await page.press('Enter');
+  await page.until(`!document.querySelector('.name-form') && document.querySelector('a.row[data-id="g1"] .row-title')?.textContent === 'Kept run'`);
+  assert.equal(layoutTitles().g1, 'Kept run');
   assert.deepEqual(page.problems, []);
 });

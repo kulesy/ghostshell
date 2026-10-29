@@ -33,7 +33,7 @@ The Prompt field is a choice between GhostShell's own text and a prompt file.
 - Switching a routine on GhostShell's own text to a file points it at the file. GhostShell's copy stays in its folder.
 - Saving a routine on a file with a new title, schedule or any other field leaves the file and its path alone.
 
-A new routine takes its id from its title, in lower case letters and digits joined by dashes, at most 40 characters, with `-2`, `-3` and so on added when a routine, a prompt file in GhostShell's folder or past runs already use the id, or when the id would be `new`, which is the address of the add form. The id stays the same when you rename the routine. A new routine is on unless you switch it off in the form, and counts its schedule from the save.
+A new routine takes its id from its title, in lower case letters and digits joined by dashes, at most 40 characters, with `-2`, `-3` and so on added when a routine, a prompt file in GhostShell's folder or past runs already use the id, or when the id would be `new`, which is the address of the add form. The id stays the same when you rename the routine. Renaming it, here or from its row in Home, changes the title its runs show in the session list. A run you renamed from its own chat keeps that name. A new routine is on unless you switch it off in the form, and counts its schedule from the save.
 
 A change of schedule or jitter on a routine that is on counts from the save, as switching on does. Any other change applies from the next run, and a run in progress keeps what it started with.
 
