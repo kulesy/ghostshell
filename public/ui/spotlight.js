@@ -16,6 +16,7 @@ import { emptyText, sectionsFor } from './search-rules.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
 import { newSession } from './sessions-list.js';
 import { keyHint } from './shortcuts.js';
+import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
 
 const CHIPS = [['all', 'All'], ['projects', 'Projects'], ['groups', 'Groups'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['archived', 'Archived']];
@@ -47,8 +48,9 @@ function Words({ it }) {
     <time data-part="hit-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time></span>`;
 }
 
-const Hit = ({ it, id, selected, onPick, onMove }) => html`<div id=${id} data-slot="command-item" cmdk-item="" role="option" aria-selected=${selected} data-selected=${selected}
-  data-disabled="false" data-value=${it.key} onClick=${() => onPick(it)} onPointerMove=${onMove}><${Words} it=${it} /></div>`;
+// The wrapper carries the backdrop of a swipe on an archived hit, which would be hidden behind the hit's own background.
+const Hit = ({ it, id, selected, onPick, onMove }) => html`<div data-part="hit-swipe"><div id=${id} data-slot="command-item" cmdk-item="" role="option" aria-selected=${selected} data-selected=${selected}
+  data-disabled="false" data-value=${it.key} data-archived=${it.r?.archived || null} onClick=${() => onPick(it)} onPointerMove=${onMove}><${Words} it=${it} /></div></div>`;
 
 // `onShow(id, group)` shows a view of the list, a project id or null for Home, with a group in it in sight when `group` names one, and
 // closes the search. Opening anything else closes it here.
@@ -69,6 +71,7 @@ function Palette({ ix, archive, onShow, onClose }) {
   const list = useRef(null);
   const scroll = useRef(false);
   const pointer = useRef(null);
+  const latestSwipe = useRef(null);
   const mod = useModifier();
 
   useEffect(() => {
@@ -76,6 +79,8 @@ function Palette({ ix, archive, onShow, onClose }) {
     api('api/archived').then(d => { if (live) setArchived(d.archived || []); }).catch(() => {});
     return () => { live = false; };
   }, []);
+
+  useEffect(() => swipeRows(list.current, { row: '[cmdk-item][data-archived]', onSwipe: row => latestSwipe.current(row.dataset.value) }), []);
 
   const sections = useMemo(() => {
     if (!ix) return [];
@@ -131,15 +136,15 @@ function Palette({ ix, archive, onShow, onClose }) {
   };
 
   // Takes an archived session out of the list at once and asks the server to unarchive it. If the server refuses, the session
-  // comes back and the reason shows.
-  const unarchive = async it => {
+  // comes back and the reason shows. A swipe passes `focus: false`, so a phone does not raise its keyboard.
+  const unarchive = async (it, { focus = true } = {}) => {
     const { r } = it;
     // The selection goes to the result beside it, held by key, so the session reappearing in Sessions does not move it.
     const beside = keys[pick] === it.key ? holdBeside(keys, pick) : null;
     const was = pick;
     if (beside) setHeld(beside);
     setGone(ids => [...ids, r.id]);
-    input.current.focus();
+    if (focus) input.current.focus();
     const { problem, subs } = await archive(r.id, false);
     if (problem) {
       setGone(ids => ids.filter(id => id !== r.id));
@@ -148,6 +153,8 @@ function Palette({ ix, archive, onShow, onClose }) {
     }
     say(problem || `Unarchived “${r.title || UNTITLED}”${withSubs(subs)}.`, { problem: !!problem });
   };
+
+  latestSwipe.current = key => { const it = flat.find(hit => hit.key === key); if (it) unarchive(it, { focus: false }); };
 
   // The arrows change chips only from the edge of the text, so they still move the caret through a query. Esc is the dialog's.
   const onKeyDown = e => {

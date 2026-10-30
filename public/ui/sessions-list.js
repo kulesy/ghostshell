@@ -26,6 +26,7 @@ import { Shell } from './shell.js';
 import { archiveHint, keyHint, onMac, shortcut } from './shortcuts.js';
 import { familyNote } from './sub-panel-rules.js';
 import { descendantsOf } from './sub-rules.js';
+import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
 import { archiveTarget, everyRow, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, stayAbove, TITLE_MAX, withKids } from './tree.js';
 
@@ -310,6 +311,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const latestNest = useRef(null);
   const latestMenu = useRef(null);
   const latestKey = useRef(null);
+  const latestSwipe = useRef(null);
   const latestStep = useRef(null);
   const latestSlot = useRef(null);
   const latestDrop = useRef(null);
@@ -344,6 +346,12 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     },
     onMenu: (id, grip, point, kind) => (kind === 'group' ? latestHeader : latestMenu).current(id, grip, point),
     slot: (x, y, id) => latestSlot.current(x, y, id),
+  }), []);
+
+  useEffect(() => swipeRows(box.current, {
+    row: 'a.row[data-id]',
+    leaves: row => latestSwipe.current.leaves(row.dataset.id),
+    onSwipe: row => latestSwipe.current.archive(row.dataset.id),
   }), []);
 
   // With no chat open and nothing focused, up or down steps into the list. With a chat open they are left to scroll it.
@@ -490,6 +498,15 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     ask({ action: 'Stop and archive', title, detail: stopQuestion(subs, self), back, run: () => archiveRow(id, title, { ring }) });
   }
 
+  // A session with a chat running in it or below it is asked about first, since archiving it stops them.
+  const stopsFirst = r => isRunning(r) || subsRunning(everyRow(ix), r.id);
+
+  function archiveOrAsk(r, { ring = false, back } = {}) {
+    const title = r.title || UNTITLED;
+    if (stopsFirst(r)) confirmStop(r.id, title, { ring, back });
+    else archiveRow(r.id, title, { ask: true, ring });
+  }
+
   // The same for several rows leaving together. The focus goes to the row above the topmost of them, or back to them if none went.
   async function leavingAll(ids, start, ring = false) {
     const to = focusAfter(ids);
@@ -522,7 +539,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const rows = topmost(ids);
     if (rows.length < 2) {
       const [r] = rows;
-      if (r) (isRunning(r) || subsRunning(all, r.id) ? confirmStop(r.id, r.title || UNTITLED, { ring, back }) : archiveRow(r.id, r.title || UNTITLED, { ask: true, ring }));
+      if (r) archiveOrAsk(r, { ring, back });
       return;
     }
     const running = rows.filter(isRunning).length;
@@ -753,10 +770,12 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       setShown(null);
     }
     if (target.ids) return archiveMany(target.ids, { ring: true });
-    const r = findRow(ix, target.id);
-    const title = r.title || UNTITLED;
-    if (isRunning(r) || subsRunning(everyRow(ix), r.id)) confirmStop(r.id, title, { ring: true });
-    else archiveRow(r.id, title, { ask: true, ring: true });
+    archiveOrAsk(findRow(ix, target.id), { ring: true });
+  };
+
+  latestSwipe.current = {
+    leaves: id => { const r = findRow(ix, id); return !r || !stopsFirst(r); },
+    archive: id => { const r = findRow(ix, id); if (r) archiveOrAsk(r); },
   };
 
   // Shift+Down and Shift+Up from a row move the focus to the next or the one before and pick the rows from the anchor to it.

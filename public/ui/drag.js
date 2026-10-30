@@ -2,7 +2,7 @@
 // pixels and a finger after a long press, so a click or a swipe still works. A right click or a still long press asks for the menu.
 const MOUSE_SLOP = 5;
 const HOLD_MS = 350;
-const HOLD_SLOP = 8;
+export const HOLD_SLOP = 8;
 const EDGE = 56;
 const SCROLL_STEP = 16;
 
@@ -13,7 +13,7 @@ export function pointIn(el, e) {
 }
 
 const GRIPS = 'a.row[data-id], .bar[data-handle]';
-const POPUPS = 'button.more, [aria-haspopup]';
+export const POPUPS = 'button.more, [aria-haspopup]';
 
 // The target a dragged header has under a point: a project or Home in the sidebar or the Move to strip, else the place among the groups.
 function groupTargetAt(x, y, id, slot) {
