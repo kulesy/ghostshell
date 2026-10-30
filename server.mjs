@@ -13,6 +13,7 @@ import { parseCron } from './lib/cron.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
+import { descendantsOf } from './public/ui/sub-rules.js';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
 import { makeGroupUpdates, makeUpdateStore, pullsOf, scaled } from './lib/group-updates.mjs';
 import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, workFolder } from './lib/groups.mjs';
@@ -130,6 +131,9 @@ function keepFamily(id, rows) {
   if (via) for (const r of rows.values()) if (!r.archived && r.via === id) links[r.id] = via;
   return links;
 }
+
+// Every session below one at any depth, archived ones included, which archiving and unarchiving take along.
+const belowNow = id => descendantsOf([...buildIndex({ archived: true }).rows.values()], id);
 
 // A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone knows a session's link.
 const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex().rows) });
@@ -364,7 +368,8 @@ function subCtx(sessionId) {
   return {
     lookup({ archived }) {
       const { rows, groupSessions } = buildIndex({ archived });
-      const listed = [...rows.values(), ...[...groupSessions.values()].filter(r => !r.retired)];
+      const { archivedWith } = layout.read();
+      const listed = [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id] })), ...[...groupSessions.values()].filter(r => !r.retired)];
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
@@ -378,18 +383,21 @@ function subCtx(sessionId) {
       return was;
     },
     // The same changes the layout routes make, so a tool's and the owner's cannot differ. A session another app runs is left alone, and a running chat of Capcom's is not stopped.
+    // Resolves with how it went. 'done' says how many sub sessions went with it, and a refusal says whether the session itself stood in the way and how many below it did.
     archive(id) {
-      const row = editableRow(id);
-      if (!getChat(id)?.proc && row.state === 'active') return 'elsewhere';
+      const root = editableRow(id);
+      const elsewhere = r => !getChat(r.id)?.proc && r.state === 'active';
+      const away = belowNow(id).filter(r => !r.archived && elsewhere(r)).length;
+      if (away || elsewhere(root)) return { was: 'elsewhere', self: elsewhere(root), subs: away };
       try {
-        CHANGES.archived(id, true, false);
+        return { was: 'done', archivedSubs: CHANGES.archived(id, true, false).subs ?? 0 };
       } catch (e) {
-        if (e.status === 409) return 'running';
+        if (e.status === 409) return { was: 'running', ...e.running };
         throw e;
       }
-      return 'done';
     },
-    unarchive: id => { editableRow(id); CHANGES.archived(id, false); },
+    // Resolves with how many sub sessions came back with it.
+    unarchive: id => { editableRow(id); return CHANGES.archived(id, false).subs ?? 0; },
     rename: (id, title) => { editableRow(id); return CHANGES.rename(id, title); },
     move: (id, group) => { editableRow(id); CHANGES.move(id, group); },
   };
@@ -654,7 +662,7 @@ function ensureChat(id, row, { mode } = {}) {
 // The message is already sent by now, so a layout that cannot be written is logged, not reported as a failed send.
 function unarchive(id) {
   try {
-    layout.unarchive(id);
+    layout.unarchive(id, { under: belowNow(id).map(r => r.id) });
     return true;
   } catch (e) {
     console.error(`Could not unarchive ${id}: ${e.message}`);
@@ -801,29 +809,42 @@ async function editLayout(req, res, change) {
     editableRow(id);
     extra = change(id, body);
   } catch (e) {
-    return send(res, e.status || 500, { error: e.message });
+    return send(res, e.status || 500, { error: e.message, ...e.running });
   }
   const now = layout.read();
   return send(res, 200, { id, group: now.assignments[id] || null, pinned: now.pinned.includes(id), ...extra });
 }
 
-// Archiving a chat Capcom runs stops it: a turn in progress is interrupted and its approvals denied, then the process closes.
-// With stop: false a running chat is refused with a 409 before anything is written, so the caller can ask first.
-function setArchived(id, archived, stop) {
+// Archiving a session archives every session below it too, in one write, and stops each chat Capcom runs among them: a turn in progress is
+// interrupted and its approvals denied, then the process closes. With stop: false a running chat anywhere in the family is refused with a 409
+// before anything is written, with `self` (the session itself is running) and `subs` (how many below it are), so the caller can ask first.
+// `alone` archives the session without its family, for taking a new parent back.
+function setArchived(id, archived, stop, { alone = false } = {}) {
   if (typeof archived !== 'boolean') throw Object.assign(new Error('Archived or not?'), { status: 400 });
   if (stop !== undefined && typeof stop !== 'boolean') throw Object.assign(new Error('Stop it or not?'), { status: 400 });
+  const below = alone ? [] : belowNow(id);
   if (!archived) {
-    layout.unarchive(id);
-    return { archived };
+    const back = layout.unarchive(id, { under: below.map(r => r.id) });
+    return { archived, ...(back.length > 1 && { subs: back.length - 1 }) };
   }
-  const chat = getChat(id);
-  const stopped = !!chat && chat.state !== 'idle';
-  if (stopped && stop === false) throw Object.assign(new Error('That chat is running, and archiving it would stop it.'), { status: 409 });
+  // A session archived already takes none with it, so one brought back from under it is not archived again by a second archive of its parent.
+  const under = Object.hasOwn(layout.read().archived, id) ? [] : below.filter(r => !r.archived).map(r => r.id);
+  const chats = [id, ...under].map(getChat).filter(Boolean);
+  const running = chats.filter(c => c.state !== 'idle');
+  if (running.length && stop === false) {
+    const self = running.includes(getChat(id));
+    const subs = running.length - (self ? 1 : 0);
+    const many = self ? subs > 0 : subs > 1;
+    const words = !subs ? 'That chat is running, and archiving it would stop it.' : `${self ? 'That chat and ' : ''}${subs} sub session${subs === 1 ? '' : 's'} ${many ? 'are' : 'is'} running or waiting on you, and archiving would stop ${many ? 'them' : 'it'}.`;
+    throw Object.assign(new Error(words), { status: 409, running: { self, subs } });
+  }
   // The sessions under an archived one move up to the one it showed under by themselves, so archiving writes no link.
-  layout.archive(id);
-  if (stopped) chat.interrupt();
-  chat?.stop();
-  return { archived, ...(stopped && { stopped: true }) };
+  const taken = layout.archive(id, { under });
+  for (const chat of chats) {
+    if (chat.state !== 'idle') chat.interrupt();
+    chat.stop();
+  }
+  return { archived, ...(running.length && { stopped: true }), ...(running.length > 1 && { stoppedCount: running.length }), ...(taken.length > 1 && { subs: taken.length - 1 }) };
 }
 
 // What the routes and a chat's tools both do to a session's title, place and archive.
@@ -935,7 +956,7 @@ function undoParent({ id }) {
   spendUndo(id);
   layout.restoreParent(id, booking.undo);
   const chat = getChat(id);
-  if (hasTranscript(id) || (chat && chat.state !== 'idle')) return { id, ...setArchived(id, true) };
+  if (hasTranscript(id) || (chat && chat.state !== 'idle')) return { id, ...setArchived(id, true, undefined, { alone: true }) };
   chat?.stop();
   unbook(id);
   return { id, removed: true };

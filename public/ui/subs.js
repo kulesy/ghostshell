@@ -4,7 +4,7 @@
 import { md } from '../md.mjs';
 import { api } from './api.js';
 import { DOT_LABEL, STATE_LABEL, when } from './format.js';
-import { closeSession, isRunning } from './close.js';
+import { closeSession, isRunning, subsRunning } from './close.js';
 import { flipped, groupOfSession } from './group-rules.js';
 import { chevron, emptyNote, enc, LIVE } from './group-status.js';
 import { useStore } from './hooks.js';
@@ -153,6 +153,7 @@ function Line({ node, shared }) {
   const main = mainPull(known.get(row.id)?.pulls);
   const step = nextStep(row, heard, main);
   const running = isRunning(row);
+  const below = subsRunning(rows, row.id);
   const body = `sub-${row.id}`;
   const close = button => {
     if (archiving.size) return;
@@ -162,7 +163,7 @@ function Line({ node, shared }) {
     const other = () => near.map(titleLink).find(Boolean) ?? root.querySelector('.subs-sum') ?? root;
     let left = false;
     closeSession({
-      archive, id: row.id, title: name, running,
+      archive, id: row.id, title: name, running, subsRunning: below,
       leaving: () => { left = true; leftAt = Date.now(); archiving.add(row.id); land(root, other); },
       settled: () => archiving.delete(row.id),
       stayed: () => { left = false; leftAt = 0; land(root, () => archiveButton(row.id) ?? other()); },
@@ -184,7 +185,7 @@ function Line({ node, shared }) {
       <div class="sub-foot">
         ${roll ? html`<p class="sub-roll"><${Words} text=${roll} /></p>` : null}
         <div class="sub-acts">
-          ${archive ? html`<button class="btn sub-archive" data-variant="ghost" data-size="xs" type="button" data-archive-card=${row.id} aria-label=${`${running ? 'Stop and archive' : 'Archive'} ${name}`} data-tip=${`${running ? 'Stop and archive' : 'Archive'} ${name}`} onClick=${e => (e.detail > 1 ? null : close(e.currentTarget))}>${draw(icons.archive)}Archive</button>` : null}
+          ${archive ? html`<button class="btn sub-archive" data-variant="ghost" data-size="xs" type="button" data-archive-card=${row.id} aria-label=${`${running || below ? 'Stop and archive' : 'Archive'} ${name}`} data-tip=${`${running || below ? 'Stop and archive' : 'Archive'} ${name}`} onClick=${e => (e.detail > 1 ? null : close(e.currentTarget))}>${draw(icons.archive)}Archive</button>` : null}
           <button class="btn sub-fold" data-variant="ghost" data-size="xs" type="button" aria-expanded=${open} aria-controls=${open ? (showSubs ? `${body} ${under}` : body) : null} aria-label=${`Details of ${name}`} data-tip=${`Details of ${name}`} onClick=${() => flip(row.id)}>Details${chevron()}</button>
         </div>
       </div>

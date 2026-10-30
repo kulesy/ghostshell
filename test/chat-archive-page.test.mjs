@@ -137,6 +137,49 @@ test('a running session\'s button reads Stop and archive and asks first, Cancel 
   assert.deepEqual(page.problems, []);
 });
 
+const FAMILY = [
+  { id: 'boss', title: 'Boss', group: 'cg-a', ago: 1 },
+  { id: 'kid', title: 'Kid', parent: 'boss', ago: 2 },
+  { id: 'grand', title: 'Grand', parent: 'kid', ago: 3 },
+];
+
+test('a parent\'s header archives the sessions below it, the note counts them, and Undo brings the family back', { skip, timeout }, async t => {
+  const s = await start({ sessions: [...SESSIONS, ...FAMILY], groups: GROUPS, claude: true });
+  const page = await appPage(t, s.origin, '#/s/boss');
+  await page.until(`${LABEL} === 'Archive'`);
+  await page.click(BUTTON);
+  await page.until(`${NOTE}.includes('Archived “Boss” and 2 sub sessions.')`);
+  assert.deepEqual(Object.keys(onDisk(s).archived).sort(), ['boss', 'grand', 'kid']);
+  assert.equal(await page.evaluate(`!document.querySelector('#ask-title')`), true, 'nothing was running, so nothing was asked');
+
+  await pressNoteButton(page);
+  await page.until(`${NOTE}.includes('Unarchived “Boss” and 2 sub sessions.')`);
+  assert.deepEqual(onDisk(s).archived, {});
+  assert.deepEqual(page.problems, []);
+});
+
+test('a parent with a running sub session reads Stop and archive and asks with the count, and confirming stops the sub session too', { skip, timeout }, async t => {
+  const s = await start({ sessions: [...SESSIONS, ...FAMILY], groups: GROUPS, claude: true });
+  const { token } = await signIn(s);
+  assert.equal((await request(s, 'POST', '/api/sessions/grand/send', { headers: as(token), json: { text: 'begin a session' } })).status, 200);
+  const page = await appPage(t, s.origin, '#/s/boss');
+  await page.until(`${LABEL} === 'Stop and archive'`);
+  await page.click(BUTTON);
+  await page.until(`document.querySelector('#ask-title')?.textContent === 'Stop and archive “Boss”?'`);
+  assert.match(await page.evaluate(`document.querySelector('[data-slot="alert-dialog-description"]')?.textContent ?? document.querySelector('#ask-title').closest('[role="alertdialog"]').textContent`), /1 sub session is running or waiting on you\. Archiving stops it/);
+  await page.evaluate(`document.querySelector('[data-slot="alert-dialog-cancel"]').click()`);
+  await page.until(`!document.querySelector('#ask-title')`);
+  assert.deepEqual(onDisk(s).archived ?? {}, {});
+
+  await page.click(BUTTON);
+  await page.until(`!!document.querySelector('#ask-title')`);
+  await page.evaluate(`document.querySelector('[data-slot="alert-dialog-action"]').click()`);
+  await page.until(`${NOTE}.includes('Stopped and archived “Boss” and 2 sub sessions.')`);
+  assert.deepEqual(Object.keys(onDisk(s).archived).sort(), ['boss', 'grand', 'kid']);
+  await until(() => cliCalls(s).some(c => c.control === 'interrupt'));
+  assert.deepEqual(page.problems, []);
+});
+
 test('a group\'s chat, a section\'s chat and a new session have no Archive button', { skip, timeout }, async t => {
   const s = await start({ sessions: SESSIONS, groups: GROUPS, claude: true });
   const group = await appPage(t, s.origin, '#/g/cg-b');

@@ -62,25 +62,41 @@ export const sessions = n => (n === 1 ? '1 session' : `${n} sessions`);
 
 const sentence = text => (/[.!?]$/.test(text) ? text : `${text}.`);
 
-// What the question before a batch says: how many of the sessions are running, and what archiving them does.
-export function stopDetail(running) {
-  const one = running === 1;
+export const subSessions = n => `${n} sub session${n === 1 ? '' : 's'}`;
+
+// " and 3 sub sessions" after the name of a session whose family went or came back with it, and nothing when none did.
+export const withSubs = n => (n ? ` and ${subSessions(n)}` : '');
+
+// What the question says before archiving one session whose family has sessions running or waiting on the owner. `self` is whether the session is one of them.
+export function familyDetail(subs, self) {
+  const one = subs === 1;
+  if (self) return `It and ${subSessions(subs)} under it are running or waiting on you. Archiving stops them and denies any approval they are waiting for. Undo brings the sessions back, but not the turns.`;
+  return `${one ? '1 sub session is' : `${subs} sub sessions are`} running or waiting on you. Archiving stops ${one ? 'it' : 'them'} and denies any approval ${one ? 'it is' : 'they are'} waiting for. Undo brings the sessions back, but not the ${one ? 'turn' : 'turns'}.`;
+}
+
+// What the question before a batch says: how many of the sessions are running, and what archiving them does. `subs` is how many sessions below
+// them are running or waiting too, which archiving takes along.
+export function stopDetail(running, subs = 0) {
+  const n = running + subs;
+  const one = n === 1;
+  if (subs) return `${one ? '1 session is' : `${n} sessions are`} running or waiting on you, ${running ? `${subs} of them under a picked session` : 'all under a picked session'}. Archiving stops Claude's turn in ${one ? 'it' : 'each'} and denies any approval it is waiting for. Undo brings the sessions back, but not the ${one ? 'turn' : 'turns'}.`;
   return `${one ? '1 of them is running' : `${running} of them are running`}. Archiving stops Claude's turn in ${one ? 'it' : 'each'} and denies any approval it is waiting for. Undo brings the sessions back, but not the ${one ? 'turn' : 'turns'}.`;
 }
 
-// The note once a batch has been archived, or part of it. `reason` is the first refusal, and is read only when some were not archived.
-export function archiveNote({ archived, total, stopped = 0, reason = '' }) {
-  const stops = stopped ? ` and stopped ${stopped}` : '';
-  if (archived === total) return `Archived ${sessions(total)}${stops}.`;
+// The note once a batch has been archived, or part of it. `reason` is the first refusal, and is read only when some were not archived. `subs` is
+// how many sessions below the archived ones went with them.
+export function archiveNote({ archived, total, stopped = 0, subs = 0, reason = '' }) {
+  const stops = stopped ? `${subs ? ',' : ''} and stopped ${stopped}` : '';
+  if (archived === total) return `Archived ${sessions(total)}${withSubs(subs)}${stops}.`;
   if (!archived) return `Not archived: ${sentence(reason)}`;
-  return `Archived ${archived} of ${sessions(total)}${stops}. Not archived: ${sentence(reason)}`;
+  return `Archived ${archived} of ${sessions(total)}${withSubs(subs)}${stops}. Not archived: ${sentence(reason)}`;
 }
 
 // The note once a batch has been brought back, or part of it.
-export function unarchiveNote({ restored, total, reason = '' }) {
-  if (restored === total) return `Unarchived ${sessions(total)}.`;
+export function unarchiveNote({ restored, total, subs = 0, reason = '' }) {
+  if (restored === total) return `Unarchived ${sessions(total)}${withSubs(subs)}.`;
   if (!restored) return `Not unarchived: ${sentence(reason)}`;
-  return `Unarchived ${restored} of ${sessions(total)}. Not unarchived: ${sentence(reason)}`;
+  return `Unarchived ${restored} of ${sessions(total)}${withSubs(subs)}. Not unarchived: ${sentence(reason)}`;
 }
 
 export const supportsNewParent = ix => !!ix?.features?.newParent;

@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { archiveSession, findSessions, groupNamed, layoutSummary, listChips, moveSession, setSessionTitle, unarchiveSession } from '../lib/layout-tools.mjs';
+import { descendantsOf } from '../public/ui/sub-rules.js';
 import { handleMcp, LAYOUT_READ_NAMES, LAYOUT_WRITE_NAMES, SEND_NAME, SUB_READ_NAMES, TOOL_NAMES, TREE_WRITE_NAMES } from '../lib/tools.mjs';
 
 const NOW = Date.parse('2026-10-28T06:00:00.000Z');
@@ -23,7 +24,7 @@ const GROUPS = [{ id: 'cg-a', name: 'Needs Review' }, { id: 'cg-b', name: 'Backl
 const refused = (run, expected) => assert.throws(run, { refusal: true, message: expected });
 const status = (code, message) => Object.assign(new Error(message), { status: code });
 
-// The fakes answer as the server's do: an error with a status for a session that cannot change, and 'running', 'elsewhere' or 'done' for an archive.
+// The fakes answer as the server's do: an error with a status for a session that cannot change, and for an archive { was: 'done', archivedSubs } or, for 'running' and 'elsewhere', whether the session itself and how many below it stand in the way as { self, subs }.
 function subsFor({ self = 'top', rows = ROWS } = {}) {
   const calls = [];
   const editable = id => {
@@ -36,13 +37,20 @@ function subsFor({ self = 'top', rows = ROWS } = {}) {
     calls,
     lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived) }),
     archive(id) {
-      const found = editable(id);
-      if (found.state === 'active') return 'elsewhere';
-      if (found.state !== 'idle') return 'running';
+      const root = editable(id);
+      const below = descendantsOf(rows, id).filter(r => !r.archived);
+      const away = below.filter(r => r.state === 'active').length;
+      if (away || root.state === 'active') return { was: 'elsewhere', self: root.state === 'active', subs: away };
+      const busy = below.filter(r => r.state !== 'idle').length;
+      if (busy || root.state !== 'idle') return { was: 'running', self: root.state !== 'idle', subs: busy };
       calls.push(['archive', id]);
-      return 'done';
+      return { was: 'done', archivedSubs: below.length };
     },
-    unarchive(id) { editable(id); calls.push(['unarchive', id]); },
+    unarchive(id) {
+      editable(id);
+      calls.push(['unarchive', id]);
+      return rows.filter(r => r.archived && r.via === id).length;
+    },
     rename(id, title) {
       editable(id);
       if (!String(title).trim()) throw status(400, 'Give it a name.');
@@ -71,6 +79,41 @@ test('archiving is refused for the session itself, a running or waiting one, one
   refused(() => archiveSession({ session_id: 'nobody' }, subs), 'No session with that id on this Mac.');
   for (const session_id of [undefined, null, '', '  ', 5, ['review']]) refused(() => archiveSession({ session_id }, subs), 'Give the id of the session as session_id.');
   assert.deepEqual(subs.calls, []);
+});
+
+const FAMILY = [
+  row('top'),
+  row('boss', { title: 'Boss' }),
+  row('kid', { title: 'Kid', via: 'boss' }),
+  row('grand', { title: 'Grand', via: 'kid', state: 'idle' }),
+  row('stale', { title: 'Stale', via: 'boss', archived: true }),
+];
+
+test('archiving a parent says how many sub sessions went with it, and one with nothing below it says what it always did', () => {
+  const subs = subsFor({ rows: FAMILY });
+  assert.equal(archiveSession({ session_id: 'boss' }, subs), 'Archived "Boss" [boss] and the 2 sub sessions under it. Their chats are closed and they are out of the sidebar\'s lists. unarchive_session brings them back.');
+  assert.equal(archiveSession({ session_id: 'grand' }, subs), 'Archived "Grand" [grand]. Its chat is closed and it is out of the sidebar\'s lists. unarchive_session brings it back.');
+  assert.match(archiveSession({ session_id: 'kid' }, subs), /^Archived "Kid" \[kid\] and the 1 sub session under it\. /);
+  assert.deepEqual(subs.calls, [['archive', 'boss'], ['archive', 'grand'], ['archive', 'kid']]);
+});
+
+test('archiving is refused when a session below the parent is running or in another app, and the refusal names how many', () => {
+  const busy = subsFor({ rows: FAMILY.map(r => (r.id === 'grand' ? { ...r, state: 'working' } : r)) });
+  refused(() => archiveSession({ session_id: 'boss' }, busy), 'Refused: 1 session under "Boss" [boss] is running a turn or waiting for the owner to approve something, and archiving it would stop it. Try again once it is idle, or tell the owner to archive it from the app.');
+  const many = subsFor({ rows: FAMILY.map(r => (['kid', 'grand'].includes(r.id) ? { ...r, state: 'waiting' } : r)) });
+  refused(() => archiveSession({ session_id: 'boss' }, many), /^Refused: 2 sessions under "Boss" \[boss\] are running a turn or waiting for the owner to approve something, and archiving them would stop them\. Try again once they are idle/);
+  const away = subsFor({ rows: FAMILY.map(r => (r.id === 'kid' ? { ...r, state: 'active' } : r)) });
+  refused(() => archiveSession({ session_id: 'boss' }, away), /^Refused: 1 session under "Boss" \[boss\] looks to be running in another app/);
+  const both = subsFor({ rows: FAMILY.map(r => (['boss', 'kid'].includes(r.id) ? { ...r, state: 'working' } : r)) });
+  refused(() => archiveSession({ session_id: 'boss' }, both), /^Refused: "Boss" \[boss\] and 1 session under it are running a turn or waiting for the owner to approve something, and archiving them would stop them\./);
+  const alone = subsFor({ rows: FAMILY.map(r => (r.id === 'boss' ? { ...r, state: 'working' } : r)) });
+  refused(() => archiveSession({ session_id: 'boss' }, alone), /^Refused: "Boss" \[boss\] is running a turn or waiting for the owner/);
+  assert.deepEqual([busy, many, away, both, alone].flatMap(subs => subs.calls), []);
+});
+
+test('unarchiving says how many sub sessions came back with the session', () => {
+  const rows = [row('boss', { archived: true, title: 'Boss' }), row('kid', { archived: true, via: 'boss' }), row('grand', { archived: true, via: 'boss' })];
+  assert.equal(unarchiveSession({ session_id: 'boss' }, subsFor({ rows })), 'Unarchived "Boss" [boss] and the 2 sub sessions archived with it. They are back in their places in the sidebar with no process running, and send_session starts each.');
 });
 
 test('unarchiving brings a session back, answers plainly for one that is not archived, and refuses a group\'s chat and an unknown id', () => {
@@ -162,6 +205,30 @@ test('a chip names its group the way a move does, and keeps its own refusal word
   }
   const typed = rpc('tools/call', { name: 'spawn_task', arguments: { title: 't', prompt: 'p', group: 5 } }, { subs: subsFor(), chips: chipsOf([]) }).result;
   assert.equal(typed.content[0].text, 'spawn_task group must be the name of a group or its id.');
+});
+
+test('the archive card says it also archives the sub sessions below, but counts only those not archived already', () => {
+  const subs = subsFor({ rows: FAMILY });
+  const card = id => layoutSummary('archive_session', { session_id: id }, subs, GROUPS);
+  assert.equal(card('boss'), 'archive "Boss" [boss] and its 2 sub sessions');
+  assert.equal(card('kid'), 'archive "Kid" [kid] and its 1 sub session');
+  assert.equal(card('grand'), 'archive "Grand" [grand]');
+  assert.equal(layoutSummary('unarchive_session', { session_id: 'boss' }, subs, GROUPS), 'unarchive "Boss" [boss]');
+});
+
+test('the unarchive card counts the sessions that come back with it: those archived with it, and under it unless it started the batch', () => {
+  const rows = [
+    row('top'),
+    row('boss', { title: 'Boss', archived: true }),
+    row('kid', { title: 'Kid', via: 'boss', archived: true, archivedWith: 'boss' }),
+    row('grand', { title: 'Grand', via: 'kid', archived: true, archivedWith: 'boss' }),
+    row('apart', { title: 'Apart', via: 'boss', archived: true }),
+    row('moved', { title: 'Moved', archived: true, archivedWith: 'boss' }),
+  ];
+  const card = id => layoutSummary('unarchive_session', { session_id: id }, subsFor({ rows }), GROUPS);
+  assert.equal(card('boss'), 'unarchive "Boss" [boss] and its 3 sub sessions');
+  assert.equal(card('kid'), 'unarchive "Kid" [kid] and its 1 sub session');
+  assert.equal(card('apart'), 'unarchive "Apart" [apart]');
 });
 
 test('the card for each write names the session by its title and id and says what is done to it, shows an id that is no session as unknown, and says when a group\'s chat can read what it moves', () => {

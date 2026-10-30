@@ -572,7 +572,7 @@ test('after a card is archived the focus is on the next card\'s title link, else
   assert.deepEqual(page.problems, []);
 });
 
-test('a session that had sessions under it hands the focus to the first of them, which move up into its place, before any other card', { skip, timeout }, async t => {
+test('a session that had sessions under it takes them with it, and the focus moves on to the next card', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/fam');
   await page.until(`document.querySelectorAll('[data-archive-card]').length === 2`, 15_000);
   const cards = await order(page);
@@ -581,7 +581,8 @@ test('a session that had sessions under it hands the focus to the first of them,
   await page.evaluate(`document.querySelector(${JSON.stringify(archiveOf('fam-a'))}).focus()`);
   await page.press('Enter');
   await page.until(`!document.querySelector(${JSON.stringify(archiveOf('fam-a'))})`);
-  await onTitle(page, 'fam-a-kid');
+  await onTitle(page, 'fam-b');
+  assert.equal(await page.evaluate(`!!document.querySelector(${JSON.stringify(archiveOf('fam-a-kid'))})`), false, 'the child went with its parent');
   assert.deepEqual(page.problems, []);
 });
 

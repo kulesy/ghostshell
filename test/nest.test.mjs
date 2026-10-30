@@ -210,16 +210,15 @@ test('moving or pinning a parent moves its children with it, and writes no link'
   assert.deepEqual(onDisk(s).parents, {});
 });
 
-test('archiving a parent moves its children up to its place, and bringing it back nests them again', async () => {
+test('archiving a parent archives its children with it, and bringing it back nests them again', async () => {
   const { s, token } = await ready();
   assert.equal((await call(s, token, 'archive', { id: 'boss', archived: true })).status, 200);
   const ix = await index(s, token);
-  assert.deepEqual(places(ix).groups, { 'cg-work': ['Kid', 'Kid two', 'Peer'], 'cg-home': [] });
-  assert.deepEqual(['kid', 'kid2'].map(id => rowOf(ix, id).parent), [null, null]);
-  assert.deepEqual(titles(await archivedList(s, token)).sort(), ['Archived one', 'Boss']);
+  assert.deepEqual(places(ix).groups, { 'cg-work': ['Peer'], 'cg-home': [] });
+  assert.deepEqual(titles(await archivedList(s, token)).sort(), ['Archived one', 'Boss', 'Kid', 'Kid two']);
 
   assert.equal((await call(s, token, 'archive', { id: 'pin', archived: true })).status, 200);
-  assert.deepEqual(places(await index(s, token)).pinned, ['Pinned kid']);
+  assert.deepEqual(places(await index(s, token)).pinned, []);
 
   await call(s, token, 'archive', { id: 'boss', archived: false });
   await call(s, token, 'archive', { id: 'pin', archived: false });
@@ -232,7 +231,19 @@ test('archiving a parent moves its children up to its place, and bringing it bac
   assert.deepEqual(onDisk(s).parents, {}, 'no link was written for the children');
 });
 
-test('archiving a child archives only the child, and the archive view of the list still shows an archived parent with its children', async () => {
+test('a child brought back alone from an archived parent moves up to its place, and comes back under the parent with it', async () => {
+  const { s, token } = await ready();
+  await call(s, token, 'archive', { id: 'boss', archived: true });
+  await call(s, token, 'archive', { id: 'kid', archived: false });
+  const ix = await index(s, token);
+  assert.deepEqual(places(ix).groups['cg-work'], ['Kid', 'Peer']);
+  assert.equal(rowOf(ix, 'kid').parent, null);
+  await call(s, token, 'archive', { id: 'boss', archived: false });
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss [Kid, Kid two]', 'Peer']);
+  assert.deepEqual(onDisk(s).parents, {});
+});
+
+test('archiving a child archives it with the sessions below it and no more, and the archive view of the list still shows an archived parent with its children', async () => {
   const { s, token } = await ready();
   await call(s, token, 'archive', { id: 'kid', archived: true });
   assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss [Kid two]', 'Peer']);
@@ -241,7 +252,7 @@ test('archiving a child archives only the child, and the archive view of the lis
   await call(s, token, 'archive', { id: 'kid', archived: false });
   await call(s, token, 'archive', { id: 'boss', archived: true });
   assert.deepEqual(places(await index(s, token, '?archived=1')).groups['cg-work'], ['Boss [Kid, Kid two]', 'Peer']);
-  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Kid', 'Kid two', 'Peer']);
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer']);
 });
 
 // Peer holds Boss and Pal, and Kid and Kid two link to Boss, so they show under Peer with no link to it of their own. Pal links to Peer.
@@ -292,13 +303,21 @@ for (const way of WAYS) {
     }
   });
 
-  test(`${way}: archiving Peer moves Boss and Pal up to its place with Kid and Kid two still under Boss, writes no link, and they nest under it again when it returns`, async () => {
+  test(`${way}: archiving Peer archives Boss, Pal, Kid and Kid two with it, writes no link, and they nest under it again when it returns`, async () => {
     const { s, token, linked } = await underPeer(way);
-    assert.equal((await call(s, token, 'archive', { id: 'peer', archived: true })).status, 200);
-    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss [Kid, Kid two]', 'Pal', 'Other']);
+    assert.equal((await call(s, token, 'archive', { id: 'peer', archived: true })).body().subs, 4);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Other']);
     assert.deepEqual(onDisk(s).parents, linked);
     await call(s, token, 'archive', { id: 'peer', archived: false });
     assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Pal, Boss, Kid, Kid two]', 'Other']);
+  });
+
+  test(`${way}: Boss brought back alone from an archived Peer moves up to its place with Kid and Kid two still under it`, async () => {
+    const { s, token, linked } = await underPeer(way);
+    await call(s, token, 'archive', { id: 'peer', archived: true });
+    assert.equal((await call(s, token, 'archive', { id: 'boss', archived: false })).body().subs, 2);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss [Kid, Kid two]', 'Other']);
+    assert.deepEqual(onDisk(s).parents, linked);
   });
 }
 
@@ -344,12 +363,10 @@ test('a session that leaves its family hands the ones straight under it to the s
   }
 });
 
-test('archiving a session in a family writes no link, as the ones under it move up to its place and go back under it when it returns', async () => {
+test('archiving a session in a family writes no link, as the ones under it go with it and come back under it when it returns', async () => {
   const { s, token } = await ready({ sessions: LINE });
   await call(s, token, 'archive', { id: 'a', archived: true });
-  const archived = await index(s, token);
-  assert.deepEqual(titles(rowOf(archived, 'head').children), ['Charlie', 'Bravo', 'Delta']);
-  assert.deepEqual([rowOf(archived, 'b').via, rowOf(archived, 'd').via], ['head', 'b']);
+  assert.deepEqual(titles(rowOf(await index(s, token), 'head').children), ['Charlie']);
   await call(s, token, 'archive', { id: 'a', archived: false });
   assert.deepEqual(titles(rowOf(await index(s, token), 'head').children), ['Charlie', 'Alpha', 'Bravo', 'Delta']);
   assert.deepEqual(onDisk(s).parents, {});
@@ -409,6 +426,8 @@ test('a session cannot nest under its own child when the link between them is hi
 test('a session archived here cannot be nested under its own child either, and still has its child under it when it comes back', async () => {
   const { s, token } = await ready({ sessions: [{ id: 'a', title: 'A', group: 'cg-work', ago: 5 }, { id: 'b', title: 'B', parent: 'a', ago: 1 }] });
   await call(s, token, 'archive', { id: 'a', archived: true });
+  assert.equal((await call(s, token, 'nest', { id: 'a', parent: 'b' })).body().error, 'That session is archived.', 'B went with A, so it is archived too');
+  await call(s, token, 'archive', { id: 'b', archived: false });
   const before = fs.readFileSync(s.layout, 'utf8');
   const res = await call(s, token, 'nest', { id: 'a', parent: 'b' });
   assert.deepEqual([res.status, res.body()], [400, { error: 'A session cannot nest under itself or its own child.' }]);
