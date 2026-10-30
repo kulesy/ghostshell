@@ -47,7 +47,7 @@ Capcom allows its own tools by exact name, with no approval card.
 
 **Amended 2026-10-28, sending from a group's chat.** The chat of a group or a built-in section gets `send_session` too, with the same card, so every chat can message any other session (see [Give each group a session of its own](20261023-a-session-for-each-group.md)).
 
-**Amended 2026-10-28, layout tools.** Every chat given `ctx.subs` also gets six tools: `archive_session`, `unarchive_session`, `set_session_title`, `move_session_to_group`, `list_chips` and `find_sessions`. The four writes run the server's own functions and show a card in every mode with no Always allow, and the two reads run with no card (see [Give sessions tools to find, archive, rename and move sessions, and read chips](20261028-layout-tools-for-sessions.md)).
+**Amended 2026-10-28, layout tools.** Every chat given `ctx.subs` also gets six tools: `archive_session`, `unarchive_session`, `set_session_title`, `move_session_to_group`, `list_chips` and `find_sessions`. The four writes run the server's own functions and show a card in every mode with no Always allow, except a rename or move within an ordinary chat's own tree (amended 2026-10-30), and the two reads run with no card (see [Give sessions tools to find, archive, rename and move sessions, and read chips](20261028-layout-tools-for-sessions.md)).
 
 ### Consequences
 
