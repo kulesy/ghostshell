@@ -59,6 +59,9 @@ export const foldMustOpen = (moved, opened, focused) => moved.some(id => !!opene
 
 export const finishedLabel = n => `Finished (${n})`;
 
+// The header button's name carries the counts, since its running mark is colour alone.
+export const agentsButtonName = agents => `Subagents: ${summaryLine(agents)}`;
+
 // "Sonnet 5.5" from claude-sonnet-5-5, "Haiku" from the alias, an id the page cannot read as it came, and nothing for no model.
 export const modelName = model => (typeof model === 'string' ? modelLabel(model.trim()) : '');
 

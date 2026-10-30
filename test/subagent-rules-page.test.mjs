@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agentsOn, DETAIL_POLL_MS, elapsedOf, elapsedText, finishedLabel, foldMustOpen, heardAgents, metaOf, modelName, movedToFinished, partsOf, pollsDetail, summaryLine, tabOffered, titleOf,
+  agentsButtonName, agentsOn, DETAIL_POLL_MS, elapsedOf, elapsedText, finishedLabel, foldMustOpen, heardAgents, metaOf, modelName, movedToFinished, partsOf, pollsDetail, summaryLine, tabOffered, titleOf,
 } from '../public/ui/subagent-rules.js';
 
 const NOW = Date.parse('2026-10-26T10:00:00.000Z');
@@ -66,6 +66,11 @@ test('the summary counts what is running and what has finished, and leaves out a
   assert.equal(summaryLine(list.slice(2)), '5 finished');
   assert.equal(summaryLine([]), '');
   assert.equal(finishedLabel(5), 'Finished (5)');
+});
+
+test('the header button is named with the counts, since its running mark is colour alone', () => {
+  assert.equal(agentsButtonName([agent('a'), agent('b', { state: 'done' })]), 'Subagents: 1 running, 1 finished');
+  assert.equal(agentsButtonName([agent('b', { state: 'done' })]), 'Subagents: 1 finished');
 });
 
 test('a model is named short, an id the page cannot read is shown as given, and none shows nothing', () => {
