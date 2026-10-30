@@ -243,7 +243,7 @@ test('a phone is shown the tab in the panel that covers the chat, and a card doe
   assert.deepEqual(page.problems, []);
 });
 
-test('a helper that is open and has focus keeps both when it ends and moves to the Finished fold', { skip, timeout }, async t => {
+test('a helper that is open and has focus keeps both when it ends and moves to the Finished fold, and the header dot goes', { skip, timeout }, async t => {
   const page = await appPage(t, `#/s/${MOVER}`);
   await agentsTab(page);
   await page.click('.agent[data-state="running"] .agent-card');
@@ -255,5 +255,7 @@ test('a helper that is open and has focus keeps both when it ends and moves to t
   await page.until(`document.activeElement === document.querySelector('.agent[data-state="done"] .agent-card')`);
   assert.equal(await page.evaluate(`document.querySelector('.agents .status-fold').getAttribute('aria-expanded')`), 'true');
   await page.until(`!!document.querySelector('.agent[data-state="done"] .agent-reply')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('#agentsButton .agents-mark')`), false, 'the dot goes with the last running helper');
+  assert.equal(await page.evaluate(`document.querySelector('#agentsButton').getAttribute('aria-label')`), 'Subagents: 1 finished');
   assert.deepEqual(page.problems, []);
 });
