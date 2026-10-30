@@ -49,7 +49,8 @@ function without(target, leave) {
   })));
 }
 
-// A server with four entries in scheduled.json: two to start in days, one skipped as too late and one started, with its session in Home.
+// A server with five entries in scheduled.json: two to start in days, one skipped as too late, one started with its session in Home and
+// one that started and kept no session.
 async function furnished() {
   const first = await start({
     sessions: [{ id: 'done-1', title: 'Check the backups', ago: 5 }],
@@ -66,6 +67,7 @@ async function furnished() {
       entry('later', 'Write the notes', { at: at(9) }),
       entry('missed', 'Missed one', { at: at(-2), status: 'skipped', lastError: 'It was 48 h late, so it did not start.' }),
       entry('ran', 'Check the backups', { at: at(-1), status: 'started', sessionId: 'done-1', startedAt: at(-1) }),
+      entry('crashed', 'Crashed start', { at: at(-1.5), status: 'started', startedAt: at(-1.5) }),
     ],
   }, null, 2));
   return Object.assign(await restart(first), { work });
@@ -133,8 +135,9 @@ const saved = () => JSON.parse(fs.readFileSync(path.join(app.state, 'scheduled.j
 
 test('the list shows what starts soonest first, then the rest, each with its status, folder and group, and a link to the session it started', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { hash: '#/scheduled' });
-  await page.until(`document.querySelectorAll('.routine').length >= 4`);
-  assert.deepEqual(await titles(page), ['Look at the R&D doc', 'Write the notes', 'Check the backups', 'Missed one']);
+  await page.until(`document.querySelectorAll('.routine').length >= 5`);
+  assert.deepEqual(await titles(page), ['Look at the R&D doc', 'Write the notes', 'Check the backups', 'Crashed start', 'Missed one']);
+  assert.match(await text(page, '[data-scheduled="crashed"] .routine-alert'), /Started, but no session was recorded/);
   assert.match(await text(page, '[data-scheduled="soon"] .routine-schedule'), /^Starts in 1 day|^Starts in 2 days|^Starts in 47 h/);
   const where = id => page.evaluate(`[...document.querySelector('[data-scheduled="${id}"] .routine-times').children].map(el => el.textContent)`);
   assert.deepEqual(await where('soon'), [app.work, 'Group Work']);
@@ -152,7 +155,7 @@ test('the list shows what starts soonest first, then the rest, each with its sta
 
 test('the menu of a pending row has Start now, Edit, Cancel and Delete, and Delete asks first with Cancel focused', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { hash: '#/scheduled' });
-  await page.until(`document.querySelectorAll('.routine').length >= 4`);
+  await page.until(`document.querySelectorAll('.routine').length >= 5`);
   await page.click('[data-scheduled="later"] .routine-more');
   await page.until(`!!document.querySelector('${MENU}')`);
   assert.deepEqual(await menuOf(page), ['Start now', 'Edit', 'Cancel', 'Delete']);
@@ -171,17 +174,18 @@ test('the menu of a pending row has Start now, Edit, Cancel and Delete, and Dele
   assert.deepEqual(page.problems, []);
 });
 
-test('Home has a Scheduled section with the pending and skipped entries, a Manage button, and none that started', { skip, timeout }, async t => {
+test('Home has a Scheduled section with the pending and skipped entries and a start that kept no session, a Manage button, and none that started cleanly', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin);
   await page.until(`!!document.querySelector('.group-head[data-key="scheduled"]')`);
   assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="scheduled"]').closest('.bar').querySelector('a.head-tool[href="#/scheduled"]').getAttribute('aria-label')`), 'Manage scheduled sessions');
   const rows = await page.evaluate(`[...document.querySelectorAll('a.row[data-scheduled]')].map(a => [a.dataset.scheduled, a.querySelector('.row-title').textContent, a.querySelector('.row-idle').textContent, a.getAttribute('href'), a.querySelector('.row-idle').dataset.tone ?? null])`);
-  assert.deepEqual(rows.map(r => r[0]), ['soon', 'later', 'missed']);
+  assert.deepEqual(rows.map(r => r[0]), ['soon', 'later', 'crashed', 'missed']);
   assert.match(rows[0][2], /^Starts /);
   assert.equal(rows[0][3], '#/scheduled/soon');
-  assert.equal(rows[2][2], 'Skipped: It was 48 h late, so it did not start.');
-  assert.equal(rows[2][3], '#/scheduled');
-  assert.equal(rows[2][4], 'problem');
+  assert.deepEqual(rows[2].slice(2), ['Started, but no session was recorded.', '#/scheduled', 'problem']);
+  assert.equal(rows[3][2], 'Skipped: It was 48 h late, so it did not start.');
+  assert.equal(rows[3][3], '#/scheduled');
+  assert.equal(rows[3][4], 'problem');
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => [a.textContent, a.getAttribute('href')])`), [['Routines', '#/routines'], ['Scheduled', '#/scheduled'], ['Passkeys', '#/passkeys']]);
   assert.deepEqual(page.problems, []);
 });
@@ -212,15 +216,16 @@ test('the footer link opens the page and is marked as the current one', { skip, 
   assert.deepEqual(page.problems, []);
 });
 
-test('the search on the Scheduled chip has Scheduled sessions and Schedule a session, and Enter opens the page', { skip, timeout }, async t => {
+test('the search on the Scheduled chip has the two actions and then the entries Home shows, and Enter opens the page', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin);
   await page.until(`!!document.querySelector('.group-head[data-key="scheduled"]')`);
   await page.click('button.find');
   await page.until(`!!document.querySelector('.chips .chip')`);
   await page.evaluate(`[...document.querySelectorAll('.chips .chip')].find(b => b.textContent === 'Scheduled').setAttribute('data-picked', '')`);
   await page.click('.chip[data-picked]');
-  await page.until(`document.querySelectorAll('[data-part="hit-title"]').length === 2`);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[data-part="hit-title"]')].map(el => el.textContent)`), ['Scheduled sessions', 'Schedule a session']);
+  await page.until(`document.querySelectorAll('[data-part="hit-title"]').length === 6`);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[data-part="hit-title"]')].map(el => el.textContent)`),
+    ['Scheduled sessions', 'Schedule a session', 'Look at the R&D doc', 'Write the notes', 'Crashed start', 'Missed one']);
   await page.press('Enter');
   await page.until(`location.hash === '#/scheduled'`);
   assert.deepEqual(page.problems, []);
@@ -236,7 +241,7 @@ test('a refused form shows each bad field and puts the focus on the first, and a
   await page.until(`!!document.querySelector('.routine-error:not(:empty)')`);
   assert.equal(await page.evaluate(`[...document.querySelectorAll('.routine-error')].filter(el => el.textContent).length`), 4);
   await hasFocus(page, '#scheduled-title');
-  assert.equal(saved().length, 4);
+  assert.equal(saved().length, 5);
   await type(page, '#scheduled-title', 'Tidy the desk');
   await type(page, '#scheduled-at', localIso(Date.now() + 5 * DAY).slice(0, 16));
   await type(page, '#scheduled-cwd', app.work);

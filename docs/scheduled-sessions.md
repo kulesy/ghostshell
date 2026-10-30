@@ -9,9 +9,11 @@ GhostShell keeps them in `scheduled.json` in its state folder. It is a separate 
 | Status | What it means |
 | --- | --- |
 | `pending` | Waiting for its time. Only a pending entry can be started now, edited or cancelled. |
-| `started` | The session has started. The entry stays, with a link to the session, and never fires again. |
+| `started` | The session has started. The entry stays, with a link to the session, and never fires again. One that started and kept no session id shows "Started, but no session was recorded" in red, and stays in Home's Scheduled section. |
 | `skipped` | It did not start, and says why. |
 | `cancelled` | You called it off. The entry stays until you delete it. |
+
+Any other status, such as one typed by hand with a slip in it, is a problem: the row says "Unknown status" in red, Home keeps it in the Scheduled section, and the server log says so once. The entry never starts.
 
 ## The Scheduled sessions page
 
@@ -27,17 +29,19 @@ Delete asks first. It removes the entry and keeps any session it started.
 
 ## In Home
 
-Home has a Scheduled section above Routines, shown when there is something in it. It lists the pending entries and the skipped ones. A pending row says "Starts" and the day and time under its title. A skipped row says why in red, and a pending row waiting to retry says when in amber. A row opens its edit form, or the page for a skipped one, and has the page's menu on its ... button and its right-click. Once an entry starts, its row leaves the section and the session is in the list as any other. A skipped entry stays until you delete it.
+Home has a Scheduled section above Routines, shown when there is something in it. It lists the pending entries, the skipped ones, and any entry with a problem, such as a start that kept no session. The Scheduled chip in Ctrl+K lists the same entries under the two actions. A pending row says "Starts" and the day and time under its title. A skipped row says why in red, and a pending row waiting to retry says when in amber. A row opens its edit form, or the page for a skipped one, and has the page's menu on its ... button and its right-click. Once an entry starts, its row leaves the section and the session is in the list as any other. A skipped entry stays until you delete it.
 
 A scheduled row is not a session. It cannot be selected, archived or dragged, and the arrow keys walk onto it like any other row.
 
 ## When it starts
 
-GhostShell checks every 30 seconds, on the same check as the routines, and once when it starts. An entry that is due starts a new session in its folder with its model, effort and permission mode. The session's title is the entry's title. The first message is the prompt inside a `<scheduled-task>` wrapper, with the note that the session is automated and nobody is there to answer. The wrapper is marked `once="true"`, so the session shows as a normal session and not as a run of a routine.
+GhostShell checks every 30 seconds, on the same check as the routines, and once when it starts. An entry that is due starts a new session in its folder with its model, effort and permission mode. The session's title is the entry's title. The first message is the prompt inside a `<scheduled-task>` wrapper, with the note that the session is automated and nobody is there to answer. The wrapper is marked `once="true"`, and the preamble calls it "the prompt" and not "the task file". The chat shows it as a scheduled session with its own divider, and not as a run of a routine. A scheduled session is not handed to the Desktop app, even when that setting is on.
 
 If the entry has a group, the session starts in it. If the group has since been deleted, the session starts on Home and the entry's `lastError` says so.
 
-GhostShell marks an entry `started` before it starts the session, so a crash at that moment cannot start it twice.
+GhostShell marks an entry `started` before it starts the session, so a crash at that moment cannot start it twice. It also remembers, until it restarts, each entry it has started and the time it started it for. If a hand edit or an old copy of the file saves such an entry back as `pending`, the next check puts it back to `started` and does not start it again. Change the entry's time to start it again, or add a new entry.
+
+A first start also waits for a free place. Routines and scheduled sessions share one limit of three automated sessions at once, so a due entry waits while three of them are working, and starts when one finishes.
 
 ## Missed times
 
@@ -47,7 +51,7 @@ If GhostShell was not running at the time, the entry starts as soon as GhostShel
 
 If the session cannot start, for example because the Claude CLI was being updated, GhostShell queues the entry and tries again. It keeps the queue in `scheduled.json` as `retry`, so it survives a restart. The wait after the first four failed tries is 1, 2, 5 and 10 minutes, and 15 minutes after every later one. The page and Home show when the next try is and what the last one said.
 
-The retry stops when the session starts, or when the next try would come 12 hours or more after the entry's time, which marks the entry `skipped`. It also waits while a restart of GhostShell is under way, and while three scheduled sessions are already working. Start now ignores the queue.
+The retry stops when the session starts, or when the next try would come 12 hours or more after the entry's time, which marks the entry `skipped`. It also waits while a restart of GhostShell is under way, and while three automated sessions, routines and scheduled sessions together, are already working. Start now ignores the queue and the limit.
 
 Only a start that fails is queued. A folder that does not exist, or a model, effort or mode GhostShell does not know, is a problem with the entry, so trying again would fail the same way. The entry is marked `skipped` with the reason.
 
@@ -70,7 +74,7 @@ You can edit `scheduled.json` directly. The file is an object with a `scheduled`
 | `effort` | No | `low`, `medium`, `high`, `xhigh` or `max`, or `null`. | `null` |
 | `mode` | No | `manual`, `acceptEdits`, `plan`, `auto` or `bypassPermissions`, or `null`. | `null` |
 | `group` | No | The id of a group, or `null` to start on Home. | `null` |
-| `status` | No | `pending`, `started`, `skipped` or `cancelled`. | `pending` |
+| `status` | No | `pending`, `started`, `skipped` or `cancelled`. Anything else is shown as a problem. | `pending` |
 | `sessionId` | Filled in | The session it started. | `null` |
 | `startedAt` | Filled in | When it started. | `null` |
 | `lastError` | Filled in | Why it was skipped, or why the last try failed. | `null` |

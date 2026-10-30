@@ -55,12 +55,13 @@ export function statusWords(s, now = Date.now()) {
   if (s.status === 'started') return 'Started';
   if (s.status === 'skipped') return 'Skipped';
   if (s.status === 'cancelled') return 'Cancelled';
+  if (s.status !== 'pending') return 'Unknown status';
   return `Starts ${untilWords(s.at, now)}`;
 }
 
 // The sessions Home shows: those still to start, and those that were skipped, which stay with their reason until they are deleted. One that
-// started is a session in the list now.
-export const inSidebar = list => (list ?? []).filter(s => s.status === 'pending' || s.status === 'skipped');
+// the server found a problem with stays too, such as a start that left no session. One that started is a session in the list now.
+export const inSidebar = list => (list ?? []).filter(s => s.status === 'pending' || s.status === 'skipped' || !!s.problem);
 
 const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
 const byTime = (a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || collator.compare(String(a.title ?? a.id ?? ''), String(b.title ?? b.id ?? ''));

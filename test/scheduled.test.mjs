@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CATCH_UP_MS, localIso, PREAMBLE, RETRY_BACKOFF_MS, wrapPrompt } from '../lib/routines.mjs';
+import { CATCH_UP_MS, localIso, nextTry, PREAMBLE, RETRY_BACKOFF_MS, routineId, wrapPrompt } from '../lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions, wrapOneOff } from '../lib/scheduled.mjs';
 import { readHead } from '../lib/transcripts.mjs';
 
@@ -51,19 +51,28 @@ function rig({ entry = {}, limit = Infinity } = {}) {
 // ---- the first message ---------------------------------------------------------------------------
 
 test('the first message is the routines\' tag and preamble around the prompt, marked as a one-off and naming no file', () => {
-  assert.equal(wrapOneOff('rnd', '  Read the doc.\n'), `<scheduled-task name="rnd" once="true">\n${PREAMBLE}\n\nRead the doc.\n</scheduled-task>`);
+  const preamble = PREAMBLE.replace('if the task file asks', 'if the prompt asks');
+  assert.equal(wrapOneOff('rnd', '  Read the doc.\n'), `<scheduled-task name="rnd" once="true">\n${preamble}\n\nRead the doc.\n</scheduled-task>`);
+});
+
+test('the preamble of a one-off says the prompt allows a write action, and a routine\'s still says the task file', () => {
+  assert.match(wrapOneOff('rnd', 'x'), /only take them if the prompt asks for that specific action/);
+  assert.doesNotMatch(wrapOneOff('rnd', 'x'), /task file/);
+  assert.match(wrapPrompt('daily', '/x/SKILL.md', 'x'), /only take them if the task file asks/);
 });
 
 test('the transcript reader lists a one-off session like any other, and a routine run is still a routine', () => {
   const dir = fs.mkdtempSync(path.join(base, 'transcript-'));
-  const head = text => {
+  const head = (...texts) => {
     const file = path.join(dir, `${Math.random()}.jsonl`);
-    fs.writeFileSync(file, `${JSON.stringify({ type: 'user', cwd: '/home/x', message: { role: 'user', content: text } })}\n`);
+    fs.writeFileSync(file, texts.map(text => `${JSON.stringify({ type: 'user', cwd: '/home/x', message: { role: 'user', content: text } })}\n`).join(''));
     return readHead({ file, size: fs.statSync(file).size });
   };
-  const once = head(wrapOneOff('rnd', 'Do it.'));
-  assert.deepEqual([once.routine, once.title, once.cwd], [null, '', '/home/x']);
-  assert.equal(head(wrapPrompt('daily', '/x/SKILL.md', 'Do it.')).routine, 'daily');
+  const once = head(wrapOneOff('rnd', 'Do it.'), 'A later message that must not become the title.');
+  assert.deepEqual([once.routine, once.scheduled, once.title, once.cwd], [null, true, 'rnd', '/home/x']);
+  const run = head(wrapPrompt('daily', '/x/SKILL.md', 'Do it.'));
+  assert.deepEqual([run.routine, run.scheduled], ['daily', false]);
+  assert.deepEqual([head('Hello there').routine, head('Hello there').scheduled], [null, false]);
 });
 
 // ---- the store -------------------------------------------------------------------------------------
@@ -287,6 +296,152 @@ test('a crash mid-start leaves the entry started with no session, and it is neve
   r.store.update('rnd', { status: 'started', startedAt: localIso(MONDAY), sessionId: null });
   await r.tickAt(MONDAY + 60_000);
   assert.equal(r.calls.length, 0);
+  assert.equal(r.sched.list().scheduled[0].problem, 'Started, but no session was recorded.');
+});
+
+test('an entry whose status is not one GhostShell knows is a problem, is said once in the log, and never starts', async () => {
+  const r = rig();
+  r.store.update('rnd', { status: 'due' });
+  await r.tickAt(MONDAY + 60_000);
+  await r.tickAt(MONDAY + 90_000);
+  assert.equal(r.calls.length, 0);
+  assert.match(r.sched.list().scheduled[0].problem, /^The status "due" is not one of pending, started, skipped, cancelled, so it never starts\.$/);
+  assert.equal(r.warns.filter(w => /status "due"/.test(w)).length, 1);
+});
+
+// ---- a stale save of the file -------------------------------------------------------------------
+
+test('an older copy of scheduled.json saved over a started entry does not start it again, and the entry is put back to started', async () => {
+  const r = rig();
+  const older = { ...r.entry() };
+  await r.tickAt(MONDAY);
+  assert.equal(r.calls.length, 1);
+  r.store.update('rnd', { status: 'pending', sessionId: null, startedAt: null });
+  assert.equal(older.status, 'pending');
+  await r.tickAt(MONDAY + 60_000);
+  await r.tickAt(MONDAY + 90_000);
+  assert.equal(r.calls.length, 1, 'no second session');
+  assert.deepEqual([r.entry().status, r.entry().sessionId], ['started', 's1']);
+});
+
+test('a new time lets an entry that started go again, and a start that failed is not counted as started', async () => {
+  const r = rig();
+  await r.tickAt(MONDAY);
+  const later = MONDAY + 2 * HOUR;
+  r.store.update('rnd', { status: 'pending', sessionId: null, at: localIso(later) });
+  await r.tickAt(later);
+  assert.equal(r.calls.length, 2, 'a deliberate new time starts it');
+  const f = rig();
+  f.onStart = async () => { throw new Error('boom'); };
+  await f.tickAt(MONDAY);
+  f.onStart = null;
+  await f.tickAt(MONDAY + 2 * 60_000);
+  assert.equal(f.calls.length, 2, 'the retry still goes');
+});
+
+test('a start now that failed leaves nothing behind that stops the entry starting at its time', async () => {
+  const r = rig();
+  r.onStart = async () => { throw new Error('boom'); };
+  await assert.rejects(r.sched.startNow('rnd'));
+  r.onStart = null;
+  await r.tickAt(MONDAY);
+  assert.equal(r.calls.length, 2);
+});
+
+test('a session started now is not started again at its time if the file is saved back to pending', async () => {
+  const r = rig();
+  await r.sched.startNow('rnd');
+  r.store.update('rnd', { status: 'pending', sessionId: null, startedAt: null });
+  await r.tickAt(MONDAY);
+  assert.equal(r.calls.length, 1);
+});
+
+// ---- the shared limit ----------------------------------------------------------------------------
+
+test('sessions that routines have running count against the limit, so the two together never go over it', async () => {
+  const r = rig({ limit: 2 });
+  r.sched = makeScheduledSessions({
+    store: r.store, limit: 2, elsewhere: () => r.others ?? 0, now: () => r.clock.t, log: l => r.logs.push(l), warn: l => r.warns.push(l),
+    start: async s => { r.calls.push({ s, id: `s${r.calls.length + 1}` }); return `s${r.calls.length}`; },
+    working: () => true,
+  });
+  for (const id of ['b', 'c']) r.store.add({ id, title: id, at: localIso(MONDAY), cwd: r.state, prompt: 'x' });
+  r.others = 1;
+  await r.tickAt(MONDAY);
+  assert.deepEqual(r.calls.map(c => c.s.id), ['rnd'], 'one place left of two');
+  assert.equal(r.sched.occupied(), 1, 'what it has running is what the routines count against their own limit');
+  r.others = 0;
+  await r.tickAt(MONDAY + 30_000);
+  assert.deepEqual(r.calls.map(c => c.s.id), ['rnd', 'b'], 'with the routines idle there is one more place, not two');
+  r.others = 1;
+  await r.tickAt(MONDAY + 60_000);
+  assert.equal(r.calls.length, 2, 'c keeps waiting and is not skipped');
+  assert.equal(r.entry('c').status, 'pending');
+});
+
+test('the retry arithmetic and the id fallback are the routines\'', () => {
+  assert.deepEqual(nextTry(0, 1000, 0), { tries: 1, nextAt: 1000 + RETRY_BACKOFF_MS[0], gaveUp: false });
+  assert.equal(nextTry(9, 0, 0).nextAt, RETRY_BACKOFF_MS.at(-1));
+  assert.equal(nextTry(0, CATCH_UP_MS, 0).gaveUp, true);
+  assert.equal(routineId('???'), 'routine');
+  assert.equal(routineId('???', () => false, 'scheduled-session'), 'scheduled-session');
+});
+
+test('a title with nothing in it that a slug can use is called scheduled-session', () => {
+  const r = rig();
+  assert.equal(r.sched.add({ title: '☃☃', at: localIso(MONDAY + HOUR), cwd: r.state, prompt: 'x' }).id, 'scheduled-session');
+});
+
+test('a retry waits for a free place under the shared limit, too', async () => {
+  const r = rig({ limit: 1 });
+  r.sched = makeScheduledSessions({
+    store: r.store, limit: 1, elsewhere: () => r.others ?? 0, now: () => r.clock.t, log: l => r.logs.push(l), warn: l => r.warns.push(l),
+    start: async s => { r.calls.push({ s }); if (r.fail) throw new Error('boom'); return 's1'; },
+  });
+  r.fail = true;
+  await r.tickAt(MONDAY);
+  r.fail = false;
+  r.others = 1;
+  await r.tickAt(MONDAY + 2 * 60_000);
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.logs.filter(l => /waiting for a free place to retry/.test(l)).length, 1);
+  r.others = 0;
+  await r.tickAt(MONDAY + 3 * 60_000);
+  assert.equal(r.calls.length, 2);
+});
+
+// ---- while a start is in flight ------------------------------------------------------------------
+
+test('edit, cancel and start now are refused while the entry is starting, and delete too', async () => {
+  const r = rig();
+  let release;
+  r.onStart = () => new Promise(resolve => { release = resolve; });
+  const first = r.tickAt(MONDAY);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.throws(() => r.sched.edit('rnd', { title: 'x' }), { status: 409, message: 'Look at the R&D doc is starting.' });
+  assert.throws(() => r.sched.cancel('rnd'), { status: 409, message: 'Look at the R&D doc is starting.' });
+  await assert.rejects(r.sched.startNow('rnd'), { status: 409, message: 'Look at the R&D doc is starting.' });
+  assert.throws(() => r.sched.remove('rnd'), { status: 409 });
+  release();
+  await first;
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.entry().status, 'started');
+});
+
+// ---- down past the limit with a retry queued -----------------------------------------------------
+
+test('GhostShell down past 12 hours with a retry queued: the next one up skips it as given up, and starts nothing', async () => {
+  const r = rig();
+  r.onStart = async () => { throw new Error('boom'); };
+  await r.tickAt(MONDAY);
+  assert.equal(r.entry().status, 'pending');
+  assert.ok(r.entry().retry);
+  r.onStart = null;
+  const restarted = makeScheduledSessions({ store: r.store, now: () => r.clock.t, log: l => r.logs.push(l), warn: l => r.warns.push(l), start: async s => { r.calls.push({ s }); return 'again'; } });
+  r.clock.t = MONDAY + CATCH_UP_MS + HOUR;
+  await restarted.tick();
+  assert.equal(r.calls.length, 1, 'only the first try');
+  assert.deepEqual([r.entry().status, r.entry().retry, r.entry().lastError], ['skipped', null, 'could not start within the 12 h limit']);
 });
 
 // ---- the limit -----------------------------------------------------------------------------------
@@ -334,10 +489,10 @@ test('adding is refused with every bad field named, and nothing is written', () 
     assert.equal(e.status, 400);
     assert.equal(e.message, 'Nothing was saved. Check the title, date and time, folder, model, effort, group and prompt.');
     assert.deepEqual(Object.keys(e.problems), ['title', 'at', 'cwd', 'model', 'effort', 'group', 'prompt']);
-    assert.equal(e.problems.group, 'There is no group called Nowhere.');
+    assert.equal(e.problems.group, 'GhostShell has no group called "Nowhere". The groups are "Research", "Chores", "chores".');
     return true;
   });
-  assert.throws(() => r.sched.add({ title: 'T', at: '2026-11-03T09:30', cwd: r.state, prompt: 'x', group: 'Chores' }), e => e.problems.group === 'More than one group is called Chores.');
+  assert.throws(() => r.sched.add({ title: 'T', at: '2026-11-03T09:30', cwd: r.state, prompt: 'x', group: 'Chores' }), e => /^GhostShell group "Chores" matches 2 groups, so it is ambiguous\. Use the id of one of them instead: cg-2, cg-3\.$/.test(e.problems.group));
   assert.throws(() => r.sched.add('nope'), { status: 400 });
   assert.equal(fs.readFileSync(path.join(r.state, 'scheduled.json'), 'utf8'), before);
 });

@@ -179,7 +179,8 @@ export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onI
   if (i.kind === 'system') return html`<${SystemNotice} n=${i} />`;
   if (i.kind === 'bash') return html`<${BashItem} item=${i} term=${term} terminal=${terminal} />`;
   if (i.kind === 'model') return html`<li class="divider">Model set to ${modelLabel(i.model)}</li>`;
-  if (i.kind === 'routine') return html`<li class="divider">Started by the ${i.name} ${i.once ? 'scheduled session' : 'routine'}</li>`;
+  if (i.kind === 'routine') return html`<li class="divider">Started by the ${i.name} routine</li>`;
+  if (i.kind === 'scheduled') return html`<li class="divider">Started by the ${i.name} scheduled session</li>`;
   if (i.kind === 'divider') return html`<li class="divider">${i.text}</li>`;
   return html`<li hidden></li>`;
 }, sameRow);

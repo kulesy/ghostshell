@@ -327,7 +327,7 @@ function App() {
       ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'scheduled' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} rename=${renamer} />` : null}
     </main>
   </div>
-  <${Spotlight} open=${finding} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />
+  <${Spotlight} open=${finding} ix=${ix} scheduled=${scheduled} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />
   <${ViewerHost} />
   <${AskHost} />
   <${ToastHost} />

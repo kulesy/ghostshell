@@ -21,7 +21,7 @@ import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
 import { ManageRoutines, renameRoutine, routineItems } from './routines.js';
 import { ManageScheduled, scheduledItems } from './scheduled.js';
-import { inSidebar, noteOf, scheduledHash, SCHEDULED_HASH, supportsScheduled } from './scheduled-rules.js';
+import { inSidebar, noteOf, ordered, scheduledHash, SCHEDULED_HASH, supportsScheduled } from './scheduled-rules.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
@@ -234,7 +234,7 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   });
   const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;
   const idle = home ? unrunRoutines(ix, routines) : [];
-  const waiting = home && supportsScheduled(ix) ? inSidebar(scheduled?.scheduled) : [];
+  const waiting = home && supportsScheduled(ix) ? ordered(inSidebar(scheduled?.scheduled)) : [];
   const parts = [
     home && supportsScheduled(ix) && section('scheduled', 'Scheduled', waiting, waiting.map(s => html`<${ScheduledRow} key=${s.id} s=${s} tree=${tree} />`),
       { drop: false, extra: html`<${ManageScheduled} current=${scheduledOpen} />` }),

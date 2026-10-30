@@ -714,7 +714,7 @@ test('a routine that is off keeps no place in its schedule, and one that is on k
 // ---- the limit and stuck runs ----------------------------------------------------------------------
 
 // Four routines due at the same moment, Friday 07:00, all switched on the evening before.
-function crowd(limit) {
+function crowd(limit, elsewhere) {
   const state = fs.mkdtempSync(path.join(base, 'crowd-'));
   const file = path.join(state, 'SKILL.md');
   fs.writeFileSync(file, '---\nname: x\n---\n\nDo it.\n');
@@ -724,7 +724,7 @@ function crowd(limit) {
   for (const id of ids) store.update(id, { enabled: true, armedAt: localIso(T0) });
   const c = { store, clock: { t: T0 }, started: [], running: new Set(), logs: [] };
   c.sched = makeScheduler({
-    store, limit, now: () => c.clock.t, log: l => c.logs.push(l), warn: () => {},
+    store, limit, elsewhere, now: () => c.clock.t, log: l => c.logs.push(l), warn: () => {},
     start: async routine => { const id = `run-${routine.id}`; c.started.push(routine.id); c.running.add(id); return id; },
     working: id => c.running.has(id),
   });
@@ -745,6 +745,18 @@ test('no more than the limit start at once, and the rest wait their turn without
   assert.deepEqual(c.started, ['a', 'b', 'c', 'd']);
   await c.tickAt(at(2026, 10, 16, 7, 10, 0));
   assert.deepEqual(c.started, ['a', 'b', 'c', 'd']);
+});
+
+test('sessions the scheduled sessions have running take places from the same limit, and the routines say they wait', async () => {
+  let others = 2;
+  const c = crowd(3, () => others);
+  await c.tickAt(at(2026, 10, 16, 7, 0, 5));
+  assert.deepEqual(c.started, ['a']);
+  assert.equal(c.sched.occupied(), 1);
+  assert.equal(c.logs.filter(l => /waiting for a free place, with 3 automated sessions already running/.test(l)).length, 3, 'b, c and d each say so once');
+  others = 0;
+  await c.tickAt(at(2026, 10, 16, 7, 1, 0));
+  assert.deepEqual(c.started, ['a', 'b', 'c']);
 });
 
 test('with no limit, every routine due starts on time', async () => {

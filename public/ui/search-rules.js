@@ -1,6 +1,7 @@
 // What every search shares, as rules that need no page, so node can test them: the order a search lists what it finds in, how the words
 // typed match, what Ctrl+K shows for a chip, and what the Move to and Nest under menus find. See docs/adr/20261016-projects-above-groups.md.
 import { UNTITLED } from './order.js';
+import { inSidebar, noteOf, ordered, scheduledHash, SCHEDULED_HASH } from './scheduled-rules.js';
 import { groupLamp, groupsIn, HOME_VIEW, viewIn, viewsNamed } from './scopes.js';
 import { everyRow, withKids } from './tree.js';
 
@@ -67,9 +68,9 @@ const byRank = hits => RANKS.map(rank => {
   return section(rank, TITLES[rank], rank === 'session' || rank === 'sub' ? items.slice(0, SHOWN) : items);
 });
 
-// The sections the spotlight shows for a chip and a query. With words typed they follow RANKS and Archived comes last, because those
+// The sections the spotlight shows for a chip and a query. `scheduled` is what api/scheduled listed. With words typed they follow RANKS and Archived comes last, because those
 // sessions are out of the list. With none it is browsing: All is recents, projects and actions, and Sessions is newest first.
-export function sectionsFor(chip, ix, archived, query, newHint) {
+export function sectionsFor(chip, ix, archived, query, newHint, scheduled = []) {
   const words = wordsOf(query);
   const keep = words.length ? sessionMatcher(words) : () => true;
   const live = newestFirst(ix);
@@ -80,7 +81,12 @@ export function sectionsFor(chip, ix, archived, query, newHint) {
     const manage = hasWords(MANAGE_ROUTINES.action, words) ? [section('actions', 'Actions', [MANAGE_ROUTINES])] : [];
     return [...manage, section('routines', 'Routines', ix.routines.map(g => ({ ...g.latest, runs: g.earlier.length + 1 })).filter(keep).map(r => ({ key: r.id, r })))];
   }
-  if (chip === 'scheduled') return [section('actions', 'Actions', SCHEDULED_ACTIONS.filter(a => hasWords(a.action, words)))];
+  if (chip === 'scheduled') {
+    // The ones Home shows, each opening its form, or the page for one that did not start.
+    const waiting = ordered(inSidebar(scheduled)).filter(s => hasWords(s.title, words))
+      .map(s => ({ key: `scheduled:${s.id}`, action: s.title, icon: 'calendarClock', hint: noteOf(s).text, hash: s.status === 'pending' ? scheduledHash(s.id) : SCHEDULED_HASH }));
+    return [section('actions', 'Actions', SCHEDULED_ACTIONS.filter(a => hasWords(a.action, words))), section('scheduled', 'Scheduled', waiting)];
+  }
   if (chip === 'sessions') {
     if (!asked) return [section('session', 'Sessions', old(live.filter(r => !r.routine)).slice(0, SHOWN))];
     return byRank(ranked(old(live.filter(r => !r.routine)))).filter(s => s.key === 'session' || s.key === 'sub');

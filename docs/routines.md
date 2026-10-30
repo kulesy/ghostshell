@@ -110,7 +110,7 @@ If GhostShell was not running at a fire time, the latest missed fire runs once a
 
 If a scheduled run cannot start, for example because the Claude CLI was being updated, GhostShell queues that fire and tries it again. It keeps one queued fire for each routine in `routines.json`, as `retry`, so it survives a restart. A restart that lands while a start is still in progress loses that fire, as a run cut short by a restart is not started again. The wait after the first four failed tries is 1, 2, 5 and 10 minutes, and 15 minutes after every later one. The sidebar and the Routines page show when the next try is and what the last one said.
 
-The retry stops when the run starts, when the next try would come 12 hours or more after the fire (GhostShell records the fire as skipped), or when the routine's next scheduled fire comes due, which takes over. It also waits while a restart of GhostShell is under way, while a run of the routine is still working, and while three routines are already running. Run now ignores a queued retry. A Run now that fails leaves the queued fire queued, and one that starts takes its place.
+The retry stops when the run starts, when the next try would come 12 hours or more after the fire (GhostShell records the fire as skipped), or when the routine's next scheduled fire comes due, which takes over. It also waits while a restart of GhostShell is under way, while a run of the routine is still working, and while three automated sessions, routines and scheduled sessions together, are already running. Run now ignores a queued retry. A Run now that fails leaves the queued fire queued, and one that starts takes its place.
 
 Only a start that fails is queued. A routine that cannot run because its schedule, prompt file or folder is wrong is not, because trying again would fail the same way. The Routines page shows what is wrong on its row. A fire skipped because the previous run is still working is not queued either, because that run covers the work.
 
@@ -120,7 +120,7 @@ GhostShell skips and logs a fire that comes while the routine's previous run is 
 
 ## Three at once
 
-At most three routines run at the same time, so fewer of them fight over one Chrome. A fourth that comes due waits for a free place, and starts as soon as one frees up. A run waiting for an answer does not take a place. Run now ignores the limit.
+At most three automated sessions run at the same time, so fewer of them fight over one Chrome. Routines and [scheduled sessions](scheduled-sessions.md) share that one limit: two routine runs and one scheduled session fill it. A fourth that comes due waits for a free place, and starts as soon as one frees up. A run waiting for an answer does not take a place. Run now ignores the limit.
 
 ## Restarts
 

@@ -97,6 +97,8 @@ test('start now starts the session at once, in the group, with the first message
   const ix = await sessions(c);
   const row = ix.groups.find(g => g.id === 'cg-work').sessions.find(r => r.id === sessionId);
   assert.deepEqual([row.title, row.routine, ix.routines.length], ['Look at the R&D doc', null, 0], 'a session like any other, in its group, not a routine run');
+  const booked = JSON.parse(fs.readFileSync(path.join(c.s.state, 'started.json'), 'utf8')).find(x => x.id === sessionId);
+  assert.deepEqual([booked.scheduled, booked.routine, booked.title], [true, undefined, 'Look at the R&D doc'], 'marked, so it is never handed to Desktop as a routine run is not');
 
   for (const [method, url, json] of [['PATCH', `/api/scheduled/${made.id}`, { title: 'x' }], ['POST', `/api/scheduled/${made.id}/cancel`, {}], ['POST', `/api/scheduled/${made.id}/start`, {}]]) {
     const res = await write(c, method, url, json);
