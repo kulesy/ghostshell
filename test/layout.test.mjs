@@ -8,11 +8,14 @@ import { makeLayout } from '../lib/layout.mjs';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-layout-test-'));
 
+// An empty archivedWith is written to every file, so the tests that compare a whole file leave it out and the batch tests look at it themselves.
+const omitEmptyBatches = ({ archivedWith, ...rest }) => (Object.keys(archivedWith ?? {}).length ? { ...rest, archivedWith } : rest);
+
 function folder(contents) {
   const dir = fs.mkdtempSync(path.join(base, 'state-'));
   const file = path.join(dir, 'layout.json');
   if (contents !== undefined) fs.writeFileSync(file, typeof contents === 'string' ? contents : JSON.stringify(contents));
-  return { layout: makeLayout(dir), file, onDisk: () => JSON.parse(fs.readFileSync(file, 'utf8')) };
+  return { layout: makeLayout(dir), file, onDisk: () => omitEmptyBatches(JSON.parse(fs.readFileSync(file, 'utf8'))) };
 }
 
 const OLD = { seededAt: '2026-10-15T05:44:17.563Z', groups: [{ id: 'cg-a', name: 'Reviewing' }, { id: 'cg-b', name: 'Backlog' }], pinned: ['p1'], assignments: { s1: 'cg-a', s2: 'cg-b' } };
@@ -25,8 +28,8 @@ const rewritten = f => fs.statSync(f.file).mtimeMs !== 1000;
 
 test('a layout file from before projects, unarchiving and archiving loads as it was, and a missing file is an empty layout', () => {
   const { layout } = folder(OLD);
-  assert.deepEqual(layout.read(), { ...OLD, projects: [], retired: [], sections: {}, unarchived: [], archived: {}, titles: {}, parents: {} });
-  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], retired: [], sections: {}, pinned: [], assignments: {}, unarchived: [], archived: {}, titles: {}, parents: {} });
+  assert.deepEqual(layout.read(), { ...OLD, projects: [], retired: [], sections: {}, unarchived: [], archived: {}, archivedWith: {}, titles: {}, parents: {} });
+  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], retired: [], sections: {}, pinned: [], assignments: {}, unarchived: [], archived: {}, archivedWith: {}, titles: {}, parents: {} });
 });
 
 test('archiving records when, takes the session out of the unarchived list, and keeps everything else in the file, including keys this version does not know', () => {
@@ -77,6 +80,60 @@ test('archiving and unarchiving leave a session in its group or pin, so it comes
   for (const id of ['s1', 'p1']) f.layout.unarchive(id);
   assert.deepEqual({ pinned: f.onDisk().pinned, assignments: f.onDisk().assignments }, { pinned: ['p1'], assignments: { s1: 'cg-a' } });
   assert.deepEqual(f.onDisk().archived, {});
+});
+
+test('archiving with the sessions under it archives them in one write and records the batch they joined', () => {
+  const f = folder({ ...OLD, archived: { kid: FIRST }, unarchived: ['a', 'b'] });
+  backdate(f);
+  assert.deepEqual(f.layout.archive('boss', { under: ['a', 'kid', 'b', 'a'] }), ['boss', 'a', 'b'], 'the one archived already is left out, and a repeat counts once');
+  assert.equal(rewritten(f), true);
+  const disk = f.onDisk();
+  assert.deepEqual(Object.keys(disk.archived), ['kid', 'boss', 'a', 'b']);
+  assert.equal(disk.archived.kid, FIRST, 'a session archived before keeps its own time');
+  assert.equal(disk.archived.a, disk.archived.boss, 'the batch shares one time');
+  assert.deepEqual(disk.archivedWith, { a: 'boss', b: 'boss' });
+  assert.deepEqual(disk.unarchived, [], 'each session archived leaves the unarchived list');
+});
+
+test('archiving a session that is archived already writes nothing, whatever is under it', () => {
+  const f = folder({ ...OLD, archived: { boss: FIRST } });
+  backdate(f);
+  assert.deepEqual(f.layout.archive('boss', { under: ['a'] }), []);
+  assert.equal(rewritten(f), false);
+});
+
+test('unarchiving the root brings back its batch only, and a session archived on its own before stays archived', () => {
+  const f = folder({ ...OLD, archived: { boss: FIRST, a: FIRST, b: FIRST, kid: FIRST }, archivedWith: { a: 'boss', b: 'boss' } });
+  assert.deepEqual(f.layout.unarchive('boss', { under: ['a', 'b', 'kid'] }), ['boss', 'a', 'b']);
+  const disk = f.onDisk();
+  assert.deepEqual(Object.keys(disk.archived), ['kid']);
+  assert.deepEqual(disk.unarchived, ['boss', 'a', 'b']);
+  assert.deepEqual(f.layout.read().archivedWith, {}, 'the batch is spent');
+});
+
+test('unarchiving a session in the middle brings back the sessions under it from the same batch and leaves the rest', () => {
+  const f = folder({ ...OLD, archived: { boss: FIRST, mid: FIRST, low: FIRST, side: FIRST, old: FIRST }, archivedWith: { mid: 'boss', low: 'boss', side: 'boss' } });
+  assert.deepEqual(f.layout.unarchive('mid', { under: ['low', 'old'] }), ['mid', 'low']);
+  const disk = f.onDisk();
+  assert.deepEqual(Object.keys(disk.archived), ['boss', 'side', 'old']);
+  assert.deepEqual(disk.archivedWith, { side: 'boss' });
+  assert.deepEqual(disk.unarchived, ['mid', 'low']);
+});
+
+test('unarchiving a session on its own drops its entry and writes nothing for the batch it left', () => {
+  const f = folder({ ...OLD, archived: { boss: FIRST, a: FIRST }, archivedWith: { a: 'boss' } });
+  assert.deepEqual(f.layout.unarchive('a'), ['a']);
+  assert.deepEqual(Object.keys(f.onDisk().archived), ['boss']);
+  assert.deepEqual(f.layout.read().archivedWith, {});
+  const spent = folder({ ...OLD, unarchived: ['a'] });
+  backdate(spent);
+  assert.deepEqual(spent.layout.unarchive('a', { under: ['b'] }), []);
+  assert.equal(rewritten(spent), false, 'a session already back, with nothing to bring along, writes nothing');
+});
+
+test('archivedWith loads as it is, and a file where it is not an object is reported', () => {
+  assert.deepEqual(folder({ ...OLD, archivedWith: { a: 'boss', b: 5, c: '' } }).layout.read().archivedWith, { a: 'boss' });
+  assert.match(folder({ ...OLD, archivedWith: [] }).layout.read().problem, /archivedWith/);
 });
 
 test('the parents in a layout file load as they are, a null included, and an entry that is neither null nor a session id is dropped', () => {

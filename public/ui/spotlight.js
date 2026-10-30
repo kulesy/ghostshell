@@ -10,6 +10,7 @@ import { useModifier } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
 import { UNTITLED } from './order.js';
+import { withSubs } from './pick.js';
 import { HOME_VIEW } from './scopes.js';
 import { emptyText, sectionsFor } from './search-rules.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
@@ -139,13 +140,13 @@ function Palette({ ix, archive, onShow, onClose }) {
     if (beside) setHeld(beside);
     setGone(ids => [...ids, r.id]);
     input.current.focus();
-    const { problem } = await archive(r.id, false);
+    const { problem, subs } = await archive(r.id, false);
     if (problem) {
       setGone(ids => ids.filter(id => id !== r.id));
       // A refusal puts the selection back on the session, unless it has been moved on since.
       if (beside) setHeld(now => (now.key === beside.key ? { key: it.key, at: was } : now));
     }
-    say(problem || `Unarchived “${r.title || UNTITLED}”.`, { problem: !!problem });
+    say(problem || `Unarchived “${r.title || UNTITLED}”${withSubs(subs)}.`, { problem: !!problem });
   };
 
   // The arrows change chips only from the edge of the text, so they still move the caret through a query. Esc is the dialog's.

@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TITLE_SORT, UNTITLED } from '../public/ui/order.js';
+import { withoutFamily } from '../public/ui/sub-rules.js';
 import { archiveTarget, everyRow, findRow, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, sortByTitle, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
@@ -140,6 +141,14 @@ test('a session is taken out of the one list it is in, and the other lists are l
     assert.deepEqual(idsOf(withoutRow(LIST, id)), was.map(list => list.filter(i => i !== id)), id);
     assert.deepEqual(withoutRow(LIST, id).routines, LIST.routines, `${id} is in no routine`);
   }
+});
+
+test('a session taken out as a family leaves with everything below it, at any depth, and a child takes its own sub sessions along', () => {
+  const kids = [row('c1', { via: 'g1' }), row('c2', { via: 'c1' }), row('c3', { via: 'g1' })];
+  const ix = { ...LIST, groups: [{ ...LIST.groups[0], sessions: [row('g1', { children: kids }), row('g2')] }, LIST.groups[1]] };
+  assert.deepEqual(idsOf(withoutFamily(ix, 'g1')), [['p1', 'p2'], ['g2'], [], ['s1', 's2'], ['u1', 'u2'], ['o1']]);
+  const [top] = withoutFamily(ix, 'c1').groups[0].sessions;
+  assert.deepEqual(top.children.map(r => r.id), ['c3'], 'c2 was below c1, so it went too');
 });
 
 test('the list keeps everything else it had, and the list it was given is not changed', () => {

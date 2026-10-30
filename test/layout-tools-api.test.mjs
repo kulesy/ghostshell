@@ -103,6 +103,30 @@ test('archiving stops an idle chat the way the route does, and an archived sessi
   assert.equal(textOf(unknown), 'No session with that id on this Mac. Use find_sessions to look one up by its title.');
 });
 
+test('archiving a parent archives its family in the one write, the reply counts the sub sessions, and unarchiving brings the batch back', async () => {
+  const family = [{ id: 'boss', title: 'Boss', ago: 9 }, { id: 'bkid', title: 'Boss kid', parent: 'boss', ago: 9 }, { id: 'bgrand', title: 'Boss grand', parent: 'bkid', ago: 9 }];
+  const { s, token } = await ready({ sessions: [...SESSIONS, ...family] });
+  const reply = textOf(await callTool(s, token, 'top', 'archive_session', { session_id: 'boss' }));
+  assert.match(reply, /^Archived "Boss" \[boss\] and the 2 sub sessions under it\. /);
+  assert.deepEqual(Object.keys(onDisk(s).archived).sort(), ['bgrand', 'bkid', 'boss']);
+  assert.deepEqual(onDisk(s).archivedWith, { bkid: 'boss', bgrand: 'boss' });
+  const back = textOf(await callTool(s, token, 'top', 'unarchive_session', { session_id: 'boss' }));
+  assert.match(back, /^Unarchived "Boss" \[boss\] and the 2 sub sessions archived with it\. /);
+  assert.deepEqual(Object.keys(onDisk(s).archived), []);
+});
+
+test('archiving a parent is refused, naming how many, while a session below it is running, and nothing is written', async () => {
+  const family = [{ id: 'boss', title: 'Boss', ago: 9 }, { id: 'bkid', title: 'Boss kid', parent: 'boss', ago: 9 }];
+  const { s, token } = await ready({ sessions: [...SESSIONS, ...family] });
+  await sendTo(s, token, 'bkid', 'keep going');
+  await until(() => cliCalls(s).some(c => c.user === 'keep going'));
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const reply = await callTool(s, token, 'top', 'archive_session', { session_id: 'boss' });
+  assert.equal(reply.result.isError, true);
+  assert.match(textOf(reply), /^Refused: 1 session in the family of "Boss" \[boss\] is running a turn or waiting for the owner/);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+});
+
 test('find_sessions and list_chips read the real index and chips, a group\'s chat and archived sessions included', async () => {
   const { s, token } = await ready();
   const found = textOf(await callTool(s, token, 'top', 'find_sessions', { query: 'G' }));

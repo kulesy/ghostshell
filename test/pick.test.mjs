@@ -3,7 +3,7 @@
 // what the notes and the question say, and the title and the places a new parent for the picked rows starts with.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { anchorAt, archiveNote, extend, inOrder, NO_PICK, only, parentNote, parentTitle, parentUndoNote, placeKey, placeOptions, prune, sessions, step, stayAfter, stopDetail, supportsNewParent, toggle, unarchiveNote } from '../public/ui/pick.js';
+import { anchorAt, archiveNote, extend, familyDetail, inOrder, NO_PICK, only, parentNote, parentTitle, parentUndoNote, placeKey, placeOptions, prune, sessions, step, stayAfter, stopDetail, subSessions, supportsNewParent, toggle, unarchiveNote, withSubs } from '../public/ui/pick.js';
 
 const ORDER = ['a', 'b', 'c', 'd', 'e', 'f'];
 const sorted = state => inOrder(state, ORDER);
@@ -225,8 +225,28 @@ test('the unarchive note counts the sessions brought back, and names how many ca
   assert.equal(unarchiveNote({ restored: 0, total: 4, reason: 'HTTP 500' }), 'Not unarchived: HTTP 500.');
 });
 
+test('a family question says how many sub sessions are running or waiting and what archiving does to them, with the session itself among them or not', () => {
+  assert.equal(familyDetail(2, false), "2 sub sessions are running or waiting on you. Archiving stops them and denies any approval they are waiting for. Undo brings the sessions back, but not the turns.");
+  assert.equal(familyDetail(1, false), "1 sub session is running or waiting on you. Archiving stops it and denies any approval it is waiting for. Undo brings the sessions back, but not the turn.");
+  assert.equal(familyDetail(1, true), "It and 1 sub session under it are running or waiting on you. Archiving stops them and denies any approval they are waiting for. Undo brings the sessions back, but not the turns.");
+  assert.equal(subSessions(1), '1 sub session');
+  assert.equal(subSessions(3), '3 sub sessions');
+  assert.equal(withSubs(0), '');
+  assert.equal(withSubs(undefined), '');
+  assert.equal(withSubs(1), ' and 1 sub session');
+});
+
+test('a batch question counts the running sub sessions beside the running picked ones, and the notes add the sub sessions that went or came back', () => {
+  assert.equal(stopDetail(1, 2), "3 sessions are running or waiting on you, 2 of them under a picked session. Archiving stops Claude's turn in each and denies any approval it is waiting for. Undo brings the sessions back, but not the turns.");
+  assert.equal(stopDetail(0, 1), "1 session is running or waiting on you, all under a picked session. Archiving stops Claude's turn in it and denies any approval it is waiting for. Undo brings the sessions back, but not the turn.");
+  assert.equal(archiveNote({ archived: 2, total: 2, subs: 5 }), 'Archived 2 sessions and 5 sub sessions.');
+  assert.equal(archiveNote({ archived: 2, total: 2, subs: 1, stopped: 3 }), 'Archived 2 sessions and 1 sub session, and stopped 3.');
+  assert.equal(archiveNote({ archived: 1, total: 2, subs: 2, reason: 'x' }), 'Archived 1 of 2 sessions and 2 sub sessions. Not archived: x.');
+  assert.equal(unarchiveNote({ restored: 2, total: 2, subs: 5 }), 'Unarchived 2 sessions and 5 sub sessions.');
+});
+
 test('no note or question uses an em dash or an en dash', () => {
-  const text = [stopDetail(1), stopDetail(3), archiveNote({ archived: 1, total: 2, stopped: 1, reason: 'x' }), unarchiveNote({ restored: 1, total: 2, reason: 'x' }), parentNote('Login', 3), parentUndoNote('Login', { removed: true }), parentUndoNote('Login', { removed: false }), parentUndoNote('Login', { removed: false, stopped: true })].join(' ');
+  const text = [stopDetail(1), stopDetail(3), stopDetail(1, 2), familyDetail(2, false), familyDetail(1, true), archiveNote({ archived: 1, total: 1, subs: 2, stopped: 1 }), archiveNote({ archived: 1, total: 2, stopped: 1, reason: 'x' }), unarchiveNote({ restored: 1, total: 2, reason: 'x' }), parentNote('Login', 3), parentUndoNote('Login', { removed: true }), parentUndoNote('Login', { removed: false }), parentUndoNote('Login', { removed: false, stopped: true })].join(' ');
   assert.doesNotMatch(text, /[\u2013\u2014]/);
 });
 

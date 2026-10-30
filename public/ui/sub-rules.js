@@ -1,7 +1,7 @@
 // How the sessions below a session add up, as rules that need no page, so node can test them and the server shares them. The rows are the
 // index's as a flat list (`withKids` flattens a list that nests them), and a row's `via` names the nearest session it shows under.
 import { BUCKETS, bucketOf } from './group-rules.js';
-import { withKids } from './tree.js';
+import { everyRow, withKids, withoutRow } from './tree.js';
 
 // The marks a row can show, least urgent first, so a mark's place in the list is its rank.
 const DOTS = [null, 'ready', 'running', 'error', 'awaiting'];
@@ -39,6 +39,9 @@ export function descendantsOf(rows, id) {
   }
   return found;
 }
+
+// The list with a session and everything below it taken out, as archiving takes a family.
+export const withoutFamily = (ix, id) => [...descendantsOf(everyRow(ix), id).map(r => r.id), id].reduce((list, gone) => withoutRow(list, gone, { withChildren: true }), ix);
 
 const BUCKET_ORDER = BUCKETS.map(b => b.key);
 

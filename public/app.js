@@ -19,7 +19,8 @@ import { Spotlight } from './ui/spotlight.js';
 import { sessionActions, sessionIndex } from './ui/subs.js';
 import { ToastHost } from './ui/toast.js';
 import { installTooltips } from './ui/tooltip.js';
-import { findRow, nestRow, placeRow, sortByTitle, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
+import { withoutFamily } from './ui/sub-rules.js';
+import { findRow, nestRow, placeRow, sortByTitle, stampTurns, unnestRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in),
@@ -66,7 +67,7 @@ function App() {
       const loaded = await api('api/sessions');
       const arrived = Date.now();
       // A list asked for in the middle of an archive batch still has the rows the batch has not reached, which would flicker back.
-      const next = hiding.reduce((list, id) => withoutRow(list, id), sortByTitle(loaded));
+      const next = hiding.reduce((list, id) => withoutFamily(list, id), sortByTitle(loaded));
       if (mine > shown.current) { shown.current = mine; setIx(stampTurns(next, now.current.ix, arrived)); setError(''); }
     } catch (e) {
       if (!now.current.ix) setError(e.message);
@@ -143,23 +144,24 @@ function App() {
   }, []);
 
   // Archiving takes the row out at once and puts it back if the server refuses, while no other list has been drawn since. Unarchiving
-  // waits for the server's list, because the server says where the session lands. It resolves with { problem, stopped, running }: the
-  // reason when the server refuses, whether it stopped a chat that was running, and whether it refused because the chat was running and
-  // `stop` was false, which leaves it archived by no one. The server's list is drawn before it resolves.
+  // waits for the server's list, because the server says where the session lands. It resolves with { problem, stopped, running, count, subs }:
+  // the reason when the server refuses, whether it stopped a chat that was running, whether it refused because a chat in the family was running
+  // and `stop` was false, which leaves it archived by no one, how many were, and how many sub sessions went or came back with it. The server's
+  // list is drawn before it resolves.
   const archive = useCallback(async (id, archived, { stop = true } = {}) => {
     const before = now.current.ix;
     const mark = archived ? ++latest.current : 0;
     if (archived) {
-      setIx(withoutRow(before, id));
+      setIx(withoutFamily(before, id));
       shown.current = mark;
     }
     writing.current++;
     try {
       const reply = await api('api/layout/archive', stop ? { id, archived } : { id, archived, stop: false });
-      return { problem: '', stopped: !!reply.stopped, running: false };
+      return { problem: '', stopped: !!reply.stopped, running: false, subs: reply.subs ?? 0 };
     } catch (e) {
       if (archived && shown.current === mark) setIx(before);
-      return { problem: `${archived ? 'Not archived' : 'Not unarchived'}: ${e.message}`, stopped: false, running: e.status === 409 };
+      return { problem: `${archived ? 'Not archived' : 'Not unarchived'}: ${e.message}`, stopped: false, running: e.status === 409, count: e.data?.count, subs: 0 };
     } finally {
       writing.current--;
       await loadIndex();
@@ -168,11 +170,11 @@ function App() {
   useLayoutEffect(() => { sessionActions.set({ archive }); }, [archive]);
 
   // Archives or unarchives several sessions one after another, one request each, and loads the list once at the end. Archiving takes
-  // every row out at once, and the rows the server refused come back at once. It resolves with { done, stopped, failed }: the ids the
-  // server took, how many of those were running chats it stopped, and { id, message, running } for each it refused.
+  // every row out at once, and the rows the server refused come back at once. It resolves with { done, stopped, subs, failed }: the ids the
+  // server took, how many running chats it stopped, how many sub sessions went with them, and { id, message, running, count } for each it refused.
   const archiveAll = useCallback(async (ids, archived, { stop = true } = {}) => {
     const before = now.current.ix;
-    const without = gone => gone.reduce((list, id) => withoutRow(list, id), before);
+    const without = gone => gone.reduce((list, id) => withoutFamily(list, id), before);
     const mark = archived ? ++latest.current : 0;
     if (archived) {
       setIx(without(ids));
@@ -183,19 +185,21 @@ function App() {
     const done = [];
     const failed = [];
     let stopped = 0;
+    let subs = 0;
     try {
       for (const id of ids) {
         try {
           const reply = await api('api/layout/archive', stop ? { id, archived } : { id, archived, stop: false });
           done.push(id);
-          if (reply.stopped) stopped++;
+          stopped += reply.stoppedCount ?? (reply.stopped ? 1 : 0);
+          subs += reply.subs ?? 0;
         } catch (e) {
           taking.current.delete(id);
-          failed.push({ id, message: e.message, running: e.status === 409 });
+          failed.push({ id, message: e.message, running: e.status === 409, count: e.data?.count });
         }
       }
       if (archived && failed.length && shown.current === mark) setIx(without(done));
-      return { done, stopped, failed };
+      return { done, stopped, subs, failed };
     } finally {
       writing.current--;
       ids.forEach(id => taking.current.delete(id));

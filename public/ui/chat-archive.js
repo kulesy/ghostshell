@@ -1,12 +1,12 @@
 // Archive and Unarchive in the header of an open chat, which run the sidebar row's flow: a running chat asks first, and the note offers Undo.
 import { api } from './api.js';
-import { closeSession, isRunning, unarchiveSession } from './close.js';
+import { closeSession, isRunning, subsRunning, unarchiveSession } from './close.js';
 import { useStore } from './hooks.js';
 import { html, useEffect, useState } from './html.js';
 import { draw, icons } from './menu.js';
 import { UNTITLED } from './order.js';
 import { sessionActions, sessionIndex } from './subs.js';
-import { findRow } from './tree.js';
+import { everyRow, findRow } from './tree.js';
 
 // The ids a request is out for, so a double click archives once and its Undo stays reachable, as subs.js does for a card.
 const working = new Set();
@@ -33,15 +33,16 @@ function useArchived(id) {
 export function ArchiveButton({ id, state, title }) {
   const archive = useStore(sessionActions, s => s.archive);
   const [archived, archivedNow] = useArchived(id);
+  const below = useStore(sessionIndex, s => (s.ix ? subsRunning(everyRow(s.ix), id) : 0));
   if (!archive || archived === null) return null;
   const running = isRunning({ state });
-  const label = archived ? 'Unarchive' : running ? 'Stop and archive' : 'Archive';
+  const label = archived ? 'Unarchive' : running || below ? 'Stop and archive' : 'Archive';
   const name = title || UNTITLED;
   const run = async () => {
     if (working.has(id)) return null;
     working.add(id);
     try {
-      return archived ? await unarchiveSession({ archive, id, title: name, retry: 'Try again' }) : await closeSession({ archive, id, title: name, running, done: archivedNow, back: () => document.getElementById('archiveButton') });
+      return archived ? await unarchiveSession({ archive, id, title: name, retry: 'Try again' }) : await closeSession({ archive, id, title: name, running, subsRunning: below, done: archivedNow, back: () => document.getElementById('archiveButton') });
     } finally {
       working.delete(id);
     }

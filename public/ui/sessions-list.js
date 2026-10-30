@@ -3,7 +3,7 @@
 // onto a section to move it there, or onto another row to nest it under that one, and a group's header can be dragged among the groups
 // or onto a project. Everything else is done from menus, so a phone can do it all.
 import { ask } from './ask.js';
-import { isRunning, STOP_DETAIL } from './close.js';
+import { isRunning, stopQuestion, subsRunning } from './close.js';
 import { dragRows, pointIn } from './drag.js';
 import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
@@ -16,7 +16,7 @@ import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
 import { ParentForm } from './parent-form.js';
-import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndoNote, prune, sessions, stayAfter, step, stopDetail, supportsNewParent, toggle as toggleRow, unarchiveNote } from './pick.js';
+import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndoNote, prune, sessions, stayAfter, step, stopDetail, supportsNewParent, toggle as toggleRow, unarchiveNote, withSubs } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
 import { ManageRoutines, renameRoutine, routineItems } from './routines.js';
@@ -25,8 +25,9 @@ import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
 import { archiveHint, keyHint, onMac, shortcut } from './shortcuts.js';
 import { familyNote } from './sub-panel-rules.js';
+import { descendantsOf } from './sub-rules.js';
 import { say } from './toast.js';
-import { archiveTarget, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, stayAbove, TITLE_MAX, withKids } from './tree.js';
+import { archiveTarget, everyRow, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, stayAbove, TITLE_MAX, withKids } from './tree.js';
 
 // The target a row is while another is dragged over it, which only its middle half counts as. See targetAt in drag.js.
 const NEST = 'nest:';
@@ -464,24 +465,31 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     return { ...result, to };
   }
 
-  // Archives a session and says so with a way to undo it, or says why it could not. A session on screen is left for the row that took
-  // the focus, and Undo reopens it while the page is still there. `ask` asks first about a chat that turns out to be running.
+  // Archives a session and the sessions below it, and says so with a way to undo it, or says why it could not. A session on screen is left
+  // for the row that took the focus, and Undo reopens it while the page is still there. `ask` asks first about a chat in the family that
+  // turns out to be running.
   async function archiveRow(id, title, { ask: askFirst = false, ring = false } = {}) {
-    const { problem, stopped, running, to } = await leaving(id, () => archive(id, true, { stop: !askFirst }), ring);
+    const { problem, stopped, running, count, subs, to } = await leaving(id, () => archive(id, true, { stop: !askFirst }), ring);
     if (running) {
       // A focus still waiting for a hidden list would move later. Cancel finds the row, a new element, by its id.
       setAfter(null);
-      return confirmStop(id, title, { back: () => box.current.querySelector(rowOf(id)), ring });
+      return confirmStop(id, title, { back: () => box.current.querySelector(rowOf(id)), ring, count });
     }
     const onScreen = location.hash === sessionHash(id);
     const landed = to && !problem ? sessionHash(to) : '#/';
     // A refusal shows in the list's note, so a list hidden behind the chat is brought back to show it.
     if (onScreen && (!problem || !box.current.getClientRects().length)) location.hash = landed;
     if (problem) problemNote(problem);
-    else say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”.`, { action: undoAction({ id, title, landed: onScreen ? landed : null }) });
+    else say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”${withSubs(subs)}.`, { action: undoAction({ id, title, landed: onScreen ? landed : null }) });
   }
 
-  const confirmStop = (id, title, { back, ring } = {}) => ask({ action: 'Stop and archive', title, detail: STOP_DETAIL, back, run: () => archiveRow(id, title, { ring }) });
+  // `count` is how many sessions in the family the server found running, when it refused for that.
+  function confirmStop(id, title, { back, ring, count } = {}) {
+    const rows = everyRow(latestIx.current);
+    const self = isRunning(findRow(latestIx.current, id) ?? {});
+    const subs = count === undefined ? subsRunning(rows, id) : Math.max(count - (self ? 1 : 0), 0);
+    ask({ action: 'Stop and archive', title, detail: stopQuestion(subs, self), back, run: () => archiveRow(id, title, { ring }) });
+  }
 
   // The same for several rows leaving together. The focus goes to the row above the topmost of them, or back to them if none went.
   async function leavingAll(ids, start, ring = false) {
@@ -493,29 +501,34 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     return { ...result, to };
   }
 
-  // Archives the picked sessions. One goes the way any archive does, so its note and Undo are the same. Several that include a running
-  // chat are asked about once, and Cancel leaves the selection as it was.
+  // Archives the picked sessions. A picked session below another picked one goes with that one, so only the topmost are sent. One goes the
+  // way any archive does, so its note and Undo are the same. Several with a running chat among them or below them are asked about once, and
+  // Cancel leaves the selection as it was.
   function archiveMany(ids, { ring = false, back } = {}) {
-    const rows = ids.map(id => findRow(ix, id)).filter(Boolean);
+    const all = everyRow(ix);
+    const picked = ids.map(id => findRow(ix, id)).filter(Boolean);
+    const rows = picked.filter(r => !picked.some(o => o !== r && descendantsOf(all, o.id).some(d => d.id === r.id)));
     if (rows.length < 2) {
       const [r] = rows;
-      if (r) (isRunning(r) ? confirmStop(r.id, r.title || UNTITLED, { ring, back }) : archiveRow(r.id, r.title || UNTITLED, { ask: true, ring }));
+      if (r) (isRunning(r) || subsRunning(all, r.id) ? confirmStop(r.id, r.title || UNTITLED, { ring, back }) : archiveRow(r.id, r.title || UNTITLED, { ask: true, ring }));
       return;
     }
     const running = rows.filter(isRunning).length;
+    const below = rows.reduce((n, r) => n + subsRunning(all, r.id), 0);
     const every = rows.map(r => r.id);
-    if (!running) return archiveBatch(every, { ring });
-    ask({ action: 'Stop and archive', title: sessions(every.length), detail: stopDetail(running), back, run: () => archiveBatch(every, { stop: true, ring }) });
+    if (!running && !below) return archiveBatch(every, { ring });
+    ask({ action: 'Stop and archive', title: sessions(every.length), detail: stopDetail(running, below), back, run: () => archiveBatch(every, { stop: true, ring }) });
   }
 
   // Sends the batch and says what happened, with one Undo for the sessions that went. A chat that turned out to be running when none
   // were meant to be stopped is asked about once more, and `tally` carries what the first round did into the note after it. Its
   // `reopen` is the session that was on screen and the hash the page was left on.
-  async function archiveBatch(ids, { stop = false, ring = false, tally = { count: ids.length, done: [], stopped: 0, refused: [], reopen: null } } = {}) {
+  async function archiveBatch(ids, { stop = false, ring = false, tally = { count: ids.length, done: [], stopped: 0, subs: 0, refused: [], reopen: null } } = {}) {
     setPick(NO_PICK);
-    const { done, stopped, failed, to } = await leavingAll(ids, () => archiveAll(ids, true, { stop }), ring);
-    const running = failed.filter(f => f.running).map(f => f.id);
-    const all = { ...tally, done: [...tally.done, ...done], stopped: tally.stopped + stopped, refused: [...tally.refused, ...failed.filter(f => !f.running)] };
+    const { done, stopped, subs, failed, to } = await leavingAll(ids, () => archiveAll(ids, true, { stop }), ring);
+    const busy = failed.filter(f => f.running);
+    const running = busy.map(f => f.id);
+    const all = { ...tally, done: [...tally.done, ...done], stopped: tally.stopped + stopped, subs: tally.subs + subs, refused: [...tally.refused, ...failed.filter(f => !f.running)] };
     // The session on screen is left for the row that took the focus when it was archived, and Undo reopens it while the page is there.
     const shown = all.reopen?.id ?? all.done.find(id => location.hash === sessionHash(id));
     if (shown && location.hash === sessionHash(shown)) {
@@ -524,12 +537,14 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     }
     const settled = all.count - running.length;
     if (settled) {
-      const note = archiveNote({ archived: all.done.length, total: settled, stopped: all.stopped, reason: all.refused[0]?.message });
+      const note = archiveNote({ archived: all.done.length, total: settled, stopped: all.stopped, subs: all.subs, reason: all.refused[0]?.message });
       say(note, { problem: all.done.length < settled, action: all.done.length ? undoManyAction(all.done, all.reopen) : undefined });
     }
     if (!running.length) return;
     setAfter(null);
-    ask({ action: 'Stop and archive', title: sessions(running.length), detail: stopDetail(running.length), back: () => box.current.querySelector(running.map(rowOf).join(', ')), run: () => archiveBatch(running, { stop: true, ring, tally: all }) });
+    // The server counts the sessions in each family it found running, so what is more than the refused sessions themselves is below them.
+    const found = busy.reduce((n, f) => n + (f.count ?? 1), 0);
+    ask({ action: 'Stop and archive', title: sessions(running.length), detail: stopDetail(Math.min(found, running.length), Math.max(found - running.length, 0)), back: () => box.current.querySelector(running.map(rowOf).join(', ')), run: () => archiveBatch(running, { stop: true, ring, tally: all }) });
   }
 
   // Moves a session the way a drop does, and says where it went or why it did not. `where` names the place in the note.
@@ -570,13 +585,13 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   // Takes an archive back, puts the focus on the row that returns, and reopens the session if its archive closed it and the page is
   // still where the archive left it. If the server refuses, the note keeps its Undo button to try again.
   async function undo({ id, title, landed }) {
-    const { problem } = await archive(id, false);
+    const { problem, subs } = await archive(id, false);
     if (!problem) {
       setAfter({ to: rowOf(id) });
       reopenAt(id, landed);
     }
     if (problem) say(problem, { problem: true, action: undoAction({ id, title, landed }) });
-    else say(`Unarchived “${title}”.`);
+    else say(`Unarchived “${title}”${withSubs(subs)}.`);
   }
 
   const undoAction = note => ({ label: 'Undo', onClick: () => undo(note) });
@@ -584,12 +599,12 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   // Takes a batch back with one reload at the end, and puts the focus on the first row that returns. A session that did not come back
   // keeps an Undo button on the note to try again.
   async function undoMany({ ids, reopen }) {
-    const { done, failed } = await archiveAll(ids, false);
+    const { done, subs, failed } = await archiveAll(ids, false);
     if (done.length) {
       setAfter({ to: done.map(rowOf).join(', ') });
       if (reopen && done.includes(reopen.id)) reopenAt(reopen.id, reopen.landed);
     }
-    const note = { restored: done.length, total: ids.length, reason: failed[0]?.message };
+    const note = { restored: done.length, total: ids.length, subs, reason: failed[0]?.message };
     if (failed.length) say(unarchiveNote(note), { problem: true, action: undoManyAction(failed.map(f => f.id), reopen) });
     else say(unarchiveNote(note));
   }
@@ -655,13 +670,14 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         label: `Actions for ${sessions(chosen.length)}`,
         items: [
           ...(supportsNewParent(ix) ? [{ label: 'New parent session', icon: icons.indentIncrease, run: () => startParent(chosen) }] : []),
-          { label: `Archive ${sessions(chosen.length)}`, icon: icons.archive, danger: chosen.some(c => { const row = findRow(ix, c); return row && isRunning(row); }), hint: archiveHint(), run: () => archiveMany(chosen, { back }) },
+          { label: `Archive ${sessions(chosen.length)}`, icon: icons.archive, danger: chosen.some(c => { const row = findRow(ix, c); return row && (isRunning(row) || subsRunning(everyRow(ix), c) > 0); }), hint: archiveHint(), run: () => archiveMany(chosen, { back }) },
           { label: 'Clear selection', icon: icons.x, run: () => setPick(NO_PICK) },
         ],
       });
     }
     const picked = chosen.includes(id);
-    const running = isRunning(r);
+    const below = subsRunning(everyRow(ix), id);
+    const running = isRunning(r) || below > 0;
     const targets = sessionTargets(ix, r);
     const parent = findRow(ix, r.parent);
     const under = nestTargets(ix, r);
@@ -692,7 +708,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places, find: q => findPlaces(targets, q).map(p => ({ ...choice(p.label, p.section, p.where), value: p.value })), findLabel: 'Search places' }] : []),
         { label: picked ? 'Deselect' : 'Select', icon: icons.squareCheck, run: () => setPick(p => toggleRow(p, id)) },
         { separator: true },
-        { label: running ? 'Stop and archive' : 'Archive', icon: icons.archive, danger: running, hint: archiveHint(), run: () => archiveRow(id, title, { ask: !running }) },
+        { label: running ? 'Stop and archive' : 'Archive', icon: icons.archive, danger: running, hint: archiveHint(), run: () => (below ? confirmStop(id, title) : archiveRow(id, title, { ask: !running })) },
       ],
     });
   };
@@ -726,7 +742,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     if (target.ids) return archiveMany(target.ids, { ring: true });
     const r = findRow(ix, target.id);
     const title = r.title || UNTITLED;
-    if (isRunning(r)) confirmStop(r.id, title, { ring: true });
+    if (isRunning(r) || subsRunning(everyRow(ix), r.id)) confirmStop(r.id, title, { ring: true });
     else archiveRow(r.id, title, { ask: true, ring: true });
   };
 
