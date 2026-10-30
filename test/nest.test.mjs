@@ -694,6 +694,46 @@ test('a chip that names a group which was deleted refuses to start and starts no
   assert.deepEqual([rowOf(await index(s, token), id).parent, rowOf(await index(s, token), id).group], ['maker', 'cg-work']);
 });
 
+// Sub is a sub session of Maker, so a chip it makes opens beside it, under Maker.
+const SUB = [...MAKER.filter(r => r.id !== 'made'), { id: 'sub', title: 'Sub', parent: 'maker', ago: 2 }];
+const SUB_CHIPS = [
+  { sessionId: 'sub', toolUseId: 'toolu_sub', status: 'open', prompt: 'begin a session' },
+  { sessionId: 'sub', toolUseId: 'toolu_sub_home', status: 'open', prompt: 'begin a session', group: 'cg-home' },
+  { sessionId: 'maker', toolUseId: 'toolu_top', status: 'open', prompt: 'begin a session' },
+];
+const startFrom = (s, token, sessionId, toolUseId) => request(s, 'POST', '/api/chips/start', { headers: as(token), json: { sessionId, toolUseId } });
+
+test('a chip made by a sub session starts its session beside it under the sub session\'s parent, and one made by a top level session still nests under it', async () => {
+  const s = await start({ sessions: SUB, groups: GROUPS, claude: true, chips: SUB_CHIPS });
+  const { token } = await signIn(s);
+  const beside = await startFrom(s, token, 'sub', 'toolu_sub');
+  assert.equal(beside.status, 200, beside.text);
+  assert.equal(beside.body().chip.nestUnder, 'maker');
+  const top = await startFrom(s, token, 'maker', 'toolu_top');
+  assert.equal(top.status, 200, top.text);
+  assert.equal(Object.hasOwn(top.body().chip, 'nestUnder'), false, 'a top level maker is the parent already');
+  const ix = await index(s, token);
+  const [next, sub] = [beside.body().id, 'sub'].map(id => rowOf(ix, id));
+  assert.deepEqual([next.parent, next.via, sub.parent, sub.via], ['maker', 'maker', 'maker', 'maker'], 'the new session is a sibling of its maker');
+  assert.deepEqual([rowOf(ix, top.body().id).parent, rowOf(ix, top.body().id).via], ['maker', 'maker']);
+  const again = await restart(s);
+  assert.equal(rowOf(await index(again, (await signIn(again)).token), beside.body().id).via, 'maker', 'a restart reads it from chips.json');
+});
+
+test('a chip from a sub session that names a group writes no nestUnder, and the chips route words where each one opens', async () => {
+  const s = await start({ sessions: SUB, groups: GROUPS, claude: true, chips: SUB_CHIPS });
+  const { token } = await signIn(s);
+  const opens = async id => Object.fromEntries((await chipsOf(s, token, id)).map(c => [c.toolUseId, c.opensIn]));
+  assert.deepEqual(await opens('sub'), { toolu_sub: 'Opens beside this session, under “Maker”, in Work', toolu_sub_home: 'Opens in Home' });
+  assert.equal((await opens('maker')).toolu_top, 'Opens under this session, in Work');
+  const named = await startFrom(s, token, 'sub', 'toolu_sub_home');
+  assert.equal(named.status, 200, named.text);
+  assert.equal(Object.hasOwn(named.body().chip, 'nestUnder'), false);
+  const started = await startFrom(s, token, 'sub', 'toolu_sub');
+  assert.equal(started.body().chip.opensIn, 'Opens beside this session, under “Maker”, in Work');
+  assert.equal((await opens('sub')).toolu_sub, 'Opens beside this session, under “Maker”, in Work', 'a started chip keeps the line');
+});
+
 test('a group posted with the card places nothing: only the chip the server stored counts', async () => {
   const sessions = MAKER.filter(r => r.id !== 'made');
   const s = await start({ sessions, groups: GROUPS, claude: true, chips: NAMED });

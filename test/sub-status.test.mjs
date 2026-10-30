@@ -9,7 +9,7 @@ import { as, cliCalls, listen, request, signIn, start, until as waitFor } from '
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 const LAYOUT_TOOLS = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group'];
-const NOT_BELOW = 'That session is not one of the sub sessions of this session. Use list_sub_sessions to see the ones you can reach.';
+const NOT_BELOW = 'That session is not a sub session of this session, nor one its chips started beside it. Use list_sub_sessions to see the ones you can reach.';
 //   top
 //     kid
 //       grand

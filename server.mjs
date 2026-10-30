@@ -370,7 +370,8 @@ function subCtx(sessionId) {
     lookup({ archived }) {
       const { rows, groupSessions } = buildIndex({ archived });
       const { archivedWith } = layout.read();
-      const listed = [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id] })), ...[...groupSessions.values()].filter(r => !r.retired)];
+      const startedBy = chips.startedBy();
+      const listed = [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id], startedBy: startedBy.get(r.id) })), ...[...groupSessions.values()].filter(r => !r.retired)];
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
@@ -421,8 +422,8 @@ function placeStarted(id, home, { unlink = false } = {}) {
 }
 
 // Where a chip's session opens, worded for its card from the group's name now. `row` is the session that made the chip. A section's chat
-// and a routine run, which never holds sessions, have nothing to say.
-function withOpensIn(chip, row) {
+// and a routine run, which never holds sessions, have nothing to say. A list of chips passes `rowOf` over one index.
+function withOpensIn(chip, row, rowOf = findRow) {
   const groups = groupList();
   const nameOf = id => groups.find(g => g.id === id)?.name;
   const opensIn = (() => {
@@ -431,6 +432,12 @@ function withOpensIn(chip, row) {
     if (row.groupSession) return nameOf(row.groupSession) ? `Opens in ${nameOf(row.groupSession)}` : null;
     // An archived session shows nothing under it, so its chip's session stands in its place on its own.
     if (row.archived) return nameOf(row.group) ? `Opens in ${nameOf(row.group)}` : null;
+    const beside = chip.status === 'started' ? chip.nestUnder : row.via;
+    if (beside) {
+      const parent = rowOf(beside)?.title;
+      const where = parent ? `Opens beside this session, under “${parent}”` : 'Opens beside this session';
+      return nameOf(row.group) ? `${where}, in ${nameOf(row.group)}` : where;
+    }
     return nameOf(row.group) ? `Opens under this session, in ${nameOf(row.group)}` : 'Opens under this session';
   })();
   return opensIn ? { ...chip, opensIn } : chip;
@@ -1492,6 +1499,8 @@ async function api(req, res, u) {
       }
     }
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
+    // A chip from a sub session starts its session beside it, under the sub session's parent. A chip naming a group is unlinked anyway.
+    const nestUnder = named ? null : findRow(known?.sessionId || sessionId)?.via;
     const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a
     // section's chip pins it or leaves it loose, as that section's own chat would. A group the chip names wins over both, and the session is
@@ -1499,7 +1508,7 @@ async function api(req, res, u) {
     // A group deleted while the session started leaves it loose, never nested where the chip did not ask for it.
     if (named) placeStarted(id, named, { unlink: true }) || placeStarted(id, null, { unlink: true });
     else if (groupId) placeStarted(id, groupId);
-    const started = chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), status: 'started', startedId: id });
+    const started = chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), ...(nestUnder && { nestUnder }), status: 'started', startedId: id });
     return send(res, 200, { id, chip: withOpensIn(started, findRow(started.sessionId)) });
   }
   const booking = /^\/api\/groups\/([\w-]+)\/session$/.exec(u.pathname);
@@ -1524,8 +1533,9 @@ async function api(req, res, u) {
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') {
-    const row = findRow(id);
-    return send(res, 200, { chips: chips.forSession(id).map(c => withOpensIn(c, row)) });
+    const index = buildIndex({ archived: true });
+    const rowOf = rowId => index.rows.get(rowId) || index.groupSessions.get(rowId) || null;
+    return send(res, 200, { chips: chips.forSession(id).map(c => withOpensIn(c, rowOf(id), rowOf)) });
   }
   // The pictures of the whole chat as items with refs and no bytes, for the viewer to count and step through.
   if (req.method === 'GET' && action === 'images' && !parts[4]) {

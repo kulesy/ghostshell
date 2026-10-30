@@ -61,7 +61,7 @@ function subsFor(rows, { self = 'top', pending = () => [], summaries = {}, send 
   };
 }
 const refused = (run, expected) => assert.throws(run, { refusal: true, message: expected });
-const NOT_BELOW = 'That session is not one of the sub sessions of this session. Use list_sub_sessions to see the ones you can reach.';
+const NOT_BELOW = 'That session is not a sub session of this session, nor one its chips started beside it. Use list_sub_sessions to see the ones you can reach.';
 const NO_SESSION = 'No session with that id on this Mac. Use find_sessions to look one up by its title.';
 
 test('the list leads with the count and what needs you, then the tree two spaces in for each level, each session with its roll-up and the first sentence of its latest reply, the busiest first', () => {
@@ -295,6 +295,46 @@ test('any session in the index can be sent to, a parent, a sibling or an unrelat
   }
   assert.match(send({ session_id: 'sib', message: 'hi' }, { send: sender('working') }), /^Queued for "Session sib" \[sib\]\. It is running a turn.*read_sub_session reaches only sub sessions/);
   assert.match(send({ session_id: 'b', message: 'hi' }, { send: sender('idle') }), /use read_sub_session later to see it\.$/);
+});
+
+// Kid is a sub session of Up and Made is the session a chip of Kid started beside it, so both show under Up.
+const BESIDE = [...ROWS, row('kid', 'up'), row('made', 'up', { startedBy: 'kid', lastActivityAt: NOW - MINUTE }), row('other', 'up', { startedBy: 'sib' })];
+
+test('the list shows the sessions this one\'s chips started beside it after the tree, and says there are no sub sessions only when it has neither', () => {
+  const subs = subsFor(BESIDE, { self: 'kid', summaries: { made: 'Made is reviewing.' } });
+  assert.equal(listSubSessions({}, subs, NOW), [
+    'Session "Session kid" has no sub sessions.',
+    [
+      'Started from this session\'s chips, beside it:',
+      '- Session made [made] · idle · /work/made · main · last active 2026-10-23T05:59:00.000Z (1 minute ago)',
+      '  "Made is reviewing."',
+    ].join('\n'),
+  ].join('\n\n'));
+  const both = listSubSessions({}, subsFor([...BESIDE, row('under', 'kid')], { self: 'kid' }), NOW);
+  assert.match(both, /^Session "Session kid": 1 sub session\n\n- Session under \[under\].*\n\nStarted from this session's chips, beside it:\n- Session made \[made\]/);
+  assert.doesNotMatch(listSubSessions({}, subsFor(BESIDE, { self: 'top' }), NOW), /\[made\]|Started from/, 'only the maker sees it');
+  assert.match(listSubSessions({ limit: 1 }, subsFor([...BESIDE, row('under', 'kid')], { self: 'kid' }), NOW), /\[under\][^]*… and 1 more, past the limit of 1\.$/);
+  const archived = [...BESIDE.filter(r => r.id !== 'made'), row('made', 'up', { startedBy: 'kid', archived: true, skip: 'up' })];
+  assert.match(listSubSessions({}, subsFor(archived, { self: 'kid' }), NOW), /has no sub sessions\.$/, 'an archived one is left out unless asked for');
+  assert.match(listSubSessions({ include_archived: true }, subsFor(archived, { self: 'kid' }), NOW), /beside it:\n- Session made \[made\] · archived/);
+});
+
+test('a session a chip started beside this one is read, and an unrelated session is still refused', () => {
+  for (const id of ['made', 'other']) transcript(id, [user(`Hello from ${id}`), said(`Reply from ${id}`)]);
+  const subs = subsFor(BESIDE, { self: 'kid' });
+  assert.match(readSubSession({ session_id: 'made' }, subs, NOW), /^Session "Session made" \[made\].*\nClaude: Reply from made$/s);
+  refused(() => readSubSession({ session_id: 'other' }, subs, NOW), NOT_BELOW);
+  refused(() => readSubSession({ session_id: 'up' }, subs, NOW), NOT_BELOW);
+});
+
+test('a chip\'s new session is a sibling of its maker, so a send to it needs no card, and the reply says it can be read back', () => {
+  const subs = subsFor(BESIDE, { self: 'kid', send: sender('idle') });
+  assert.equal(inOwnTree(subs, 'made'), true);
+  assert.equal(inOwnTree(subsFor(BESIDE, { self: 'made' }), 'kid'), true, 'and the other way');
+  assert.equal(inOwnTree(subsFor(BESIDE, { self: 'far' }), 'made'), false, 'an unrelated session is not');
+  assert.match(sendSession({ session_id: 'made', message: 'hi' }, subs), /use read_sub_session later to see it\.$/);
+  assert.match(sendSession({ session_id: 'kid', message: 'hi' }, subsFor(BESIDE, { self: 'made', send: sender('idle') })), /read_sub_session reaches only sub sessions, so you cannot read it/);
+  assert.match(sent.at(-1)[1], /from-name="Session made \(another session\)"/);
 });
 
 test('a message to itself and one to an id that is no session are refused, and nothing is sent', () => {

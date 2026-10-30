@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { findRow } from '../public/ui/tree.js';
 import { as, cliCalls, listen, request, signIn, start, until as waitFor } from './harness.mjs';
 
-const NOT_BELOW = 'That session is not one of the sub sessions of this session. Use list_sub_sessions to see the ones you can reach.';
+const NOT_BELOW = 'That session is not a sub session of this session, nor one its chips started beside it. Use list_sub_sessions to see the ones you can reach.';
 //   top
 //     kid (started by a chip titled "Review - dialogs", idle, no process)
 //       grand
