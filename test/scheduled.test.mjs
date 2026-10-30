@@ -313,15 +313,14 @@ test('an entry whose status is not one GhostShell knows is a problem, is said on
 
 test('an older copy of scheduled.json saved over a started entry does not start it again, and the entry is put back to started', async () => {
   const r = rig();
-  const older = { ...r.entry() };
   await r.tickAt(MONDAY);
   assert.equal(r.calls.length, 1);
+  const { startedAt } = r.entry();
   r.store.update('rnd', { status: 'pending', sessionId: null, startedAt: null });
-  assert.equal(older.status, 'pending');
   await r.tickAt(MONDAY + 60_000);
   await r.tickAt(MONDAY + 90_000);
   assert.equal(r.calls.length, 1, 'no second session');
-  assert.deepEqual([r.entry().status, r.entry().sessionId], ['started', 's1']);
+  assert.deepEqual([r.entry().status, r.entry().sessionId, r.entry().startedAt], ['started', 's1', startedAt]);
 });
 
 test('a new time lets an entry that started go again, and a start that failed is not counted as started', async () => {
