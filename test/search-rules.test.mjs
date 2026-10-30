@@ -183,6 +183,27 @@ test('with no project All leaves the Projects section out, with words typed or n
   assert.deepEqual(ids(sectionsFor('projects', ix, [], '', NEW)[0]), ['view:home']);
 });
 
+test('the Scheduled chip has the two actions and then the entries Home shows, and the words filter both', () => {
+  const ix = list();
+  const sched = [
+    { id: 'b', title: 'Write the notes', at: '2026-11-02T09:00:00+10:00', status: 'pending' },
+    { id: 'a', title: 'Nightly look', at: '2026-11-01T09:00:00+10:00', status: 'pending' },
+    { id: 'c', title: 'Missed one', at: '2026-10-20T09:00:00+10:00', status: 'skipped', reason: 'late' },
+    { id: 'd', title: 'Done fine', at: '2026-10-19T09:00:00+10:00', status: 'started', sessionId: 's1' },
+  ];
+  assert.deepEqual(sectionsFor('scheduled', ix, [], '', NEW).map(ids), [['manage-scheduled', 'new-scheduled'], []]);
+  const [actions, entries] = sectionsFor('scheduled', ix, [], '', NEW, sched);
+  assert.deepEqual(ids(actions), ['manage-scheduled', 'new-scheduled']);
+  assert.equal(entries.title, 'Scheduled');
+  assert.deepEqual(ids(entries), ['scheduled:a', 'scheduled:b', 'scheduled:c']);
+  assert.deepEqual(entries.items.map(it => it.hash), ['#/scheduled/a', '#/scheduled/b', '#/scheduled']);
+  assert.ok(entries.items.every(it => it.hint));
+  assert.deepEqual(sectionsFor('scheduled', ix, [], 'schedule a', NEW, sched).map(ids), [['new-scheduled'], []]);
+  assert.deepEqual(sectionsFor('scheduled', ix, [], 'notes', NEW, sched).map(ids), [[], ['scheduled:b']]);
+  assert.deepEqual(sectionsFor('scheduled', ix, [], 'nightly', NEW).map(ids), [[], []]);
+  assert.deepEqual(actions.items.map(it => it.hash), ['#/scheduled', '#/scheduled/new']);
+});
+
 test('the Routines chip lists the latest run of each routine with its number of runs, and the words filter by title or routine', () => {
   const ix = list();
   const [manage, runs] = sectionsFor('routines', ix, [], '', NEW);

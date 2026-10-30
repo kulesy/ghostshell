@@ -38,6 +38,7 @@ import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
+import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
 import { esc } from './public/md.mjs';
 import { isIssueUrl, isPullUrl } from './public/ui/pull-url.js';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
@@ -169,7 +170,7 @@ function buildIndex({ archived = false } = {}) {
     // NOTE: [15 Oct 2026] EK - A routine's prompt can run past the 64 KB head that readHead reads, so a run Capcom started keeps
     // its routine in started.json, and shows the title it was started with. Without it a long prompt lists outside Routines.
     const routine = head.routine || started.get(t.id)?.routine || null;
-    rows.set(t.id, { id: t.id, title: (routine && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || UNTITLED, cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
+    rows.set(t.id, { id: t.id, title: ((routine || head.scheduled) && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || UNTITLED, cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
       archived: false, lastActivityAt: t.mtime, sortAt: Math.max(t.mtime, edgeOf(t.id)), createdAt: started.get(t.id)?.at ?? 0, routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
   }
   // A session started moments ago may not have written its file yet; after that, no file means it is gone. A booked parent has no file
@@ -337,7 +338,7 @@ function settingsFor(id, row) {
   return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), ...(fast && { fast }), chrome: cfg.chrome };
 }
 
-async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine }) {
+async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, oneOff }) {
   const s = desktopSettings({ cwd });
   const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx, groups: groupList });
   dropFastOnRefusal(chat);
@@ -345,14 +346,14 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
   try {
     // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
     const named = title || titleText(text.trim()) || (files.length ? (files.length > 1 ? 'Files' : files[0].name) : images.length > 1 ? 'Images' : 'Image');
-    fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120), ...(routine && { routine }) }]));
+    fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120), ...(routine && { routine }), ...(oneOff && { scheduled: true }) }]));
     // Fast mode is saved from the chat, as the CLI may have refused it already. The hook covers a refusal that comes later.
     if (model || effort || chat.fast) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }), ...(chat.fast && { fast: true }) });
   } catch (e) {
     console.error(`Could not record session ${chat.id}: ${e.message}`);
   }
   if (!routine) titler.start(chat, { title, first: titleText(text.trim()) || files.map(f => f.name).join(', ') });
-  if (cfg.desktopHandoff && !routine) afterTurn(chat, () => handOff(chat.id));
+  if (cfg.desktopHandoff && !routine && !oneOff) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
 }
 
@@ -492,10 +493,11 @@ function bookGroupSession(groupId) {
 // GhostShell is the only home for routines. See docs/adr/20261015-capcom-runs-routines-itself.md and
 // docs/adr/20261025-ghostshell-is-the-only-home-for-routines.md.
 
-// What is wrong with the folder, mode, model and effort of a routine, each under its field, in the order the first of them is told in.
-function routineProblems(r) {
+// What is wrong with the folder, mode, model and effort of a routine or a scheduled session, each under its field, in the order the first
+// of them is told in. `noun` is what the sentence calls it.
+function startProblems(r, noun) {
   const found = {};
-  if (typeof r.cwd !== 'string' || !r.cwd.trim()) found.cwd = 'The routine has no folder. Give its full path, starting with /.';
+  if (typeof r.cwd !== 'string' || !r.cwd.trim()) found.cwd = `The ${noun} has no folder. Give its full path, starting with /.`;
   else if (!path.isAbsolute(r.cwd)) found.cwd = `The folder ${r.cwd} must be a full path starting with /.`;
   else if (!fs.existsSync(r.cwd)) found.cwd = `The folder ${r.cwd} does not exist.`;
   else if (!fs.statSync(r.cwd).isDirectory()) found.cwd = `${r.cwd} is not a folder.`;
@@ -505,12 +507,18 @@ function routineProblems(r) {
   return found;
 }
 
+const routineProblems = r => startProblems(r, 'routine');
 const routineProblem = r => Object.values(routineProblems(r))[0] ?? null;
+const scheduledProblems = s => startProblems(s, 'scheduled session');
+const scheduledProblem = s => Object.values(scheduledProblems(s))[0] ?? null;
+
+// Routines and scheduled sessions together run at most this many sessions at once, which keeps fewer of them fighting over one Chrome.
+const AUTOMATED_AT_ONCE = 3;
 
 // An id is kept for any routine whose runs the session list still holds, so a new routine never takes over the runs of a deleted one.
 const routineIdTaken = id => [...buildIndex().rows.values()].some(r => r.routine === id);
 
-// A run is a new session like any other, except that it is never handed to Desktop, whose window it would open at fire time.
+// A run is a new session like any other, except that it is never handed to Desktop, whose window it would open at fire time. Nor is a scheduled session.
 const routines = makeScheduler({
   store: routineStore,
   check: routineProblem,
@@ -521,7 +529,24 @@ const routines = makeScheduler({
   working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
   waiting: id => getChat(id)?.state === 'waiting',
   stop: id => { const chat = getChat(id); if (chat) { chat.interrupt(); chat.stop(); } },
-  limit: 3,
+  limit: AUTOMATED_AT_ONCE,
+  elsewhere: () => scheduled.occupied(),
+});
+
+// A one-off scheduled session checks its folder, model, effort and mode as a routine does, and starts the same way.
+// See docs/adr/20261030-a-one-off-is-its-own-list.md.
+const scheduled = makeScheduledSessions({
+  store: makeScheduledFile(cfg.stateDir),
+  check: scheduledProblem,
+  fieldProblems: scheduledProblems,
+  groups: groupList,
+  place: placeStarted,
+  restarting: () => lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
+  start: (s, text) => newSession({ cwd: s.cwd, text, mode: s.mode, model: s.model, effort: s.effort, title: s.title, oneOff: true }),
+  working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
+  waiting: id => getChat(id)?.state === 'waiting',
+  limit: AUTOMATED_AT_ONCE,
+  elsewhere: () => routines.occupied(),
 });
 
 // ---- handing new sessions to Desktop -------------------------------------------------------------
@@ -1051,6 +1076,33 @@ async function routinesApi(req, res, parts) {
   }
 }
 
+// GET api/scheduled lists the one-off sessions and POST adds one. PATCH api/scheduled/<id> edits a pending one and DELETE removes it. POST
+// api/scheduled/<id>/cancel calls a pending one off and POST api/scheduled/<id>/start starts it now. Like a routine, one starts a prompt as the
+// owner, so the writes take the terminal's stricter origin check.
+async function scheduledApi(req, res, parts) {
+  const [, , id, action] = parts;
+  const adding = parts.length === 2;
+  if (!adding && !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad scheduled session id' });
+  const allowed = adding ? ['GET', 'POST'] : parts.length === 3 ? ['PATCH', 'DELETE'] : ['cancel', 'start'].includes(action) ? ['POST'] : null;
+  if (parts.length > 4 || !allowed) return send(res, 404, { error: 'Not found' });
+  if (!allowed.includes(req.method)) return send(res, 405, { error: 'Method not allowed' }, 'application/json', { allow: allowed.join(', ') });
+  try {
+    if (req.method === 'GET') return send(res, 200, scheduled.list());
+    if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+    if (req.method === 'DELETE') return send(res, 200, { removed: scheduled.remove(id) });
+    const body = await readJson(req, 300_000);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 400, { error: 'Send a JSON body.' });
+    // A new password can land while the body is still arriving, so the session is checked again before anything is written.
+    if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
+    if (adding) return send(res, 200, { scheduled: scheduled.add(body) });
+    if (req.method === 'PATCH') return send(res, 200, { scheduled: scheduled.edit(id, body) });
+    if (action === 'start') return send(res, 200, await scheduled.startNow(id));
+    return send(res, 200, { scheduled: scheduled.cancel(id) });
+  } catch (e) {
+    return send(res, e.status || 500, { error: e.message, ...(e.problems && { problems: e.problems }) });
+  }
+}
+
 // GET api/schedule?cron=&jitter= gives the next three times a schedule fires, for the form that is being filled in. It reserves no routine id.
 // A half-typed schedule is an ordinary answer while typing, so it is a 200 with the problem and the page's console stays clean.
 function scheduleApi(req, res, u) {
@@ -1320,6 +1372,7 @@ const groupUpdates = makeGroupUpdates({
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
+  if (parts[1] === 'scheduled') return scheduledApi(req, res, parts);
   if (parts[1] === 'schedule' && parts.length === 2) return scheduleApi(req, res, u);
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
@@ -1346,8 +1399,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1656,6 +1709,7 @@ const followZone = makeZoneFollower();
 const checkRoutines = () => {
   followZone();
   routines.tick().catch(e => console.error(`Routine check failed: ${e.message}`));
+  scheduled.tick().catch(e => console.error(`Scheduled session check failed: ${e.message}`));
 };
 server.listen(cfg.port, '127.0.0.1', () => {
   console.log(`Capcom on http://localhost:${cfg.port}`);
@@ -1669,4 +1723,4 @@ setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates fa
 process.on('exit', () => terminal.killAll());
 for (const name of ['SIGTERM', 'SIGINT']) process.on(name, () => process.exit(128 + os.constants.signals[name]));
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
-if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine && !awaitsFirstMessage(s.id)) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));
+if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine && !s.scheduled && !awaitsFirstMessage(s.id)) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));

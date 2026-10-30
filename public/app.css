@@ -1299,6 +1299,10 @@ body[data-scroll-locked] {
   .row-nest.row-idle { grid-area: nest; margin-left: 0.5rem; }
 }
 
+.row .row-idle[data-tone="problem"] { color: var(--destructive); }
+
+.row .row-idle[data-tone="warning"] { color: var(--warning-foreground); }
+
 .row:is([aria-current="page"], [aria-selected="true"], [data-menu]) ~ :is(.more, .fold) { color: var(--sidebar-accent-foreground); }
 
 .sub-rows { margin-top: var(--row-gap); margin-left: var(--nest-indent); }
@@ -4312,6 +4316,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 .routine-mono { font-family: var(--font-mono); }
 
 .routine-short { max-width: 10rem; }
+.scheduled-at { max-width: 16rem; }
 
 .routine-trio { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem; }
 

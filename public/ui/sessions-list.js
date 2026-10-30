@@ -20,6 +20,8 @@ import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndo
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
 import { ManageRoutines, renameRoutine, routineItems } from './routines.js';
+import { ManageScheduled, scheduledItems } from './scheduled.js';
+import { inSidebar, noteOf, ordered, scheduledHash, SCHEDULED_HASH, supportsScheduled } from './scheduled-rules.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
@@ -160,6 +162,26 @@ function IdleRoutine({ r, editable, tree }) {
   </li>`;
 }
 
+// A scheduled session that has not started, or one that was skipped and stays with its reason. Its row opens its form, and the menu is the
+// one the Scheduled sessions page has. It is not a session, so like an idle routine it has no data-id.
+function ScheduledRow({ s, tree }) {
+  const key = `scheduled:${s.id}`;
+  const label = `Actions for ${s.title}`;
+  const open = tree.shown?.key === key;
+  const note = noteOf(s);
+  const trigger = opener((button, entry) => tree.pop(key, tree.scheduledMenu(s), button, { entry }));
+  const popAt = e => {
+    e.preventDefault();
+    tree.pop(key, tree.scheduledMenu(s), e.currentTarget.querySelector('.more'), { point: pointIn(e.currentTarget, e) });
+  };
+  return html`<li onContextMenu=${popAt}>
+    <a class="row" href=${s.status === 'pending' ? scheduledHash(s.id) : SCHEDULED_HASH} data-scheduled=${s.id} draggable=${false} data-menu=${open || null}
+      data-tip=${note.text} data-tip-side="right" data-tip-delay="700">
+      <span class="row-title">${s.title}</span><span class="row-nest row-idle" data-tone=${note.tone}>${note.text}</span></a>
+    <button class="more" type="button" aria-label=${label} data-tip=${label} aria-haspopup="menu" aria-expanded=${open} aria-controls=${open ? layerId(tree.shown.id) : null} data-state=${open ? 'open' : 'closed'} ...${trigger}>${dots()}</button>
+  </li>`;
+}
+
 // A session with others nested under it. Its row opens it, and the arrow at its end folds the nested ones in and out underneath.
 // While one of them is carried (`holds`), their list takes a drop as a nest under this session, so letting go anywhere in it leaves
 // the carried session where it is, instead of falling through to the section and taking it out.
@@ -181,7 +203,7 @@ function Family({ r, rowProps, holds, open, onToggle, tree }) {
 // A group always shows, empty or not, so one that was just made can be found and filled.
 // Over a row, the row is the target and no section is. The carried row and the ones nested under it dim, and take no drop.
 // `carry` is a group carried by its header instead: it dims, and a line marks the place among the groups it would land in.
-function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, routines, routinesOpen, drag, carry, tree, picked, newKey }) {
+function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, routines, routinesOpen, scheduled, scheduledOpen, drag, carry, tree, picked, newKey }) {
   const carried = drag && findRow(ix, drag.id);
   const together = new Set(carried ? [carried.id, ...(carried.children ?? []).map(c => c.id)] : []);
   const nesting = drag?.over?.startsWith(NEST) ? drag.over.slice(NEST.length) : null;
@@ -212,7 +234,10 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   });
   const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;
   const idle = home ? unrunRoutines(ix, routines) : [];
+  const waiting = home && supportsScheduled(ix) ? ordered(inSidebar(scheduled?.scheduled)) : [];
   const parts = [
+    home && supportsScheduled(ix) && section('scheduled', 'Scheduled', waiting, waiting.map(s => html`<${ScheduledRow} key=${s.id} s=${s} tree=${tree} />`),
+      { drop: false, extra: html`<${ManageScheduled} current=${scheduledOpen} />` }),
     home && section('routines', 'Routines', [...ix.routines, ...idle], [
       ...ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} routine=${routines?.routines?.find(r => r.id === g.name)} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`),
       ...idle.map(r => html`<${IdleRoutine} key=${`idle:${r.id}`} r=${r} editable=${supportsRoutineEdits(ix)} tree=${tree} />`),
@@ -230,7 +255,7 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
 
 // The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a section or the sessions
 // nested under a row. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
-const STOPS = '.group-head, a.row[data-id], a.row[data-idle]';
+const STOPS = '.group-head, a.row[data-id], a.row[data-idle], a.row[data-scheduled]';
 
 // A header's menu button and a row's menu and fold buttons belong to the header or row beside them, so the arrows carry on from there.
 function stopBeside(el) {
@@ -285,7 +310,7 @@ const problemNote = text => say(text, { problem: true });
 // refused because one was running and `stop` was false. `archiveAll(ids, archived, { stop })` does that for several, one after another,
 // and resolves with { done, stopped, failed }: the ids it took, how many were running chats it stopped, and { id, message, running } for
 // each it refused.
-export function SessionList({ ix, projects, error, current, place, nest, edit, archive, archiveAll, onFind, passkeys, routines, routinesOpen, refreshRoutines, banner }) {
+export function SessionList({ ix, projects, error, current, place, nest, edit, archive, archiveAll, onFind, passkeys, routines, routinesOpen, refreshRoutines, scheduled, scheduledOpen, refreshScheduled, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [folded, setFolded] = useLocal('folded', {});
   const { view } = projects;
@@ -934,6 +959,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       label: `Actions for ${r.title}`,
       items: routineItems(r, { editable: supportsRoutineEdits(ix), refresh: refreshRoutines, back: () => box.current.querySelector(`a.row[data-idle="${CSS.escape(r.id)}"]`) }),
     }),
+    scheduledMenu: s => ({
+      label: `Actions for ${s.title}`,
+      items: scheduledItems(s, { refresh: refreshScheduled, back: () => box.current.querySelector(`a.row[data-scheduled="${CSS.escape(s.id)}"]`) }),
+    }),
     groupMenu: g => {
       const moves = moveTargets(ix.projects, g).map(t => ({ label: t.label, run: () => moveGroup(g, t.project) }));
       if (!supportsGroupEdits(ix)) return moves.length ? { label: `Move ${g.name}`, items: moves } : null;
@@ -1036,7 +1065,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     ${topForm}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt} onClick=${clickRow} onMouseDown=${pressRow} onPointerDown=${e => { pointer.current = e.pointerType; }}>
       ${ix
-        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} folded=${folded} toggleFold=${toggleFold} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} routines=${routines} routinesOpen=${routinesOpen} drag=${drag?.kind === 'row' ? drag : null} carry=${groupDrag} tree=${tree} picked=${new Set(pick.ids)} newKey=${keyHint(mod, 'N')} />`
+        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} folded=${folded} toggleFold=${toggleFold} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} routines=${routines} routinesOpen=${routinesOpen} scheduled=${scheduled} scheduledOpen=${scheduledOpen} drag=${drag?.kind === 'row' ? drag : null} carry=${groupDrag} tree=${tree} picked=${new Set(pick.ids)} newKey=${keyHint(mod, 'N')} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <span class="sr" role="status">${pick.ids.length ? `${pick.ids.length} selected` : ''}</span>
@@ -1053,6 +1082,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     <footer class="list-foot">
       <div class="foot-links">
         <a class="btn" data-variant="ghost" data-size="sm" href="#/routines" aria-current=${routinesOpen ? 'page' : null}>Routines</a>
+        ${supportsScheduled(ix) ? html`<a class="btn" data-variant="ghost" data-size="sm" href=${SCHEDULED_HASH} aria-current=${scheduledOpen ? 'page' : null}>Scheduled</a>` : null}
         <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       </div>
       <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>

@@ -6,6 +6,7 @@ import { MODES } from './composer.js';
 import { HOME } from './env.js';
 import { useDocumentTitle } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
+import { Alert, aria, chevron, dots, Field } from './form-parts.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import {
   byTitle, choices, deleteDetail, effortChoices, fireTime, formOf, jitterOf, JITTER_PROBLEM, modelChoices, newForm, NEW_ROUTINE_HASH,
@@ -21,9 +22,6 @@ const sessionHash = id => `#/s/${enc(id)}`;
 // Where the list puts the focus when it is first drawn after a form closed over it, as { gone, to } like a delete in the list. The form
 // is gone by then, so it cannot do it, and the focus would fall to the page.
 let landing = null;
-
-const chevron = () => html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`;
-const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
 
 // The button on the Routines header in Home, drawn as the header button of a group's chat is.
 export const ManageRoutines = ({ current }) => html`<a class="more head-tool" href=${ROUTINES_HASH} aria-label="Manage routines" data-tip="Manage routines" aria-current=${current ? 'page' : null}>${draw(icons.calendarClock)}</a>`;
@@ -112,8 +110,6 @@ function Switch({ on, label, busy, onClick, id }) {
   return html`<button class="menu-switch routine-switch" id=${id} type="button" role="switch" aria-checked=${on} aria-label=${label} data-state=${on ? 'checked' : 'unchecked'} disabled=${busy} onClick=${onClick}>
     <span class="menu-switch-thumb"></span></button>`;
 }
-
-const Alert = ({ children, tone }) => html`<p class="routine-alert" data-tone=${tone || null}>${draw(icons.triangleAlert)}<span>${children}</span></p>`;
 
 function RoutineRow({ r, now, editable, busy, open, menuId, onSwitch, onRun, onMore }) {
   const words = scheduleWords(r.cron, r.jitterSeconds);
@@ -227,20 +223,6 @@ function RoutineList({ ix, routines, error, reload, refresh }) {
 // ---- the form ------------------------------------------------------------------------------------
 
 const FIELD_IDS = { title: 'routine-title', cron: 'routine-cron', jitterSeconds: 'routine-jitter', cwd: 'routine-cwd', model: 'routine-model', effort: 'routine-effort', mode: 'routine-mode', file: 'routine-file', prompt: 'routine-prompt' };
-
-const aria = (id, hint, error) => ({
-  'aria-invalid': error ? 'true' : null,
-  'aria-describedby': [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(' ') || null,
-});
-
-function Field({ id, label, hint, error, children }) {
-  return html`<div class="routine-field">
-    <label for=${id}>${label}</label>
-    ${children}
-    ${hint ? html`<p class="routine-hint" id=${`${id}-hint`}>${hint}</p>` : null}
-    <p class="routine-error" id=${`${id}-error`}>${error}</p>
-  </div>`;
-}
 
 function SchedulePreview({ cron, jitter, preview, now }) {
   const words = cron.trim() ? scheduleWords(cron, jitter ?? 0) : null;
