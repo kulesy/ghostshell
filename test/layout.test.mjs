@@ -92,7 +92,7 @@ test('archiving with the sessions under it archives them in one write and record
   assert.equal(disk.archived.kid, FIRST, 'a session archived before keeps its own time');
   assert.equal(disk.archived.a, disk.archived.boss, 'the batch shares one time');
   assert.deepEqual(disk.archivedWith, { a: 'boss', b: 'boss' });
-  assert.deepEqual(disk.unarchived, [], 'each session archived leaves the unarchived list');
+  assert.deepEqual(disk.unarchived, ['a', 'b'], 'a child keeps its place there, and the root, which was not on it, has none to leave');
 });
 
 test('archiving a session that is archived already writes nothing, whatever is under it', () => {
@@ -107,7 +107,7 @@ test('unarchiving the root brings back its batch only, and a session archived on
   assert.deepEqual(f.layout.unarchive('boss', { under: ['a', 'b', 'kid'] }), ['boss', 'a', 'b']);
   const disk = f.onDisk();
   assert.deepEqual(Object.keys(disk.archived), ['kid']);
-  assert.deepEqual(disk.unarchived, ['boss', 'a', 'b']);
+  assert.deepEqual(disk.unarchived, ['boss'], 'only the session the owner chose goes on the list');
   assert.deepEqual(f.layout.read().archivedWith, {}, 'the batch is spent');
 });
 
@@ -117,7 +117,24 @@ test('unarchiving a session in the middle brings back the sessions under it from
   const disk = f.onDisk();
   assert.deepEqual(Object.keys(disk.archived), ['boss', 'side', 'old']);
   assert.deepEqual(disk.archivedWith, { side: 'boss' });
-  assert.deepEqual(disk.unarchived, ['mid', 'low']);
+  assert.deepEqual(disk.unarchived, ['mid']);
+});
+
+test('archiving and then unarchiving a family leaves a child that Desktop flags later archived again, and a child that was on the unarchived list stays on it', () => {
+  const f = folder({ ...OLD, unarchived: ['kept', 'boss'] });
+  f.layout.archive('boss', { under: ['kept', 'plain'] });
+  assert.deepEqual(f.onDisk().unarchived, ['kept'], 'the root leaves the list, a child keeps its place');
+  f.layout.unarchive('boss', { under: ['kept', 'plain'] });
+  assert.deepEqual(f.onDisk().unarchived, ['kept', 'boss']);
+  assert.equal(f.onDisk().unarchived.includes('plain'), false, 'a Desktop flag on plain still hides it');
+});
+
+test('unarchiving the root brings back every session that records it, even one that is no longer in under', () => {
+  const f = folder({ ...OLD, archived: { boss: FIRST, aged: FIRST, mid: FIRST, low: FIRST }, archivedWith: { aged: 'boss', mid: 'boss', low: 'mid' } });
+  assert.deepEqual(f.layout.unarchive('boss', { under: ['mid'] }), ['boss', 'mid', 'aged']);
+  assert.deepEqual(Object.keys(f.onDisk().archived), ['low'], 'a session of another batch stays');
+  const middle = folder({ ...OLD, archived: { mid: FIRST, aged: FIRST }, archivedWith: { mid: 'boss', aged: 'boss' } });
+  assert.deepEqual(middle.layout.unarchive('mid', { under: [] }), ['mid'], 'a middle session takes only what the caller says is under it');
 });
 
 test('unarchiving a session on its own drops its entry and writes nothing for the batch it left', () => {
