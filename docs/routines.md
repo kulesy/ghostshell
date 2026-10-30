@@ -43,6 +43,8 @@ Delete asks first. It takes the routine out of `routines.json`, and keeps its pr
 
 A page that loads before the server has restarted onto this version shows the list, the switch and Run now, and leaves out New routine, Edit and Delete. One that loads before the server knows about prompt files shows the text box alone.
 
+A session that should start once, on a day you pick, is a [scheduled session](scheduled-sessions.md) and not a routine.
+
 ## Adding a routine by hand
 
 You can add a routine by editing `routines.json`. The file is an object with a `routines` list. Each entry has these fields.

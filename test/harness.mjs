@@ -48,7 +48,7 @@ const freePort = () => new Promise(resolve => {
 // It refuses a switch to the model `refused-by-the-fake`, and a request for fast mode when it was started on the model `no-fast-by-the-fake`.
 // Started on `late-no-fast-by-the-fake` it refuses that request too, but holds the refusal until it is sent anything after 'begin a session'.
 // Sent 'finish the turn with fast mode off' it ends the turn as 'finish the turn' does, with a result that reports fast mode off.
-// Sent 'begin a session', or a message that opens with a file mention (as text, or as the text block beside pictures or documents), it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
+// Sent 'begin a session', or a message that opens with a file mention (as text, or as the text block beside pictures or documents) or with a <scheduled-task> tag, it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, but copies layout.json as it is then to layout-at-interrupt.json in
 // the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
@@ -206,7 +206,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'finish the turn with fast mode off') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: 'off' });",
     "    if (m.message.content === 'fail the turn') say({ type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' });",
-    "    if (said === 'begin a session' || said.startsWith('@\\\"')) {",
+    "    if (said === 'begin a session' || said.startsWith('@\\\"') || said.startsWith('<scheduled-task')) {",
     "      say({ type: 'system', subtype: 'init', session_id: namedId || 'begun-by-the-fake', model: 'stub' });",
     "      begun = true;",
     "    }",

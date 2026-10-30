@@ -56,6 +56,10 @@ const section = (key, title, items) => ({ key, title, items });
 
 // The icon is named, not drawn, because these rules load without the page.
 const MANAGE_ROUTINES = { key: 'manage-routines', action: 'Manage routines', icon: 'calendarClock', hash: '#/routines' };
+const SCHEDULED_ACTIONS = [
+  { key: 'manage-scheduled', action: 'Scheduled sessions', icon: 'calendarClock', hash: '#/scheduled' },
+  { key: 'new-scheduled', action: 'Schedule a session', icon: 'calendarPlus', hash: '#/scheduled/new' },
+];
 
 // One section for each rank, in the order of RANKS, with no more than SHOWN sessions in a section.
 const byRank = hits => RANKS.map(rank => {
@@ -76,6 +80,7 @@ export function sectionsFor(chip, ix, archived, query, newHint) {
     const manage = hasWords(MANAGE_ROUTINES.action, words) ? [section('actions', 'Actions', [MANAGE_ROUTINES])] : [];
     return [...manage, section('routines', 'Routines', ix.routines.map(g => ({ ...g.latest, runs: g.earlier.length + 1 })).filter(keep).map(r => ({ key: r.id, r })))];
   }
+  if (chip === 'scheduled') return [section('actions', 'Actions', SCHEDULED_ACTIONS.filter(a => hasWords(a.action, words)))];
   if (chip === 'sessions') {
     if (!asked) return [section('session', 'Sessions', old(live.filter(r => !r.routine)).slice(0, SHOWN))];
     return byRank(ranked(old(live.filter(r => !r.routine)))).filter(s => s.key === 'session' || s.key === 'sub');

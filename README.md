@@ -88,6 +88,7 @@ GhostShell listens on 127.0.0.1 only. Anyone who signs in can run commands as yo
 | [Tools](docs/tools.md) | Chips, chapters, group and section chats, widgets, questions and Claude in Chrome |
 | [Terminal](docs/terminal.md) | The terminal panel and `!` commands |
 | [Routines](docs/routines.md) | Running your routines on a schedule, and the Routines page |
+| [Scheduled sessions](docs/scheduled-sessions.md) | A session that starts once at a date and time, and the Scheduled sessions page |
 | [Setup](docs/setup.md) | The password, sign-in, passkeys, installing the app and the tests |
 | [Configuration](docs/configuration.md) | `config.json`, `config.local.json` and the environment variables |
 | [Always on](docs/always-on.md) | The launchd agent and the small Capcom app that holds macOS permissions |

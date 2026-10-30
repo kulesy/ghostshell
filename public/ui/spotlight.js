@@ -19,7 +19,7 @@ import { keyHint } from './shortcuts.js';
 import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
 
-const CHIPS = [['all', 'All'], ['projects', 'Projects'], ['groups', 'Groups'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['archived', 'Archived']];
+const CHIPS = [['all', 'All'], ['projects', 'Projects'], ['groups', 'Groups'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['scheduled', 'Scheduled'], ['archived', 'Archived']];
 
 const Search = () => html`<svg data-part="command-input-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>`;
 

@@ -22,8 +22,8 @@ const sessionHash = id => `#/s/${enc(id)}`;
 // is gone by then, so it cannot do it, and the focus would fall to the page.
 let landing = null;
 
-const chevron = () => html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`;
-const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
+export const chevron = () => html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`;
+export const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
 
 // The button on the Routines header in Home, drawn as the header button of a group's chat is.
 export const ManageRoutines = ({ current }) => html`<a class="more head-tool" href=${ROUTINES_HASH} aria-label="Manage routines" data-tip="Manage routines" aria-current=${current ? 'page' : null}>${draw(icons.calendarClock)}</a>`;
@@ -113,7 +113,7 @@ function Switch({ on, label, busy, onClick, id }) {
     <span class="menu-switch-thumb"></span></button>`;
 }
 
-const Alert = ({ children, tone }) => html`<p class="routine-alert" data-tone=${tone || null}>${draw(icons.triangleAlert)}<span>${children}</span></p>`;
+export const Alert = ({ children, tone }) => html`<p class="routine-alert" data-tone=${tone || null}>${draw(icons.triangleAlert)}<span>${children}</span></p>`;
 
 function RoutineRow({ r, now, editable, busy, open, menuId, onSwitch, onRun, onMore }) {
   const words = scheduleWords(r.cron, r.jitterSeconds);
@@ -228,12 +228,12 @@ function RoutineList({ ix, routines, error, reload, refresh }) {
 
 const FIELD_IDS = { title: 'routine-title', cron: 'routine-cron', jitterSeconds: 'routine-jitter', cwd: 'routine-cwd', model: 'routine-model', effort: 'routine-effort', mode: 'routine-mode', file: 'routine-file', prompt: 'routine-prompt' };
 
-const aria = (id, hint, error) => ({
+export const aria = (id, hint, error) => ({
   'aria-invalid': error ? 'true' : null,
   'aria-describedby': [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(' ') || null,
 });
 
-function Field({ id, label, hint, error, children }) {
+export function Field({ id, label, hint, error, children }) {
   return html`<div class="routine-field">
     <label for=${id}>${label}</label>
     ${children}

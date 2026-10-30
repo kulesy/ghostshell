@@ -38,6 +38,7 @@ import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
+import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
 import { esc } from './public/md.mjs';
 import { isIssueUrl, isPullUrl } from './public/ui/pull-url.js';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
@@ -521,6 +522,21 @@ const routines = makeScheduler({
   working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
   waiting: id => getChat(id)?.state === 'waiting',
   stop: id => { const chat = getChat(id); if (chat) { chat.interrupt(); chat.stop(); } },
+  limit: 3,
+});
+
+// A one-off scheduled session checks its folder, model, effort and mode as a routine does, and starts the same way.
+// See docs/adr/20261030-a-one-off-is-its-own-list.md.
+const scheduled = makeScheduledSessions({
+  store: makeScheduledFile(cfg.stateDir),
+  check: routineProblem,
+  fieldProblems: routineProblems,
+  groups: groupList,
+  place: placeStarted,
+  restarting: () => lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
+  start: (s, text) => newSession({ cwd: s.cwd, text, mode: s.mode, model: s.model, effort: s.effort, title: s.title }),
+  working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
+  waiting: id => getChat(id)?.state === 'waiting',
   limit: 3,
 });
 
@@ -1051,6 +1067,33 @@ async function routinesApi(req, res, parts) {
   }
 }
 
+// GET api/scheduled lists the one-off sessions and POST adds one. PATCH api/scheduled/<id> edits a pending one and DELETE removes it. POST
+// api/scheduled/<id>/cancel calls a pending one off and POST api/scheduled/<id>/start starts it now. Like a routine, one starts a prompt as the
+// owner, so the writes take the terminal's stricter origin check.
+async function scheduledApi(req, res, parts) {
+  const [, , id, action] = parts;
+  const adding = parts.length === 2;
+  if (!adding && !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad scheduled session id' });
+  const allowed = adding ? ['GET', 'POST'] : parts.length === 3 ? ['PATCH', 'DELETE'] : ['cancel', 'start'].includes(action) ? ['POST'] : null;
+  if (parts.length > 4 || !allowed) return send(res, 404, { error: 'Not found' });
+  if (!allowed.includes(req.method)) return send(res, 405, { error: 'Method not allowed' }, 'application/json', { allow: allowed.join(', ') });
+  try {
+    if (req.method === 'GET') return send(res, 200, scheduled.list());
+    if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+    if (req.method === 'DELETE') return send(res, 200, { removed: scheduled.remove(id) });
+    const body = await readJson(req, 300_000);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 400, { error: 'Send a JSON body.' });
+    // A new password can land while the body is still arriving, so the session is checked again before anything is written.
+    if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
+    if (adding) return send(res, 200, { scheduled: scheduled.add(body) });
+    if (req.method === 'PATCH') return send(res, 200, { scheduled: scheduled.edit(id, body) });
+    if (action === 'start') return send(res, 200, await scheduled.startNow(id));
+    return send(res, 200, { scheduled: scheduled.cancel(id) });
+  } catch (e) {
+    return send(res, e.status || 500, { error: e.message, ...(e.problems && { problems: e.problems }) });
+  }
+}
+
 // GET api/schedule?cron=&jitter= gives the next three times a schedule fires, for the form that is being filled in. It reserves no routine id.
 // A half-typed schedule is an ordinary answer while typing, so it is a 200 with the problem and the page's console stays clean.
 function scheduleApi(req, res, u) {
@@ -1320,6 +1363,7 @@ const groupUpdates = makeGroupUpdates({
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
+  if (parts[1] === 'scheduled') return scheduledApi(req, res, parts);
   if (parts[1] === 'schedule' && parts.length === 2) return scheduleApi(req, res, u);
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
@@ -1346,8 +1390,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1656,6 +1700,7 @@ const followZone = makeZoneFollower();
 const checkRoutines = () => {
   followZone();
   routines.tick().catch(e => console.error(`Routine check failed: ${e.message}`));
+  scheduled.tick().catch(e => console.error(`Scheduled session check failed: ${e.message}`));
 };
 server.listen(cfg.port, '127.0.0.1', () => {
   console.log(`Capcom on http://localhost:${cfg.port}`);

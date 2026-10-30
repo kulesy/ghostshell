@@ -12,6 +12,8 @@ import { useProjects } from './ui/projects.js';
 import { useRenewal } from './ui/renew.js';
 import { routineRoute } from './ui/routine-rules.js';
 import { RoutinesPane } from './ui/routines.js';
+import { ScheduledPane } from './ui/scheduled.js';
+import { scheduledRoute, supportsScheduled } from './ui/scheduled-rules.js';
 import { newSession, SessionList } from './ui/sessions-list.js';
 import { Shell } from './ui/shell.js';
 import { keyHint, shortcut } from './ui/shortcuts.js';
@@ -24,7 +26,7 @@ import { findRow, nestRow, placeRow, sortByTitle, stampTurns, unnestRow } from '
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in),
-// #/passkeys the passkeys and #/routines the routines, with #/routines/new to add one and #/routines/<id> to edit one.
+// #/passkeys the passkeys and #/routines the routines, with #/routines/new to add one and #/routines/<id> to edit one. #/scheduled is the same for scheduled sessions.
 function parseRoute(hash) {
   try {
     if (hash.startsWith('#/s/')) return { name: 'session', id: decodeURIComponent(hash.slice(4)) };
@@ -34,6 +36,8 @@ function parseRoute(hash) {
   if (fresh) return { name: 'new', group: fresh.group };
   const routines = routineRoute(hash);
   if (routines) return { name: 'routines', ...routines };
+  const scheduled = scheduledRoute(hash);
+  if (scheduled) return { name: 'scheduled', ...scheduled };
   return { name: hash === '#/passkeys' ? 'passkeys' : 'list' };
 }
 
@@ -43,6 +47,8 @@ function App() {
   const [error, setError] = useState('');
   const [routines, setRoutines] = useState(null);
   const [routinesError, setRoutinesError] = useState('');
+  const [scheduled, setScheduled] = useState(null);
+  const [scheduledError, setScheduledError] = useState('');
   const [ready, setReady] = useState(false);
   const [finding, setFinding] = useState(false);
   const now = useRef({});
@@ -51,6 +57,7 @@ function App() {
   const latest = useRef(0);
   const shown = useRef(0);
   const routinesShown = useRef({ asked: 0, drawn: 0 });
+  const scheduledShown = useRef({ asked: 0, drawn: 0 });
   const writing = useRef(0);
   const taking = useRef(new Set());
   const [offering, stopOffering] = usePasskeyOffer();
@@ -88,8 +95,25 @@ function App() {
   // After a change to a routine, both show it: the routines and the sessions its runs start.
   const refreshRoutines = useCallback(() => Promise.all([loadRoutines(), loadIndex()]), []);
 
+  // The scheduled sessions load the same way, and only from a server that has them.
+  const loadScheduled = useCallback(async () => {
+    if (!supportsScheduled(now.current.ix)) return;
+    const mine = ++scheduledShown.current.asked;
+    try {
+      const loaded = await api('api/scheduled');
+      if (mine > scheduledShown.current.drawn) { scheduledShown.current.drawn = mine; setScheduled(loaded); setScheduledError(''); }
+    } catch (e) {
+      setScheduledError(e.message);
+    }
+  }, []);
+
+  // After a change to a scheduled session, both show it: the entries and the session it started.
+  const refreshScheduled = useCallback(() => Promise.all([loadScheduled(), loadIndex()]), []);
+
   // A session's route waits for a list, so the session opens with its name already known, unless the first load fails.
   useEffect(() => { loadIndex().then(() => setReady(true)); loadRoutines(); }, []);
+  const hasScheduled = supportsScheduled(ix);
+  useEffect(() => { if (hasScheduled) loadScheduled(); }, [hasScheduled]);
   useEffect(() => { checkUploads(); }, []);
 
   // A drop shows at once and the server's list then replaces the guess. If the server refuses, the row goes back and the reason is returned.
@@ -222,7 +246,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const refresh = () => { if (!document.hidden && !writing.current) { loadIndex(); loadRoutines(); } };
+    const refresh = () => { if (!document.hidden && !writing.current) { loadIndex(); loadRoutines(); loadScheduled(); } };
     const timer = setInterval(refresh, 15_000);
     const onHash = () => setHash(location.hash);
     document.addEventListener('visibilitychange', refresh);
@@ -289,6 +313,7 @@ function App() {
   <div class="app" id="app" data-view=${view}>
     <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} edit=${edit} archive=${archive} archiveAll=${archiveAll} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       routines=${routines} routinesOpen=${route.name === 'routines'} refreshRoutines=${refreshRoutines}
+      scheduled=${scheduled} scheduledOpen=${route.name === 'scheduled'} refreshScheduled=${refreshScheduled}
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
@@ -297,8 +322,9 @@ function App() {
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name === 'routines' ? html`<${RoutinesPane} ix=${ix} route=${route} routines=${routines} error=${routinesError} reload=${loadRoutines} refresh=${refreshRoutines} />` : null}
+      ${view === 'chat' && route.name === 'scheduled' ? html`<${ScheduledPane} ix=${ix} route=${route} scheduled=${scheduled} error=${scheduledError} reload=${loadScheduled} refresh=${refreshScheduled} />` : null}
       ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} edit=${edit} />` : null}
-      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} rename=${renamer} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'scheduled' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} rename=${renamer} />` : null}
     </main>
   </div>
   <${Spotlight} open=${finding} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />

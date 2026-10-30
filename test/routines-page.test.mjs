@@ -544,7 +544,7 @@ test('Home has a Manage routines button in the Routines header, a Routines link 
   await page.until(`!!document.querySelector('.group-head[data-key="routines"]')`);
   assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.bar').querySelector('a.head-tool[href="#/routines"]').getAttribute('href')`), '#/routines');
   assert.equal(await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').closest('.bar').querySelector('a.head-tool[href="#/routines"]').getAttribute('aria-label')`), 'Manage routines');
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => [a.textContent, a.getAttribute('href')])`), [['Routines', '#/routines'], ['Passkeys', '#/passkeys']]);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => [a.textContent, a.getAttribute('href')])`), [['Routines', '#/routines'], ['Scheduled', '#/scheduled'], ['Passkeys', '#/passkeys']]);
   await page.until(`!!document.querySelector('a.row[data-id="r1"]')`);
   await page.evaluate(`(el => { const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.x + 40, clientY: r.y + r.height / 2 })); })(document.querySelector('a.row[data-id="r1"]'))`);
   await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);

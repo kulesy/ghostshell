@@ -183,6 +183,14 @@ test('with no project All leaves the Projects section out, with words typed or n
   assert.deepEqual(ids(sectionsFor('projects', ix, [], '', NEW)[0]), ['view:home']);
 });
 
+test('the Scheduled chip has the two actions, and the words filter them', () => {
+  const ix = list();
+  assert.deepEqual(sectionsFor('scheduled', ix, [], '', NEW).map(ids), [['manage-scheduled', 'new-scheduled']]);
+  assert.deepEqual(sectionsFor('scheduled', ix, [], 'schedule a', NEW).map(ids), [['new-scheduled']]);
+  assert.deepEqual(sectionsFor('scheduled', ix, [], 'nightly', NEW).map(ids), [[]]);
+  assert.deepEqual(sectionsFor('scheduled', ix, [], '', NEW)[0].items.map(it => it.hash), ['#/scheduled', '#/scheduled/new']);
+});
+
 test('the Routines chip lists the latest run of each routine with its number of runs, and the words filter by title or routine', () => {
   const ix = list();
   const [manage, runs] = sectionsFor('routines', ix, [], '', NEW);
