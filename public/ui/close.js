@@ -20,18 +20,18 @@ export async function unarchiveSession({ archive, id, title, retry = 'Undo' }) {
   else say(`Unarchived “${title}”${withSubs(subs)}.`);
 }
 
-// `archive(id, archived, { stop })` is the page's, and resolves with { problem, stopped, running, count, subs }. `subsRunning` is how many sessions below it
+// `archive(id, archived, { stop })` is the page's, and resolves with { problem, stopped, running, subs }, where `running` is { self, subs } when the server refused to stop a chat unasked. `subsRunning` is how many sessions below it
 // the list shows running or waiting. `leaving` runs as the card is about to go, `settled` once the request has answered, `done` once the session is archived, `stayed` if it is not going after all, and `back` says where the focus goes if the owner declines.
 export async function closeSession({ archive, id, title, running, subsRunning: below = 0, leaving, settled, done, stayed, back }) {
-  const stop = subs => ask({ action: 'Stop and archive', title, detail: stopQuestion(subs, running), back, run: () => go(true) });
+  const stop = (subs, self) => ask({ action: 'Stop and archive', title, detail: stopQuestion(subs, self), back, run: () => go(true) });
   async function go(stopping) {
     leaving?.();
     let reply;
     try { reply = await archive(id, true, { stop: stopping }); } finally { settled?.(); }
-    const { problem, stopped, running: busy, count, subs } = reply;
+    const { problem, stopped, running: busy, subs } = reply;
     if (busy) {
       stayed?.();
-      return stop(Math.max((count ?? 1) - (running ? 1 : 0), 0));
+      return stop(busy.subs, busy.self);
     }
     if (problem) {
       stayed?.();
@@ -40,5 +40,5 @@ export async function closeSession({ archive, id, title, running, subsRunning: b
     done?.();
     return say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”${withSubs(subs)}.`, { action: { label: 'Undo', onClick: () => unarchiveSession({ archive, id, title }) } });
   }
-  return running || below ? stop(below) : go(false);
+  return running || below ? stop(below, running) : go(false);
 }

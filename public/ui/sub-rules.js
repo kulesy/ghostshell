@@ -88,3 +88,6 @@ export const rollupLine = ({ total, needs, working }, noun = 'sub session') => (
 
 // What a folded family's row shows: the most urgent mark among its head and the sessions nested under it.
 export const familyDot = row => mostUrgent(withKids([row]));
+
+// What a 409 from the archive route says stood in the way: whether the session itself is running and how many sessions below it are. False for any other failure.
+export const busyOf = e => e.status === 409 && { self: !!e.data?.self, subs: e.data?.subs ?? 0 };

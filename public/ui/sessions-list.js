@@ -469,11 +469,11 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   // for the row that took the focus, and Undo reopens it while the page is still there. `ask` asks first about a chat in the family that
   // turns out to be running.
   async function archiveRow(id, title, { ask: askFirst = false, ring = false } = {}) {
-    const { problem, stopped, running, count, subs, to } = await leaving(id, () => archive(id, true, { stop: !askFirst }), ring);
+    const { problem, stopped, running, subs, to } = await leaving(id, () => archive(id, true, { stop: !askFirst }), ring);
     if (running) {
       // A focus still waiting for a hidden list would move later. Cancel finds the row, a new element, by its id.
       setAfter(null);
-      return confirmStop(id, title, { back: () => box.current.querySelector(rowOf(id)), ring, count });
+      return confirmStop(id, title, { back: () => box.current.querySelector(rowOf(id)), ring, busy: running });
     }
     const onScreen = location.hash === sessionHash(id);
     const landed = to && !problem ? sessionHash(to) : '#/';
@@ -483,11 +483,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     else say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”${withSubs(subs)}.`, { action: undoAction({ id, title, landed: onScreen ? landed : null }) });
   }
 
-  // `count` is how many sessions in the family the server found running, when it refused for that.
-  function confirmStop(id, title, { back, ring, count } = {}) {
-    const rows = everyRow(latestIx.current);
-    const self = isRunning(findRow(latestIx.current, id) ?? {});
-    const subs = count === undefined ? subsRunning(rows, id) : Math.max(count - (self ? 1 : 0), 0);
+  // `busy` is { self, subs }: what the server found running when it refused for that. Without it the list says.
+  function confirmStop(id, title, { back, ring, busy } = {}) {
+    const self = busy ? busy.self : isRunning(findRow(latestIx.current, id) ?? {});
+    const subs = busy ? busy.subs : subsRunning(everyRow(latestIx.current), id);
     ask({ action: 'Stop and archive', title, detail: stopQuestion(subs, self), back, run: () => archiveRow(id, title, { ring }) });
   }
 
@@ -501,13 +500,26 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     return { ...result, to };
   }
 
+  // The picked sessions that are not under another picked one, which are the ones sent.
+  function topmost(ids) {
+    const all = everyRow(ix);
+    const picked = ids.map(id => findRow(ix, id)).filter(Boolean);
+    return picked.filter(r => !picked.some(o => o !== r && descendantsOf(all, o.id).some(d => d.id === r.id)));
+  }
+
+  // The menu entry says what the toast will: the picked sessions that are not under another picked one, and the sub sessions that go with them.
+  function archiveLabel(ids) {
+    const all = everyRow(ix);
+    const rows = topmost(ids);
+    return `Archive ${sessions(rows.length)}${withSubs(rows.reduce((n, r) => n + descendantsOf(all, r.id).length, 0))}`;
+  }
+
   // Archives the picked sessions. A picked session below another picked one goes with that one, so only the topmost are sent. One goes the
   // way any archive does, so its note and Undo are the same. Several with a running chat among them or below them are asked about once, and
   // Cancel leaves the selection as it was.
   function archiveMany(ids, { ring = false, back } = {}) {
     const all = everyRow(ix);
-    const picked = ids.map(id => findRow(ix, id)).filter(Boolean);
-    const rows = picked.filter(r => !picked.some(o => o !== r && descendantsOf(all, o.id).some(d => d.id === r.id)));
+    const rows = topmost(ids);
     if (rows.length < 2) {
       const [r] = rows;
       if (r) (isRunning(r) || subsRunning(all, r.id) ? confirmStop(r.id, r.title || UNTITLED, { ring, back }) : archiveRow(r.id, r.title || UNTITLED, { ask: true, ring }));
@@ -542,9 +554,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     }
     if (!running.length) return;
     setAfter(null);
-    // The server counts the sessions in each family it found running, so what is more than the refused sessions themselves is below them.
-    const found = busy.reduce((n, f) => n + (f.count ?? 1), 0);
-    ask({ action: 'Stop and archive', title: sessions(running.length), detail: stopDetail(Math.min(found, running.length), Math.max(found - running.length, 0)), back: () => box.current.querySelector(running.map(rowOf).join(', ')), run: () => archiveBatch(running, { stop: true, ring, tally: all }) });
+    // The server says for each refused session whether it is running itself and how many below it are.
+    const itself = busy.filter(f => f.running.self).length;
+    const below = busy.reduce((n, f) => n + f.running.subs, 0);
+    ask({ action: 'Stop and archive', title: sessions(running.length), detail: stopDetail(itself, below), back: () => box.current.querySelector(running.map(rowOf).join(', ')), run: () => archiveBatch(running, { stop: true, ring, tally: all }) });
   }
 
   // Moves a session the way a drop does, and says where it went or why it did not. `where` names the place in the note.
@@ -670,7 +683,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         label: `Actions for ${sessions(chosen.length)}`,
         items: [
           ...(supportsNewParent(ix) ? [{ label: 'New parent session', icon: icons.indentIncrease, run: () => startParent(chosen) }] : []),
-          { label: `Archive ${sessions(chosen.length)}`, icon: icons.archive, danger: chosen.some(c => { const row = findRow(ix, c); return row && (isRunning(row) || subsRunning(everyRow(ix), c) > 0); }), hint: archiveHint(), run: () => archiveMany(chosen, { back }) },
+          { label: archiveLabel(chosen), icon: icons.archive, danger: chosen.some(c => { const row = findRow(ix, c); return row && (isRunning(row) || subsRunning(everyRow(ix), c) > 0); }), hint: archiveHint(), run: () => archiveMany(chosen, { back }) },
           { label: 'Clear selection', icon: icons.x, run: () => setPick(NO_PICK) },
         ],
       });

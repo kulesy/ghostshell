@@ -24,7 +24,7 @@ const GROUPS = [{ id: 'cg-a', name: 'Needs Review' }, { id: 'cg-b', name: 'Backl
 const refused = (run, expected) => assert.throws(run, { refusal: true, message: expected });
 const status = (code, message) => Object.assign(new Error(message), { status: code });
 
-// The fakes answer as the server's do: an error with a status for a session that cannot change, and { was, count } for an archive: 'running', 'elsewhere' or 'done' and the sessions in the way or the sub sessions archived.
+// The fakes answer as the server's do: an error with a status for a session that cannot change, and for an archive { was: 'done', archivedSubs } or, for 'running' and 'elsewhere', whether the session itself and how many below it stand in the way as { self, subs }.
 function subsFor({ self = 'top', rows = ROWS } = {}) {
   const calls = [];
   const editable = id => {
@@ -37,13 +37,14 @@ function subsFor({ self = 'top', rows = ROWS } = {}) {
     calls,
     lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived) }),
     archive(id) {
-      const family = [editable(id), ...descendantsOf(rows, id).filter(r => !r.archived)];
-      const elsewhere = family.filter(r => r.state === 'active').length;
-      if (elsewhere) return { was: 'elsewhere', count: elsewhere };
-      const running = family.filter(r => r.state !== 'idle').length;
-      if (running) return { was: 'running', count: running };
+      const root = editable(id);
+      const below = descendantsOf(rows, id).filter(r => !r.archived);
+      const away = below.filter(r => r.state === 'active').length;
+      if (away || root.state === 'active') return { was: 'elsewhere', self: root.state === 'active', subs: away };
+      const busy = below.filter(r => r.state !== 'idle').length;
+      if (busy || root.state !== 'idle') return { was: 'running', self: root.state !== 'idle', subs: busy };
       calls.push(['archive', id]);
-      return { was: 'done', count: family.length - 1 };
+      return { was: 'done', archivedSubs: below.length };
     },
     unarchive(id) {
       editable(id);
@@ -98,12 +99,16 @@ test('archiving a parent says how many sub sessions went with it, and one with n
 
 test('archiving is refused when a session below the parent is running or in another app, and the refusal names how many', () => {
   const busy = subsFor({ rows: FAMILY.map(r => (r.id === 'grand' ? { ...r, state: 'working' } : r)) });
-  refused(() => archiveSession({ session_id: 'boss' }, busy), 'Refused: 1 session in the family of "Boss" [boss] is running a turn or waiting for the owner to approve something, and archiving it would stop it. Try again once it is idle, or tell the owner to archive it from the app.');
+  refused(() => archiveSession({ session_id: 'boss' }, busy), 'Refused: 1 session under "Boss" [boss] is running a turn or waiting for the owner to approve something, and archiving it would stop it. Try again once it is idle, or tell the owner to archive it from the app.');
   const many = subsFor({ rows: FAMILY.map(r => (['kid', 'grand'].includes(r.id) ? { ...r, state: 'waiting' } : r)) });
-  refused(() => archiveSession({ session_id: 'boss' }, many), /^Refused: 2 sessions in the family of "Boss" \[boss\] are running a turn or waiting for the owner to approve something, and archiving them would stop them\. Try again once they are idle/);
+  refused(() => archiveSession({ session_id: 'boss' }, many), /^Refused: 2 sessions under "Boss" \[boss\] are running a turn or waiting for the owner to approve something, and archiving them would stop them\. Try again once they are idle/);
   const away = subsFor({ rows: FAMILY.map(r => (r.id === 'kid' ? { ...r, state: 'active' } : r)) });
-  refused(() => archiveSession({ session_id: 'boss' }, away), /^Refused: 1 session in the family of "Boss" \[boss\] looks to be running in another app/);
-  assert.deepEqual([busy, many, away].flatMap(subs => subs.calls), []);
+  refused(() => archiveSession({ session_id: 'boss' }, away), /^Refused: 1 session under "Boss" \[boss\] looks to be running in another app/);
+  const both = subsFor({ rows: FAMILY.map(r => (['boss', 'kid'].includes(r.id) ? { ...r, state: 'working' } : r)) });
+  refused(() => archiveSession({ session_id: 'boss' }, both), /^Refused: "Boss" \[boss\] and 1 session under it are running a turn or waiting for the owner to approve something, and archiving them would stop them\./);
+  const alone = subsFor({ rows: FAMILY.map(r => (r.id === 'boss' ? { ...r, state: 'working' } : r)) });
+  refused(() => archiveSession({ session_id: 'boss' }, alone), /^Refused: "Boss" \[boss\] is running a turn or waiting for the owner/);
+  assert.deepEqual([busy, many, away, both, alone].flatMap(subs => subs.calls), []);
 });
 
 test('unarchiving says how many sub sessions came back with the session', () => {
@@ -209,6 +214,21 @@ test('the archive card says it also archives the sub sessions below, but counts 
   assert.equal(card('kid'), 'archive "Kid" [kid] and its 1 sub session');
   assert.equal(card('grand'), 'archive "Grand" [grand]');
   assert.equal(layoutSummary('unarchive_session', { session_id: 'boss' }, subs, GROUPS), 'unarchive "Boss" [boss]');
+});
+
+test('the unarchive card counts the sessions that come back with it: those archived with it, and under it unless it started the batch', () => {
+  const rows = [
+    row('top'),
+    row('boss', { title: 'Boss', archived: true }),
+    row('kid', { title: 'Kid', via: 'boss', archived: true, archivedWith: 'boss' }),
+    row('grand', { title: 'Grand', via: 'kid', archived: true, archivedWith: 'boss' }),
+    row('apart', { title: 'Apart', via: 'boss', archived: true }),
+    row('moved', { title: 'Moved', archived: true, archivedWith: 'boss' }),
+  ];
+  const card = id => layoutSummary('unarchive_session', { session_id: id }, subsFor({ rows }), GROUPS);
+  assert.equal(card('boss'), 'unarchive "Boss" [boss] and its 3 sub sessions');
+  assert.equal(card('kid'), 'unarchive "Kid" [kid] and its 1 sub session');
+  assert.equal(card('apart'), 'unarchive "Apart" [apart]');
 });
 
 test('the card for each write names the session by its title and id and says what is done to it, shows an id that is no session as unknown, and says when a group\'s chat can read what it moves', () => {

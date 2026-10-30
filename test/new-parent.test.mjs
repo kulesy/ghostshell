@@ -299,6 +299,24 @@ test('Undo after the owner wrote in the parent archives it and restores the link
   assert.equal((await undo(s, token, { id: made.id })).status, 404);
 });
 
+test('Undo after the owner wrote in the parent archives only the parent, not a session a chip of it started', async () => {
+  const { s, token } = await ready();
+  const made = (await make(s, token, { ids: ['loner', 'other'], title: 'Worked in' })).body();
+  const chip = await post(s, token, '/api/chips/start', { sessionId: made.id, toolUseId: 'toolu_side', title: 'Side job', prompt: 'begin a session', cwd: s.home });
+  assert.equal(chip.status, 200);
+  assert.equal(rowOf(await index(s, token), chip.body().id)?.parent, made.id, 'the chip puts it under the new parent');
+  assert.equal((await post(s, token, `/api/sessions/${made.id}/send`, { text: 'begin a session' })).status, 200);
+  await until(() => hasFile(s, made.id));
+  assert.equal((await post(s, token, `/api/sessions/${made.id}/send`, { text: 'finish the turn' })).status, 200);
+  await until(async () => rowOf(await index(s, token), made.id)?.state === 'idle');
+  const res = await undo(s, token, { id: made.id });
+  assert.deepEqual([res.status, res.body().archived, res.body().subs], [200, true, undefined]);
+  const now = onDisk(s);
+  assert.deepEqual(Object.keys(now.archived), [made.id], 'the session the chip started stays out of the archive');
+  assert.deepEqual(now.archivedWith, {});
+  assert.notEqual(rowOf(await index(s, token), chip.body().id), undefined);
+});
+
 test('Undo refuses a session that is not a booked parent and an id that is not one, and writes nothing', async () => {
   const { s, token } = await ready();
   await make(s, token, { ids: ['loner', 'other'], title: 'Mine' });

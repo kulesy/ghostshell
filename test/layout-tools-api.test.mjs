@@ -123,7 +123,7 @@ test('archiving a parent is refused, naming how many, while a session below it i
   const before = fs.readFileSync(s.layout, 'utf8');
   const reply = await callTool(s, token, 'top', 'archive_session', { session_id: 'boss' });
   assert.equal(reply.result.isError, true);
-  assert.match(textOf(reply), /^Refused: 1 session in the family of "Boss" \[boss\] is running a turn or waiting for the owner/);
+  assert.match(textOf(reply), /^Refused: 1 session under "Boss" \[boss\] is running a turn or waiting for the owner/);
   assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
 });
 

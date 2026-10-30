@@ -61,6 +61,16 @@ test('unarchiving the root brings back its batch and leaves a session that was a
   assert.deepEqual(res.body(), { id: 'boss', group: null, pinned: false, archived: false, subs: 3 });
   assert.deepEqual(await archived(s, token), ['old']);
   assert.deepEqual(onDisk(s).archivedWith, {});
+  assert.deepEqual(onDisk(s).unarchived, ['boss'], 'only the one asked for is marked, so a child keeps what Desktop says of it');
+});
+
+test('unarchiving the root brings back a session of its batch that was moved out from under it since', async () => {
+  const { s, token } = await ready();
+  await post(s, token, { id: 'boss', archived: true });
+  assert.equal((await request(s, 'POST', '/api/layout/nest', { headers: as(token), json: { id: 'side', parent: 'alone' } })).status, 200);
+  assert.equal((await post(s, token, { id: 'boss', archived: false })).body().subs, 4);
+  assert.deepEqual(await archived(s, token), []);
+  assert.deepEqual(onDisk(s).archivedWith, {});
 });
 
 test('unarchiving a middle session brings back what is under it from the batch, and a child alone only itself', async () => {
@@ -81,7 +91,7 @@ test('a message to an archived parent brings its batch back with it', async () =
   assert.deepEqual(await archived(s, token), []);
 });
 
-test('a chat running below the parent is refused with a 409 and a count when stop is false, and nothing is written', async () => {
+test('a chat running below the parent is refused with a 409 that says whether the session itself and how many below it are running, when stop is false, and nothing is written', async () => {
   const { s, token } = await ready({ claude: true });
   await send(s, token, 'grand', 'keep going');
   await until(() => said(s, 'keep going'));
@@ -90,8 +100,9 @@ test('a chat running below the parent is refused with a 409 and a count when sto
 
   const refused = await post(s, token, { id: 'boss', archived: true, stop: false });
   assert.equal(refused.status, 409);
-  assert.equal(refused.body().count, 1);
-  assert.match(refused.body().error, /1 sessions? in that family/);
+  assert.equal(refused.body().self, false);
+  assert.equal(refused.body().subs, 1);
+  assert.match(refused.body().error, /^1 sub session is running/);
   assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
   assert.deepEqual(touched(s), []);
   assert.deepEqual(await archived(s, token), []);
@@ -105,10 +116,26 @@ test('the same request with stop true archives the whole family and stops every 
   await until(() => said(s, 'also going'));
 
   const refused = await post(s, token, { id: 'boss', archived: true, stop: false });
-  assert.equal(refused.body().count, 2);
+  assert.deepEqual([refused.body().self, refused.body().subs], [false, 2]);
   const res = await post(s, token, { id: 'boss', archived: true, stop: true });
   assert.deepEqual(res.body(), { id: 'boss', group: null, pinned: false, archived: true, stopped: true, stoppedCount: 2, subs: 4 });
   await until(() => cliCalls(s).filter(c => c.closed).length === 2);
   assert.equal(touched(s).filter(c => c.control === 'interrupt').length, 2);
   assert.deepEqual(await archived(s, token), ['boss', 'grand', 'kid', 'old', 'side']);
+});
+
+test('the 409 says the session itself is running when it is, with and without a sub session running too', async () => {
+  const { s, token } = await ready({ claude: true });
+  await send(s, token, 'boss', 'parent first');
+  await until(() => said(s, 'parent first'));
+  const alone = await post(s, token, { id: 'boss', archived: true, stop: false });
+  assert.equal(alone.status, 409);
+  assert.deepEqual([alone.body().self, alone.body().subs], [true, 0]);
+  assert.match(alone.body().error, /^That chat is running/);
+  await send(s, token, 'kid', 'and the kid');
+  await until(() => said(s, 'and the kid'));
+  const both = await post(s, token, { id: 'boss', archived: true, stop: false });
+  assert.deepEqual([both.body().self, both.body().subs], [true, 1]);
+  assert.match(both.body().error, /^That chat and 1 sub session are running/);
+  assert.deepEqual(await archived(s, token), []);
 });

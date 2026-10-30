@@ -160,3 +160,35 @@ test('the pick bar asks once when a picked parent has a running sub session, nam
   assert.deepEqual(Object.keys(onDisk(s).archived).sort(), ['boss', 'grand', 'kid', 'loner']);
   assert.deepEqual(page.problems, []);
 });
+
+test('the pick bar\'s second question words itself from what the server found running: an idle parent with two running sub sessions', { skip, timeout }, async t => {
+  const { s, page } = await ready(t);
+  await page.evaluate(`(() => {
+    const real = window.fetch;
+    let once = true;
+    window.fetch = (url, init) => {
+      const body = init?.body ? JSON.parse(init.body) : {};
+      if (once && String(url).includes('api/layout/archive') && body.id === 'boss' && body.stop === false) {
+        once = false;
+        return Promise.resolve(new Response(JSON.stringify({ error: 'Two sub sessions are running.', self: false, subs: 2 }), { status: 409, headers: { 'content-type': 'application/json' } }));
+      }
+      return real(url, init);
+    };
+  })()`);
+  await pickRows(page, 'boss', 'loner');
+  await page.until(`!!document.querySelector('.pick-bar')`);
+  await page.click(`.pick-bar .btn[data-variant="outline"]:not(.pick-new)`);
+  await page.until(`document.querySelector('#ask-title')?.textContent === 'Stop and archive “1 session”?'`);
+  assert.match(await page.evaluate(`document.querySelector('#ask-title').closest('[role="alertdialog"]').textContent`), /2 sessions are running or waiting on you, all under a picked session\./);
+  assert.deepEqual(Object.keys(onDisk(s).archived), ['loner'], 'the refused parent is still there');
+  assert.deepEqual(page.problems, []);
+});
+
+test('the row menu for several picked sessions words its Archive entry as the note will, counting only the topmost and the sub sessions that go with them', { skip, timeout }, async t => {
+  const { page } = await ready(t);
+  await pickRows(page, 'boss', 'kid', 'loner');
+  await page.until(`!!document.querySelector('.pick-bar')`);
+  await rightClick(page, 'loner');
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('${MENU} > [role=menuitem] .menu-text')].map(el => el.textContent).filter(t => t.startsWith('Archive'))`), ['Archive 2 sessions and 2 sub sessions']);
+  assert.deepEqual(page.problems, []);
+});
