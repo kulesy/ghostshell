@@ -89,7 +89,7 @@ test('an archived session, itself and an id that is no session are refused, and 
   assert.equal(delivered(s).length, 0);
   assert.equal(resumed(s, 'gone').length, 0);
   const text = textOf(await callTool(s, token, 'top', 'send_session', { session_id: 'loose', message: 'Hello.' }));
-  assert.match(text, /^Delivered to "Loose" \[loose\]\..*read_sub_session reaches only sub sessions/);
+  assert.match(text, /^Delivered to "Loose" \[loose\]\..*read_sub_session reaches only sub sessions and the sessions its chips started/);
   await until(() => delivered(s).length === 1);
   assert.equal(delivered(s)[0].user, '<session-message from="top" from-name="Top (another session)">\nHello.\n</session-message>');
   assert.equal(resumed(s, 'loose').length, 1);

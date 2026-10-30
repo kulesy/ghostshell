@@ -288,7 +288,7 @@ test('any session in the index can be sent to, a parent, a sibling or an unrelat
     sent.length = 0;
     const text = send({ session_id: id, message: 'Please look at this.' }, { send: sender('idle') });
     assert.match(text, new RegExp(`^Delivered to "Session ${id}" \\[${id}\\]\\. It was idle, so it has started a turn to read your message\\. `));
-    assert.match(text, /read_sub_session reaches only sub sessions, so you cannot read it\. The owner sees the reply in that session's own chat\.$/);
+    assert.match(text, /read_sub_session reaches only sub sessions and the sessions its chips started, so you cannot read it\. The owner sees the reply in that session's own chat\.$/);
     assert.doesNotMatch(text, /use read_sub_session later/);
     assert.equal(sent[0][1], '<session-message from="top" from-name="Session top (another session)">\nPlease look at this.\n</session-message>');
     assert.equal(noticeFrom(sent[0][1]).title, 'Message from Session top (another session)');
@@ -303,7 +303,7 @@ const BESIDE = [...ROWS, row('kid', 'up'), row('made', 'up', { startedBy: 'kid',
 test('the list shows the sessions this one\'s chips started beside it after the tree, and says there are no sub sessions only when it has neither', () => {
   const subs = subsFor(BESIDE, { self: 'kid', summaries: { made: 'Made is reviewing.' } });
   assert.equal(listSubSessions({}, subs, NOW), [
-    'Session "Session kid" has no sub sessions.',
+    'Session "Session kid": no sub sessions, 1 started beside it',
     [
       'Started from this session\'s chips, beside it:',
       '- Session made [made] · idle · /work/made · main · last active 2026-10-23T05:59:00.000Z (1 minute ago)',
@@ -311,7 +311,7 @@ test('the list shows the sessions this one\'s chips started beside it after the 
     ].join('\n'),
   ].join('\n\n'));
   const both = listSubSessions({}, subsFor([...BESIDE, row('under', 'kid')], { self: 'kid' }), NOW);
-  assert.match(both, /^Session "Session kid": 1 sub session\n\n- Session under \[under\].*\n\nStarted from this session's chips, beside it:\n- Session made \[made\]/);
+  assert.match(both, /^Session "Session kid": 1 sub session, 1 started beside it\n\n- Session under \[under\].*\n\nStarted from this session's chips, beside it:\n- Session made \[made\]/);
   assert.doesNotMatch(listSubSessions({}, subsFor(BESIDE, { self: 'top' }), NOW), /\[made\]|Started from/, 'only the maker sees it');
   assert.match(listSubSessions({ limit: 1 }, subsFor([...BESIDE, row('under', 'kid')], { self: 'kid' }), NOW), /\[under\][^]*… and 1 more, past the limit of 1\.$/);
   const archived = [...BESIDE.filter(r => r.id !== 'made'), row('made', 'up', { startedBy: 'kid', archived: true, skip: 'up' })];
@@ -333,7 +333,7 @@ test('a chip\'s new session is a sibling of its maker, so a send to it needs no 
   assert.equal(inOwnTree(subsFor(BESIDE, { self: 'made' }), 'kid'), true, 'and the other way');
   assert.equal(inOwnTree(subsFor(BESIDE, { self: 'far' }), 'made'), false, 'an unrelated session is not');
   assert.match(sendSession({ session_id: 'made', message: 'hi' }, subs), /use read_sub_session later to see it\.$/);
-  assert.match(sendSession({ session_id: 'kid', message: 'hi' }, subsFor(BESIDE, { self: 'made', send: sender('idle') })), /read_sub_session reaches only sub sessions, so you cannot read it/);
+  assert.match(sendSession({ session_id: 'kid', message: 'hi' }, subsFor(BESIDE, { self: 'made', send: sender('idle') })), /read_sub_session reaches only sub sessions and the sessions its chips started, so you cannot read it/);
   assert.match(sent.at(-1)[1], /from-name="Session made \(another session\)"/);
 });
 
@@ -408,7 +408,7 @@ test('a group\'s chat is refused the same as any chat for an archived member, an
 test('an ordinary session can send to a group\'s chat, as another session', () => {
   sent.length = 0;
   const text = sendSession({ session_id: 'chat', message: 'Ready for review.' }, subsFor([...ROWS, GROUP_CHAT], { self: 'b', send: sender('idle') }));
-  assert.match(text, /^Delivered to "Needs Review" \[chat\]\. .*read_sub_session reaches only sub sessions, so you cannot read it\./);
+  assert.match(text, /^Delivered to "Needs Review" \[chat\]\. .*read_sub_session reaches only sub sessions and the sessions its chips started, so you cannot read it\./);
   assert.equal(noticeFrom(sent[0][1]).title, 'Message from Session b (another session)');
 });
 

@@ -210,6 +210,37 @@ test('each call looks the index up again, so a session archived or nested after 
   assert.doesNotMatch(after, /\[grand\]/);
 });
 
+// Made is the session a chip of Kid started beside it, so it sits under Top, Kid's parent.
+const MADE = {
+  sessions: [...SESSIONS, { id: 'made', title: 'Made', ago: 1 }],
+  chips: [{ sessionId: 'kid', toolUseId: 'toolu_made', status: 'started', startedId: 'made', nestUnder: 'top' }],
+};
+const archivedIds = async (s, token) => (await get(s, token, '/api/archived')).body().archived.map(r => r.id);
+
+test('a chat lists and reads the session its chip started beside it, archiving the maker leaves that session alone, and archiving the parent takes both', async () => {
+  const { s, token } = await ready(MADE);
+  const list = textOf(await callTool(s, token, 'kid', 'list_sub_sessions'));
+  assert.match(list, /^Session "Kid": 1 sub session, 1 started beside it\n[^]*\n\nStarted from this session's chips, beside it:\n- Made \[made\]/);
+  assert.equal((await callTool(s, token, 'kid', 'read_sub_session', { session_id: 'made' })).result.isError, undefined);
+  assert.match(textOf(await callTool(s, token, 'top', 'list_sub_sessions')), /\[made\]/, 'the parent has it below');
+
+  assert.equal((await post(s, token, '/api/layout/archive', { id: 'kid', archived: true })).status, 200);
+  const afterKid = await archivedIds(s, token);
+  assert.ok(afterKid.includes('kid') && afterKid.includes('grand'));
+  assert.equal(afterKid.includes('made'), false, 'it is not below its maker');
+  assert.equal((await post(s, token, '/api/layout/archive', { id: 'top', archived: true })).status, 200);
+  const afterTop = await archivedIds(s, token);
+  assert.ok(['top', 'kid', 'made'].every(id => afterTop.includes(id)), afterTop.join());
+});
+
+test('a chat no longer reaches the session its chip started once the owner has put that session somewhere else', async () => {
+  const { s, token } = await ready(MADE);
+  assert.equal((await callTool(s, token, 'kid', 'read_sub_session', { session_id: 'made' })).result.isError, undefined);
+  assert.equal((await post(s, token, '/api/layout/nest', { id: 'made', parent: 'peer' })).status, 200);
+  assert.deepEqual((await callTool(s, token, 'kid', 'read_sub_session', { session_id: 'made' })).result, refusal);
+  assert.equal(textOf(await callTool(s, token, 'kid', 'list_sub_sessions')).includes('[made]'), false);
+});
+
 test('what a sub session waits on shows when the chat above it reads it', async () => {
   const { s, token } = await ready();
   const viewer = listen(s, token, 'kid');

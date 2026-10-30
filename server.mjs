@@ -369,9 +369,11 @@ function subCtx(sessionId) {
   return {
     lookup({ archived }) {
       const { rows, groupSessions } = buildIndex({ archived });
-      const { archivedWith } = layout.read();
+      const { archivedWith, parents } = layout.read();
       const startedBy = chips.startedBy();
-      const listed = [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id], startedBy: startedBy.get(r.id) })), ...[...groupSessions.values()].filter(r => !r.retired)];
+      // The owner placing a session elsewhere ends its link to the maker.
+      const makerOf = id => (Object.hasOwn(parents, id) ? undefined : startedBy.get(id));
+      const listed = [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id], startedBy: makerOf(r.id) })), ...[...groupSessions.values()].filter(r => !r.retired)];
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
@@ -430,9 +432,9 @@ function withOpensIn(chip, row, rowOf = findRow) {
     if (chip.group) return nameOf(chip.group) ? `Opens in ${nameOf(chip.group)}` : 'Its group has been deleted';
     if (!row || row.routine) return null;
     if (row.groupSession) return nameOf(row.groupSession) ? `Opens in ${nameOf(row.groupSession)}` : null;
-    // An archived session shows nothing under it, so its chip's session stands in its place on its own.
-    if (row.archived) return nameOf(row.group) ? `Opens in ${nameOf(row.group)}` : null;
     const beside = chip.status === 'started' ? chip.nestUnder : row.via;
+    // An archived session shows nothing under it, so its chip's session stands in its place on its own. A started chip with a parent already sits there.
+    if (row.archived && !(chip.status === 'started' && beside)) return nameOf(row.group) ? `Opens in ${nameOf(row.group)}` : null;
     if (beside) {
       const parent = rowOf(beside)?.title;
       const where = parent ? `Opens beside this session, under “${parent}”` : 'Opens beside this session';

@@ -732,6 +732,8 @@ test('a chip from a sub session that names a group writes no nestUnder, and the 
   const started = await startFrom(s, token, 'sub', 'toolu_sub');
   assert.equal(started.body().chip.opensIn, 'Opens beside this session, under “Maker”, in Work');
   assert.equal((await opens('sub')).toolu_sub, 'Opens beside this session, under “Maker”, in Work', 'a started chip keeps the line');
+  assert.equal((await call(s, token, 'archive', { id: 'sub', archived: true })).status, 200);
+  assert.equal((await opens('sub')).toolu_sub, 'Opens beside this session, under “Maker”, in Work', 'archiving the maker does not change a started chip\'s card');
 });
 
 test('a group posted with the card places nothing: only the chip the server stored counts', async () => {
