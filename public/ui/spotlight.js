@@ -136,15 +136,15 @@ function Palette({ ix, archive, onShow, onClose }) {
   };
 
   // Takes an archived session out of the list at once and asks the server to unarchive it. If the server refuses, the session
-  // comes back and the reason shows. A swipe leaves the focus alone, so a phone does not raise its keyboard.
-  const unarchive = async (it, { swiped = false } = {}) => {
+  // comes back and the reason shows. A swipe passes `focus: false`, so a phone does not raise its keyboard.
+  const unarchive = async (it, { focus = true } = {}) => {
     const { r } = it;
     // The selection goes to the result beside it, held by key, so the session reappearing in Sessions does not move it.
     const beside = keys[pick] === it.key ? holdBeside(keys, pick) : null;
     const was = pick;
     if (beside) setHeld(beside);
     setGone(ids => [...ids, r.id]);
-    if (!swiped) input.current.focus();
+    if (focus) input.current.focus();
     const { problem, subs } = await archive(r.id, false);
     if (problem) {
       setGone(ids => ids.filter(id => id !== r.id));
@@ -154,7 +154,7 @@ function Palette({ ix, archive, onShow, onClose }) {
     say(problem || `Unarchived “${r.title || UNTITLED}”${withSubs(subs)}.`, { problem: !!problem });
   };
 
-  latestSwipe.current = key => { const it = flat.find(hit => hit.key === key); if (it) unarchive(it, { swiped: true }); };
+  latestSwipe.current = key => { const it = flat.find(hit => hit.key === key); if (it) unarchive(it, { focus: false }); };
 
   // The arrows change chips only from the edge of the text, so they still move the caret through a query. Esc is the dialog's.
   const onKeyDown = e => {

@@ -1,6 +1,9 @@
 // Swipes a row sideways with a finger, as Gmail does. The row follows the finger over a backdrop that names the action, and letting go
 // far enough, or with a flick, takes it. Short of that it springs back. A mouse or a trackpad does nothing here.
-const LOCK = 10;
+import { HOLD_SLOP, POPUPS } from './drag.js';
+
+// Past the distance at which a long press gives up, so a swipe never locks while a lift could still start.
+const LOCK = HOLD_SLOP + 2;
 const RATIO = 1.5;
 const EDGE = 20;
 const COMMIT = 0.4;
@@ -11,7 +14,6 @@ const OUT_MS = 160;
 const BACK_MS = 200;
 const QUIET_MS = 250;
 
-const POPUPS = 'button.more, [aria-haspopup]';
 const swallow = e => { e.preventDefault(); e.stopPropagation(); };
 const side = offset => (offset < 0 ? 'left' : 'right');
 
