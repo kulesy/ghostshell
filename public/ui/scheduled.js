@@ -246,7 +246,7 @@ function ScheduledForm({ id, ix, scheduled, error, refresh }) {
       <input class="input" id=${FIELD_IDS.title} type="text" value=${form.title} autocomplete="off" onInput=${set('title')} ...${aria(FIELD_IDS.title, true, refused('title'))} />
     <//>
     <${Field} id=${FIELD_IDS.at} label="Date and time" hint="In this Mac's time zone. If GhostShell is off then, it starts as soon as it is back, unless that is more than 12 hours late." error=${refused('at')}>
-      <input class="input routine-short" id=${FIELD_IDS.at} type="datetime-local" value=${form.at} onInput=${set('at')} ...${aria(FIELD_IDS.at, true, refused('at'))} />
+      <input class="input scheduled-at" id=${FIELD_IDS.at} type="datetime-local" value=${form.at} onInput=${set('at')} ...${aria(FIELD_IDS.at, true, refused('at'))} />
     <//>
     <${Field} id=${FIELD_IDS.cwd} label="Folder" hint="The full path of the folder the session starts in." error=${refused('cwd')}>
       <input class="input routine-mono" id=${FIELD_IDS.cwd} type="text" value=${form.cwd} autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck=${false} onInput=${set('cwd')}

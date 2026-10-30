@@ -4316,6 +4316,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 .routine-mono { font-family: var(--font-mono); }
 
 .routine-short { max-width: 10rem; }
+.scheduled-at { max-width: 16rem; }
 
 .routine-trio { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem; }
 
