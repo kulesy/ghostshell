@@ -18,6 +18,7 @@ import { draftGroup, groupById, pinsOnStart } from './group-rules.js';
 import { createChat } from './session.js';
 import { keyHint, shortcut } from './shortcuts.js';
 import { usePullNeeds, usePullStatus } from './pulls.js';
+import { agentsButtonName, partsOf } from './subagent-rules.js';
 import { BOT } from './subagents.js';
 import { subsButtonName, subsOffered, subsStatus } from './sub-panel-rules.js';
 import { LIST_TREE, sessionIndex } from './subs.js';
@@ -32,10 +33,13 @@ function TerminalButton({ ctrl }) {
   return html`<button class="btn" id="terminalButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label="Terminal" aria-expanded=${shown === 'terminal'} aria-controls="panel" data-tip="Terminal" data-tip-key=${keyHint('Ctrl', '`')} onClick=${e => toggleTab(ctrl.id, 'terminal', e.currentTarget, shown)}>${draw(icons.terminal, 'icon')}</button>`;
 }
 
-// Only where the chat has neither the terminal nor sub sessions, so a chat with helpers alone still has a way to its panel.
+// Shown whenever the chat has had a helper, beside the other panel buttons, with a mark while one is running.
 function AgentsButton({ ctrl }) {
   const shown = useShownTab(ctrl);
-  return html`<button class="btn" id="agentsButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label="Subagents" aria-expanded=${shown === 'agents'} aria-controls="panel" data-tip="Subagents" onClick=${e => toggleTab(ctrl.id, 'agents', e.currentTarget, shown)}>${draw(BOT, 'icon')}</button>`;
+  const agents = useStore(ctrl.store, s => s.agents);
+  const name = agentsButtonName(agents);
+  const running = partsOf(agents).running.length > 0;
+  return html`<button class="btn" id="agentsButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label=${name} aria-expanded=${shown === 'agents'} aria-controls="panel" data-tip=${name} onClick=${e => toggleTab(ctrl.id, 'agents', e.currentTarget, shown)}>${draw(BOT, 'icon')}${running ? html`<span class="agents-mark" aria-hidden="true"></span>` : null}</button>`;
 }
 
 // Its name carries the count and what waits on the owner, since the mark on it is colour alone. It also asks for the pull requests of the
@@ -120,7 +124,7 @@ function ChatHead({ ctrl, kind, rename }) {
       <p class="chat-meta" id="meta">${meta}</p>
       ${draft && groupName ? html`<span class="start-group">${draw(pinning ? icons.pin : icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${pinning ? 'Start without pinning' : `Start outside ${groupName}`} data-tip=${pinning ? 'Start without pinning' : 'Start outside the group'} onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>
-    ${archivable || terminal || subs || agents ? html`<div class="chat-tools">${archivable ? html`<${ArchiveButton} id=${ctrl.id} state=${state} title=${session.title} />` : null}${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${agents && !subs && !terminal ? html`<${AgentsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
+    ${archivable || terminal || subs || agents ? html`<div class="chat-tools">${archivable ? html`<${ArchiveButton} id=${ctrl.id} state=${state} title=${session.title} />` : null}${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${agents ? html`<${AgentsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
   </header>`;
 }
 

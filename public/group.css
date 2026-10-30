@@ -193,7 +193,7 @@ a.group-head[aria-current="page"] .name { color: inherit; }
 
 .panel-tabs { min-width: 0; margin: -2px; padding: 2px; overflow-x: auto; scrollbar-width: none; }
 
-#subsButton .subs-mark {
+#subsButton .subs-mark, #agentsButton .agents-mark {
   position: absolute;
   top: 0.3125rem;
   right: 0.3125rem;
@@ -203,6 +203,8 @@ a.group-head[aria-current="page"] .name { color: inherit; }
   background: var(--warning);
   box-shadow: 0 0 0 2px var(--background);
 }
+
+#agentsButton .agents-mark { background: var(--success); }
 
 .subs {
   flex: 1 1 auto;

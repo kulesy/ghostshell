@@ -130,6 +130,18 @@ test('a chat that has had helpers has the Subagents tab, a summary and the runni
   assert.deepEqual(page.problems, []);
 });
 
+test('a chat with a terminal also has the Subagents button in its header, marked while a helper runs, and it opens the tab', { skip, timeout }, async t => {
+  const page = await appPage(t, `#/s/${WITH}`);
+  await page.until(`!!document.querySelector('#agentsButton') && !!document.querySelector('#terminalButton')`);
+  assert.deepEqual(await all(page, '.chat-tools > .btn', 'el.id'), ['archiveButton', 'agentsButton', 'terminalButton']);
+  assert.equal(await page.evaluate(`document.querySelector('#agentsButton').getAttribute('aria-label')`), 'Subagents: 1 running, 2 finished');
+  assert.equal(await page.evaluate(`!!document.querySelector('#agentsButton .agents-mark')`), true);
+  await page.click('#agentsButton');
+  await page.until(`!!document.querySelector('#tab-agents[aria-selected="true"]') && !!document.querySelector('#pane-agents:not([hidden]) .agents .agent')`);
+  assert.equal(await page.evaluate(`document.querySelector('#agentsButton').getAttribute('aria-expanded')`), 'true');
+  assert.deepEqual(page.problems, []);
+});
+
 test('the running time counts up by the second on the page\'s own clock', { skip, timeout }, async t => {
   const page = await appPage(t, `#/s/${WITH}`);
   await agentsTab(page);
@@ -202,12 +214,12 @@ test('Subagents is reached with the arrow keys from the tab list, and the tab al
   assert.deepEqual(page.problems, []);
 });
 
-test('a chat with no helpers has no Subagents tab', { skip, timeout }, async t => {
+test('a chat with no helpers has no Subagents tab or button', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/plain');
   await page.until(`document.querySelector('#title')?.textContent === 'Plain' && !!document.querySelector('#terminalButton')`);
   await page.click('#terminalButton');
   await page.until(`!!document.querySelector('#panel #tab-terminal')`);
-  assert.equal(await page.evaluate(`document.querySelectorAll('#tab-agents, .agents').length`), 0);
+  assert.equal(await page.evaluate(`document.querySelectorAll('#agentsButton, #tab-agents, .agents').length`), 0);
   assert.deepEqual(page.problems, []);
 });
 
@@ -216,7 +228,7 @@ test('a server that does not send helpers offers no tab for a chat that has them
   await page.until(`document.querySelector('#title')?.textContent === 'Fans out' && !!document.querySelector('#terminalButton')`);
   await page.click('#terminalButton');
   await page.until(`!!document.querySelector('#panel #tab-terminal')`);
-  assert.equal(await page.evaluate(`document.querySelectorAll('#tab-agents, .agents').length`), 0);
+  assert.equal(await page.evaluate(`document.querySelectorAll('#agentsButton, #tab-agents, .agents').length`), 0);
   assert.deepEqual(page.problems, []);
 });
 
@@ -231,7 +243,7 @@ test('a phone is shown the tab in the panel that covers the chat, and a card doe
   assert.deepEqual(page.problems, []);
 });
 
-test('a helper that is open and has focus keeps both when it ends and moves to the Finished fold', { skip, timeout }, async t => {
+test('a helper that is open and has focus keeps both when it ends and moves to the Finished fold, and the header dot goes', { skip, timeout }, async t => {
   const page = await appPage(t, `#/s/${MOVER}`);
   await agentsTab(page);
   await page.click('.agent[data-state="running"] .agent-card');
@@ -243,5 +255,7 @@ test('a helper that is open and has focus keeps both when it ends and moves to t
   await page.until(`document.activeElement === document.querySelector('.agent[data-state="done"] .agent-card')`);
   assert.equal(await page.evaluate(`document.querySelector('.agents .status-fold').getAttribute('aria-expanded')`), 'true');
   await page.until(`!!document.querySelector('.agent[data-state="done"] .agent-reply')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('#agentsButton .agents-mark')`), false, 'the dot goes with the last running helper');
+  assert.equal(await page.evaluate(`document.querySelector('#agentsButton').getAttribute('aria-label')`), 'Subagents: 1 finished');
   assert.deepEqual(page.problems, []);
 });

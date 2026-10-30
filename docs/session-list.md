@@ -168,7 +168,7 @@ Each card has an Archive button beside Details, so a session can be cleared from
 
 ### Subagents
 
-A chat that has started helpers with the Agent tool has a Subagents tab in its side panel, after Sub sessions and ahead of Terminal and File. A helper is not a sub session: it has no chat of its own and cannot be messaged, so it is listed here and not in Sub sessions. A chat that never started one has no tab. The panel does not open by itself for helpers. Open it with the Terminal or Sub sessions button in the chat's header and pick the tab. A chat with neither button gets a Subagents button of its own, so a phone can still reach the panel.
+A chat that has started helpers with the Agent tool has a Subagents tab in its side panel, after Sub sessions and ahead of Terminal and File. A helper is not a sub session: it has no chat of its own and cannot be messaged, so it is listed here and not in Sub sessions. A chat that never started one has no tab. The panel does not open by itself for helpers. Open it with the Subagents button in the chat's header, which sits between Sub sessions and Terminal and has a dot while a helper is running.
 
 The tab starts with a line such as "2 running, 5 finished". The helpers still running come first under Running, the newest start first. The finished ones sit in a fold called Finished, which is closed until you open it, the newest end first. Each helper is a card with:
 

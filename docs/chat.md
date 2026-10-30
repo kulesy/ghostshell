@@ -96,7 +96,7 @@ Tool calls are collapsed into one row for each run between Claude's messages, su
 
 ### Subagents
 
-A chat that has started helpers with the Agent tool gets a Subagents tab in its side panel, between Sub sessions and Terminal. It lists each helper with its type, state and latest action, and opens one to its recent steps and reply. [Session list](session-list.md#subagents) has the detail.
+A chat that has started helpers with the Agent tool gets a Subagents tab in its side panel, between Sub sessions and Terminal. It lists each helper with its type, state and latest action, and opens one to its recent steps and reply. The header's Subagents button opens the tab and has a dot while a helper is running. [Session list](session-list.md#subagents) has the detail.
 
 ### Pictures from tools
 
