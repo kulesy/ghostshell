@@ -30,6 +30,7 @@ async function mount({ leaves = () => true, reduced = false } = {}) {
   const dragging = { on: false };
   globalThis.innerWidth = 400;
   globalThis.matchMedia = () => ({ matches: reduced });
+  globalThis.requestAnimationFrame = fn => setTimeout(fn, 16);
   globalThis.document = Object.assign(target(), { body: { classList: { contains: () => dragging.on } } });
   globalThis.window = target();
   const host = { dataset: {}, offsetHeight: 48, style: { setProperty(name, value) { this[name] = value; }, removeProperty(name) { delete this[name]; } } };
@@ -136,8 +137,7 @@ test('letting go past 40% of the width slides the row off, collapses it, and the
   assert.deepEqual(t.swiped, []);
   mock.timers.tick(OUT_MS);
   assert.deepEqual(t.swiped, ['r1']);
-  await Promise.resolve();
-  await Promise.resolve();
+  mock.timers.tick(16);
   assert.equal(t.host.dataset.swipe, undefined);
   assert.equal(t.host.style.height, undefined);
   t.stop();
@@ -222,6 +222,8 @@ test('with reduced motion the row is removed and reported at once', async () => 
   t.up(262, 100);
   assert.deepEqual(t.swiped, ['r1']);
   assert.equal(t.host.style.height, '0px');
+  mock.timers.tick(16);
+  assert.equal(t.host.style.height, undefined);
   t.stop();
 });
 

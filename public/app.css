@@ -1384,7 +1384,7 @@ body[data-scroll-locked] {
 
 .row[data-lifted], .group[data-lifted] { opacity: 0.4; }
 
-a.row[data-id], [data-slot="command-item"][data-archived] { touch-action: pan-y; }
+a.row[data-id], [data-slot="command-item"][data-archived] { touch-action: pan-y pinch-zoom; }
 
 [data-swipe] {
   --swipe-base: var(--sidebar);

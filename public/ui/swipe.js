@@ -118,7 +118,12 @@ export function swipeRows(box, { row, leaves = () => true, onSwipe }) {
       host.dataset.swipe = `${side(t.offset)} armed collapse`;
       host.style.height = '0px';
     };
-    const done = () => Promise.resolve(onSwipe(t.el)).finally(() => clear(t));
+    // The list takes the row out as onSwipe starts, so by the next frame it is gone. A host that stays, such as a routine's with its next
+    // run, shows again rather than waiting on the server.
+    const done = () => {
+      onSwipe(t.el);
+      requestAnimationFrame(() => clear(t));
+    };
     host.dataset.swipe = `${side(t.offset)} armed out`;
     host.style.setProperty('--swipe', `${sign * t.width}px`);
     if (reduced()) {

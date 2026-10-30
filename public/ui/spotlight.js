@@ -154,7 +154,7 @@ function Palette({ ix, archive, onShow, onClose }) {
     say(problem || `Unarchived “${r.title || UNTITLED}”${withSubs(subs)}.`, { problem: !!problem });
   };
 
-  latestSwipe.current = key => { const it = flat.find(hit => hit.key === key); if (it) return unarchive(it, { swiped: true }); };
+  latestSwipe.current = key => { const it = flat.find(hit => hit.key === key); if (it) unarchive(it, { swiped: true }); };
 
   // The arrows change chips only from the edge of the text, so they still move the caret through a query. Esc is the dialog's.
   const onKeyDown = e => {

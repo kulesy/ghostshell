@@ -504,7 +504,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   function archiveOrAsk(r, { ring = false, back } = {}) {
     const title = r.title || UNTITLED;
     if (stopsFirst(r)) confirmStop(r.id, title, { ring, back });
-    else return archiveRow(r.id, title, { ask: true, ring });
+    else archiveRow(r.id, title, { ask: true, ring });
   }
 
   // The same for several rows leaving together. The focus goes to the row above the topmost of them, or back to them if none went.
@@ -775,7 +775,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
 
   latestSwipe.current = {
     leaves: id => { const r = findRow(ix, id); return !r || !stopsFirst(r); },
-    archive: id => { const r = findRow(ix, id); return r && archiveOrAsk(r); },
+    archive: id => { const r = findRow(ix, id); if (r) archiveOrAsk(r); },
   };
 
   // Shift+Down and Shift+Up from a row move the focus to the next or the one before and pick the rows from the anchor to it.
