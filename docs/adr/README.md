@@ -49,3 +49,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-27 | [Show a badge after each pull request and issue link in a reply, with a card of its details](20261027-github-link-previews.md) | Accepted |
 | 2026-10-28 | [Give sessions tools to find, archive, rename and move sessions, and read chips](20261028-layout-tools-for-sessions.md) | Accepted, amended 2026-10-30 |
 | 2026-10-30 | [Keep a one-off scheduled session in its own list, not as a routine pinned to a date](20261030-a-one-off-is-its-own-list.md) | Accepted |
+| 2026-10-31 | [Show plan usage in the context popover from the CLI's own figures](20261031-plan-usage-from-the-cli.md) | Accepted |

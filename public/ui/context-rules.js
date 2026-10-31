@@ -58,3 +58,43 @@ export function mergeContext(held, reply, detail) {
   const next = keeps ? { ...reply, categories: held.categories, buffer: held.buffer, free: held.free } : reply;
   return held && SAME.every(k => held[k] === next[k]) ? held : next;
 }
+
+// The rows are the server's, in its order: { kind, group, percent, resetsAt, scope, severity }. A row is told apart by its `kind`, never by a label.
+
+const capital = s => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
+
+export function planLabel(row) {
+  if (row.kind === 'session') return 'Current session';
+  if (row.kind === 'weekly_all') return 'Weekly · All models';
+  return [row.kind === 'weekly_scoped' ? 'Weekly' : capital(row.group), row.scope].filter(Boolean).join(' · ');
+}
+
+// A reset under a day away counts down. A later one gives the weekday and the clock, in the page's zone unless one is given.
+export function planReset(resetsAt, now, timeZone) {
+  const at = Date.parse(resetsAt);
+  if (!Number.isFinite(at)) return null;
+  if (at <= now) return 'Resets now';
+  const minutes = Math.ceil((at - now) / 60_000);
+  if (minutes < 1440) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return `Resets in ${[hours && `${hours} hr`, rest && `${rest} min`].filter(Boolean).join(' ')}`;
+  }
+  const day = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone }).format(at);
+  const clock = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone }).format(at).replace(/\s?([AP])M$/, (_, m) => ` ${m.toLowerCase()}m`);
+  return `Resets ${day} ${clock}`;
+}
+
+export function planRows(rows, now = Date.now(), timeZone) {
+  return (rows ?? []).map((row, n) => {
+    const reset = row.resetsAt ? planReset(row.resetsAt, now, timeZone) : null;
+    return {
+      key: `${row.kind}-${row.scope ?? ''}-${n}`,
+      label: planLabel(row),
+      percent: row.percent,
+      severity: row.severity === 'normal' ? null : row.severity,
+      reset,
+      text: `${row.percent}% used${reset ? `, ${reset.charAt(0).toLowerCase()}${reset.slice(1)}` : ''}`,
+    };
+  });
+}
