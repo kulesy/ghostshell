@@ -1,7 +1,7 @@
 // Run with `npm test`. What the context meter says about a figure from the server, and which figure it keeps when a reply comes in.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hasFigure, mergeContext, parts, readout } from '../public/ui/context-rules.js';
+import { hasFigure, mergeContext, parts, planLabel, planReset, planRows, readout } from '../public/ui/context-rules.js';
 
 const figure = (over = {}) => ({ source: 'process', total: 47_760, window: 300_000, autoCompactAt: 267_000, model: 'claude-haiku-5-5', ...over });
 const full = (over = {}) => figure({
@@ -119,4 +119,55 @@ test('a full count that came back from the transcript leaves the process figure 
   assert.equal(mergeContext(held, transcript, 'summary'), transcript);
   assert.deepEqual(mergeContext(held, { source: 'none', compacted: true }, 'summary'), { source: 'none', compacted: true });
   assert.equal(mergeContext(transcript, { source: 'none' }, 'full').source, 'none', 'with no process figure to keep, the reply stands');
+});
+
+// ---- plan usage -------------------------------------------------------------------------------------
+
+const NOW = Date.parse('2026-11-01T10:00:00Z');
+const after = ms => new Date(NOW + ms).toISOString();
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+
+test('a row is labelled by its kind, and a kind the page does not know by its group and scope', () => {
+  assert.equal(planLabel({ kind: 'session', group: 'session', scope: null }), 'Current session');
+  assert.equal(planLabel({ kind: 'weekly_all', group: 'weekly', scope: null }), 'Weekly · All models');
+  assert.equal(planLabel({ kind: 'weekly_scoped', group: 'weekly', scope: 'Fable' }), 'Weekly · Fable');
+  assert.equal(planLabel({ kind: 'weekly_scoped', group: 'weekly', scope: null }), 'Weekly');
+  assert.equal(planLabel({ kind: 'monthly_scoped', group: 'monthly', scope: 'Fable' }), 'Monthly · Fable');
+  assert.equal(planLabel({ kind: 'extra', group: 'weekly', scope: null }), 'Weekly');
+  assert.equal(planLabel({ kind: 'session', group: 'weekly', scope: 'Fable' }), 'Current session', 'the kind decides, and a label from the server would not');
+});
+
+test('a reset under a day away is a count down, and a later one is the weekday and the clock', () => {
+  assert.equal(planReset(after(3 * HOUR + 20 * MIN), NOW), 'Resets in 3 hr 20 min');
+  assert.equal(planReset(after(45 * MIN), NOW), 'Resets in 45 min');
+  assert.equal(planReset(after(2 * HOUR), NOW), 'Resets in 2 hr');
+  assert.equal(planReset(after(3 * HOUR + 20 * MIN - 1000), NOW), 'Resets in 3 hr 20 min', 'a part of a minute counts as the minute');
+  assert.equal(planReset(after(1000), NOW), 'Resets in 1 min');
+  assert.equal(planReset(after(23 * HOUR + 59 * MIN), NOW), 'Resets in 23 hr 59 min');
+  assert.equal(planReset('2026-11-04T01:59:59.864Z', NOW, 'UTC'), 'Resets Wed 1:59 am');
+  assert.equal(planReset('2026-11-04T12:59:00Z', NOW, 'UTC'), 'Resets Wed 12:59 pm');
+  assert.equal(planReset('2026-11-04T12:59:00Z', NOW, 'Australia/Brisbane'), 'Resets Wed 10:59 pm', 'the clock is the page\'s zone');
+  assert.equal(planReset(after(24 * HOUR), NOW, 'UTC'), 'Resets Mon 10:00 am', 'a whole day away is a weekday');
+});
+
+test('a reset that has passed says so, and one that is not a date says nothing', () => {
+  assert.equal(planReset(after(-5 * MIN), NOW), 'Resets now');
+  assert.equal(planReset('soon', NOW), null);
+  assert.equal(planReset(null, NOW), null);
+});
+
+test('a row reads as a label, a percent, a reset and the words a meter speaks, and a normal severity is no mark', () => {
+  const rows = planRows([
+    { kind: 'session', group: 'session', percent: 34, resetsAt: after(2 * HOUR), scope: null, severity: 'normal' },
+    { kind: 'weekly_all', group: 'weekly', percent: 71, resetsAt: '2026-11-04T12:59:00Z', scope: null, severity: 'warning' },
+    { kind: 'weekly_scoped', group: 'weekly', percent: 99, resetsAt: null, scope: 'Fable', severity: 'critical' },
+  ], NOW, 'UTC');
+  assert.deepEqual(rows.map(r => [r.label, r.percent, r.severity, r.reset, r.text]), [
+    ['Current session', 34, null, 'Resets in 2 hr', '34% used, resets in 2 hr'],
+    ['Weekly · All models', 71, 'warning', 'Resets Wed 12:59 pm', '71% used, resets Wed 12:59 pm'],
+    ['Weekly · Fable', 99, 'critical', null, '99% used'],
+  ]);
+  assert.equal(new Set(rows.map(r => r.key)).size, 3);
+  assert.deepEqual(planRows(null), []);
 });

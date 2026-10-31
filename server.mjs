@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { cfg, ROOT } from './lib/config.mjs';
-import { lastReply, makeWindows, shapeUsage, transcriptFigure } from './lib/context.mjs';
+import { lastReply, makeWindows, shapePlan, shapeUsage, transcriptFigure } from './lib/context.mjs';
 import { parseCron } from './lib/cron.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
@@ -28,7 +28,7 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
-import { chatFor, getChat, onTurn, startChat, sweep, activeStates } from './lib/runner.mjs';
+import { chatFor, getChat, onTurn, runningChats, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
 import { makeTitler } from './lib/titler.mjs';
@@ -756,6 +756,17 @@ async function contextFor(id, detail) {
   if (!found) return { source: 'none' };
   if (found.compacted) return { source: 'none', compacted: true };
   return transcriptFigure(found, windows.get(modelKey(chat || settingsFor(id, findRow(id)))));
+}
+
+// Plan usage belongs to the account, so any chat Capcom runs can answer it. This chat is asked first, the first answer stands, and no chat
+// is ever started for it.
+async function planFor(id) {
+  const own = getChat(id);
+  for (const chat of [own, ...runningChats().filter(c => c !== own)]) {
+    const rows = await chat?.planUsage();
+    if (rows) return { limits: shapePlan(rows) };
+  }
+  return { limits: null };
 }
 
 // What the page redraws from. The clock is left out because it moves on every read.
@@ -1612,6 +1623,7 @@ async function api(req, res, u) {
     if (detail !== 'summary' && detail !== 'full') return send(res, 400, { error: 'detail must be summary or full.' });
     return send(res, 200, await contextFor(id, detail));
   }
+  if (action === 'plan') return send(res, 200, await planFor(id));
   const chat = getChat(id);
   if (action === 'mode') {
     if (!MODES.includes(body.mode)) return send(res, 400, { error: 'Unknown permission mode.' });

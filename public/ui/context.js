@@ -1,7 +1,7 @@
 // The context meter in the prompt box: a ring, or the count in words where the window is not known, and a popover that lists what fills
 // the window, largest first. The popover is shadcn's, which is Radix's, in its non-modal form: the page behind it keeps taking presses,
 // and a press or the focus going anywhere else closes it.
-import { hasFigure, parts, readout } from './context-rules.js';
+import { hasFigure, parts, planRows, readout } from './context-rules.js';
 import { useFields } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { onPressOutside } from './layer.js';
@@ -48,7 +48,25 @@ function Parts({ figure, view, busy, failed }) {
   </div>`;
 }
 
-function Popover({ id, box, open, anchor, shut, figure, r, view, busy, failed }) {
+// The plan's limits are the account's, so they show for any chat. Each is a bar like the one above, and a row that is near its limit takes
+// the severity colour the server names.
+function Plan({ id, rows }) {
+  return html`<section class="context-plan" aria-labelledby=${`${id}-plan`}>
+    <h4 class="context-plan-title" id=${`${id}-plan`}>Plan usage</h4>
+    <ul class="plan-list">
+      ${rows.map(row => html`<li key=${row.key} class="plan-row" data-severity=${row.severity}>
+        <div class="plan-head"><span class="plan-label">${row.label}</span><span class="plan-percent">${row.percent}%</span></div>
+        <div class="context-bar" role="meter" aria-label=${row.label} aria-valuemin="0" aria-valuemax="100" aria-valuenow=${row.percent} aria-valuetext=${row.text}>
+          <span class="context-fill" style=${`width:${row.percent}%`}></span>
+        </div>
+        ${row.reset ? html`<p class="plan-reset">${row.reset}</p>` : null}
+      </li>`)}
+    </ul>
+  </section>`;
+}
+
+function Popover({ id, box, open, anchor, shut, figure, r, view, busy, failed, plan }) {
+  const rows = plan ? planRows(plan) : [];
   const [at, setAt] = useState(null);
   const size = useRef(null);
   const placed = at !== null;
@@ -132,6 +150,7 @@ function Popover({ id, box, open, anchor, shut, figure, r, view, busy, failed })
     </div>`}
     ${r.line ? html`<p class="context-line">${r.line}</p>` : null}
     <${Parts} figure=${figure} view=${view} busy=${busy} failed=${failed} />
+    ${rows.length ? html`<${Plan} id=${id} rows=${rows} />` : null}
   </div>`;
 }
 
@@ -140,6 +159,7 @@ function Meter({ ctrl, figure }) {
   const ringed = r.fill !== null;
   const [open, setOpen] = useState(false);
   const [failedAt, setFailedAt] = useState(null);
+  const [plan, setPlan] = useState(null);
   const [id] = useState(() => `context-${++made}`);
   const button = useRef(null);
   const box = useRef(null);
@@ -163,6 +183,14 @@ function Meter({ ctrl, figure }) {
     return () => { live = false; };
   }, [asking, figure.total]);
 
+  // The plan's usage is asked for once each time the popover opens. A failed ask drops the rows, and is not asked for again.
+  useEffect(() => {
+    if (!open) return undefined;
+    let live = true;
+    ctrl.loadPlan().then(rows => { if (live) setPlan(rows); });
+    return () => { live = false; };
+  }, [open]);
+
   const shut = back => {
     setOpen(false);
     if (back) button.current?.focus({ preventScroll: true });
@@ -181,7 +209,7 @@ function Meter({ ctrl, figure }) {
     <button class="btn context" type="button" data-variant="ghost" data-size=${ringed ? 'icon-sm' : 'sm'} data-state=${open ? 'open' : 'closed'} data-severity=${r.severity}
       aria-haspopup="dialog" aria-expanded=${open} aria-controls=${open ? id : null} aria-label=${r.label} data-tip=${open ? '' : r.tip}
       ref=${button} onClick=${toggle}>${ringed ? html`<${Ring} fill=${r.fill} />` : html`<span>${r.text}</span>`}</button>
-    ${present ? html`<${Popover} id=${id} box=${box} open=${open} anchor=${button} shut=${shut} figure=${figure} r=${r} view=${view} busy=${busy} failed=${failed} />` : null}
+    ${present ? html`<${Popover} id=${id} box=${box} open=${open} anchor=${button} shut=${shut} figure=${figure} r=${r} view=${view} busy=${busy} failed=${failed} plan=${plan} />` : null}
   <//>`;
 }
 

@@ -50,7 +50,7 @@ const freePort = () => new Promise(resolve => {
 // Sent 'finish the turn with fast mode off' it ends the turn as 'finish the turn' does, with a result that reports fast mode off.
 // Sent 'begin a session', or a message that opens with a file mention (as text, or as the text block beside pictures or documents) or with a <scheduled-task> tag, it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, but copies layout.json as it is then to layout-at-interrupt.json in
-// the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
+// the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none. A `get_usage` request is answered with the rate_limits.limits in plan-usage.json in the home, or with an error if there is none, and logged as `control` with its `skip`.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
 // 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool>, and a message that opens with a <session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
@@ -162,9 +162,13 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "  try {",
     "    const m = JSON.parse(line);",
     "    if (begun) held.splice(0).forEach(say);",
-    "    if (m.type === 'control_request') note({ control: m.request.subtype, ...(m.request.subtype === 'get_context_usage' && { detail: m.request.detail }) });",
+    "    if (m.type === 'control_request') note({ control: m.request.subtype, ...(m.request.subtype === 'get_context_usage' && { detail: m.request.detail }), ...(m.request.subtype === 'get_usage' && { skip: m.request.skip_behaviors }) });",
     `    if (m.type === 'control_request' && m.request.subtype === 'interrupt') fs.copyFileSync(${JSON.stringify(path.join(state, 'layout.json'))}, ${JSON.stringify(path.join(home, 'layout-at-interrupt.json'))});`,
     `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)}, models: ${JSON.stringify(CLI_MODELS)} } } });`,
+    "    if (m.type === 'control_request' && m.request.subtype === 'get_usage') {",
+    `      const limits = fs.existsSync(${JSON.stringify(path.join(home, 'plan-usage.json'))}) ? JSON.parse(fs.readFileSync(${JSON.stringify(path.join(home, 'plan-usage.json'))}, 'utf8')) : null;`,
+    "      say({ type: 'control_response', response: limits ? { subtype: 'success', request_id: m.request_id, response: { rate_limits: { five_hour: null, limits } } } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } });",
+    "    }",
     "    if (m.type === 'control_request' && m.request.subtype === 'get_context_usage') {",
     `      const usage = fs.existsSync(${JSON.stringify(usageFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(usageFile)}, 'utf8'))[m.request.detail] : null;`,
     "      say({ type: 'control_response', response: usage ? { subtype: 'success', request_id: m.request_id, response: usage } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } });",

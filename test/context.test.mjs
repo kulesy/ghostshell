@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { lastReply, makeWindows, shapeUsage, transcriptFigure } from '../lib/context.mjs';
+import { lastReply, makeWindows, shapePlan, shapeUsage, transcriptFigure } from '../lib/context.mjs';
 import { as, cliCalls, request, signIn, start, until } from './harness.mjs';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-context-test-'));
@@ -252,6 +252,34 @@ test('a transcript figure carries the window only while the total still fits in 
   assert.deepEqual(transcriptFigure(found, null), { ...base, window: null, autoCompactAt: null });
 });
 
+// ---- the plan's usage -------------------------------------------------------------------------------
+
+const weekly = { kind: 'weekly_all', group: 'weekly', percent: 71, severity: 'normal', resets_at: '2026-11-04T01:59:59.864730+00:00', scope: null, is_active: true };
+const scoped = { kind: 'weekly_scoped', group: 'weekly', percent: 2, severity: 'warning', resets_at: '2026-11-04T01:59:59.864949+00:00', scope: { model: { id: null, display_name: 'Fable' }, surface: null }, is_active: false };
+
+test('the plan rows keep the server\'s order and say, for each, its kind, group, percent, reset, scope and severity', () => {
+  assert.deepEqual(shapePlan([weekly, scoped]), [
+    { kind: 'weekly_all', group: 'weekly', percent: 71, resetsAt: '2026-11-04T01:59:59.864Z', scope: null, severity: 'normal' },
+    { kind: 'weekly_scoped', group: 'weekly', percent: 2, resetsAt: '2026-11-04T01:59:59.864Z', scope: 'Fable', severity: 'warning' },
+  ]);
+  assert.deepEqual(shapePlan([scoped, weekly]).map(r => r.kind), ['weekly_scoped', 'weekly_all'], 'the order is the server\'s');
+  assert.equal(shapePlan([{ ...scoped, scope: { model: { display_name: 'Fable' }, surface: { display_name: 'Cowork' } } }])[0].scope, 'Fable · Cowork');
+});
+
+test('a percent is clamped to 0 to 100, a reset that is not a date is no reset, and a severity that is not known is normal', () => {
+  const [over, under, odd] = shapePlan([{ ...weekly, percent: 140 }, { ...weekly, percent: -3 }, { ...weekly, resets_at: 'soon', severity: 'dire' }]);
+  assert.deepEqual([over.percent, under.percent], [100, 0]);
+  assert.deepEqual([odd.resetsAt, odd.severity], [null, 'normal']);
+  assert.equal(shapePlan([{ ...weekly, resets_at: null }])[0].resetsAt, null);
+});
+
+test('a row without a kind, a group or a finite percent is dropped, and no usable row is null', () => {
+  const bad = [null, 'x', 5, {}, { ...weekly, kind: '' }, { ...weekly, kind: 5 }, { ...weekly, group: undefined }, { ...weekly, percent: '71' }, { ...weekly, percent: NaN }, { ...weekly, percent: Infinity }];
+  assert.equal(shapePlan(bad), null);
+  assert.deepEqual(shapePlan([...bad, weekly]).map(r => r.percent), [71]);
+  for (const none of [undefined, null, [], 'rows', {}]) assert.equal(shapePlan(none), null);
+});
+
 // ---- the route --------------------------------------------------------------------------------------
 
 const file = (s, id) => path.join(s.home, '.claude', 'projects', '-test-folder', `${id}.jsonl`);
@@ -433,4 +461,50 @@ test('a count that was in flight when the model was switched is not saved for th
 
   assert.equal((await context(s, token, 'live')).body().window, 1_000_000);
   assert.deepEqual(JSON.parse(fs.readFileSync(saved(), 'utf8')), { 'sonnet[1m]': { window: 1_000_000, autoCompactAt: 967_000 } });
+});
+
+// ---- the route for the plan's usage ------------------------------------------------------------------
+
+const plan = (s, token, id, headers = {}) => request(s, 'POST', `/api/sessions/${id}/plan`, { headers: { ...as(token), ...headers }, json: {} });
+const planFile = (s, limits) => fs.writeFileSync(path.join(s.home, 'plan-usage.json'), JSON.stringify(limits));
+const usageAsks = s => cliCalls(s).filter(c => c.control === 'get_usage');
+
+test('only a signed-in browser on this site can ask for the plan, by POST, and with no chat running no process is started to answer', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'quiet', title: 'Idle' }] });
+  assert.equal((await request(s, 'POST', '/api/sessions/quiet/plan', { json: {} })).status, 401);
+  const { token } = await signIn(s);
+  assert.equal((await plan(s, token, 'quiet', { origin: 'http://evil.example' })).status, 403);
+  assert.equal((await request(s, 'GET', '/api/sessions/quiet/plan', { headers: as(token) })).status, 405);
+  assert.equal((await plan(s, token, 'bad%20id')).status, 400);
+
+  planFile(s, [weekly]);
+  const answer = await plan(s, token, 'quiet');
+  assert.equal(answer.status, 200);
+  assert.equal(answer.headers['cache-control'], 'no-store');
+  assert.deepEqual(answer.body(), { limits: null });
+  assert.deepEqual(cliCalls(s), [], 'nothing was started for it');
+});
+
+test('a chat Capcom runs answers with the plan\'s rows, shaped, and the CLI is told to skip the scan of transcripts', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'live', title: 'Runs' }] });
+  const { token } = await signIn(s);
+  await run(s, token, 'live');
+  planFile(s, [weekly, { kind: 'weekly_scoped', percent: 'many' }, scoped]);
+  assert.deepEqual((await plan(s, token, 'live')).body(), { limits: shapePlan([weekly, scoped]) });
+  assert.deepEqual(usageAsks(s).map(c => c.skip), [true]);
+});
+
+test('the plan belongs to the account, so a chat with no process is answered by another that runs, and a failed or empty answer is no limits', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'live', title: 'Runs' }, { id: 'idle', title: 'Idle' }] });
+  const { token } = await signIn(s);
+  await run(s, token, 'live');
+  planFile(s, [weekly]);
+  assert.deepEqual((await plan(s, token, 'idle')).body(), { limits: shapePlan([weekly]) });
+  assert.equal(usageAsks(s).length, 1);
+
+  for (const none of [[], null]) {
+    planFile(s, none);
+    assert.deepEqual((await plan(s, token, 'idle')).body(), { limits: null });
+  }
+  assert.deepEqual((await plan(s, token, 'live')).body(), { limits: null }, 'the CLI refusing is no limits');
 });

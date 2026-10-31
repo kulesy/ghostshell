@@ -66,3 +66,4 @@ Chosen option: "Ask the chat's CLI process with the `get_context_usage` control 
 - Builds on [Drive each chat with a headless Claude Code process](20261006-headless-claude-cli-per-chat.md), whose process answers the count
 - Follows [Build Capcom's look and behaviour on shadcn/ui](20261022-shadcn-design-language.md) for the meter and its popover
 - Asks the CLI the way [List a chat's skills and commands under / from the CLI's own list](20261022-slash-menu-from-the-cli.md) does
+- Extended by [Show plan usage in the context popover from the CLI's own figures](20261031-plan-usage-from-the-cli.md), which adds the plan's limits under the parts

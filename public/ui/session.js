@@ -243,6 +243,17 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     return asking[detail];
   }
 
+  // The plan's usage rows, which belong to the account and not to this chat. A failed ask or a draft gives null.
+  async function loadPlan() {
+    if (draft) return null;
+    try {
+      const reply = await api(`api/sessions/${enc(id)}/plan`, {});
+      return Array.isArray(reply?.limits) && reply.limits.length ? reply.limits : null;
+    } catch {
+      return null;
+    }
+  }
+
   // A count that comes sooner than CONTEXT_EVERY after the last one waits for it, and the many that arrive while it waits are one.
   function refreshContext() {
     if (draft || closed) return;
@@ -424,7 +435,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   const fileUrl = path => `api/sessions/${enc(id)}/file?path=${enc(path)}`;
 
   return {
-    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, retry,
+    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, retry,
     send, prompt, stop, decide, dismissHold, chip, setMode, pick, startNew, notice, imageUrl, fileUrl,
   };
 }
