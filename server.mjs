@@ -759,10 +759,10 @@ async function contextFor(id, detail) {
 }
 
 // Plan usage belongs to the account, so any chat Capcom runs can answer it. This chat is asked first, the first answer stands, and no chat
-// is ever started for it.
+// is ever started for it. Two others at most are tried, since each can take the full timeout to fail.
 async function planFor(id) {
   const own = getChat(id);
-  for (const chat of [own, ...runningChats().filter(c => c !== own)]) {
+  for (const chat of [own, ...runningChats().filter(c => c !== own).slice(0, 2)]) {
     const rows = await chat?.planUsage();
     if (rows) return { limits: shapePlan(rows) };
   }

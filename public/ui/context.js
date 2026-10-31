@@ -183,7 +183,7 @@ function Meter({ ctrl, figure }) {
     return () => { live = false; };
   }, [asking, figure.total]);
 
-  // The plan's usage is asked for once each time the popover opens. A failed ask drops the rows, and is not asked for again.
+  // The plan's usage is asked for once each time the popover opens. A failed ask drops the rows until the next open asks again.
   useEffect(() => {
     if (!open) return undefined;
     let live = true;
