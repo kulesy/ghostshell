@@ -4182,13 +4182,29 @@ html.viewing, html.viewing body { overflow: hidden; }
   background: var(--card);
 }
 
-.offer h2 { margin: 0; font-size: 0.9375rem; line-height: 1.35; }
+.offer h2 { display: flex; align-items: flex-start; gap: 0.4rem; margin: 0; font-size: 0.9375rem; line-height: 1.35; }
 
 .offer-text { margin: 0.25rem 0 0; font-size: 0.875rem; color: var(--muted-foreground); }
 
 .offer .notice { margin: 0.5rem 0 0; }
 
 .offer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.65rem; }
+
+.offer[data-tone="warning"] { border-color: var(--warning); background: var(--warning-muted); }
+
+.offer[data-tone="warning"] :is(h2, .offer-text, .offer-progress) { color: var(--warning-foreground); }
+
+.offer h2 svg { flex: none; width: 1rem; height: 1rem; margin-top: 0.1875rem; }
+
+.offer-list { margin: 0.5rem 0 0; padding-left: 1.1rem; font-size: 0.8125rem; }
+
+.offer-list li + li { margin-top: 0.15rem; }
+
+.offer-list a { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+
+.offer-progress { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--muted-foreground); }
+
+.offer-progress:empty { display: none; }
 
 .passkeys-body, .routines-body {
   flex: 1;

@@ -33,6 +33,49 @@ export const CLI_MODELS = [
   { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: 'Fable 5' },
   { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8', supportsFastMode: true },
 ];
+// What the fake CLI does for `claude auth ...`, written to the home as claude-auth.cjs. It is the CLI itself when a session asks for no fake CLI, and
+// the fake CLI hands its auth calls to it. `auth status --json` prints loggedIn from auth-state.json in the home (signed in without it), and
+// `auth login --claudeai` signs in at once, or once a file named auth-release appears in the home when auth-state.json says `hold`, and ends with
+// its `loginExit` when that is not 0. Each call is logged to auth.log in the home with any CLAUDE_CODE_ or ANTHROPIC_ variable it was given. A
+// sign-in writes a fresh end date for the stub keychain tool. It prints nothing a token could be in.
+const AUTH_CLI = `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const home = process.env.HOME;
+const stateFile = path.join(home, 'auth-state.json');
+const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};
+fs.appendFileSync(path.join(home, 'auth.log'), JSON.stringify({ args: process.argv.slice(3), leaked: Object.keys(process.env).filter(k => /^(CLAUDE_CODE|ANTHROPIC)/.test(k)) }) + '\\n');
+if (process.argv[3] === 'status') {
+  process.stdout.write(JSON.stringify({ loggedIn: state.loggedIn !== false }) + '\\n');
+  process.exit(state.loggedIn === false ? 1 : 0);
+}
+const finish = () => {
+  if (!state.loginExit) {
+    fs.writeFileSync(stateFile, JSON.stringify({ loggedIn: true }));
+    fs.writeFileSync(path.join(home, 'keychain-expiry'), String(Date.now() + 28 * 86_400_000));
+  }
+  process.exit(state.loginExit || 0);
+};
+if (state.hold) setInterval(() => { if (fs.existsSync(path.join(home, 'auth-release'))) finish(); }, 50);
+else finish();
+`;
+
+// The macOS `security` tool the server reads the sign-in's end date through. It prints a keychain entry with made-up secrets in it, and the
+// end date in the file keychain-expiry in the home (twenty days away without one), or fails as a missing entry does, with exit 44, when the file says `missing`.
+const FAKE_SECURITY = `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const file = path.join(process.env.HOME, 'keychain-expiry');
+const value = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : '';
+if (value === 'missing') {
+  process.stderr.write('security: The specified item could not be found in the keychain.\\n');
+  process.exit(44);
+}
+console.log(JSON.stringify({ claudeAiOauth: {
+  accessToken: 'fake-access-secret', refreshToken: 'fake-refresh-secret', refreshTokenExpiresAt: value ? Number(value) : Date.now() + 20 * 86_400_000, scopes: ['user:inference'],
+} }));
+`;
+
 const running = [];
 const launches = new WeakMap();
 
@@ -143,6 +186,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "import readline from 'node:readline';",
     `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
     "const say = message => process.stdout.write(JSON.stringify(message) + '\\n');",
+    `if (process.argv[2] === 'auth') { await import(${JSON.stringify(path.join(home, 'claude-auth.cjs'))}); await new Promise(() => {}); }`,
     "note({ started: process.argv.slice(2), cwd: process.cwd() });",
     "const startedOn = process.argv[process.argv.indexOf('--model') + 1];",
     "const namedId = process.argv.includes('--session-id') ? process.argv[process.argv.indexOf('--session-id') + 1] : null;",
@@ -267,9 +311,25 @@ export async function start(mac) {
   return launch(home, state, made);
 }
 
+// Every server gets a stub keychain tool, a CLI that answers `auth`, and a scratch folder for the checkout it would update, so no test reads the
+// real keychain, runs the real claude or fetches the real repository. A session that asks for a fake CLI has that one answer `auth` too.
+function furnishBanners(home) {
+  const auth = path.join(home, 'claude-auth.cjs');
+  const security = path.join(home, 'security');
+  const updateRoot = path.join(home, 'update-root');
+  fs.writeFileSync(auth, AUTH_CLI, { mode: 0o755 });
+  fs.writeFileSync(security, FAKE_SECURITY, { mode: 0o755 });
+  fs.mkdirSync(updateRoot, { recursive: true });
+  return { auth, security, updateRoot };
+}
+
 async function launch(home, state, made) {
   const port = await freePort();
-  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, CAPCOM_AUTO_TITLE: made.autoTitle ? '1' : '0', ...(made.cli && { CAPCOM_CLAUDE: made.cli }), ...(made.gh && { CAPCOM_GH: made.gh }), ...made.env };
+  const banners = furnishBanners(home);
+  const env = {
+    ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, CAPCOM_AUTO_TITLE: made.autoTitle ? '1' : '0', CAPCOM_CLAUDE: made.cli ?? banners.auth,
+    CAPCOM_SECURITY: banners.security, CAPCOM_UPDATE_ROOT: banners.updateRoot, ...(made.gh && { CAPCOM_GH: made.gh }), ...made.env,
+  };
   const child = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });
@@ -322,6 +382,12 @@ export async function signIn(s, headers) {
 
 // What the fake CLI has logged so far: how it was started, each message and control message it was sent, and when its input closed.
 export const cliCalls = s => (fs.existsSync(s.cliLog) ? fs.readFileSync(s.cliLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []);
+
+// The `claude auth` calls the stub CLI has logged: { args, leaked } for each, with the names of any CLAUDE_CODE_ or ANTHROPIC_ variables it was given.
+export const authCalls = s => {
+  const file = path.join(s.home, 'auth.log');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+};
 
 // A viewer of a chat's events, as the page is. `events` fills with { type, data } as they arrive, the first being the chat's status.
 export function listen(s, token, id) {

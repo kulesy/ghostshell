@@ -35,7 +35,7 @@ Use `npm run install-agent -- --label com.example.capcom` for a different label.
 
 ## Restart the service
 
-A restart is only needed after a change to server-side code. Files under `public/` load from disk on each request, so a reload of the page is enough for those.
+A restart is only needed after a change to server-side code. Files under `public/` load from disk on each request, so a reload of the page is enough for those. The sidebar shows a banner when merged changes are waiting on `main` and runs the update for you, as [Update from the sidebar](#update-from-the-sidebar) says.
 
 ```bash
 npm run restart
@@ -55,3 +55,16 @@ A restart ends every running chat. Chats you resume afterwards come back on the 
 The command refuses to restart a server that has been up for less than 60 seconds, even with `--now`, and says how long to wait. This limits repeated restarts to one a minute at most. It slows a loop down and does not stop one.
 
 Do not schedule restarts any other way. `launchctl submit` keeps its program alive and relaunches it each time it exits, so a submitted restart script restarts the service in a loop and ends every chat each time.
+
+## Update from the sidebar
+
+Every 30 minutes the server fetches `origin/main` and compares it with the commit it started from. When there are merged changes, the sidebar lists up to five of them, as links to their pull requests, and offers Update.
+
+1. A change to `public/` files the server does not import, to docs or to tests only needs the checkout pulled, so Update runs `git merge --ff-only origin/main` and nothing restarts.
+2. A change to `server.mjs`, `lib/`, `package.json`, `config.json` or a `public/` file the server imports also needs a restart. Update pulls, then runs `npm run restart -- --wait <minutes>`, so the restart waits until no chat or routine is running.
+3. Restarts are refused on weekdays from 07:00 to 09:45, and the button says so. A pull with no restart is allowed then.
+4. Update refuses, and changes nothing, when the checkout is not on `main`, has uncommitted changes to tracked files, has commits that are not on `origin/main`, or a restart is already under way.
+
+If the helper gives up because a chat kept running, the banner stays and offers Restart.
+
+The same place warns when Claude's sign-in is five days from its end or already over, and signs in again on the Mac. [The decision record](adr/20261102-banners-for-sign-in-and-updates.md) has the reasons.

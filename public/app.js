@@ -1,5 +1,7 @@
 import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
+import { supportsBanners } from './ui/banner-rules.js';
+import { LoginBanner, UpdateBanner, useBanners } from './ui/banners.js';
 import { ChatPane } from './ui/chat.js';
 import { renamerFor } from './ui/chat-rename.js';
 import { groupById, groupOfSession, parseNewRoute } from './ui/group-rules.js';
@@ -61,6 +63,7 @@ function App() {
   const writing = useRef(0);
   const taking = useRef(new Set());
   const [offering, stopOffering] = usePasskeyOffer();
+  const banners = useBanners(supportsBanners(ix));
   const mod = useModifier();
   const flipKey = useRef(null);
   useRenewal();
@@ -314,7 +317,7 @@ function App() {
     <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} edit=${edit} archive=${archive} archiveAll=${archiveAll} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       routines=${routines} routinesOpen=${route.name === 'routines'} refreshRoutines=${refreshRoutines}
       scheduled=${scheduled} scheduledOpen=${route.name === 'scheduled'} refreshScheduled=${refreshScheduled}
-      banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
+      banner=${html`<${LoginBanner} ...${banners} /><${UpdateBanner} ...${banners} />${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null}`} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <div class="emblem" aria-hidden="true"><${Shell} class="emblem-shell" /><span class="emblem-shadow"></span></div>
