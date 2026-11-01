@@ -38,7 +38,7 @@ import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
 import { authStatus, makeLogin, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
-import { CHECK_DELAY_MS, CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
+import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
 import { esc } from './public/md.mjs';
@@ -1772,7 +1772,7 @@ server.listen(cfg.port, '127.0.0.1', () => {
   checkRoutines();
   login.refresh();
   setInterval(login.refresh, REFRESH_MS).unref();
-  setTimeout(updates.check, CHECK_DELAY_MS).unref();
+  setTimeout(updates.check, cfg.updateDelayMs).unref();
   setInterval(updates.check, CHECK_EVERY_MS).unref();
 });
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();

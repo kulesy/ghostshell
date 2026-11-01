@@ -1,5 +1,6 @@
 // Passkeys in the signed-in page: the pane that lists, adds and removes them, and the one-time offer after a password sign-in.
 import { api } from './api.js';
+import { Banner } from './banner.js';
 import { useDocumentTitle } from './hooks.js';
 import { html, useEffect, useRef, useState } from './html.js';
 import { local } from './storage.js';
@@ -66,15 +67,10 @@ export function PasskeyOffer({ onDone }) {
   };
 
   if (added) return html`<aside class="offer" role="status"><p class="offer-text">Passkey added. It is listed under Passkeys.</p></aside>`;
-  return html`<aside class="offer" aria-labelledby="offer-title">
-    <h2 id="offer-title">Sign in with a passkey</h2>
-    <p class="offer-text">Skip the password next time. A passkey signs you in with a fingerprint, face or screen lock.</p>
-    <p class="notice" role="alert">${problem}</p>
-    <div class="offer-actions">
+  return html`<${Banner} id="offer" title="Sign in with a passkey" text="Skip the password next time. A passkey signs you in with a fingerprint, face or screen lock." problem=${problem}
+    actions=${html`
       <button class="btn" type="button" disabled=${busy} onClick=${add}>${busy ? 'Adding a passkey' : 'Add a passkey'}</button>
-      <button class="btn" data-variant="ghost" type="button" onClick=${onDone}>Not now</button>
-    </div>
-  </aside>`;
+      <button class="btn" data-variant="ghost" type="button" onClick=${onDone}>Not now</button>`} />`;
 }
 
 function PasskeyRow({ p, asking, ask, remove }) {

@@ -59,6 +59,12 @@ test('a date in the past means signed out, and the CLI is asked only when the da
   assert.deepEqual([r.login.state().signedOut, r.login.state().visible, r.asks], [false, false, 1], 'a good date does not ask');
 });
 
+test('a date in the past with the CLI still signed in shows nothing', async () => {
+  const r = rig({ end: NOW - 1000, loggedIn: true });
+  await r.login.refresh();
+  assert.deepEqual([r.login.state().signedOut, r.login.state().visible], [false, false]);
+});
+
 test('with no date, the CLI says whether Claude is signed out, and an unclear answer shows nothing', async () => {
   const r = rig({ end: null, loggedIn: false });
   await r.login.refresh();
