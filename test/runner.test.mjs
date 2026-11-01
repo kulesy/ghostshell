@@ -950,6 +950,39 @@ test('the hook is no listener on the chat, so a chat nobody watches is still sto
   await until(() => !chat.status().running);
 });
 
+test('the idle sweep leaves a chat with a background job running, and stops it once the CLI says the job ended', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = path.join(dir, 'background-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    "const tasks = list => out({ type: 'system', subtype: 'background_tasks_changed', tasks: list });",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type !== 'user') return;",
+    "  if (m.message.content === 'start') { out({ type: 'system', subtype: 'init', session_id: 'sess-bg-1', model: 'stub' }); tasks([{ task_id: 'b1', task_type: 'local_bash' }]); }",
+    "  if (m.message.content === 'done') tasks([]);",
+    "  out({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  await until(() => chat.state === 'idle');
+
+  chat.lastActive = Date.now() - 31 * 60_000;
+  sweep(30);
+  await wait(100);
+  assert.equal(chat.status().running, true, 'the job would die with the CLI');
+
+  chat.send('done', []);
+  await until(() => chat.state === 'idle');
+  chat.lastActive = Date.now() - 31 * 60_000;
+  sweep(30);
+  await until(() => !chat.status().running);
+});
+
 test('with no hook installed a turn runs the same', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
   onTurn(null);
