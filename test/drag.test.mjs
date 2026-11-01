@@ -30,7 +30,7 @@ const dropTarget = (drop, { middle = false, top = 0, height = 40, within = null 
 });
 
 // A list 600 pixels tall with one row near its bottom edge, scrolled down by 100, and the callbacks drag.js reports to.
-async function mount() {
+async function mount({ count } = {}) {
   mock.timers.enable({ apis: ['setTimeout'] });
   const frames = [];
   globalThis.requestAnimationFrame = fn => frames.push(fn);
@@ -38,10 +38,11 @@ async function mount() {
   const drop = { over: null };
   globalThis.document = Object.assign(target(), {
     body: { append() {}, classList: { add() {}, remove() {} } },
+    createElement: () => ({ attrs: {}, setAttribute(name, value) { this.attrs[name] = value; } }),
     elementFromPoint: () => drop.over && { closest: selector => (selector.includes('^="to:"') && !drop.over.dataset.drop.startsWith('to:') ? null : drop.over) },
   });
   globalThis.window = target();
-  const copy = { classList: { add() {} }, removeAttribute() {}, setAttribute() {}, querySelectorAll: () => [], style: {}, remove() {} };
+  const copy = { attrs: {}, kids: [], classList: { add() {} }, removeAttribute() {}, setAttribute(name, value) { this.attrs[name] = value; }, append(el) { this.kids.push(el); }, querySelectorAll: () => [], style: {}, remove() {} };
   const row = { dataset: { id: 'r1' }, getBoundingClientRect: () => ({ left: 0, top: 570, width: 300 }), cloneNode: () => copy };
   const bar = { dataset: { handle: 'cg-1' }, getBoundingClientRect: () => ({ left: 0, top: 280, width: 300 }), cloneNode: () => copy };
   const place = { slot: null };
@@ -55,10 +56,11 @@ async function mount() {
     onEnd: (id, section, kind) => { log.push(['end', id, section]); kinds.push(['end', kind]); },
     onMenu: (id, element, point, kind) => { log.push(['menu', id, element === row || element === bar, point]); kinds.push(['menu', kind]); },
     slot: (x, y, id) => { kinds.push(['slot', id]); return place.slot; },
+    ...(count && { count }),
   });
   const at = (clientX, clientY) => ({ isPrimary: true, clientX, clientY });
   return {
-    box, log, kinds, drop, place, stop,
+    box, log, kinds, drop, place, stop, copy,
     down: (kind, x, y, grip = row) => box.fire('pointerdown', { ...at(x, y), button: 0, ctrlKey: false, pointerType: kind, target: { closest: selector => (selector.includes('aria-haspopup') ? null : grip) } }),
     header: (kind, x, y, dots = false) => box.fire('pointerdown', { ...at(x, y), button: 0, ctrlKey: false, pointerType: kind, target: { closest: selector => (selector.includes('aria-haspopup') ? dots && {} : bar) } }),
     move: (x, y) => document.fire('pointermove', at(x, y)),
@@ -358,4 +360,30 @@ test('a press on a header\'s menu button starts no press and lifts nothing, for 
     t.stop();
     mock.timers.reset();
   }
+});
+
+test('a row that carries several sessions lifts a copy with their number on it', async () => {
+  const t = await mount({ count: id => (id === 'r1' ? 3 : 1) });
+  t.down('mouse', 10, 580);
+  t.move(30, 580);
+  assert.equal(t.copy.attrs['data-count'], '3');
+  assert.deepEqual(t.copy.kids.map(k => [k.className, k.textContent, k.attrs['aria-hidden']]), [['lift-count', '3', 'true']]);
+  t.up(30, 580);
+});
+
+test('a row that carries one session lifts the plain copy, with no number', async () => {
+  const t = await mount({ count: () => 1 });
+  t.down('mouse', 10, 580);
+  t.move(30, 580);
+  assert.equal('data-count' in t.copy.attrs, false);
+  assert.deepEqual(t.copy.kids, []);
+  t.up(30, 580);
+});
+
+test('a header carries one group, so it never shows a number even when the count says several', async () => {
+  const t = await mount({ count: () => 4 });
+  t.header('mouse', 10, 290);
+  t.move(30, 290);
+  assert.equal('data-count' in t.copy.attrs, false);
+  t.up(30, 290);
 });

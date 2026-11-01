@@ -32,11 +32,16 @@ export function refuseNest(ix, ids, parentId) {
 // Where a row shows for Move to: Pinned, its group, or the loose list. A nested row shows nowhere, since moving it takes it out of its parent.
 const placeOf = r => (r.parent ? null : r.pinned ? 'pinned' : r.group ?? 'loose');
 
+// The loose list the rows share, as a place, or No group when their apps differ. A routine run has no loose list, so it is left out.
+function looseOf(rows) {
+  const homes = [...new Set(rows.filter(r => !r.routine).map(looseHome))];
+  return homes.length === 1 && homes[0] ? { label: LOOSE_NAMES[homes[0]], section: homes[0] } : { label: NO_GROUP, section: 'ungrouped' };
+}
+
 // Where the picked rows can go, in the shape sessionTargets has, leaving a place out only when every one of them is there already.
 export function manyTargets(ix, rows) {
   const all = place => rows.every(r => placeOf(r) === place);
   const placed = r => r.pinned || !!r.group || !!r.parent;
-  const homes = [...new Set(rows.filter(r => !r.routine).map(looseHome))];
   const loose = rows.some(r => !r.routine && placed(r));
   const groups = list => list.filter(g => !all(g.id)).map(g => ({ label: g.name, section: g.id }));
   return [
@@ -44,7 +49,7 @@ export function manyTargets(ix, rows) {
     ...(all('pinned') ? [] : [{ label: 'Pinned', section: 'pinned' }]),
     ...ix.projects.map(p => ({ group: p.name, items: groups(ix.groups.filter(g => g.project === p.id)) })).filter(entry => entry.items.length),
     ...groups(ix.groups.filter(g => !g.project)),
-    ...(loose ? [homes.length === 1 && homes[0] ? { label: LOOSE_NAMES[homes[0]], section: homes[0] } : { label: NO_GROUP, section: 'ungrouped' }] : []),
+    ...(loose ? [looseOf(rows)] : []),
   ];
 }
 
@@ -56,6 +61,13 @@ export function manyNestTargets(ix, ids) {
 
 // What a Move to place means for the server: Pinned, a group, or each session's loose list.
 export const placeTo = (ix, section) => (section === 'pinned' ? { pinned: true } : { group: ix.groups.some(g => g.id === section) ? section : null });
+
+// What the note calls the place a section stands for.
+export function placeName(ix, rows, section) {
+  if (section === 'pinned') return 'Pinned';
+  if (section === 'routines') return 'Routines';
+  return ix.groups.find(g => g.id === section)?.name ?? looseOf(rows).label;
+}
 
 // Where the picked rows show until the server's list arrives. `to` is what the server takes. A nest that cannot be leaves the list as it is.
 export function guessMany(ix, ids, to) {

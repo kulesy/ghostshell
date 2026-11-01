@@ -25,7 +25,7 @@ const target = () => {
 };
 
 // A list with one row 300 wide in a host, the page's 400 wide, and the calls swipe.js makes to the list.
-async function mount({ leaves = () => true, reduced = false } = {}) {
+async function mount({ leaves = () => true, reduced = false, active } = {}) {
   mock.timers.enable({ apis: ['setTimeout'] });
   const dragging = { on: false };
   globalThis.innerWidth = 400;
@@ -38,7 +38,7 @@ async function mount({ leaves = () => true, reduced = false } = {}) {
   const box = target();
   const swiped = [];
   const { swipeRows } = await import('../public/ui/swipe.js');
-  const stop = swipeRows(box, { row: ROW, leaves, onSwipe: el => { swiped.push(el.dataset.id); } });
+  const stop = swipeRows(box, { row: ROW, leaves, ...(active && { active }), onSwipe: el => { swiped.push(el.dataset.id); } });
   let now = 1000;
   const at = (x, y, extra) => ({ isPrimary: true, clientX: x, clientY: y, timeStamp: now, ...extra });
   return {
@@ -254,4 +254,20 @@ test('stopping takes the listeners off, and a swipe in progress leaves the host 
   t.move(112, 100);
   t.move(160, 100);
   assert.equal(t.host.dataset.swipe, undefined);
+});
+
+test('a swipe does not start while the list says it may not, as when rows are picked, and starts again once it may', async () => {
+  const may = { on: false };
+  const t = await mount({ active: () => may.on });
+  t.down(100, 100);
+  t.move(112, 102);
+  t.move(200, 102);
+  assert.equal(t.host.dataset.swipe, undefined);
+  t.up(200, 102);
+  assert.deepEqual(t.swiped, []);
+  may.on = true;
+  t.down(100, 100);
+  t.move(112, 102);
+  assert.equal(t.host.dataset.swipe, 'right');
+  t.stop();
 });

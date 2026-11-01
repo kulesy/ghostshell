@@ -2,7 +2,7 @@
 // picked sessions can go, what a nest refuses, the list as it is guessed to be after a drop, and the notes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { carriedOf, guessMany, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNote, NEST_SELF, nestedNote, NO_GROUP, pinnedNote, placeTo, refuseNest, topmost, unnestedNote } from '../public/ui/many-rules.js';
+import { carriedOf, guessMany, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNote, NEST_SELF, nestedNote, NO_GROUP, pinnedNote, placeName, placeTo, refuseNest, topmost, unnestedNote } from '../public/ui/many-rules.js';
 import { everyRow } from '../public/ui/tree.js';
 
 const row = (id, extra = {}) => ({ id, title: id, source: 'capcom', group: null, pinned: false, parent: null, via: null, routine: null, ...extra });
@@ -87,6 +87,14 @@ test('a Move to place is a group, Pinned, or each session\'s loose list for the 
   assert.deepEqual(placeTo(IX, 'pinned'), { pinned: true });
   assert.deepEqual(placeTo(IX, 'cg-spare'), { group: 'cg-spare' });
   for (const section of ['started', 'ungrouped', 'other', 'routines']) assert.deepEqual(placeTo(IX, section), { group: null }, section);
+});
+
+test('the note names the place by its group, Pinned, Routines or the loose list the sessions share', () => {
+  assert.equal(placeName(IX, rows('mine'), 'cg-spare'), 'Spare');
+  assert.equal(placeName(IX, rows('mine'), 'pinned'), 'Pinned');
+  assert.equal(placeName(IX, rows('run'), 'routines'), 'Routines');
+  assert.equal(placeName(IX, rows('peer', 'boss'), 'started'), 'Started here');
+  assert.equal(placeName(IX, rows('desk', 'term'), 'ungrouped'), NO_GROUP);
 });
 
 test('guessing a move puts every carried session in the place, and a rider goes with its parent', () => {
