@@ -14,6 +14,7 @@ import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } fro
 import { deleteDetail, groupById, newRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
+import { carriedOf, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNote, nestedNote, pinnedNote, placeName, placeTo, refuseNest, topmost, unnestedNote } from './many-rules.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
 import { ParentForm } from './parent-form.js';
@@ -38,13 +39,14 @@ const NEST = 'nest:';
 
 const sessionHash = id => `#/s/${encodeURIComponent(id)}`;
 
-// `drop` is whether a dragged row can nest here, and `over` whether it would land here now, which the row says at its right end.
+// `drop` is whether a dragged row can nest here, and `over` whether it would land here now, which the row says at its right end, or `refused` when
+// the drop would be turned away.
 // A working row's time sits there too, from `turnStart`, which stampTurns puts on this page's clock. The mark is the server's `dot`.
 // Where the session is and when it last ran: a mouse reads it in the row's tooltip and a touch screen, which has none, on a second line.
 // The line stays in the row for a screen reader either way, so the CSS only hides it from the eye.
 // `dot` stands in for the row's own mark, as a folded family's does. `note` stands in the row's end for a run that is not timed, with
 // `tip` ahead of the tooltip, as a routine's queued retry does.
-function RowLink({ r, title = r.title, dot = r.dot, note, tip, current, lifted, marked, picked, drop, over }) {
+function RowLink({ r, title = r.title, dot = r.dot, note, tip, current, lifted, marked, picked, drop, over, refused }) {
   const timed = r.turnStart != null;
   useClock(timed, r.turnStart);
   const last = when(r.lastActivityAt);
@@ -54,11 +56,11 @@ function RowLink({ r, title = r.title, dot = r.dot, note, tip, current, lifted, 
   const noted = !!note && !over && !timed;
   const hover = [tip, detail].filter(Boolean).join(' · ');
   return html`<a class="row" href=${sessionHash(r.id)} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} data-picked=${picked || null}
-    data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} aria-current=${current === r.id ? 'page' : null}
+    data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} data-refused=${(over && refused) || null} aria-current=${current === r.id ? 'page' : null}
     data-tip=${hover || null} data-tip-side="right" data-tip-delay="700">
     ${dot ? html`<span class="row-dot" data-dot=${dot} aria-hidden="true">${dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}
     <span class="row-title">${title || UNTITLED}</span>${picked ? html`<span class="sr">, selected</span>` : null}
-    ${over ? html`<span class="row-nest">Nest here</span>` : timed ? html`<span class="row-run" aria-hidden="true">${duration(Date.now() - r.turnStart)}</span>` : noted ? html`<span class="row-nest row-idle">${note}</span>` : null}
+    ${over ? html`<span class="row-nest">${refused ? "Can't nest" : 'Nest here'}</span>` : timed ? html`<span class="row-run" aria-hidden="true">${duration(Date.now() - r.turnStart)}</span>` : noted ? html`<span class="row-nest row-idle">${note}</span>` : null}
     ${detail && !noted ? html`<span class="row-meta">${where ? html`<span class="row-where">${where}</span>` : null}${at ? html`<time class="row-time">${where ? ' · ' : ''}${at}</time>` : null}</span>` : null}</a>`;
 }
 
@@ -203,17 +205,22 @@ function Family({ r, rowProps, holds, open, onToggle, tree }) {
 // While a row is dragged, every section that can take it is shown, so an empty Pinned or group is still a place to drop it.
 // A group always shows, empty or not, so one that was just made can be found and filled.
 // Over a row, the row is the target and no section is. The carried row and the ones nested under it dim, and take no drop.
+// A drag that carries a selection (`drag.ids`) dims every picked row with its family, and keeps them as targets so a drop on one says it cannot nest.
 // `carry` is a group carried by its header instead: it dims, and a line marks the place among the groups it would land in.
 function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, routines, routinesOpen, scheduled, scheduledOpen, drag, carry, tree, picked, newKey }) {
   const carried = drag && findRow(ix, drag.id);
-  const together = new Set(carried ? [carried.id, ...(carried.children ?? []).map(c => c.id)] : []);
+  const many = drag?.ids ?? null;
+  const lifting = many ? withKids(many.map(id => findRow(ix, id)).filter(Boolean)) : carried ? [carried, ...(carried.children ?? [])] : [];
+  const together = new Set(lifting.map(r => r.id));
   const nesting = drag?.over?.startsWith(NEST) ? drag.over.slice(NEST.length) : null;
+  const refusal = many && nesting ? refuseNest(ix, many, nesting) : '';
   const over = nesting ? null : drag?.over;
-  const lands = over && carried && LOOSE.includes(over) ? looseHome(carried) ?? over : over;
+  const lands = over && carried && !many && LOOSE.includes(over) ? looseHome(carried) ?? over : over;
   const marked = tree.shown?.session;
-  const rowProps = r => ({ current, lifted: together.has(r.id), marked: r.id === marked, picked: picked.has(r.id), drop: !!carried && !together.has(r.id) && !r.routine, over: r.id === nesting });
+  const rowProps = r => ({ current, lifted: together.has(r.id), marked: r.id === marked, picked: picked.has(r.id), drop: many ? !r.routine : !!carried && !together.has(r.id) && !r.routine, over: r.id === nesting, refused: r.id === nesting && !!refusal });
+  const holders = new Set((many ?? [drag?.id]).map(id => findRow(ix, id)?.parent).filter(Boolean));
   const rows = list => list.map(r => (r.children
-    ? html`<${Family} key=${r.id} r=${r} rowProps=${rowProps} holds=${carried?.parent === r.id} open=${!folded[r.id]} onToggle=${toggleFold} tree=${tree} />`
+    ? html`<${Family} key=${r.id} r=${r} rowProps=${rowProps} holds=${holders.has(r.id)} open=${!folded[r.id]} onToggle=${toggleFold} tree=${tree} />`
     : html`<${Row} key=${r.id} r=${r} ...${rowProps(r)} tree=${tree} />`));
   const section = (id, name, list, body, { drop = true, always = false, menu = null, chat = null, extra = null, handle = null, form = null, lifted = false, line = null } = {}) => {
     if (!list.length && !always && !(drag && drop)) return null;
@@ -299,19 +306,32 @@ export const newSession = group => {
   if (open) document.getElementById('text')?.focus();
 };
 
+// The Move to items for `targets` (see sessionTargets), with each project's groups under its name. What follows the projects' groups is Home's,
+// and takes a heading of its own so the sections read alike. `choice(label, section, where)` makes one item.
+function placeItems(targets, choice) {
+  const entries = targets.map(t => (t.group
+    ? { group: t.group, items: t.items.map(i => choice(i.label, i.section, `${i.label} in ${t.group}`)) }
+    : choice(t.label, t.section, t.label)));
+  const lastProject = targets.map(t => !!t.group).lastIndexOf(true);
+  const tail = lastProject >= 0 ? entries.splice(lastProject + 1) : [];
+  if (tail.length) entries.push({ group: 'Home', items: tail });
+  return entries.flatMap((entry, n) => (n && (entry.group || entries[n - 1].group) ? [{ separator: true }, entry] : [entry]));
+}
+
 // A note about something that did not work, which shows with a warning. No reason means no note, and clears an older one.
 const problemNote = text => say(text, { problem: true });
 
 // `projects` is the projects sidebar's state, which the app owns because the search changes it as well.
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string. `nest(id, parent)`
-// does the same for a row nested under another, or taken out of its parent when `parent` is null.
+// does the same for a row nested under another, or taken out of its parent when `parent` is null. `placeMany(ids, to)` does it for several in one
+// write and resolves with { problem, undo, count }, where `to` is { group }, { pinned: true }, { parent } or { parent: null }.
 // `edit(path, body)` sends a change to projects or groups and resolves with { problem, made }, where `made` is the project or
 // group the server made, changed or removed. `archive(id, archived, { stop })` archives or unarchives a session and resolves with
 // { problem, stopped, running }: the reason when the server refuses, whether it stopped a chat that was running, and whether it
 // refused because one was running and `stop` was false. `archiveAll(ids, archived, { stop })` does that for several, one after another,
 // and resolves with { done, stopped, failed }: the ids it took, how many were running chats it stopped, and { id, message, running } for
 // each it refused.
-export function SessionList({ ix, projects, error, current, place, nest, edit, archive, archiveAll, onFind, passkeys, routines, routinesOpen, refreshRoutines, scheduled, scheduledOpen, refreshScheduled, banner }) {
+export function SessionList({ ix, projects, error, current, place, nest, placeMany, edit, archive, archiveAll, onFind, passkeys, routines, routinesOpen, refreshRoutines, scheduled, scheduledOpen, refreshScheduled, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [folded, setFolded] = useLocal('folded', {});
   const { view } = projects;
@@ -342,6 +362,8 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const latestSlot = useRef(null);
   const latestDrop = useRef(null);
   const latestHeader = useRef(null);
+  const latestMany = useRef(null);
+  const carrying = useRef(null);
   const pointer = useRef('mouse');
   const toggle = (id, open) => setCollapsed(all => ({ ...all, [id]: open }));
   const toggleRoutine = name => setOpenRoutines(all => { const next = new Set(all); if (!next.delete(name)) next.add(name); return next; });
@@ -362,21 +384,29 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   }, [current, ix]);
 
   useEffect(() => dragRows(box.current, {
-    onStart: (id, kind) => setDrag({ id, kind, over: null }),
+    onStart: (id, kind) => {
+      carrying.current = kind === 'row' ? latestMany.current.picked(id) : null;
+      setDrag({ id, kind, over: null, ids: carrying.current });
+    },
     onOver: over => setDrag(d => d && { ...d, over }),
     onEnd: async (id, to, kind) => {
+      const ids = carrying.current;
+      carrying.current = null;
       setDrag(null);
       if (!to) return;
       if (kind === 'group') return latestDrop.current(id, to);
+      if (ids) return latestMany.current.drop(ids, to);
       problemNote(to.startsWith(NEST) ? await latestNest.current(id, to.slice(NEST.length)) : await latestPlace.current(id, to));
     },
     onMenu: (id, grip, point, kind) => (kind === 'group' ? latestHeader : latestMenu).current(id, grip, point),
     slot: (x, y, id) => latestSlot.current(x, y, id),
+    count: id => latestMany.current.picked(id)?.length ?? 1,
   }), []);
 
   useEffect(() => swipeRows(box.current, {
     row: 'a.row[data-id]',
     leaves: row => latestSwipe.current.leaves(row.dataset.id),
+    active: () => latestSwipe.current.active(),
     onSwipe: row => latestSwipe.current.archive(row.dataset.id),
   }), []);
 
@@ -543,17 +573,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     return { ...result, to };
   }
 
-  // The picked sessions that are not under another picked one, which are the ones sent.
-  function topmost(ids) {
-    const all = everyRow(ix);
-    const picked = ids.map(id => findRow(ix, id)).filter(Boolean);
-    return picked.filter(r => !picked.some(o => o !== r && descendantsOf(all, o.id).some(d => d.id === r.id)));
-  }
-
   // The menu entry says what the toast will: the picked sessions that are not under another picked one, and the sub sessions that go with them.
   function archiveLabel(ids) {
     const all = everyRow(ix);
-    const rows = topmost(ids);
+    const rows = topmost(ix, ids);
     return `Archive ${sessions(rows.length)}${withSubs(rows.reduce((n, r) => n + descendantsOf(all, r.id).length, 0))}`;
   }
 
@@ -562,7 +585,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   // Cancel leaves the selection as it was.
   function archiveMany(ids, { ring = false, back } = {}) {
     const all = everyRow(ix);
-    const rows = topmost(ids);
+    const rows = topmost(ix, ids);
     if (rows.length < 2) {
       const [r] = rows;
       if (r) archiveOrAsk(r, { ring, back });
@@ -621,6 +644,63 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const { problem } = await leaving(id, async () => ({ problem: await latestNest.current(id, parent) }));
     say(problem || (parent ? `Nested “${title}” under “${parentTitle}”.` : `Moved “${title}” out of “${parentTitle}”.`), { problem: !!problem });
   }
+
+  // Moves, pins, nests or takes out the picked sessions in one write, as a drop does, and says what happened with one Undo. The selection stays,
+  // so the next action can follow. `focus` is the row the focus returns to, which a menu on it leaves behind when the row is drawn elsewhere.
+  async function changeMany(ids, to, note, { focus } = {}) {
+    const root = to.parent && rootOf(ix, to.parent);
+    if (root) fold(root.id, false);
+    const { problem, undo, count } = await placeMany(ids, to);
+    problemNote(problem);
+    if (focus) setAfter({ to: rowOf(focus) });
+    if (!problem && count) say(note(count), { action: manyUndoAction({ undo, count }) });
+  }
+
+  const moveMany = (ids, section, where = placeName(ix, carriedOf(ix, ids), section), options) =>
+    changeMany(ids, placeTo(ix, section), n => (section === 'pinned' ? pinnedNote(n) : movedNote(n, where)), options);
+
+  const nestMany = (ids, parent, options) => {
+    const root = rootOf(ix, parent);
+    return changeMany(ids, { parent: root.id }, n => nestedNote(n, root.title || UNTITLED), options);
+  };
+
+  // Takes an Undo back with the token the server gave. A failed Undo keeps its button to try again only when the server could not do it, and not
+  // when it refuses, as when another tab took it back or the ten minutes are over.
+  async function undoMoved(note) {
+    const { problem, status } = await edit('api/layout/many/undo', { undo: note.undo });
+    if (problem) return say(`Not undone: ${problem}`, { problem: true, ...(!status || status >= 500 ? { action: manyUndoAction(note) } : {}) });
+    say(manyUndoNote(note.count));
+  }
+
+  const manyUndoAction = note => ({ label: 'Undo', onClick: () => undoMoved(note) });
+
+  // What the pick bar's Move menu and the selection's row menu list: Move to and Nest under with a search, Move out of the parent when some
+  // picked session is nested, and New parent session. Every drag has its way here, for the keyboard and a phone.
+  function selectionItems(chosen, { focus } = {}) {
+    const carried = carriedOf(ix, chosen);
+    const targets = manyTargets(ix, carried);
+    const choice = (label, section, where) => ({ label, run: () => moveMany(chosen, section, where, { focus }) });
+    const places = placeItems(targets, choice);
+    const under = manyNestTargets(ix, chosen);
+    const nestItem = t => ({ label: t.title || UNTITLED, run: () => nestMany(chosen, t.id, { focus }) });
+    const out = leavers(ix, carried);
+    return [
+      ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places, find: q => findPlaces(targets, q).map(p => ({ ...choice(p.label, p.section, p.where), value: p.value })), findLabel: 'Search places' }] : []),
+      ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(nestItem), find: q => findSessions(under, q).map(f => nestItem(f.row)), findLabel: 'Search sessions' }] : []),
+      ...(out.rows.length ? [{ label: out.parent ? `Move out of “${out.parent.title || UNTITLED}”` : 'Move out of parent', icon: icons.indentDecrease, run: () => changeMany(chosen, { parent: null }, unnestedNote, { focus }) }] : []),
+      ...(chosen.length > 1 && supportsNewParent(ix) ? [{ label: 'New parent session', icon: icons.indentIncrease, run: () => startParent(chosen) }] : []),
+    ];
+  }
+
+  latestMany.current = {
+    picked: id => { const chosen = inOrder(pick, drawnIds()); return chosen.length > 1 && chosen.includes(id) ? chosen : null; },
+    drop: (ids, target) => {
+      if (!target.startsWith(NEST)) return moveMany(ids, target);
+      const parent = target.slice(NEST.length);
+      const refusal = refuseNest(ix, ids, parent);
+      return refusal ? problemNote(refusal) : nestMany(ids, parent);
+    },
+  };
 
   // Gives a session a title of its own, or the routine its new title when the row is a routine's. The form keeps what was sent, so a
   // reload that draws the row somewhere else draws the form there with it, ready to try again.
@@ -725,7 +805,8 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         entry,
         label: `Actions for ${sessions(chosen.length)}`,
         items: [
-          ...(supportsNewParent(ix) ? [{ label: 'New parent session', icon: icons.indentIncrease, run: () => startParent(chosen) }] : []),
+          ...selectionItems(chosen, { focus: id }),
+          { separator: true },
           { label: archiveLabel(chosen), icon: icons.archive, danger: chosen.some(c => { const row = findRow(ix, c); return row && (isRunning(row) || subsRunning(everyRow(ix), c) > 0); }), hint: archiveHint(), run: () => archiveMany(chosen, { back }) },
           { label: 'Clear selection', icon: icons.x, run: () => setPick(NO_PICK) },
         ],
@@ -739,14 +820,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const under = nestTargets(ix, r);
     const nestItem = t => ({ label: t.title || UNTITLED, run: () => nestSession(id, title, t.id, t.title || UNTITLED) });
     const choice = (label, section, where) => ({ label, run: () => moveRow(id, title, section, where) });
-    const entries = targets.map(t => (t.group
-      ? { group: t.group, items: t.items.map(i => choice(i.label, i.section, `${i.label} in ${t.group}`)) }
-      : choice(t.label, t.section, t.label)));
-    // What follows the projects' groups is Home's, and takes a heading of its own so the sections read alike.
-    const lastProject = targets.map(t => !!t.group).lastIndexOf(true);
-    const tail = lastProject >= 0 ? entries.splice(lastProject + 1) : [];
-    if (tail.length) entries.push({ group: 'Home', items: tail });
-    const places = entries.flatMap((entry, n) => (n && (entry.group || entries[n - 1].group) ? [{ separator: true }, entry] : [entry]));
+    const places = placeItems(targets, choice);
     const routine = routineFor(ix, routines, id);
     setShown({
       id: ++opened.current,
@@ -780,7 +854,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const row = ringed && el.matches('a.row[data-id]');
     const target = archiveTarget({
       modal: !!document.querySelector('[aria-modal="true"], [data-slot$="dialog-content"], [data-mobile="true"]'),
-      menu: shown && { session: shown.session },
+      menu: shown && { session: shown.key === 'pick' ? pick.ids[0] : shown.session },
       form: inList && !!el.closest('form'),
       ringed: row ? el.dataset.id : null,
       ringedOther: ringed && !row,
@@ -801,6 +875,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
 
   latestSwipe.current = {
     leaves: id => { const r = findRow(ix, id); return !r || !stopsFirst(r); },
+    active: () => !pick.ids.length,
     archive: id => { const r = findRow(ix, id); if (r) archiveOrAsk(r); },
   };
 
@@ -873,6 +948,8 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   };
 
   const addTrigger = opener((button, entry) => pop('add', addMenu, button, { entry }));
+
+  const moveTrigger = opener((button, entry) => pop('pick', { label: 'Move the selection', items: selectionItems(inOrder(pick, drawnIds())) }, button, { entry }));
 
   // A moved group leaves the view on screen, so the note says where it went and the focus goes to the group beside it.
   async function moveGroup(g, project) {
@@ -1075,7 +1152,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       : pick.ids.length
       ? html`<div class="pick-bar" role="group" aria-label="Selection">
         <span class="pick-count">${pick.ids.length} selected</span>
-        ${pick.ids.length > 1 && supportsNewParent(ix) ? html`<button class="btn pick-new" data-variant="outline" data-size="sm" type="button" onClick=${() => startParent(inOrder(pick, drawnIds()))}>${draw(icons.indentIncrease)}New parent</button>` : null}
+        <button class="btn pick-new" data-variant="outline" data-size="sm" type="button" aria-haspopup="menu" aria-expanded=${shown?.key === 'pick'} aria-controls=${shown?.key === 'pick' ? layerId(shown.id) : null} data-state=${shown?.key === 'pick' ? 'open' : 'closed'} ...${moveTrigger}>${draw(icons.folderInput)}Move</button>
         <button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${e => archiveMany(inOrder(pick, drawnIds()), { ring: e.detail === 0 })}>${draw(icons.archive)}Archive</button>
         <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Clear selection" data-tip="Clear selection" onClick=${clearPick}>${draw(icons.x)}</button>
       </div>`
