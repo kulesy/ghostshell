@@ -812,3 +812,67 @@ test('putting a new parent back with nothing to put back still takes the title a
   assert.equal(PARENT in f.onDisk().titles, false);
   assert.equal(PARENT in f.onDisk().assignments, false);
 });
+
+const MANY = { ...OLD, pinned: ['p1', 's3'], assignments: { s1: 'cg-a', s2: 'cg-b', s4: 'cg-a' }, parents: { s2: 'boss', s5: null } };
+
+test('many applies a move, a pin, a nest and an unnest in one write, and returns the entries it touched, relinked sessions included', () => {
+  const f = folder(MANY);
+  backdate(f);
+  const { before } = f.layout.many([
+    { kind: 'move', id: 's1', group: 'cg-b' },
+    { kind: 'pin', id: 's4', pinned: true },
+    { kind: 'nest', id: 's3', parent: 'boss', relink: { kid: 'boss' } },
+    { kind: 'unnest', id: 's2', group: 'cg-a' },
+  ]);
+  assert.equal(rewritten(f), true);
+  assert.deepEqual(f.onDisk(), {
+    ...MANY,
+    projects: [], retired: [], sections: {}, unarchived: [], archived: {}, titles: {},
+    pinned: ['p1', 's4'],
+    assignments: { s1: 'cg-b', s2: 'cg-a' },
+    parents: { s2: null, s5: null, s3: 'boss', kid: 'boss' },
+  });
+  assert.deepEqual(before, {
+    s1: { parent: false, group: 'cg-a', pinned: false },
+    s4: { parent: false, group: 'cg-a', pinned: false },
+    s3: { parent: false, group: null, pinned: true },
+    kid: { parent: false, group: null, pinned: false },
+    s2: { parent: 'boss', group: 'cg-b', pinned: false },
+  });
+});
+
+test('many that has one step refused writes nothing, so a move after a bad group changes no session', () => {
+  const f = folder(MANY);
+  backdate(f);
+  assert.throws(() => f.layout.many([{ kind: 'move', id: 's1', group: 'cg-b' }, { kind: 'move', id: 's2', group: 'cg-gone' }]), { status: 400, message: 'Unknown group.' });
+  assert.throws(() => f.layout.many([{ kind: 'move', id: 's1', group: null }, { kind: 'nest', id: 's5', parent: 's5' }]), { status: 400 });
+  assert.throws(() => f.layout.many([{ kind: 'pin', id: 's1', pinned: 'yes' }]), { status: 400, message: 'Pinned or not?' });
+  assert.equal(rewritten(f), false);
+});
+
+test('restore puts back every entry many touched, exactly, in one write, and leaves later changes to other sessions alone', () => {
+  const f = folder(MANY);
+  const { before } = f.layout.many([
+    { kind: 'move', id: 's1', group: 'cg-b' },
+    { kind: 'pin', id: 's4', pinned: true },
+    { kind: 'nest', id: 's3', parent: 'boss', relink: { kid: 'boss' } },
+    { kind: 'unnest', id: 's2', group: 'cg-a' },
+    { kind: 'nest', id: 's5', parent: 'boss' },
+  ]);
+  f.layout.rename('s6', 'Kept');
+  backdate(f);
+  f.layout.restore(before);
+  assert.equal(rewritten(f), true);
+  assert.deepEqual(f.onDisk(), { ...MANY, projects: [], retired: [], sections: {}, unarchived: [], archived: {}, titles: { s6: 'Kept' }, pinned: ['p1', 's3'] });
+});
+
+test('restore drops the group of a session whose group has gone, and ignores an entry that is not one', () => {
+  const f = folder(MANY);
+  const { before } = f.layout.many([{ kind: 'move', id: 's1', group: null }]);
+  f.layout.removeGroup('cg-a');
+  f.layout.restore({ ...before, 'not a/session': { group: 'cg-b' }, s9: 7, s8: null });
+  const now = f.onDisk();
+  assert.equal('s1' in now.assignments, false);
+  assert.equal('s1' in now.parents, false);
+  assert.equal('not a/session' in now.assignments, false);
+});

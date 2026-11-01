@@ -29,7 +29,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-19 | [Draw widgets the way Desktop does, in a frame that cannot reach Capcom](20261019-widgets-render-like-desktop.md) | Accepted |
 | 2026-10-22 | [Build Capcom's look and behaviour on shadcn/ui](20261022-shadcn-design-language.md) | Accepted, amended 2026-10-22 |
 | 2026-10-22 | [List a chat's skills and commands under / from the CLI's own list](20261022-slash-menu-from-the-cli.md) | Accepted |
-| 2026-10-22 | [Nest sessions under a parent, and follow the links Desktop records](20261022-nest-sessions-under-a-parent.md) | Accepted, amended 2026-10-22, 2026-10-23 and 2026-10-27 |
+| 2026-10-22 | [Nest sessions under a parent, and follow the links Desktop records](20261022-nest-sessions-under-a-parent.md) | Accepted, amended 2026-10-22, 2026-10-23, 2026-10-27 and 2026-11-02 |
 | 2026-10-22 | [Show a chat's context usage from the CLI's own count](20261022-context-usage-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Pick the model, effort and fast mode from one menu, with the models read from the CLI](20261022-model-menu-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md) | Accepted, amended 2026-10-23 |
@@ -52,3 +52,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-31 | [Show plan usage in the context popover from the CLI's own figures](20261031-plan-usage-from-the-cli.md) | Accepted |
 | 2026-11-02 | [Show banners in the sidebar for Claude's sign-in ending and for merged changes waiting](20261102-banners-for-sign-in-and-updates.md) | Accepted |
 | 2026-11-02 | [Keep a draft for each session, and let quotes follow you between chats](20261102-a-draft-for-each-session.md) | Accepted |
+| 2026-11-02 | [Drag a selection of sessions as one, and act on it from a menu](20261102-drag-and-act-on-a-selection.md) | Accepted |

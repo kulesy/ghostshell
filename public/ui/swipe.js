@@ -21,8 +21,8 @@ const side = offset => (offset < 0 ? 'left' : 'right');
 // `data-swipe`, which says the side, `armed` once letting go would take the row, and the phase, and `--swipe`, how far the row has moved.
 // `leaves(row)` is whether the row goes when taken. If it does not, it springs back and `onSwipe(row)` is called at once, so a question can ask.
 // If it does, it slides off and collapses first, and `onSwipe(row)` is called after, because the list removes the row as soon as it is.
-// Returns a function that stops it.
-export function swipeRows(box, { row, leaves = () => true, onSwipe }) {
+// `active()` is whether a swipe may start at all, which the list turns off while rows are picked. Returns a function that stops it.
+export function swipeRows(box, { row, leaves = () => true, active = () => true, onSwipe }) {
   const owner = new WeakMap();
   let touch = null;
   let ending = null;
@@ -40,7 +40,7 @@ export function swipeRows(box, { row, leaves = () => true, onSwipe }) {
 
   function down(e) {
     const el = e.target.closest(row);
-    if (!el || !e.isPrimary || e.pointerType !== 'touch' || e.target.closest(POPUPS)) return;
+    if (!el || !e.isPrimary || e.pointerType !== 'touch' || e.target.closest(POPUPS) || !active()) return;
     // The edges are the browser's, for going back and forward.
     if (e.clientX < EDGE || e.clientX > innerWidth - EDGE) return;
     forget();

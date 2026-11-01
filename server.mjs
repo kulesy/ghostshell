@@ -935,6 +935,20 @@ function parentFolder(picked) {
   return candidates.find(isDirectory) ?? os.homedir();
 }
 
+// The rows of picked sessions that are listed, not archived and not a group's or section's chat, or the first refusal. It checks the ids first:
+// each is a plain id, and none twice.
+function listedRows(ids, archivedWords) {
+  if (!ids.every(id => typeof id === 'string' && /^[\w-]+$/.test(id))) throw refuse(400, 'Which sessions?');
+  if (new Set(ids).size < ids.length) throw refuse(400, 'Each session can be picked once.');
+  const index = buildIndex();
+  for (const id of ids) {
+    if (index.groupSessions.has(id)) throw refuse(400, `A ${kindOf(index.groupSessions.get(id))}'s session stays with its ${kindOf(index.groupSessions.get(id))}.`);
+    if (!index.rows.has(id)) throw refuse(404, NO_SESSION);
+    if (index.rows.get(id).archived) throw refuse(400, archivedWords);
+  }
+  return index;
+}
+
 // The most sessions one new parent takes. editStructure reads a body of up to 64 KB, room for a pick far past this, so the refusal is the sentence and not a bad body.
 const MAX_PICKED = 100;
 
@@ -946,14 +960,7 @@ const UNDO_WINDOW_MS = 10 * 60_000;
 function newParent({ ids, title, place }) {
   if (Array.isArray(ids) && ids.length > MAX_PICKED) throw refuse(400, `Pick at most ${MAX_PICKED} sessions.`);
   if (!Array.isArray(ids) || ids.length < 2) throw refuse(400, 'Pick at least two sessions.');
-  if (!ids.every(id => typeof id === 'string' && /^[\w-]+$/.test(id))) throw refuse(400, 'Which sessions?');
-  if (new Set(ids).size < ids.length) throw refuse(400, 'Each session can be picked once.');
-  const { rows, groupSessions } = buildIndex();
-  for (const id of ids) {
-    if (groupSessions.has(id)) throw refuse(400, `A ${kindOf(groupSessions.get(id))}'s session stays with its ${kindOf(groupSessions.get(id))}.`);
-    if (!rows.has(id)) throw refuse(404, NO_SESSION);
-    if (rows.get(id).archived) throw refuse(400, 'An archived session cannot be nested.');
-  }
+  const { rows } = listedRows(ids, 'An archived session cannot be nested.');
   const picked = ids.map(id => rows.get(id));
   const shared = picked.every(r => placeKey(r) === placeKey(picked[0])) ? picked[0] : null;
   if (place == null && !shared) throw refuse(400, 'The sessions are in different places. Choose where it goes.');
@@ -1009,6 +1016,90 @@ function undoParent({ id }) {
   return { id, removed: true };
 }
 
+// Undo tokens for moves and nests of several sessions, each holding the entries the write changed. They live in memory, so a restart drops
+// the pending ones. See docs/adr/20261102-drag-and-act-on-a-selection.md.
+const manyUndos = new Map();
+
+// The one thing a drop aims at, or null when `to` names none or more than one: a group (null for the loose list), Pinned or a parent (null to leave one).
+function aimOf(to) {
+  const keys = to && typeof to === 'object' && !Array.isArray(to) ? Object.keys(to) : [];
+  if (keys.length !== 1) return null;
+  const [key] = keys;
+  const fits = { group: to.group === null || typeof to.group === 'string', pinned: to.pinned === true, parent: to.parent === null || typeof to.parent === 'string' };
+  return fits[key] ? key : null;
+}
+
+// Moves, pins, nests or unnests several sessions in one write, with one Undo. `to` is { group } (null for each one's loose list), { pinned: true },
+// { parent } or { parent: null }. A picked session whose nearest shown parent is picked too rides along with its family and is left alone. Any
+// refusal writes nothing.
+function manyChange({ ids, to }) {
+  if (!Array.isArray(ids) || ids.length < 1) throw refuse(400, 'Pick at least one session.');
+  if (ids.length > MAX_PICKED) throw refuse(400, `Pick at most ${MAX_PICKED} sessions.`);
+  const aim = aimOf(to);
+  if (!aim) throw refuse(400, 'Where should they go?');
+  const { rows, groupSessions } = listedRows(ids, `An archived session cannot be ${aim === 'parent' ? 'nested' : 'moved'}.`);
+  const now = layout.read();
+  if (now.problem) throw refuse(500, now.problem);
+  if (aim === 'group' && to.group !== null && !now.groups.some(g => g.id === to.group)) throw refuse(400, 'Unknown group.');
+
+  const chosen = new Set(ids);
+  const direct = ids.filter(id => !chosen.has(rows.get(id).via));
+  const own = linksNow();
+  // A nested session that leaves its place keeps the picked sessions under it and leaves the others under the one it showed under.
+  const leave = id => {
+    if (own(id) === null) return {};
+    return { unlink: true, relink: Object.fromEntries(Object.entries(keepFamily(id, rows)).filter(([kid]) => !chosen.has(kid))) };
+  };
+  const stays = (id, group, pinned) => own(id) === null && (pinned ? rows.get(id).pinned : !rows.get(id).pinned && rows.get(id).group === group);
+  let steps;
+  if (aim === 'parent' && to.parent === null) {
+    steps = direct.filter(id => own(id) !== null).map(id => ({ kind: 'unnest', id, group: rows.get(id).group, pinned: rows.get(id).pinned, relink: leave(id).relink }));
+  } else if (aim === 'parent') {
+    if (groupSessions.has(to.parent)) throw refuse(400, `A ${kindOf(groupSessions.get(to.parent))}'s session cannot hold sessions.`);
+    const target = rows.get(to.parent);
+    if (!target) throw refuse(404, NO_SESSION);
+    if (target.archived) throw refuse(400, 'That session is archived.');
+    if (target.routine) throw refuse(400, 'A routine run cannot hold sessions.');
+    const root = target.parent ?? target.id;
+    const refusal = 'A session cannot nest under itself or a session nested under it.';
+    if (chosen.has(to.parent) || chosen.has(root)) throw refuse(400, refusal);
+    steps = direct.filter(id => rows.get(id).parent !== root).map(id => ({ kind: 'nest', id, parent: root, relink: leave(id).relink }));
+    const links = Object.assign({}, ...steps.flatMap(step => [step.relink, { [step.id]: root }]));
+    const final = id => (Object.hasOwn(links, id) ? links[id] : own(id));
+    for (const id of Object.keys(links)) {
+      const chain = chainOf(rows, final, rows.get(id));
+      if (final((chain.at(-1) ?? rows.get(id)).id) === id) throw refuse(400, refusal);
+    }
+  } else if (aim === 'pinned') {
+    steps = direct.filter(id => !stays(id, null, true)).map(id => ({ kind: 'pin', id, pinned: true, ...leave(id) }));
+  } else {
+    steps = direct.filter(id => !stays(id, to.group, false)).map(id => ({ kind: 'move', id, group: to.group, ...leave(id) }));
+  }
+  if (!steps.length) return { count: 0 };
+
+  const { before } = layout.many(steps);
+  const at = Date.now();
+  for (const [token, undo] of manyUndos) if (at - undo.at > UNDO_WINDOW_MS) manyUndos.delete(token);
+  const undo = crypto.randomUUID();
+  const changed = new Set(steps.map(step => step.id));
+  // A picked session that rides along counts when the one it rides with was changed.
+  const headOf = id => (chosen.has(rows.get(id).via) ? headOf(rows.get(id).via) : id);
+  const count = ids.filter(id => changed.has(headOf(id))).length;
+  manyUndos.set(undo, { before, at, count });
+  return { undo, count };
+}
+
+// Puts back what manyChange changed, for ten minutes after it. The token is spent before anything is restored, so a failure part way cannot
+// leave it to be replayed, and a second Undo from another tab is a 404.
+function undoMany({ undo }) {
+  const held = typeof undo === 'string' ? manyUndos.get(undo) : undefined;
+  if (!held) throw refuse(404, 'There is nothing to undo.');
+  manyUndos.delete(undo);
+  if (Date.now() - held.at > UNDO_WINDOW_MS) throw refuse(409, 'It is too late to undo that. Move the sessions back by hand.');
+  layout.restore(held.before);
+  return { count: held.count };
+}
+
 // A group's own chat is retired with the group, and one Capcom runs is stopped as archiving it would stop it, after the layout is written.
 function removeGroup(id) {
   const group = layout.removeGroup(id);
@@ -1031,6 +1122,8 @@ const STRUCTURE = new Map([
   ['/api/layout/group/remove', b => removeGroup(b.id)],
   ['/api/layout/parent', newParent],
   ['/api/layout/parent/undo', undoParent],
+  ['/api/layout/many', manyChange],
+  ['/api/layout/many/undo', undoMany],
 ]);
 
 async function editStructure(req, res, change) {
@@ -1453,8 +1546,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, and the banners for the sign-in and for updates.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, many: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);

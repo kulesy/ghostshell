@@ -1,4 +1,4 @@
-// Run with `npm test`. The pick bar's New parent in the real page: the button and the row menu item, the form that replaces the bar with
+// Run with `npm test`. New parent in the real page: the item in the pick bar's Move menu and in the row menu, the form that replaces the bar with
 // its title selected, Enter and Esc, the choice of a place when the rows are in different places, the note with its Undo, a refusal, and a
 // phone. It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
@@ -78,6 +78,13 @@ const choose = async (page, label) => {
   await page.evaluate(`[...document.querySelectorAll('${MENU} > [role=menuitem]')].find(el => el.querySelector('.menu-text').textContent === ${JSON.stringify(label)}).setAttribute('data-picked', '')`);
   await page.click(`${MENU} [data-picked]`);
 };
+// Opens the pick bar's Move menu and chooses New parent session in it, as a click or a tap does.
+const menuLabels = page => page.evaluate(`[...document.querySelectorAll('${MENU} > [role=menuitem] .menu-text')].map(el => el.textContent)`);
+const startParent = async (page, how = 'click') => {
+  await page[how]('.pick-new');
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  await choose(page, 'New parent session');
+};
 const rightClick = async (page, id) => {
   await page.evaluate(`(a => { const r = a.getBoundingClientRect(); a.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.x + 40, clientY: r.y + r.height / 2 })); })(document.querySelector('${ROW(id)}'))`);
   await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
@@ -88,14 +95,20 @@ const undo = async page => {
   await page.click(`${NOTE} [data-action]`);
 };
 
-test('two picked rows show New parent beside Archive, and one row shows neither the form nor the button', { skip, timeout }, async t => {
+test('the pick bar has a Move button for one row or more, and New parent session is in its menu from two rows', { skip, timeout }, async t => {
   const page = await appPage(t);
   await pickRows(page, 'loner');
   await page.until(`!!document.querySelector('${BAR}')`);
-  assert.equal(await page.evaluate(`!!document.querySelector('.pick-new')`), false, 'one row is not enough');
+  assert.equal(await text(page, '.pick-new'), 'Move');
+  await page.click('.pick-new');
+  await page.until(`!!document.querySelector('${MENU}')`);
+  assert.equal((await menuLabels(page)).includes('New parent session'), false, 'one row is not enough');
+  await page.press('Escape');
+  await page.until(`!document.querySelector('${MENU}')`);
   await pickRows(page, 'other');
-  await page.until(`!!document.querySelector('.pick-new')`);
-  assert.equal(await text(page, '.pick-new'), 'New parent');
+  await page.click('.pick-new');
+  await page.until(`!!document.querySelector('${MENU}')`);
+  assert.deepEqual(await menuLabels(page), ['Move to', 'Nest under', 'New parent session']);
   assert.deepEqual(page.problems, []);
 });
 
@@ -103,7 +116,7 @@ test('New parent turns the bar into a form with a default title selected, Esc gi
   const page = await appPage(t);
   await pickRows(page, 'twin', 'twin2');
   await page.until(`!!document.querySelector('.pick-new')`);
-  await page.click('.pick-new');
+  await startParent(page);
   await page.until(`!!document.querySelector('${INPUT}')`);
   assert.equal(await focused(page), 'input');
   assert.deepEqual(await page.evaluate(`(i => [i.value, i.selectionStart, i.selectionEnd, i.getAttribute('aria-label')])(document.querySelector('${INPUT}'))`), ['Fix login', 0, 9, 'Title of the new parent of 2 sessions']);
@@ -116,6 +129,8 @@ test('New parent turns the bar into a form with a default title selected, Esc gi
   assert.equal(await text(page, '.pick-count'), '2 selected', 'the pick is as it was');
 
   await page.press('Enter');
+  await page.until(`!!document.querySelector('${MENU}')`);
+  await choose(page, 'New parent session');
   await page.until(`!!document.querySelector('${INPUT}')`);
   await page.insert('Login work');
   await page.press('Enter');
@@ -143,7 +158,7 @@ test('the row menu of a picked row has New parent session, and a menu on a row o
   const page = await appPage(t);
   await pickRows(page, 'loner', 'other');
   await rightClick(page, 'other');
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('${MENU} > [role=menuitem] .menu-text')].map(el => el.textContent)`), ['New parent session', 'Archive 2 sessions', 'Clear selection']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('${MENU} > [role=menuitem] .menu-text')].map(el => el.textContent)`), ['Move to', 'Nest under', 'New parent session', 'Archive 2 sessions', 'Clear selection']);
   await choose(page, 'New parent session');
   await page.until(`!!document.querySelector('${INPUT}')`);
   assert.equal(await focused(page), 'input');
@@ -155,14 +170,14 @@ test('the row menu of a picked row has New parent session, and a menu on a row o
 test('a pick that changes closes the form, and a refusal from the server shows its sentence and leaves the form and the pick', { skip, timeout }, async t => {
   const page = await appPage(t);
   await pickRows(page, 'loner', 'other');
-  await page.click('.pick-new');
+  await startParent(page);
   await page.until(`!!document.querySelector('${INPUT}')`);
   await pickRows(page, 'twin');
   await page.until(`!document.querySelector('${FORM}') && !!document.querySelector('${BAR}')`);
   assert.equal(await text(page, '.pick-count'), '3 selected');
 
   await page.evaluate(`(fetch => { window.fetch = (url, init) => String(url).endsWith('api/layout/parent') ? fetch(url, { ...init, body: JSON.stringify({ ...JSON.parse(init.body), ids: [...JSON.parse(init.body).ids, 'ghost'] }) }) : fetch(url, init); })(window.fetch.bind(window))`);
-  await page.click('.pick-new');
+  await startParent(page);
   await page.until(`!!document.querySelector('${INPUT}')`);
   await page.insert('Will be refused');
   await page.press('Enter');
@@ -178,7 +193,7 @@ test('rows in different places ask for one: Create waits for a choice among only
   const page = await appPage(t);
   await page.evaluate(`document.querySelector('${NOTE}')?.remove()`);
   await pickRows(page, 'loner', 'peer');
-  await page.click('.pick-new');
+  await startParent(page);
   await page.until(`!!document.querySelector('${FORM} select')`);
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('${FORM} select option')].map(o => [o.textContent, o.disabled, o.selected])`), [['Choose where it goes', true, true], ['Work', false, false], ['Started here', false, false]]);
   assert.deepEqual(await page.evaluate(`(b => [b.disabled, b.getAttribute('aria-disabled')])(document.querySelector('${FORM} [type=submit]'))`), [false, 'true'], 'Create looks unavailable and can still be pressed');
@@ -208,7 +223,7 @@ test('on a phone the form fits the screen and the menu does the whole job', { sk
   const page = await appPage(t, { phone: true });
   await pickRows(page, 'twin', 'twin2');
   await page.until(`!!document.querySelector('.pick-new')`);
-  await page.tap('.pick-new');
+  await startParent(page, 'tap');
   await page.until(`!!document.querySelector('${INPUT}')`);
   const box = await page.evaluate(`(r => [r.left, r.right, innerWidth])(document.querySelector('${FORM}').getBoundingClientRect())`);
   assert.ok(box[0] >= 0 && box[1] <= box[2], JSON.stringify(box));

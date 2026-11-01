@@ -9,6 +9,7 @@ import { GroupPane } from './ui/group.js';
 import { checkUploads, keepDrafts } from './ui/draft.js';
 import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from './ui/html.js';
+import { guessMany } from './ui/many-rules.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useProjects } from './ui/projects.js';
 import { useRenewal } from './ui/renew.js';
@@ -170,6 +171,31 @@ function App() {
     }
   }, []);
 
+  // Several sessions placed or nested at once, in one write, as place and nest do for one. `to` is what the server takes: { group }, { pinned: true },
+  // { parent } or { parent: null }. It resolves with { problem, undo, count }: the reason when the server refuses, the token that takes the change
+  // back, and how many sessions it changed. A change that moves nothing sends nothing.
+  const placeMany = useCallback(async (ids, to) => {
+    const before = now.current.ix;
+    const refused = to.parent ? 'Not nested' : to.parent === null ? 'Not moved out' : to.pinned ? 'Not pinned' : 'Not moved';
+    if (!ids.every(id => findRow(before, id)) || (to.parent && !findRow(before, to.parent))) return { problem: `${refused}: a session is no longer in the list.`, count: 0 };
+    const guess = guessMany(before, ids, to);
+    if (guess === before) return { problem: '', count: 0 };
+    const mark = ++latest.current;
+    setIx(guess);
+    shown.current = mark;
+    writing.current++;
+    try {
+      const { undo, count } = await api('api/layout/many', { ids, to });
+      return { problem: '', undo, count };
+    } catch (e) {
+      if (shown.current === mark) setIx(before);
+      return { problem: `${refused}: ${e.message}`, count: 0 };
+    } finally {
+      writing.current--;
+      await loadIndex();
+    }
+  }, []);
+
   // Archiving takes the row out at once and puts it back if the server refuses, while no other list has been drawn since. Unarchiving
   // waits for the server's list, because the server says where the session lands. It resolves with { problem, stopped, running, subs }:
   // the reason when the server refuses, whether it stopped a chat that was running, `running` as { self, subs } when it refused because a chat
@@ -322,7 +348,7 @@ function App() {
 
   return html`<${Fragment}>
   <div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} edit=${edit} archive=${archive} archiveAll=${archiveAll} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
+    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} placeMany=${placeMany} edit=${edit} archive=${archive} archiveAll=${archiveAll} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       routines=${routines} routinesOpen=${route.name === 'routines'} refreshRoutines=${refreshRoutines}
       scheduled=${scheduled} scheduledOpen=${route.name === 'scheduled'} refreshScheduled=${refreshScheduled}
       banner=${html`<${LoginBanner} ...${banners} /><${UpdateBanner} ...${banners} />${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null}`} />

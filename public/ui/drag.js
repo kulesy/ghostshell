@@ -35,8 +35,9 @@ function targetAt(x, y) {
 // the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. `onMenu` gets the row's id and
 // element, and where the click or the finger was, or null for the menu key.
 // A header is `.bar[data-handle]` and has only `to:` targets and `slot(x, y, id)`. `onStart`, `onEnd` and `onMenu` get the kind last.
+// `count(id)` is how many sessions a lifted row carries. Above one, the lifted copy shows the number and stacks.
 // Returns a function that stops it.
-export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => null }) {
+export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => null, count = () => 1 }) {
   let press = null;
   let drag = null;
   let stop = null;
@@ -102,6 +103,15 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => nul
       for (const el of copy.querySelectorAll('[data-key], [aria-controls]')) for (const attr of ['data-key', 'aria-controls']) el.removeAttribute(attr);
     }
     copy.style.width = `${at.width}px`;
+    const carrying = kind === 'row' ? count(grip.dataset.id) : 1;
+    if (carrying > 1) {
+      const badge = document.createElement('span');
+      badge.className = 'lift-count';
+      badge.setAttribute('aria-hidden', 'true');
+      badge.textContent = String(carrying);
+      copy.setAttribute('data-count', String(carrying));
+      copy.append(badge);
+    }
     document.body.append(copy);
     document.body.classList.add('dragging');
     clearTimeout(press.timer);
