@@ -5,6 +5,7 @@
 import { ask } from './ask.js';
 import { isRunning, stopQuestion, subsRunning } from './close.js';
 import { dragRows, pointIn } from './drag.js';
+import { forgetDrafts } from './draft.js';
 import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
@@ -1085,7 +1086,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         ${supportsScheduled(ix) ? html`<a class="btn" data-variant="ghost" data-size="sm" href=${SCHEDULED_HASH} aria-current=${scheduledOpen ? 'page' : null}>Scheduled</a>` : null}
         <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       </div>
-      <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
+      <form method="post" action="logout" onSubmit=${forgetDrafts}><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
     <${Menu} menu=${shown && !shown.rail ? (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown) : null} onClose=${() => setShown(null)} />
   </nav>

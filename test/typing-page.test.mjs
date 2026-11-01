@@ -118,3 +118,17 @@ test('another chat\'s prompt box sends none, and neither does a page against a s
   assert.deepEqual(older.pings(), []);
   assert.deepEqual(old.problems, []);
 });
+
+test('a group\'s box that opens with a saved draft sends no ping until the text changes', { skip, timeout }, async t => {
+  const first = await appPage(t, spy.origin, '#/s/loose');
+  await first.evaluate(`localStorage.setItem('capcom.drafts', ${JSON.stringify(JSON.stringify({ [WORK]: 'left from before' }))})`);
+  const before = spy.pings().length;
+  const page = await appPage(t, spy.origin, '#/g/cg-work');
+  await page.until(`document.querySelector('#text').value === 'left from before'`);
+  await new Promise(resolve => setTimeout(resolve, 600));
+  assert.equal(spy.pings().length, before, 'opening the box sends none');
+  await type(page, '!');
+  assert.deepEqual(spy.pings().slice(before), [`POST /api/sessions/${WORK}/typing`]);
+  await page.evaluate(`localStorage.removeItem('capcom.drafts')`);
+  assert.deepEqual(page.problems, []);
+});

@@ -1,6 +1,6 @@
 // Run with `npm test`. Each session's unsent message in the real page: it stays in the session it was typed in when another chat opens, comes back
-// after a reload, and goes once the session is archived. It needs Playwright's Chromium headless shell, and every test skips with a reason that
-// names where it looked when there is none.
+// after a reload, goes on the first page load after the session is archived, and goes for every session on sign-out. It needs Playwright's
+// Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { findChromium, launch, notFound } from './browser.mjs';
@@ -86,7 +86,7 @@ test('a message stays in the session it was typed in, each session and the new s
   assert.deepEqual(page.problems, []);
 });
 
-test('an archived session\'s message is dropped once another chat is open', { skip, timeout }, async t => {
+test('an archived session\'s message stays while its chat is open and is gone after the next page load', { skip, timeout }, async t => {
   const page = await browser.open(`${app.origin}/`, {});
   t.after(() => page.close());
   await login(page);
@@ -97,8 +97,23 @@ test('an archived session\'s message is dropped once another chat is open', { sk
   await page.until(`${SAVED}.s2 === 'about to go'`);
   await page.click('#archiveButton');
   await page.until(`document.querySelector('#archiveButton')?.getAttribute('aria-label') === 'Unarchive'`);
-  assert.equal(await page.evaluate(`${SAVED}.s2`), 'about to go', 'the open chat keeps its draft');
   await openChat(page, '#/s/s1');
-  await page.until(`!('s2' in ${SAVED})`);
+  assert.equal(await page.evaluate(`${SAVED}.s2`), 'about to go', 'nothing is pruned until the page loads again');
+  await reload(page);
+  await page.until(`!!document.querySelector('#text')`);
+  assert.equal(await page.evaluate(`'s2' in ${SAVED}`), false);
   assert.deepEqual(page.problems, []);
+});
+
+test('signing out forgets every draft', { skip, timeout }, async t => {
+  const page = await browser.open(`${app.origin}/`, {});
+  t.after(() => page.close());
+  await login(page);
+  await openChat(page, '#/s/s1');
+  await type(page, 'not for the next person');
+  await page.until(`${SAVED}.s1 === 'not for the next person'`);
+  await page.evaluate(`setTimeout(() => document.querySelector('form[action=logout] button').click(), 50), true`);
+  await new Promise(resolve => setTimeout(resolve, 800));
+  await page.until(LOGIN, 10_000);
+  assert.deepEqual(await page.evaluate(SAVED), {});
 });

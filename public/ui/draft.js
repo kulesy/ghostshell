@@ -21,6 +21,12 @@ export function setDraftText(key, value) {
   saveTexts();
 }
 
+// Sign-out forgets every draft's text, as the server's sign-out clears the cache, so the next person at the browser cannot read it.
+export function forgetDrafts() {
+  texts.clear();
+  saveTexts();
+}
+
 const EMPTY = Object.freeze({ images: [], files: [], preparing: 0 });
 
 // The images and files attached to each draft, by the draft's key. A store, because a file is decoded and scaled, or uploaded, before it
@@ -41,7 +47,8 @@ export const quoted = createStore({ quotes: [] });
 
 // Drops the drafts of sessions that are not in `live`, the list's sessions, because they are archived or gone. `open` is the chat on screen,
 // whose box still holds its draft. The new session page's draft stays.
-// NOTE: [2 Nov 2026] EK - The list holds the newest 60 of each loose section, so a draft in an older session goes once it is closed.
+// NOTE: [2 Nov 2026] EK - The list leaves out older sessions (60 per loose section, 12 runs per routine, terminal ones past `otherDays`),
+// so their drafts go too.
 export function keepDrafts(live, open = null) {
   const gone = key => key !== NEW && key !== open && !live.has(key);
   const dropped = [...texts.keys()].filter(gone);

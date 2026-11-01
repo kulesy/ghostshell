@@ -289,7 +289,14 @@ function App() {
   // A group's session is not a row, but the list and the projects still follow it as the chat on screen.
   const groupSession = route.name === 'group' ? groupById(ix, route.id)?.session?.id ?? null : null;
   const current = view === 'chat' ? id ?? groupSession : null;
-  useLayoutEffect(() => { if (ix) keepDrafts(listedIds(ix), current); }, [ix, current]);
+  // Drafts are pruned once a page load, against the first list the server sends. A later list can be a guess that hides a session for a
+  // moment, such as an archive the server then refuses.
+  const pruned = useRef(false);
+  useLayoutEffect(() => {
+    if (!ix || pruned.current) return;
+    pruned.current = true;
+    keepDrafts(listedIds(ix), current);
+  }, [ix, current]);
   // A view picked where a chat has the screen puts the list there. The route is set in state at once, so the list is on screen when
   // the focus moves to it.
   const toList = () => {
