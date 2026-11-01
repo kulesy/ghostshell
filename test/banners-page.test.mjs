@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { findChromium, launch, notFound } from './browser.mjs';
-import { PASSWORD, restart, start } from './harness.mjs';
+import { as, PASSWORD, request, restart, signIn, start, until } from './harness.mjs';
 
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
@@ -47,11 +47,18 @@ function checkout() {
   return live;
 }
 
-// A server started again after its home was given `files`, with the checkout `root` to update.
-async function open(files, root = path.join(os.tmpdir(), 'capcom-banners-page-none')) {
-  const first = await start({ env: { CAPCOM_UPDATE_ROOT: root, CAPCOM_UPDATE_DELAY_MS: '50' } });
+// A server started again after its home was given `files`, with the checkout `root` to update. It returns once the server has read the sign-in
+// and, when there is a checkout, fetched it, so the page's first read does not beat them and wait 15 seconds for the next.
+async function open(files, root = null) {
+  const first = await start({ env: { CAPCOM_UPDATE_DELAY_MS: '50', ...(root && { CAPCOM_UPDATE_ROOT: root }) } });
   for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(first.home, name), text);
-  return restart(first);
+  const s = await restart(first);
+  const { token } = await signIn(s);
+  await until(async () => {
+    const { login, update } = (await request(s, 'GET', '/api/banners', { headers: as(token) })).body();
+    return (login.endsAt !== null || login.signedOut) && (!root || update.show);
+  }, 15_000);
+  return s;
 }
 
 async function listPage(t, s) {
