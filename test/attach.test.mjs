@@ -2,7 +2,7 @@
 // (an image to the message itself, anything else to the server), against a fake server and no browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attach, attached, checkUploads, detachFile, pastedFiles, uploads } from '../public/ui/draft.js';
+import { attach, attachedTo, attachments, checkUploads, detachFile, draftText, keepDrafts, NEW, pastedFiles, setDraftText, uploads } from '../public/ui/draft.js';
 import { extension, glyph, kindLabel, metaLine, sizeLabel } from '../public/ui/files.js';
 
 test('the kind on a card is the file\'s own type for the common ones and the capitalised extension for the rest', () => {
@@ -36,8 +36,11 @@ test('the line under the name says the kind and size, or that the file is still 
 const LIMITS = { maxBytes: 30 * 1024 * 1024, maxFiles: 10 };
 const reply = (body, status = 200) => ({ status, ok: status < 400, json: async () => body });
 const file = (name, type, size = 100) => ({ name, type, size });
+// The draft the tests attach to, as the prompt box of the session `s1` would.
+const S = 's1';
+const mine = (key = S) => attachedTo(attachments.get(), key);
 const reset = () => {
-  attached.set({ images: [], files: [], preparing: 0 });
+  attachments.set(s => Object.fromEntries(Object.keys(s).map(key => [key, undefined])));
   uploads.set({ limits: null });
 };
 
@@ -59,13 +62,13 @@ const saves = async init => { const name = decodeURIComponent(init.headers['x-fi
 test('a file that is not an image is uploaded with its name in a header and itself as the body, and its card is ready with an id once the server has it', async () => {
   await withServer({ upload: saves }, async ({ posts, notices, notice }) => {
     const pdf = file('Quarterly report é.pdf', 'application/pdf');
-    await attach([pdf], notice);
+    await attach(S, [pdf], notice);
     assert.equal(posts().length, 1);
     const [url, init] = posts()[0];
     assert.equal(url, 'api/uploads');
     assert.equal(init.body, pdf);
     assert.equal(decodeURIComponent(init.headers['x-file-name']), pdf.name);
-    assert.deepEqual(attached.get().files.map(({ key, abort, ...rest }) => rest), [{ id: `id-${pdf.name}`, name: pdf.name, size: 100, type: 'text/plain' }]);
+    assert.deepEqual(mine().files.map(({ key, abort, ...rest }) => rest), [{ id: `id-${pdf.name}`, name: pdf.name, size: 100, type: 'text/plain' }]);
     assert.deepEqual(notices, []);
   });
 });
@@ -74,45 +77,45 @@ test('the card shows at once as uploading, and Send waits for it', async () => {
   let finish;
   const held = new Promise(resolve => { finish = resolve; });
   await withServer({ upload: () => held }, async ({ notice }) => {
-    const sending = attach([file('a.csv', 'text/csv')], notice);
+    const sending = attach(S, [file('a.csv', 'text/csv')], notice);
     await new Promise(resolve => setTimeout(resolve, 0));
-    assert.deepEqual(attached.get().files.map(f => [f.name, f.uploading === true]), [['a.csv', true]]);
+    assert.deepEqual(mine().files.map(f => [f.name, f.uploading === true]), [['a.csv', true]]);
     finish(reply({ id: 'x1', name: 'a.csv', type: 'text/csv', size: 100 }));
     await sending;
-    assert.equal(attached.get().files[0].uploading, undefined);
-    assert.equal(attached.get().files[0].id, 'x1');
+    assert.equal(mine().files[0].uploading, undefined);
+    assert.equal(mine().files[0].id, 'x1');
   });
 });
 
 test('a refused upload drops its card and shows the server\'s words, and a network failure says which file', async () => {
   await withServer({ upload: async () => reply({ error: 'big.bin is over the 30 MB limit.' }, 413) }, async ({ notices, notice }) => {
-    await attach([file('big.bin', 'application/octet-stream')], notice);
-    assert.deepEqual(attached.get().files, []);
+    await attach(S, [file('big.bin', 'application/octet-stream')], notice);
+    assert.deepEqual(mine().files, []);
     assert.deepEqual(notices, ['big.bin is over the 30 MB limit.']);
   });
   await withServer({ upload: async () => { throw new TypeError('Failed to fetch'); } }, async ({ notices, notice }) => {
-    await attach([file('a.txt', 'text/plain')], notice);
-    assert.deepEqual(attached.get().files, []);
+    await attach(S, [file('a.txt', 'text/plain')], notice);
+    assert.deepEqual(mine().files, []);
     assert.deepEqual(notices, ['a.txt could not be uploaded.']);
   });
 });
 
 test('a file over the server\'s size is refused by the page before anything is sent', async () => {
   await withServer({ upload: saves }, async ({ calls, notices, notice }) => {
-    await attach([file('huge.mov', 'video/quicktime', LIMITS.maxBytes + 1)], notice);
+    await attach(S, [file('huge.mov', 'video/quicktime', LIMITS.maxBytes + 1)], notice);
     assert.deepEqual(notices, ['huge.mov is over the 30 MB limit.']);
     assert.equal(calls.some(c => c[1]?.method === 'POST'), false);
-    assert.deepEqual(attached.get().files, []);
+    assert.deepEqual(mine().files, []);
   });
 });
 
 test('files past the server\'s limit are left out with one notice', async () => {
   await withServer({ limits: { maxBytes: LIMITS.maxBytes, maxFiles: 2 }, upload: saves }, async ({ posts, notices, notice }) => {
-    await attach([file('a.txt', 'text/plain'), file('b.txt', 'text/plain'), file('c.txt', 'text/plain')], notice);
+    await attach(S, [file('a.txt', 'text/plain'), file('b.txt', 'text/plain'), file('c.txt', 'text/plain')], notice);
     assert.equal(posts().length, 2);
     assert.deepEqual(notices, ['A message can hold up to 2 files.']);
-    assert.deepEqual(attached.get().files.map(f => f.name), ['a.txt', 'b.txt']);
-    await attach([file('d.txt', 'text/plain')], notice);
+    assert.deepEqual(mine().files.map(f => f.name), ['a.txt', 'b.txt']);
+    await attach(S, [file('d.txt', 'text/plain')], notice);
     assert.equal(posts().length, 2, 'a full message takes no more');
     assert.deepEqual(notices.at(-1), 'A message can hold up to 2 files.');
   });
@@ -121,22 +124,22 @@ test('files past the server\'s limit are left out with one notice', async () => 
 test('removing a card that is still uploading stops the upload and says nothing', async () => {
   let signal;
   await withServer({ upload: init => new Promise((_, reject) => { signal = init.signal; signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))); }) }, async ({ notices, notice }) => {
-    const sending = attach([file('a.txt', 'text/plain')], notice);
+    const sending = attach(S, [file('a.txt', 'text/plain')], notice);
     await new Promise(resolve => setTimeout(resolve, 0));
-    detachFile(attached.get().files[0].key);
+    detachFile(S, mine().files[0].key);
     await sending;
     assert.equal(signal.aborted, true);
-    assert.deepEqual(attached.get().files, []);
+    assert.deepEqual(mine().files, []);
     assert.deepEqual(notices, []);
   });
 });
 
 test('an old server with no file route takes images only: a PDF gets the notice it always did and nothing is posted', async () => {
   await withServer({ limits: null }, async ({ calls, notices, notice }) => {
-    await attach([file('report.pdf', 'application/pdf')], notice);
+    await attach(S, [file('report.pdf', 'application/pdf')], notice);
     assert.deepEqual(notices, ['report.pdf is not a PNG, JPEG, GIF or WebP image.']);
-    assert.deepEqual(attached.get().files, []);
-    assert.equal(attached.get().preparing, 0);
+    assert.deepEqual(mine().files, []);
+    assert.equal(mine().preparing, 0);
     assert.equal(uploads.get().limits, null);
     assert.equal(calls.some(c => c[1]?.method === 'POST'), false);
   });
@@ -148,10 +151,10 @@ test('a server that gains the route is noticed the next time a file that is not 
     assert.equal(uploads.get().limits, null);
     const real = globalThis.fetch;
     globalThis.fetch = async (url, init) => (String(url) === 'api/uploads' && init?.method !== 'POST' ? reply(LIMITS) : real(url, init));
-    await attach([file('a.txt', 'text/plain')], notice);
+    await attach(S, [file('a.txt', 'text/plain')], notice);
     globalThis.fetch = real;
     assert.deepEqual(uploads.get().limits, LIMITS);
-    assert.deepEqual(attached.get().files.map(f => f.name), ['a.txt']);
+    assert.deepEqual(mine().files.map(f => f.name), ['a.txt']);
     assert.deepEqual(notices, []);
   });
 });
@@ -161,14 +164,14 @@ test('an SVG is a file, not an image, and an image the browser cannot read goes 
   globalThis.createImageBitmap = async () => { throw new Error('cannot decode'); };
   try {
     await withServer({ upload: saves }, async ({ posts, notices, notice }) => {
-      await attach([file('logo.svg', 'image/svg+xml'), file('photo.heic', 'image/heic')], notice);
+      await attach(S, [file('logo.svg', 'image/svg+xml'), file('photo.heic', 'image/heic')], notice);
       assert.deepEqual(posts().map(([, init]) => decodeURIComponent(init.headers['x-file-name'])).sort(), ['logo.svg', 'photo.heic']);
       assert.deepEqual(notices, []);
-      assert.equal(attached.get().preparing, 0);
-      assert.deepEqual(attached.get().images, []);
+      assert.equal(mine().preparing, 0);
+      assert.deepEqual(mine().images, []);
     });
     await withServer({ upload: saves }, async ({ posts, notices, notice }) => {
-      await attach([file('broken.png', 'image/png')], notice);
+      await attach(S, [file('broken.png', 'image/png')], notice);
       assert.equal(posts().length, 0, 'one of the four image types that will not decode is still an error');
       assert.deepEqual(notices, ['broken.png could not be read as an image.']);
     });
@@ -201,5 +204,47 @@ test('a paste after the old server has been updated takes every file once the ba
     assert.deepEqual(pastedFiles([pdf, png]), [pdf, png], 'the next paste is taken whole');
     assert.equal(calls.length, asked, 'and asks nothing');
     globalThis.fetch = real;
+  });
+});
+
+test('each session has its own text, and an empty box leaves no draft behind', () => {
+  setDraftText('s1', 'for one');
+  setDraftText('s2', 'for two');
+  setDraftText(NEW, 'for a new session');
+  assert.deepEqual(['s1', 's2', NEW, 's3'].map(draftText), ['for one', 'for two', 'for a new session', '']);
+  setDraftText('s1', '');
+  assert.equal(draftText('s1'), '');
+  keepDrafts(new Set());
+});
+
+test('a file still uploading lands in the draft it was attached in, while another session takes its own', async () => {
+  let finish;
+  const held = new Promise(resolve => { finish = resolve; });
+  await withServer({ upload: (init, n) => (n === 1 ? held : saves(init)) }, async ({ notice }) => {
+    const sending = attach(S, [file('a.csv', 'text/csv')], notice);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await attach('s2', [file('b.txt', 'text/plain')], notice);
+    finish(reply({ id: 'x1', name: 'a.csv', type: 'text/csv', size: 100 }));
+    await sending;
+    assert.deepEqual(mine().files.map(f => [f.id, f.uploading]), [['x1', undefined]]);
+    assert.deepEqual(mine('s2').files.map(f => f.name), ['b.txt']);
+    assert.deepEqual(mine(NEW).files, []);
+  });
+});
+
+test('the drafts of sessions the list no longer holds are dropped, an upload in one is stopped, and the open chat and a new session keep theirs', async () => {
+  let signal;
+  await withServer({ upload: init => new Promise((_, reject) => { signal = init.signal; signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))); }) }, async ({ notices, notice }) => {
+    for (const key of ['s1', 's2', 'open', NEW]) setDraftText(key, `text ${key}`);
+    const sending = attach('s2', [file('a.txt', 'text/plain')], notice);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    keepDrafts(new Set(['s1']), 'open');
+    await sending;
+    assert.equal(signal.aborted, true);
+    assert.deepEqual(mine('s2').files, []);
+    assert.deepEqual(notices, []);
+    assert.deepEqual(['s1', 's2', 'open', NEW].map(draftText), ['text s1', '', 'text open', `text ${NEW}`]);
+    keepDrafts(new Set());
+    setDraftText(NEW, '');
   });
 });

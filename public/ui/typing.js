@@ -8,7 +8,11 @@ import { sessionIndex } from './subs.js';
 export function useTypingPing(id, text) {
   const offered = useStore(sessionIndex, s => typingOffered(s.ix, id));
   const last = useRef(0);
+  // A draft the box opens with is not typing, so it sends nothing until the text changes.
+  const opened = useRef(text);
   useEffect(() => {
+    if (opened.current !== null && text === opened.current) return;
+    opened.current = null;
     if (!offered || !text.trim() || !pingDue(last.current)) return;
     last.current = Date.now();
     api(`api/sessions/${encodeURIComponent(id)}/typing`, {}).catch(() => {});

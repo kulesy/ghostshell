@@ -46,6 +46,9 @@ export const withKids = rows => rows.flatMap(r => [r, ...(r.children ?? [])]);
 
 export const everyRow = ix => withKids([...ix.pinned, ...ix.groups.flatMap(g => g.sessions), ...ix.routines.flatMap(g => [g.latest, ...g.earlier]), ...ix.started, ...ix.ungrouped, ...ix.other]);
 
+// The id of every session the list holds, with the chats of the groups and of Home's sections.
+export const listedIds = ix => new Set([...everyRow(ix), ...ix.groups.map(g => g.session), ...(ix.sections ?? []).map(s => s.session)].filter(Boolean).map(r => r.id));
+
 export const findRow = (ix, id) => (ix ? everyRow(ix).find(r => r.id === id) || null : null);
 
 // Puts on each row with a turn running the time the turn began by this page's clock, which the row counts from. An answer can only be
