@@ -57,7 +57,7 @@ function Button({ action, onClick }) {
   return html`<button class="btn" type="button" disabled=${action.blocked} aria-disabled=${waiting ? 'true' : null} data-disabled=${waiting || null} onClick=${press}>${action.label}</button>`;
 }
 
-// A refusal answers one press, so it goes once the server's state moves on.
+// A refusal answers one press, so it goes at the next press or once the server's state moves on.
 function useRefusal(...moved) {
   const [refused, setRefused] = useState('');
   useEffect(() => setRefused(''), moved);
@@ -68,7 +68,7 @@ export function LoginBanner({ banners, act }) {
   const view = loginBanner(banners?.login);
   const [refused, setRefused] = useRefusal(banners?.login?.stage, banners?.login?.signedOut);
   if (!view) return null;
-  const start = async () => setRefused(await act('sign-in'));
+  const start = async () => { setRefused(''); setRefused(await act('sign-in')); };
   return html`<${Banner} ...${view} problem=${refused || view.problem} actions=${html`<${Button} action=${view.action} onClick=${start} />`} />`;
 }
 
@@ -76,7 +76,7 @@ export function UpdateBanner({ banners, act }) {
   const view = updateBanner(banners?.update);
   const [refused, setRefused] = useRefusal(banners?.update?.stage, banners?.update?.count, banners?.update?.kind);
   if (!view) return null;
-  const go = async () => setRefused(await act('update'));
+  const go = async () => { setRefused(''); setRefused(await act('update')); };
   const list = view.changes.length
     ? html`<ul class="offer-list">
         ${view.changes.map(c => html`<li>${c.url ? html`<a href=${c.url} target="_blank" rel="noopener noreferrer">${c.title}</a>` : c.title}</li>`)}
