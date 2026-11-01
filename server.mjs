@@ -1412,6 +1412,8 @@ async function bannersApi(req, res, parts) {
   if (req.method !== 'POST' || parts.length !== 3 || !['sign-in', 'update'].includes(step)) return send(res, 404, { error: 'Not found' });
   if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
   if (step === 'sign-in') login.signIn();
+  // `claude auth login` is not a chat, so the restart helper would not wait for it.
+  else if (login.state().stage === 'waiting' && updates.state().restart) return send(res, 409, { error: 'A sign-in is waiting on the Mac, so GhostShell cannot restart yet.' });
   else {
     const { problem } = await updates.update();
     if (problem) return send(res, 409, { error: problem });

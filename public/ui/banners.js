@@ -45,13 +45,28 @@ export function useBanners(on) {
   return { banners, act };
 }
 
+// A button that its own press makes busy keeps the focus, so it is marked aria-disabled rather than disabled.
 function Button({ action, onClick }) {
-  return html`<button class="btn" type="button" disabled=${action.busy || action.blocked} onClick=${onClick}>${action.label}</button>`;
+  const [sending, setSending] = useState(false);
+  const waiting = sending || action.busy;
+  const press = async () => {
+    if (waiting) return;
+    setSending(true);
+    try { await onClick(); } finally { setSending(false); }
+  };
+  return html`<button class="btn" type="button" disabled=${action.blocked} aria-disabled=${waiting ? 'true' : null} data-disabled=${waiting || null} onClick=${press}>${action.label}</button>`;
+}
+
+// A refusal answers one press, so it goes once the server's state moves on.
+function useRefusal(...moved) {
+  const [refused, setRefused] = useState('');
+  useEffect(() => setRefused(''), moved);
+  return [refused, setRefused];
 }
 
 export function LoginBanner({ banners, act }) {
   const view = loginBanner(banners?.login);
-  const [refused, setRefused] = useState('');
+  const [refused, setRefused] = useRefusal(banners?.login?.stage, banners?.login?.signedOut);
   if (!view) return null;
   const start = async () => setRefused(await act('sign-in'));
   return html`<${Banner} ...${view} problem=${refused || view.problem} actions=${html`<${Button} action=${view.action} onClick=${start} />`} />`;
@@ -59,7 +74,7 @@ export function LoginBanner({ banners, act }) {
 
 export function UpdateBanner({ banners, act }) {
   const view = updateBanner(banners?.update);
-  const [refused, setRefused] = useState('');
+  const [refused, setRefused] = useRefusal(banners?.update?.stage, banners?.update?.count, banners?.update?.kind);
   if (!view) return null;
   const go = async () => setRefused(await act('update'));
   const list = view.changes.length

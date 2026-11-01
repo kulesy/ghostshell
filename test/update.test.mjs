@@ -57,7 +57,7 @@ const MONDAY_EARLY = new Date(2026, 10, 2, 8, 0);
 function rig(over = {}) {
   const r = { ...repos(), restarts: [], busy: 0, locked: false, at: SATURDAY, ...over };
   r.update = makeUpdate({
-    root: r.live, restart: (root, minutes) => r.restarts.push([root, minutes]), locked: () => r.locked, busy: () => r.busy, now: () => r.at, graceMs: r.graceMs ?? 60_000, log: r.log,
+    root: r.live, restart: (root, minutes) => { r.restarts.push([root, minutes]); return Promise.resolve(''); }, locked: () => r.locked, busy: () => r.busy, now: () => r.at, graceMs: r.graceMs ?? 60_000, log: r.log,
     ...(r.git && { git: r.git(r.live) }),
   });
   return r;
@@ -80,13 +80,15 @@ test('the quiet window is weekdays from 07:00 to 09:45 and no other time', () =>
 
 test('a restart may wait 30 minutes, or less when that would reach the next weekday 07:00', () => {
   const at = (day, h, m, s = 0) => new Date(2026, 10, day, h, m, s);
-  assert.equal(waitMinutes(at(6, 6, 50)), 10, 'Friday 06:50');
-  assert.equal(waitMinutes(at(2, 6, 59)), 1, 'Monday 06:59');
-  assert.equal(waitMinutes(at(2, 6, 30)), 30, 'Monday 06:30');
+  assert.equal(waitMinutes(at(6, 6, 50)), 9, 'Friday 06:50');
+  assert.equal(waitMinutes(at(2, 6, 58)), 1, 'Monday 06:58');
+  assert.equal(waitMinutes(at(2, 6, 59)), 0, 'Monday 06:59');
+  assert.equal(waitMinutes(at(2, 6, 30)), 29, 'Monday 06:30');
+  assert.equal(waitMinutes(at(2, 6, 0)), 30, 'Monday 06:00');
   assert.equal(waitMinutes(at(7, 8, 0)), 30, 'Saturday 08:00');
   assert.equal(waitMinutes(at(6, 17, 0)), 30, 'Friday 17:00');
   assert.equal(waitMinutes(at(2, 9, 45)), 30, 'Monday 09:45');
-  assert.equal(restartRefused(at(2, 6, 59, 30)), QUIET_REASON, 'the last minute before 07:00 cannot be waited out');
+  assert.equal(restartRefused(at(2, 6, 59, 0)), QUIET_REASON, 'the last minute before 07:00 cannot be waited out');
 });
 
 test('a squash merge subject gives the title and the pull request, and any other subject stays whole', () => {
@@ -167,7 +169,7 @@ test('a restart is asked for with the minutes left before the next weekday 07:00
   r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
   await r.update.check();
   await r.update.update();
-  assert.deepEqual(r.restarts, [[r.live, 10]]);
+  assert.deepEqual(r.restarts, [[r.live, 9]], "one minute is kept back from the 10 left");
 });
 
 test('a restart waits out the quiet window, but a page-only update does not', async () => {
@@ -324,4 +326,40 @@ test('the changes link to their pull requests on a GitHub remote', async () => {
   r.merge('A commit with no number', { 'docs/a.md': 'c\n' });
   await r.update.check();
   assert.deepEqual(r.update.state().changes, [{ title: 'A commit with no number', url: null }, { title: 'Move the button', url: 'https://github.com/acme/widgets/pull/2' }]);
+});
+
+test('a merge that crosses 07:00 on a weekday is kept, and the restart is refused rather than started inside the window', async () => {
+  const times = [new Date(2026, 10, 2, 6, 0), new Date(2026, 10, 2, 7, 1)];
+  const r = rig();
+  Object.defineProperty(r, 'at', { get: () => times.shift() ?? new Date(2026, 10, 2, 7, 1) });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  assert.deepEqual(await r.update.update(), { problem: QUIET_REASON });
+  assert.equal(head(r), originHead(r));
+  assert.deepEqual(r.restarts, []);
+  assert.deepEqual([r.update.state().kind, r.update.state().stage], ['pulled', 'idle']);
+});
+
+test('a restart helper that cannot start is reported, and the banner does not say a restart is under way', async () => {
+  const r = rig();
+  r.update = makeUpdate({ root: r.live, restart: () => Promise.resolve('Could not start the restart helper.'), now: () => SATURDAY, graceMs: 60_000 });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  assert.deepEqual(await r.update.update(), { problem: 'Could not start the restart helper.' });
+  assert.deepEqual([r.update.state().kind, r.update.state().stage], ['pulled', 'idle']);
+});
+
+test('a failed read of server.mjs is tried again on the next check instead of letting a server change through as page only', async () => {
+  let fail = true;
+  const r = rig({
+    git: root => args => {
+      if (fail && args[0] === 'show' && args[1].endsWith(':server.mjs')) { fail = false; return Promise.reject(new Error('timed out')); }
+      return new Promise((resolve, reject) => { try { resolve(git(root, ...args)); } catch (e) { reject(e); } });
+    },
+  });
+  r.merge('Change an imported page file (#2)', { 'public/ui/imported.js': "import './nested.js';\nexport const x = 2;\n" });
+  await r.update.check();
+  assert.deepEqual(r.update.state(), { show: false });
+  await r.update.check();
+  assert.equal(r.update.state().restart, true);
 });

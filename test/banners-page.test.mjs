@@ -81,7 +81,7 @@ const banners = `[...document.querySelectorAll('aside.offer')].map(a => ({
   alert: a.querySelector('[role=alert]') !== null,
   status: a.querySelector('[role=status]') !== null,
   items: [...a.querySelectorAll('li')].map(li => li.textContent.trim()),
-  buttons: [...a.querySelectorAll('button')].map(b => ({ name: b.textContent.trim(), disabled: b.disabled })),
+  buttons: [...a.querySelectorAll('button')].map(b => ({ name: b.textContent.trim(), disabled: b.disabled || b.getAttribute('aria-disabled') === 'true' })),
 }))`;
 
 test('a sign-in ending in three days and a waiting change are stacked sign-in first, each labelled by its title', { skip, timeout }, async t => {
