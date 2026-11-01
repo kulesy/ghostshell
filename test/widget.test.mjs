@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import {
-  CDNS, clampHeight, CSP, frameBoot, frameDoc, humanTitle, isCard, linkTarget, parseGlyphs, promptGate, viewBoxRatio,
+  CDNS, clampHeight, CSP, frameBoot, frameDoc, humanTitle, isCard, linkGate, linkTarget, parseGlyphs, promptGate, viewBoxRatio,
 } from '../public/ui/widget-frame.js';
 import { CARD_CLASS, hostCss, TOKENS, tokenCss } from '../public/ui/widget-theme.js';
 
@@ -479,6 +479,27 @@ test('a prompt that is not text, says nothing, or arrives while the bar is alrea
 });
 
 // ---- the links --------------------------------------------------------------------------------------------------------------
+
+// ---- the gate on a link -----------------------------------------------------------------------------------------------------
+
+const linkClick = { active: true, focused: true, now: 10_000, last: 0 };
+
+test('a link opens at once after a click on this widget with a quiet page, and anything else is put to the owner', () => {
+  assert.equal(linkGate(linkClick), 'open');
+  assert.equal(linkGate({ ...linkClick, active: false }), 'ask');
+  assert.equal(linkGate({ ...linkClick, active: undefined }), 'ask');
+  assert.equal(linkGate({ ...linkClick, focused: false }), 'ask');
+  assert.equal(linkGate({ ...linkClick, now: undefined }), 'ask');
+  assert.equal(linkGate({ ...linkClick, pageActed: 4_000 }), 'ask');
+  assert.equal(linkGate({ ...linkClick, othersActed: 4_000 }), 'ask');
+  assert.equal(linkGate({ ...linkClick, pageActed: 3_999, othersActed: 3_999 }), 'open');
+});
+
+test('a second link within a second of the last one opened is put to the owner, and one at exactly a second opens', () => {
+  assert.equal(linkGate({ ...linkClick, last: 9_001 }), 'ask');
+  assert.equal(linkGate({ ...linkClick, last: 9_000 }), 'open');
+  assert.equal(linkGate({ ...linkClick, last: undefined }), 'open');
+});
 
 test('a web address comes back normalised and absolute', () => {
   assert.equal(linkTarget('https://example.com/a?b=c#d'), 'https://example.com/a?b=c#d');

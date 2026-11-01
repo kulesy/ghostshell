@@ -2,7 +2,7 @@
 // asks the owner first when a frame wants something the owner did not click.
 import { escapeCancels } from './forms.js';
 import { html, memo, useLayoutEffect, useMemo, useRef, useState } from './html.js';
-import { clampHeight, frameDoc, humanTitle, isCard, linkTarget, parseGlyphs, promptGate, viewBoxRatio } from './widget-frame.js';
+import { clampHeight, frameDoc, humanTitle, isCard, linkGate, linkTarget, parseGlyphs, promptGate, viewBoxRatio } from './widget-frame.js';
 
 const FAILED = 'That did not send. Try again, or cancel.';
 const CONFIRM_DELAY_MS = 600;
@@ -111,6 +111,7 @@ export const Widget = memo(function Widget({ t, onPrompt }) {
   const [request, setRequest] = useState(null);
   const asking = useRef(null);
   const lastSent = useRef(0);
+  const lastOpened = useRef(0);
   const loads = useRef(0);
   const loaded = useRef(doc);
   const alive = useRef(true);
@@ -169,15 +170,24 @@ export const Widget = memo(function Widget({ t, onPrompt }) {
       lastSent.current = now;
       send(text).then(sent => { if (!sent) ask({ kind: 'prompt', text, error: FAILED }); });
     };
+    const follow = url => {
+      const target = linkTarget(url);
+      if (!target || !alive.current || !frames.has(win)) return;
+      const now = Date.now();
+      const verdict = linkGate({
+        active: navigator.userActivation?.isActive, focused: document.activeElement === frame.current,
+        now, last: lastOpened.current, pageActed, othersActed: othersActed(win),
+      });
+      if (verdict === 'ask') return ask({ kind: 'link', url: target, host: new URL(target).hostname });
+      lastOpened.current = now;
+      window.open(target, '_blank', 'noopener,noreferrer');
+    };
     frames.set(win, {
       acted: 0,
       height: h => { const px = clampHeight(h); if (px !== null) setHeight(px); },
       tabbable: yes => { if (alive.current) setTabbable(yes); },
       prompt: text => { setTimeout(decide, SETTLE_MS, text); },
-      link: url => {
-        const target = linkTarget(url);
-        if (target) ask({ kind: 'link', url: target, host: new URL(target).hostname });
-      },
+      link: url => { setTimeout(follow, SETTLE_MS, url); },
     });
     return () => { alive.current = false; frames.delete(win); };
   }, []);
