@@ -126,6 +126,7 @@ test('the Move menu on the pick bar moves, nests and takes out the picked sessio
   await page.until(`!!document.querySelector('${NOTE}')`);
   assert.deepEqual(layoutOf(server).parents, { a: 'c', b: 'c' });
   assert.equal(await page.evaluate(`!!document.querySelector('.pick-bar')`), true, 'the selection stays for the next action');
+  await page.until(`document.querySelectorAll('.sub-rows a.row[data-picked]').length === 2`);
 
   await page.click('.pick-new');
   await page.until(`!!document.querySelector('${MENU}')`);
