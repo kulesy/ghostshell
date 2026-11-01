@@ -28,7 +28,7 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
-import { chatFor, getChat, onTurn, runningChats, startChat, sweep, activeStates } from './lib/runner.mjs';
+import { chatFor, getChat, onAuthFailure, onTurn, runningChats, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
 import { makeTitler } from './lib/titler.mjs';
@@ -37,6 +37,8 @@ import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
+import { authStatus, makeLogin, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
+import { CHECK_DELAY_MS, CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
 import { esc } from './public/md.mjs';
@@ -1389,8 +1391,37 @@ const groupUpdates = makeGroupUpdates({
   store: makeUpdateStore(cfg.stateDir),
 });
 
+// The sidebar banners: when Claude's sign-in ends, and merged changes waiting on main. Both answer from what was last worked out, so a request runs
+// no git, keychain or CLI work. See docs/adr/20261102-banners-for-sign-in-and-updates.md.
+const login = makeLogin({ readEnd: () => readLoginEnd({ security: cfg.security }), authStatus: () => authStatus({ claude: cfg.claude }), startSignIn: () => startSignIn({ claude: cfg.claude }) });
+onAuthFailure(() => login.authFailed().catch(() => {}));
+const updates = makeUpdate({
+  root: cfg.updateRoot,
+  locked: () => lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
+  // The chats the restart helper waits for are the ones mid-turn, whether they are working or waiting on an approval.
+  busy: () => Object.values(activeStates()).filter(state => state !== 'idle').length,
+  log: path.join(cfg.stateDir, 'restart.log'),
+});
+const bannersNow = () => ({ login: login.state(), update: updates.state() });
+
+// GET api/banners gives both banners. POST api/banners/sign-in starts a sign-in on the Mac and POST api/banners/update pulls the merged changes,
+// then restarts if they need it. Both run something as the owner, so they take the stricter origin check.
+async function bannersApi(req, res, parts) {
+  const step = parts[2];
+  if (req.method === 'GET' && parts.length === 2) return send(res, 200, bannersNow());
+  if (req.method !== 'POST' || parts.length !== 3 || !['sign-in', 'update'].includes(step)) return send(res, 404, { error: 'Not found' });
+  if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+  if (step === 'sign-in') login.signIn();
+  else {
+    const { problem } = await updates.update();
+    if (problem) return send(res, 409, { error: problem });
+  }
+  return send(res, 200, bannersNow());
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
+  if (parts[1] === 'banners') return bannersApi(req, res, parts);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
   if (parts[1] === 'scheduled') return scheduledApi(req, res, parts);
   if (parts[1] === 'schedule' && parts.length === 2) return scheduleApi(req, res, u);
@@ -1419,8 +1450,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, and the banners for the sign-in and for updates.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1739,12 +1770,16 @@ server.listen(cfg.port, '127.0.0.1', () => {
   console.log(`Capcom on http://localhost:${cfg.port}`);
   setInterval(checkRoutines, 30_000).unref();
   checkRoutines();
+  login.refresh();
+  setInterval(login.refresh, REFRESH_MS).unref();
+  setTimeout(updates.check, CHECK_DELAY_MS).unref();
+  setInterval(updates.check, CHECK_EVERY_MS).unref();
 });
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
 setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates failed: ${e.message}`)), scaled(cfg.groupUpdateScale).tick).unref();
 // Whatever the terminal started ends with Capcom, so a restart leaves nothing running behind. A signal ends the process through
 // exit, which kills the command groups; without a handler the default would end it first.
-process.on('exit', () => terminal.killAll());
+process.on('exit', () => { terminal.killAll(); login.stop(); });
 for (const name of ['SIGTERM', 'SIGINT']) process.on(name, () => process.exit(128 + os.constants.signals[name]));
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
 if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine && !s.scheduled && !awaitsFirstMessage(s.id)) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));
