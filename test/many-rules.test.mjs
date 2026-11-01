@@ -44,6 +44,7 @@ test('a nest is refused when the row it lands under is picked or nested under a 
   assert.equal(refuseNest(IX, ['mine'], 'mine'), NEST_SELF);
   assert.equal(refuseNest(IX, ['mine', 'mine2'], 'peer'), '');
   assert.equal(refuseNest(IX, ['mid', 'leaf'], 'kid'), '', 'boss is not picked');
+  assert.equal(refuseNest(IX, ['kid', 'mine'], 'kid'), NEST_SELF, 'kid is picked even though its root boss is not');
   assert.equal(refuseNest(IX, ['mine'], 'nobody'), '');
 });
 

@@ -100,6 +100,7 @@ export function unarchiveNote({ restored, total, subs = 0, reason = '' }) {
 }
 
 export const supportsNewParent = ix => !!ix?.features?.newParent;
+export const supportsMany = ix => !!ix?.features?.many;
 
 const TRAILING = /[\s\-:\u2010-\u2015\u2212]+$/u;
 

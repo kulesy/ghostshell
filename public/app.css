@@ -1480,6 +1480,7 @@ li[data-swipe~="collapse"] { margin-bottom: calc(-1 * var(--row-gap)); }
 .bar.lifted { border-radius: var(--radius-md); }
 
 .row.lifted[data-count] {
+  overflow: visible;
   box-shadow:
     0 0 0 2px var(--sidebar-ring),
     0.3125rem 0.3125rem 0 0 var(--sidebar-accent),
@@ -1489,8 +1490,8 @@ li[data-swipe~="collapse"] { margin-bottom: calc(-1 * var(--row-gap)); }
 
 .lift-count {
   position: absolute;
-  top: 0.25rem;
-  right: 0.5rem;
+  top: -0.4375rem;
+  left: -0.4375rem;
   min-width: 1.125rem;
   height: 1.125rem;
   padding: 0 0.3125rem;

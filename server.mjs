@@ -1062,7 +1062,7 @@ function manyChange({ ids, to }) {
     if (target.routine) throw refuse(400, 'A routine run cannot hold sessions.');
     const root = target.parent ?? target.id;
     const refusal = 'A session cannot nest under itself or a session nested under it.';
-    if (chosen.has(root)) throw refuse(400, refusal);
+    if (chosen.has(to.parent) || chosen.has(root)) throw refuse(400, refusal);
     steps = direct.filter(id => rows.get(id).parent !== root).map(id => ({ kind: 'nest', id, parent: root, relink: leave(id).relink }));
     const links = Object.assign({}, ...steps.flatMap(step => [step.relink, { [step.id]: root }]));
     const final = id => (Object.hasOwn(links, id) ? links[id] : own(id));
@@ -1546,8 +1546,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, and the banners for the sign-in and for updates.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, many: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);

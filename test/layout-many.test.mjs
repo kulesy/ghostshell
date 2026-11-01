@@ -129,10 +129,10 @@ test('nesting under a session takes the whole family of a picked top level sessi
   assert.deepEqual(ids(rowOf(ix, 'loner').children), ['boss', 'kid', 'leaf', 'mid']);
 });
 
-test('a drop on a session picked, or on one nested under a picked session, is refused and writes nothing', async () => {
+test('a drop on a session picked, even a nested one, or on one nested under a picked session, is refused and writes nothing', async () => {
   const { s, token } = await ready();
   const before = snapshot(s);
-  for (const [picked, target] of [[['boss', 'loner'], 'boss'], [['boss', 'loner'], 'kid'], [['loner'], 'loner'], [['boss'], 'leaf']]) {
+  for (const [picked, target] of [[['boss', 'loner'], 'boss'], [['boss', 'loner'], 'kid'], [['loner'], 'loner'], [['boss'], 'leaf'], [['kid', 'loner'], 'kid']]) {
     const res = await many(s, token, { ids: picked, to: { parent: target } });
     assert.deepEqual([res.status, res.body().error], [400, 'A session cannot nest under itself or a session nested under it.'], `${picked} under ${target}`);
   }

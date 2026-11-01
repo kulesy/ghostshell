@@ -26,7 +26,7 @@ export function carriedOf(ix, ids) {
 // The sentence for a nest that cannot be, or an empty string. The row it lands under is the target's top level session.
 export function refuseNest(ix, ids, parentId) {
   const root = rootOf(ix, parentId);
-  return root && ids.includes(root.id) ? NEST_SELF : '';
+  return ids.includes(parentId) || (root && ids.includes(root.id)) ? NEST_SELF : '';
 }
 
 // Where a row shows for Move to: Pinned, its group, or the loose list. A nested row shows nowhere, since moving it takes it out of its parent.

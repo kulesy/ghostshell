@@ -18,7 +18,7 @@ import { carriedOf, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNo
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
 import { ParentForm } from './parent-form.js';
-import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndoNote, prune, sessions, stayAfter, step, stopDetail, supportsNewParent, toggle as toggleRow, unarchiveNote, withSubs } from './pick.js';
+import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndoNote, prune, sessions, stayAfter, step, stopDetail, supportsMany, supportsNewParent, toggle as toggleRow, unarchiveNote, withSubs } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
 import { ManageRoutines, renameRoutine, routineItems } from './routines.js';
@@ -661,14 +661,14 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
 
   const nestMany = (ids, parent, options) => {
     const root = rootOf(ix, parent);
+    if (!root) return problemNote('Not nested: that session is no longer in the list.');
     return changeMany(ids, { parent: root.id }, n => nestedNote(n, root.title || UNTITLED), options);
   };
 
-  // Takes an Undo back with the token the server gave. A failed Undo keeps its button to try again only when the server could not do it, and not
-  // when it refuses, as when another tab took it back or the ten minutes are over.
+  // The server spends the token before it restores, so a failed Undo has nothing to retry and shows no button.
   async function undoMoved(note) {
-    const { problem, status } = await edit('api/layout/many/undo', { undo: note.undo });
-    if (problem) return say(`Not undone: ${problem}`, { problem: true, ...(!status || status >= 500 ? { action: manyUndoAction(note) } : {}) });
+    const { problem } = await edit('api/layout/many/undo', { undo: note.undo });
+    if (problem) return say(`Not undone: ${problem}`, { problem: true });
     say(manyUndoNote(note.count));
   }
 
@@ -677,6 +677,8 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   // What the pick bar's Move menu and the selection's row menu list: Move to and Nest under with a search, Move out of the parent when some
   // picked session is nested, and New parent session. Every drag has its way here, for the keyboard and a phone.
   function selectionItems(chosen, { focus } = {}) {
+    const newParent = chosen.length > 1 && supportsNewParent(ix) ? [{ label: 'New parent session', icon: icons.indentIncrease, run: () => startParent(chosen) }] : [];
+    if (!supportsMany(ix)) return newParent;
     const carried = carriedOf(ix, chosen);
     const targets = manyTargets(ix, carried);
     const choice = (label, section, where) => ({ label, run: () => moveMany(chosen, section, where, { focus }) });
@@ -688,12 +690,12 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places, find: q => findPlaces(targets, q).map(p => ({ ...choice(p.label, p.section, p.where), value: p.value })), findLabel: 'Search places' }] : []),
       ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(nestItem), find: q => findSessions(under, q).map(f => nestItem(f.row)), findLabel: 'Search sessions' }] : []),
       ...(out.rows.length ? [{ label: out.parent ? `Move out of “${out.parent.title || UNTITLED}”` : 'Move out of parent', icon: icons.indentDecrease, run: () => changeMany(chosen, { parent: null }, unnestedNote, { focus }) }] : []),
-      ...(chosen.length > 1 && supportsNewParent(ix) ? [{ label: 'New parent session', icon: icons.indentIncrease, run: () => startParent(chosen) }] : []),
+      ...newParent,
     ];
   }
 
   latestMany.current = {
-    picked: id => { const chosen = inOrder(pick, drawnIds()); return chosen.length > 1 && chosen.includes(id) ? chosen : null; },
+    picked: id => { const chosen = inOrder(pick, drawnIds()); return supportsMany(ix) && chosen.length > 1 && chosen.includes(id) ? chosen : null; },
     drop: (ids, target) => {
       if (!target.startsWith(NEST)) return moveMany(ids, target);
       const parent = target.slice(NEST.length);
@@ -1152,7 +1154,9 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       : pick.ids.length
       ? html`<div class="pick-bar" role="group" aria-label="Selection">
         <span class="pick-count">${pick.ids.length} selected</span>
-        <button class="btn pick-new" data-variant="outline" data-size="sm" type="button" aria-haspopup="menu" aria-expanded=${shown?.key === 'pick'} aria-controls=${shown?.key === 'pick' ? layerId(shown.id) : null} data-state=${shown?.key === 'pick' ? 'open' : 'closed'} ...${moveTrigger}>${draw(icons.folderInput)}Move</button>
+        ${supportsMany(ix)
+          ? html`<button class="btn pick-new" data-variant="outline" data-size="sm" type="button" aria-haspopup="menu" aria-expanded=${shown?.key === 'pick'} aria-controls=${shown?.key === 'pick' ? layerId(shown.id) : null} data-state=${shown?.key === 'pick' ? 'open' : 'closed'} ...${moveTrigger}>${draw(icons.folderInput)}Move</button>`
+          : pick.ids.length > 1 && supportsNewParent(ix) ? html`<button class="btn pick-new" data-variant="outline" data-size="sm" type="button" onClick=${() => startParent(inOrder(pick, drawnIds()))}>${draw(icons.indentIncrease)}New parent</button>` : null}
         <button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${e => archiveMany(inOrder(pick, drawnIds()), { ring: e.detail === 0 })}>${draw(icons.archive)}Archive</button>
         <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Clear selection" data-tip="Clear selection" onClick=${clearPick}>${draw(icons.x)}</button>
       </div>`
