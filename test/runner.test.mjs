@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
-import { activeStates, chatFor, onTurn, startChat, sweep } from '../lib/runner.mjs';
+import { activeStates, chatFor, onAuthFailure, onTurn, startChat, sweep } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -1338,4 +1338,37 @@ test('a chat with no sub sessions, and a group chat, are given no automatic allo
     await slow(() => chat.status().pending.length === 1);
     assert.equal(recorded.answers().some(a => a.request_id.startsWith('ask-')), false);
   }
+});
+
+test('a reply that carries error authentication_failed tells the hook once, and a reply that does not tells it nothing', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = path.join(dir, 'signed-out-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type !== 'user') return;",
+    "  if (m.message.content === 'start') return out({ type: 'system', subtype: 'init', session_id: 'sess-signed-out', model: 'stub' });",
+    "  const error = m.message.content === 'fail' ? 'authentication_failed' : m.message.content === 'busy' ? 'rate_limit' : undefined;",
+    "  out({ type: 'assistant', error, message: { id: 'msg_1', role: 'assistant', content: [{ type: 'text', text: 'Please run /login' }] } });",
+    "  out({ type: 'result', subtype: 'success', is_error: true, result: 'Please run /login', total_cost_usd: 0 });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
+  t.after(() => { chat.stop(); onAuthFailure(null); });
+  let heard = 0;
+  onAuthFailure(() => { heard++; });
+
+  for (const text of ['ok', 'busy']) {
+    chat.send(text, []);
+    await until(() => chat.state === 'idle');
+  }
+  assert.equal(heard, 0);
+  chat.send('fail', []);
+  await until(() => heard === 1);
+  await until(() => chat.state === 'idle');
+  assert.equal(heard, 1);
 });
