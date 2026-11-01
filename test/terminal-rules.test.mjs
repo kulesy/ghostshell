@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  appendChunks, bangMode, carriedText, endedAloud, ending, folderOf, hasHiddenCharacters, historyOf, inHome, inputTarget, joinBash, KEEP, landedRuns, lastRunning,
+  appendChunks, bangMode, endedAloud, ending, folderOf, hasHiddenCharacters, historyOf, inHome, inputTarget, joinBash, KEEP, landedRuns, lastRunning,
   leaveBang, mergeOutput, opensByDefault, PANEL, panelMode, panelName, panelTabs, pendingBangs, pinAfter, recall, replaceRuns, runnableBlock, runOfItem, tabByKey, tabPress,
   tabShown, textOf, took, upsertRun, clampWidth, widestPanel, widthByKey, runStanding, runState,
 } from '../public/ui/terminal-rules.js';
@@ -121,15 +121,6 @@ test('a new session\'s box and a server with no terminal are never in command mo
   assert.equal(bangMode({ text: '!ls', terminal: false, draft: false }), null);
   assert.equal(bangMode({ text: '!ls', terminal: undefined, draft: false }), null);
   assert.equal(bangMode({ text: undefined, terminal: true, draft: false }), null);
-});
-
-test('a message draft goes with you to the next chat, and a command draft does not', () => {
-  assert.equal(carriedText('remember to check the logs'), 'remember to check the logs');
-  assert.equal(carriedText('line one\nline two'), 'line one\nline two');
-  assert.equal(carriedText(''), '');
-  assert.equal(carriedText('!git reset --hard'), '');
-  assert.equal(carriedText('!'), '');
-  assert.equal(carriedText(' !ls'), ' !ls', 'a space first is a message, as it is for the prompt box');
 });
 
 test('leaving command mode takes the ! and the spaces after it away and keeps the rest', () => {

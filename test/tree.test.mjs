@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TITLE_SORT, UNTITLED } from '../public/ui/order.js';
 import { withoutFamily } from '../public/ui/sub-rules.js';
-import { archiveTarget, everyRow, findRow, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, sortByTitle, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
+import { archiveTarget, everyRow, findRow, listedIds, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, sortByTitle, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
   const from = (at, key) => nextStop(5, at, key);
@@ -196,6 +196,12 @@ const FAM = {
 const describe = r => (r.children ? `${r.id}[${r.children.map(c => c.id).join(',')}]` : r.id);
 const shapeOf = ix => ({ pinned: ix.pinned.map(describe), groups: Object.fromEntries(ix.groups.map(g => [g.id, g.sessions.map(describe)])), ungrouped: ix.ungrouped.map(describe) });
 const work = ix => shapeOf(ix).groups['cg-a'];
+
+test('the listed ids hold every row, nested ones too, and the chats of groups and sections, and a list from an older server has no sections', () => {
+  const withChats = { ...FAM, groups: [{ ...FAM.groups[0], session: { id: 'gc', state: 'idle' } }, FAM.groups[1]], sections: [{ id: 'pinned', session: { id: 'sc', state: 'idle' } }, { id: 'started', session: null }] };
+  assert.deepEqual([...listedIds(withChats)].sort(), ['g1', 'g2', 'gc', 'k1', 'k2', 'p1', 'pk', 'r1', 'sc', 'u1', 'u2']);
+  assert.deepEqual([...listedIds(FAM)].sort(), ['g1', 'g2', 'k1', 'k2', 'p1', 'pk', 'r1', 'u1', 'u2']);
+});
 
 test('a nested session is found like any other, and its root is the session it shows under', () => {
   assert.deepEqual(everyRow(FAM).map(r => r.id).sort(), ['g1', 'g2', 'k1', 'k2', 'p1', 'pk', 'r1', 'u1', 'u2']);

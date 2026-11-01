@@ -38,7 +38,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-23 | [Call the app GhostShell, and keep capcom for every internal name](20261023-ghostshell-name.md) | Accepted, amended 2026-10-23 |
 | 2026-10-23 | [Attach any file by saving it and mentioning its path](20261023-attach-files-by-path.md) | Accepted |
 | 2026-10-23 | [Run terminal commands on pipes with no PTY, and run `!` commands in GhostShell](20261023-terminal-without-a-pty.md) | Accepted |
-| 2026-10-23 | [Quote selected text into the prompt box, and send each quote as a blockquote](20261023-quote-selected-text.md) | Accepted |
+| 2026-10-23 | [Quote selected text into the prompt box, and send each quote as a blockquote](20261023-quote-selected-text.md) | Accepted, amended 2026-11-02 |
 | 2026-10-23 | [Roll a session's sub session status up to every parent, from the transcripts, with no model calls](20261023-roll-sub-session-status-up.md) | Accepted, amended 2026-10-26, 2026-10-27, 2026-10-28, 2026-10-29 and 2026-10-30 |
 | 2026-10-24 | [Manage routines from a page, and keep the prompts GhostShell writes in its own folder](20261024-manage-routines-from-a-page.md) | Partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) |
 | 2026-10-25 | [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) | Accepted |
@@ -51,3 +51,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-30 | [Keep a one-off scheduled session in its own list, not as a routine pinned to a date](20261030-a-one-off-is-its-own-list.md) | Accepted |
 | 2026-10-31 | [Show plan usage in the context popover from the CLI's own figures](20261031-plan-usage-from-the-cli.md) | Accepted |
 | 2026-11-02 | [Show banners in the sidebar for Claude's sign-in ending and for merged changes waiting](20261102-banners-for-sign-in-and-updates.md) | Accepted |
+| 2026-11-02 | [Keep a draft for each session, and let quotes follow you between chats](20261102-a-draft-for-each-session.md) | Accepted |

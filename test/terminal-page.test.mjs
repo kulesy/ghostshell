@@ -213,7 +213,7 @@ test('a markdown file in the File tab has Copy on its code blocks and no Run, an
   assert.deepEqual(page.problems, []);
 });
 
-test('a command typed after ! stays behind when the chat changes, and a message draft goes with you', async t => {
+test('a command typed after ! stays in its own chat when the chat changes, and so does a message', async t => {
   const page = await chatPage(t);
   const open = (id, title) => page.evaluate(`location.hash = '#/s/${id}'`).then(() => page.until(`document.getElementById('title')?.textContent === ${JSON.stringify(title)} && !!document.getElementById('text')`));
   await type(page, '!echo left behind');
@@ -224,8 +224,13 @@ test('a command typed after ! stays behind when the chat changes, and a message 
   assert.equal(await page.evaluate(`document.getElementById('composer').hasAttribute('data-bang')`), false);
   await type(page, 'check the logs later');
   await open(ID, 'One');
+  assert.equal(await page.evaluate(`document.getElementById('text').value`), '!echo left behind');
+  await page.until(`document.getElementById('composer').hasAttribute('data-bang')`);
+  await open(DOCS, 'Docs');
   assert.equal(await page.evaluate(`document.getElementById('text').value`), 'check the logs later');
   assert.deepEqual([...await runs(ID), ...await runs(DOCS)].filter(r => r.command.includes('left behind')), []);
+  // The drafts outlive the page, and the tests after this one expect empty boxes.
+  await page.evaluate(`localStorage.removeItem('capcom.drafts')`);
   assert.deepEqual(page.problems, []);
 });
 

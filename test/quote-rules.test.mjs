@@ -2,7 +2,7 @@
 // sent ahead of the message's text as markdown blockquotes and read back for the transcript, where the Quote button goes, and the quotes in the draft.
 import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { addQuote, attached, removeQuote } from '../public/ui/draft.js';
+import { addQuote, attachedTo, attachments, quoted, removeQuote, setAttached } from '../public/ui/draft.js';
 import { messageFor, placeButton, quotedMessage, quoteText, splitQuotes, titleText } from '../public/ui/quote-rules.js';
 
 const here = { id: 's1', title: 'This one' };
@@ -206,12 +206,12 @@ test('a transcript too short for the button still gets one at its top', () => {
   assert.deepEqual(placeButton({ first: { left: 10, top: 10 }, last: { right: 100, bottom: 30 }, view: short }, size), { left: 10, top: 6 });
 });
 
-beforeEach(() => attached.set({ images: [], files: [], quotes: [], preparing: 0 }));
+beforeEach(() => { quoted.set({ quotes: [] }); attachments.set({ s1: undefined }); });
 
 test('a quote is added to the draft with a key of its own and the session it came from', () => {
   addQuote('first', here);
   addQuote('second', other);
-  const { quotes } = attached.get();
+  const { quotes } = quoted.get();
   assert.deepEqual(quotes.map(({ text, from }) => ({ text, from })), [{ text: 'first', from: here }, { text: 'second', from: other }]);
   assert.equal(new Set(quotes.map(q => q.key)).size, 2);
 });
@@ -221,23 +221,23 @@ test('the same words from the same session are not added twice, and from another
   addQuote('same', here);
   addQuote('same', other);
   addQuote('different', here);
-  assert.deepEqual(attached.get().quotes.map(q => [q.text, q.from.id]), [['same', 's1'], ['same', 's2'], ['different', 's1']]);
+  assert.deepEqual(quoted.get().quotes.map(q => [q.text, q.from.id]), [['same', 's1'], ['same', 's2'], ['different', 's1']]);
 });
 
 test('a quote is taken out by its key, and the rest keep their order', () => {
   addQuote('a', here);
   addQuote('b', here);
   addQuote('c', here);
-  removeQuote(attached.get().quotes[1].key);
-  assert.deepEqual(attached.get().quotes.map(q => q.text), ['a', 'c']);
+  removeQuote(quoted.get().quotes[1].key);
+  assert.deepEqual(quoted.get().quotes.map(q => q.text), ['a', 'c']);
   removeQuote('nothing');
-  assert.equal(attached.get().quotes.length, 2);
+  assert.equal(quoted.get().quotes.length, 2);
 });
 
-test('a quote does not disturb the images and files, and removing it leaves them', () => {
-  attached.set({ images: [{ id: 'i1' }], files: [{ key: 'f1' }] });
+test('a quote does not disturb a session\'s images and files, and removing it leaves them', () => {
+  setAttached('s1', { images: [{ id: 'i1' }], files: [{ key: 'f1' }] });
   addQuote('a', here);
-  removeQuote(attached.get().quotes[0].key);
-  assert.deepEqual(attached.get().images, [{ id: 'i1' }]);
-  assert.deepEqual(attached.get().files, [{ key: 'f1' }]);
+  removeQuote(quoted.get().quotes[0].key);
+  assert.deepEqual(attachedTo(attachments.get(), 's1').images, [{ id: 'i1' }]);
+  assert.deepEqual(attachedTo(attachments.get(), 's1').files, [{ key: 'f1' }]);
 });

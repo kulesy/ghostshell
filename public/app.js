@@ -6,7 +6,7 @@ import { ChatPane } from './ui/chat.js';
 import { renamerFor } from './ui/chat-rename.js';
 import { groupById, groupOfSession, parseNewRoute } from './ui/group-rules.js';
 import { GroupPane } from './ui/group.js';
-import { checkUploads } from './ui/draft.js';
+import { checkUploads, keepDrafts } from './ui/draft.js';
 import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from './ui/html.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
@@ -24,7 +24,7 @@ import { sessionActions, sessionIndex } from './ui/subs.js';
 import { ToastHost } from './ui/toast.js';
 import { installTooltips } from './ui/tooltip.js';
 import { busyOf, withoutFamily } from './ui/sub-rules.js';
-import { findRow, nestRow, placeRow, sortByTitle, stampTurns, unnestRow } from './ui/tree.js';
+import { findRow, listedIds, nestRow, placeRow, sortByTitle, stampTurns, unnestRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in),
@@ -289,6 +289,7 @@ function App() {
   // A group's session is not a row, but the list and the projects still follow it as the chat on screen.
   const groupSession = route.name === 'group' ? groupById(ix, route.id)?.session?.id ?? null : null;
   const current = view === 'chat' ? id ?? groupSession : null;
+  useLayoutEffect(() => { if (ix) keepDrafts(listedIds(ix), current); }, [ix, current]);
   // A view picked where a chat has the screen puts the list there. The route is set in state at once, so the list is on screen when
   // the focus moves to it.
   const toList = () => {

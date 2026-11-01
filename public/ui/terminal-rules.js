@@ -70,10 +70,6 @@ export function bangMode({ text, terminal, draft }) {
   return { command: text.slice(1).trim() };
 }
 
-// The unsent text a chat opens with when it takes it over from the last one. A message follows you from chat to chat, but a command does
-// not, because Enter would run it in the folder of whichever chat is open.
-export const carriedText = text => (startsBang(text) ? '' : text);
-
 // The text with command mode left: the "!" and the spaces after it go, and the command stays as a message.
 export const leaveBang = text => (startsBang(text) ? text.slice(1).trimStart() : text);
 

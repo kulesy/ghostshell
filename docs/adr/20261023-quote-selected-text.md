@@ -35,6 +35,8 @@ Chosen option: "Keep quotes in the draft and write each as a blockquote ahead of
 - **Reading.** A user message that opens with that shape draws its quotes above the bubble, muted, cut to three lines and opened by a click. The rest of the message draws as before.
 - **Titles.** Where GhostShell names a session from its first message, `titleText` takes the text after the quotes, or the first quote when nothing follows, so a session started with a quote is not titled `From the session`. The server reads it from `public/ui/quote-rules.js`, so it takes effect when the server restarts.
 
+**Amended 2026-11-02.** Text, images and files now stay in the session they were typed or attached in, and only quotes follow you to the next chat. Quotes moved from the draft store to a store of their own, `quoted`. See [Keep a draft for each session](20261102-a-draft-for-each-session.md).
+
 ### Consequences
 
 - ✅ The server and the CLI see plain text, and a page served by a server that has not restarted quotes the same way.

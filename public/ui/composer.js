@@ -2,7 +2,7 @@
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
-import { attach, attached, carryDraft, detach, detachFile, pastedFiles, removeQuote, setDraftText, uploads } from './draft.js';
+import { attach, attachedTo, attachments, clearAttached, detach, detachFile, draftText, NEW, pastedFiles, quoted, removeQuote, setAttached, setDraftText, uploads } from './draft.js';
 import { HOME } from './env.js';
 import { tilde } from './format.js';
 import { FileFace } from './file-card.js';
@@ -43,14 +43,14 @@ function Quotes({ quotes, here }) {
   </ul>`;
 }
 
-function Attachments({ images, files, preparing }) {
+function Attachments({ draft, images, files, preparing }) {
   return html`<ul class="attached" aria-label="Attachments">
     ${images.map((img, n) => html`<li class="attachment" key=${img.id}>
       <button class="thumb" type="button" data-image=${imageKey(img)} aria-label=${`View ${img.name}`} aria-haspopup="dialog" onClick=${e => openViewer(draftImages(images), n, e.currentTarget)}><img src=${img.src} alt=${img.name} /></button>
-      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(img.id)}><${Cross} /></button></li>`)}
+      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(draft, img.id)}><${Cross} /></button></li>`)}
     ${files.map(file => html`<li class="attachment file-card" key=${file.key} title=${file.name} aria-busy=${file.uploading || null}>
       <${FileFace} file=${file} />
-      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${file.name}`} onClick=${() => detachFile(file.key)}><${Cross} /></button></li>`)}
+      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${file.name}`} onClick=${() => detachFile(draft, file.key)}><${Cross} /></button></li>`)}
     ${Array.from({ length: preparing }, (_, n) => html`<li class="thumb preparing" key=${`preparing${n}`} aria-hidden="true"></li>`)}
   </ul>`;
 }
@@ -85,15 +85,15 @@ export function focusNextComposer() {
 
 export function Composer({ ctrl }) {
   const { status, starting, terminal, session } = useFields(ctrl.store, 'status', 'starting', 'terminal', 'session');
-  const images = useStore(attached, a => a.images);
-  const files = useStore(attached, a => a.files);
-  const quotes = useStore(attached, a => a.quotes);
-  const preparing = useStore(attached, a => a.preparing);
+  // The draft this box writes to: the session's own, or the new session page's.
+  const key = ctrl.id ?? NEW;
+  const { images, files, preparing } = useStore(attachments, a => attachedTo(a, key));
+  const quotes = useStore(quoted, q => q.quotes);
   const takesFiles = useStore(uploads, u => u.limits !== null);
   const uploading = files.some(f => f.uploading);
-  const [text, setLocal] = useState(carryDraft);
+  const [text, setLocal] = useState(() => draftText(key));
   const [over, setOver] = useState(false);
-  const setText = value => { setDraftText(value); setLocal(value); };
+  const setText = value => { setDraftText(key, value); setLocal(value); };
   const draft = !!ctrl.draft;
   useTypingPing(draft ? null : ctrl.id, text);
   const area = useRef(null);
@@ -196,7 +196,7 @@ export function Composer({ ctrl }) {
       if (!pasted.length || /[\n\t]/.test(text)) return;
       if (text && e.target !== area.current && e.target.closest?.('input, textarea, select, [contenteditable]')) return;
       e.preventDefault();
-      attach(pasted, note);
+      attach(key, pasted, note);
       if (matchMedia('(pointer: fine)').matches) area.current.focus({ preventScroll: true });
     };
     const onEnter = e => { if (hasFiles(e)) { depth++; setOver(true); } };
@@ -207,7 +207,7 @@ export function Composer({ ctrl }) {
       e.preventDefault();
       depth = 0;
       setOver(false);
-      attach([...e.dataTransfer.files], note);
+      attach(key, [...e.dataTransfer.files], note);
     };
     const on = { paste: onPaste, dragenter: onEnter, dragover: onOver, dragleave: onLeave, drop: onDrop };
     for (const [type, fn] of Object.entries(on)) document.addEventListener(type, fn);
@@ -230,24 +230,25 @@ export function Composer({ ctrl }) {
     e.preventDefault();
     const typed = area.current.value;
     const t = typed.trim();
-    const { images: sent, files: sentFiles, quotes: sentQuotes } = attached.get();
+    const { images: sent, files: sentFiles, preparing: busy } = attachedTo(attachments.get(), key);
+    const { quotes: sentQuotes } = quoted.get();
     const asked = bangMode({ text: typed, terminal: ctrl.store.get().terminal, draft });
     if (asked) {
       if (asked.command) await runCommand(typed, asked.command);
       return;
     }
-    if ((!t && !sent.length && !sentFiles.length && !sentQuotes.length) || attached.get().preparing || sentFiles.some(f => f.uploading)) return;
+    if ((!t && !sent.length && !sentFiles.length && !sentQuotes.length) || busy || sentFiles.some(f => f.uploading)) return;
     const { message, kept } = messageFor(sentQuotes, t, ctrl.id);
-    const clear = () => { setText(''); attached.set({ images: [], files: [], quotes: kept }); };
+    const clear = () => { setText(''); clearAttached(key); quoted.set({ quotes: kept }); };
     if (draft) { ctrl.startNew(message, sent, clear, sentFiles); return; }
     clear();
-    if (!(await ctrl.send(message, sent, s.mode, sentFiles))) { setText(t); attached.set({ images: sent, files: sentFiles, quotes: sentQuotes }); }
+    if (!(await ctrl.send(message, sent, s.mode, sentFiles))) { setText(t); setAttached(key, { images: sent, files: sentFiles }); quoted.set({ quotes: sentQuotes }); }
   };
 
   const pickFiles = e => {
     const files = [...e.currentTarget.files];
     e.currentTarget.value = '';
-    if (files.length) attach(files, text => ctrl.notice(text));
+    if (files.length) attach(key, files, text => ctrl.notice(text));
     if (matchMedia('(pointer: fine)').matches) area.current.focus({ preventScroll: true });
   };
 
@@ -307,7 +308,7 @@ export function Composer({ ctrl }) {
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} data-bang=${bang ? '' : undefined} onSubmit=${submit}>
     <div class="composer-box input-group" onMouseDown=${onBoxMouseDown} onClick=${onBoxClick}>
       ${quotes.length ? html`<${Quotes} quotes=${quotes} here=${ctrl.id} />` : null}
-      ${images.length || files.length || preparing ? html`<${Attachments} images=${images} files=${files} preparing=${preparing} />` : null}
+      ${images.length || files.length || preparing ? html`<${Attachments} draft=${key} images=${images} files=${files} preparing=${preparing} />` : null}
       ${open ? html`<${SlashMenu} matches=${commands ? matches : null} error=${error} at=${at} follow=${follow} onPick=${choose} onSelect=${n => { if (n !== at) setChoice({ query, at: n }); }} />` : null}
       <div class="composer-row">
         <button class="btn attach" data-variant="ghost" data-size="icon-sm" id="attach" type="button" aria-label=${attachLabel} data-tip=${attachLabel} onClick=${() => picker.current.click()}><${Plus} /></button>
