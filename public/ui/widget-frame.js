@@ -28,8 +28,8 @@ export const CSP = [
 
 export const HEIGHT_MIN = 40;
 export const HEIGHT_MAX = 4000;
-// A browser keeps a click active for about five seconds, so a widget gets one prompt sent per click, and a second in that time goes
-// to the owner.
+// A browser keeps a click active for about five seconds, so a widget gets one prompt sent or one link opened per click, and a second
+// in that time goes to the owner.
 export const ACTIVE_MS = 5000;
 // How long the page and the other frames must have been quiet before a prompt is sent. The extra second makes a click the page saw
 // outlast the activation it gave, a tap whose touchend refreshes it included.
@@ -195,15 +195,26 @@ export function frameBoot() {
 // ---- what the page decides --------------------------------------------------------------------------------------------------
 
 // What the page does with a widget's sendPrompt: 'send' it at once, 'ask' the owner in a bar, or 'drop' it.
+export function promptGate({ text, active, focused, now, last, pending, pageActed, othersActed }) {
+  if (typeof text !== 'string' || !text.trim() || pending) return 'drop';
+  return clickedHere({ active, focused, now, pageActed, othersActed }) && now - (last ?? -Infinity) >= ACTIVE_MS && text.length <= PROMPT_MAX ? 'send' : 'ask';
+}
+
+// What the page does with a link a widget passes up: 'open' it in a new tab at once, after a click on this widget, or 'ask' the owner.
+// NOTE: [2 Nov 2026] EK - The gap is the whole life of a click, because WebKit 2311 leaves the click active after window.open and one
+// click opened three tabs 1.3 s apart. See https://github.com/kulesy/ghostshell/pull/40.
+export function linkGate({ active, focused, now, last, pageActed, othersActed }) {
+  return clickedHere({ active, focused, now, pageActed, othersActed }) && now - (last ?? -Infinity) >= ACTIVE_MS ? 'open' : 'ask';
+}
+
 // NOTE: [19 Oct 2026] EK - Focus cannot say which widget was clicked, because a sandboxed frame can take it back after a click elsewhere
 // (tried in Chromium 151 and WebKit 26.5). So a click or key press lately on the page or in another frame rules out a send, whatever
 // holds the focus.
-export function promptGate({ text, active, focused, now, last, pending, pageActed, othersActed }) {
-  if (typeof text !== 'string' || !text.trim() || pending) return 'drop';
+function clickedHere({ active, focused, now, pageActed, othersActed }) {
   const ago = since => now - (since ?? -Infinity);
   const quiet = ago(pageActed) > QUIET_MS && ago(othersActed) > QUIET_MS;
   // A browser with no `navigator.userActivation` gives `active` undefined, which never counts as a click.
-  return active === true && focused === true && ago(last) >= ACTIVE_MS && quiet && text.length <= PROMPT_MAX ? 'send' : 'ask';
+  return active === true && focused === true && quiet;
 }
 
 // The address to offer the owner for a link, or null when the widget must not get to propose it: only a web address that names no user.

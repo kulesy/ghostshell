@@ -179,6 +179,7 @@ test('the limits the guide states are the ones the frame enforces', () => {
   assert.equal(ACTIVE_MS, 5000);
   assert.ok(guide.includes('within five seconds of a send'));
   assert.ok(guide.includes(`at most ${LINK_MAX} characters`));
+  assert.ok(guide.includes('within five seconds of the last link opened'));
 });
 
 test('the guide holds no em dash or en dash', () => {

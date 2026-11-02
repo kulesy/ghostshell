@@ -169,7 +169,7 @@ Build the text from what the user chose, and write it as their own message (`Com
 
 ## Links
 
-Links always ask first. `<a href>`, `openLink(url)` and `window.open(url)` open nothing by themselves: GhostShell shows the address and opens it in a new tab only when the user presses Open link. It offers `http` and `https` addresses of at most 2048 characters with no username or password, and ignores the rest. A `#` link stays inside the widget.
+`<a href>`, `openLink(url)` and `window.open(url)` never navigate the widget. A link the user clicks in the widget opens in a new tab at once. Any other (on load, from a timer, right after the user clicked somewhere else, a second one within five seconds of the last link opened) is shown to the user in a bar with its address, and opens only when they press Open link. GhostShell opens `http` and `https` addresses of at most 2048 characters with no username or password, and ignores the rest. A `#` link stays inside the widget.
 
 Never set `location` or `location.href`. The frame would leave your page, and GhostShell closes the widget and shows a note in its place.
 
