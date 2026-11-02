@@ -72,5 +72,6 @@ test('a message sent from a widget\'s button leaves the chat where the owner had
   await new Promise(done => setTimeout(done, 500));
   assert.equal(await page.evaluate(FRAME_TOP), before, 'the widget is where it was');
   assert.ok(await page.evaluate(`${GAP} > 200`), 'the chat did not go to its end');
+  assert.equal(await page.evaluate(`document.querySelector('.scroll-end').dataset.active`), 'true', 'the scroll-to-end button shows');
   assert.deepEqual(page.problems, []);
 });
