@@ -1,5 +1,5 @@
 // How the sessions below a session add up, as rules that need no page, so node can test them and the server shares them. The rows are the
-// index's as a flat list (`withKids` flattens a list that nests them), and a row's `via` names the nearest session it shows under.
+// index's as a flat list (`withKids` flattens a list that nests them), and a row's `via` names the head it shows under.
 import { BUCKETS, bucketOf } from './group-rules.js';
 import { everyRow, withKids, withoutRow } from './tree.js';
 

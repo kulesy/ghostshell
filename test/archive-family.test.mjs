@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { as, cliCalls, request, signIn, start, until } from './harness.mjs';
 
-// Boss holds Kid, Kid holds Grand, and Side is a second child of Boss. Old is a third child of Boss, which some tests archive on its own first.
+// Boss holds Kid, Kid holds Grand, and Side is a second child of Boss. The list shows Grand beside Kid under Boss, as a family is one level deep. Old is a third child of Boss, which some tests archive on its own first.
 const SESSIONS = [
   { id: 'boss', title: 'Boss', ago: 5 },
   { id: 'kid', title: 'Kid', parent: 'boss', ago: 4 },
@@ -41,10 +41,25 @@ test('archiving a parent archives every session below it at any depth, answers h
   assert.notEqual(disk.archived.old, disk.archived.boss, 'a session archived before keeps its time');
 });
 
-test('archiving a middle session takes the sessions under it and leaves its parent and siblings', async () => {
+test('archiving a nested session archives only it, and leaves its parent, its siblings and the session linked to it', async () => {
   const { s, token } = await ready();
-  assert.equal((await post(s, token, { id: 'kid', archived: true })).body().subs, 1);
-  assert.deepEqual(await archived(s, token), ['grand', 'kid']);
+  assert.deepEqual((await post(s, token, { id: 'kid', archived: true })).body(), { id: 'kid', group: null, pinned: false, archived: true });
+  assert.deepEqual(await archived(s, token), ['kid']);
+  assert.deepEqual(onDisk(s).archivedWith, {});
+  const list = flat((await request(s, 'GET', '/api/sessions', { headers: as(token) })).body());
+  assert.equal(list.find(r => r.id === 'grand').parent, 'boss', 'Grand still shows under Boss');
+});
+
+test('archiving the head takes a session linked to a nested one, which archiving the nested one leaves', async () => {
+  const { s, token } = await ready();
+  assert.equal((await post(s, token, { id: 'boss', archived: true })).body().subs, 4);
+  assert.deepEqual(await archived(s, token), ['boss', 'grand', 'kid', 'old', 'side']);
+});
+
+test('a session whose head was archived alone heads what is linked to it, so archiving it takes that session', async () => {
+  const { s, token } = await ready({ layout: { archived: { boss: new Date(Date.now() - 60_000).toISOString() } } });
+  assert.deepEqual((await post(s, token, { id: 'kid', archived: true })).body(), { id: 'kid', group: null, pinned: false, archived: true, subs: 1 });
+  assert.deepEqual(await archived(s, token), ['boss', 'grand', 'kid']);
   assert.deepEqual(onDisk(s).archivedWith, { grand: 'kid' });
 });
 
@@ -73,14 +88,21 @@ test('unarchiving the root brings back a session of its batch that was moved out
   assert.deepEqual(onDisk(s).archivedWith, {});
 });
 
-test('unarchiving a middle session brings back what is under it from the batch, and a child alone only itself', async () => {
+test('unarchiving a nested session from a batch brings back only it, and a child alone only itself', async () => {
   const { s, token } = await ready();
   await post(s, token, { id: 'boss', archived: true });
-  assert.equal((await post(s, token, { id: 'kid', archived: false })).body().subs, 1);
-  assert.deepEqual(await archived(s, token), ['boss', 'old', 'side']);
+  assert.equal((await post(s, token, { id: 'kid', archived: false })).body().subs, undefined);
+  assert.deepEqual(await archived(s, token), ['boss', 'grand', 'old', 'side']);
   assert.deepEqual((await post(s, token, { id: 'side', archived: false })).body().subs, undefined);
-  assert.deepEqual(await archived(s, token), ['boss', 'old']);
-  assert.deepEqual(onDisk(s).archivedWith, { old: 'boss' });
+  assert.deepEqual(await archived(s, token), ['boss', 'grand', 'old']);
+  assert.deepEqual(onDisk(s).archivedWith, { grand: 'boss', old: 'boss' });
+});
+
+test('unarchiving the head brings back its whole batch, including a session linked to a nested one', async () => {
+  const { s, token } = await ready();
+  await post(s, token, { id: 'boss', archived: true });
+  assert.equal((await post(s, token, { id: 'boss', archived: false })).body().subs, 4);
+  assert.deepEqual(await archived(s, token), []);
 });
 
 test('a message to an archived parent brings its batch back with it', async () => {

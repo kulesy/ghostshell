@@ -112,13 +112,13 @@ test('a picked session whose nearest shown parent is picked rides along with its
   assert.equal(rowOf(ix, 'kid').group, 'cg-spare');
 });
 
-test('a nested session that moves leaves the sessions under it where they were, unless they are picked too', async () => {
+test('a nested session that moves leaves the sessions linked to it where they were, and one picked too moves on its own', async () => {
   const { s, token } = await ready();
   await many(s, token, { ids: ['mid'], to: { group: 'cg-spare' } });
   assert.deepEqual([onDisk(s).parents.mid, onDisk(s).parents.leaf], [null, 'boss'], 'leaf showed under mid and now shows under boss');
   const both = await ready();
   await many(both.s, both.token, { ids: ['mid', 'leaf'], to: { group: 'cg-spare' } });
-  assert.deepEqual([onDisk(both.s).parents.mid, onDisk(both.s).parents.leaf], [null, undefined], 'leaf rides along and keeps its link');
+  assert.deepEqual([onDisk(both.s).parents.mid, onDisk(both.s).parents.leaf], [null, null], 'leaf showed beside mid, so it lands beside it and not under it');
 });
 
 test('nesting under a session takes the whole family of a picked top level session along', async () => {

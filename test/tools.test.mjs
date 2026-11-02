@@ -90,7 +90,7 @@ test('the other tools answer as before', () => {
   assert.equal(call('tools/call', { name: 'nothing_here', arguments: {} }).result.content[0].text, 'GhostShell has no tool called nothing_here.');
 });
 
-test('a chip that records nestUnder maps its session there, an old chip to its maker, and startedBy lists only the chips with nestUnder', () => {
+test('a chip that records nestUnder maps its session there, an old chip to its maker, and startedBy lists the maker of every started chip', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-chips-'));
   try {
     const chips = makeChips(dir);
@@ -99,8 +99,8 @@ test('a chip that records nestUnder maps its session there, an old chip to its m
     chips.put({ toolUseId: 'open', sessionId: 'sub', startedId: 'c', status: 'open', nestUnder: 'parent' });
     chips.put({ toolUseId: 'unowned', startedId: 'd', status: 'started', nestUnder: 'parent' });
     assert.deepEqual([...chips.links()], [['a', 'maker'], ['b', 'parent']]);
-    assert.deepEqual([...chips.startedBy()], [['b', 'sub']]);
-    assert.deepEqual([...makeChips(dir).startedBy()], [['b', 'sub']], 'a restart reads it from chips.json');
+    assert.deepEqual([...chips.startedBy()], [['a', 'maker'], ['b', 'sub']]);
+    assert.deepEqual([...makeChips(dir).startedBy()], [['a', 'maker'], ['b', 'sub']], 'a restart reads it from chips.json');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
