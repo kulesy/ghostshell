@@ -61,7 +61,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, agents: null, holdsEnded: endedByChat.get(id) || [],
-    group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
+    group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', usageOut: false, starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     jump: 0, earlierSeq: 0, context: null,
   });
@@ -83,7 +83,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   const asking = {};
 
   const keepEnded = holdsEnded => { endedByChat.set(id, holdsEnded); return { holdsEnded }; };
-  const notice = text => store.set({ notice: text || '' });
+  const notice = text => store.set({ notice: text || '', usageOut: false });
   const patchStatus = patch => store.set(s => ({ status: { ...s.status, ...patch } }));
   const onVisible = () => { if (!document.hidden) fetchNew(); };
 
@@ -146,7 +146,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   function connect() {
     es = new EventSource(`api/sessions/${enc(id)}/events`);
     const on = (type, fn) => es.addEventListener(type, e => { if (!closed) fn(JSON.parse(e.data || '{}')); });
-    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), outside: s.outside || null, outsideStart: began(s.outside), notice: '' }); fetchNew(); refreshContext(); });
+    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), outside: s.outside || null, outsideStart: began(s.outside), notice: '', usageOut: false }); fetchNew(); refreshContext(); });
     // Capcom's own work takes over from a turn another app was running, and the old line must not flash back when its turn ends.
     on('state', d => { patchStatus({ state: d.state }); store.set(d.state === 'idle' ? { work: null, turnStart: 0 } : { outside: null, outsideStart: 0 }); });
     on('delta', d => { const fresh = ended; ended = false; store.set(s => ({ live: (fresh ? '' : s.live) + d.text })); });
@@ -168,7 +168,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     on('model', d => { patchStatus({ model: d.model, shownModel: d.model }); refreshContext(); });
     on('fast', d => patchStatus({ fast: d.fast }));
     on('effort', d => patchStatus({ effort: d.effort }));
-    on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); refreshContext(); });
+    on('turn-end', d => { ended = true; if (d.error) { notice(d.message || 'The last turn ended with an error.'); if (d.usageOut) store.set({ usageOut: true }); } fetchNew(); refreshIndex(); refreshContext(); });
     on('terminal', d => { if (state().terminal) term.apply(d); });
     on('error', d => notice(d.message));
     on('exit', () => { patchStatus({ running: false, state: 'idle', pending: [], holds: [] }); store.set({ work: null, turnStart: 0 }); refreshContext(); });
@@ -298,7 +298,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // Sent while Claude works, a message redirects it without stopping: Claude reads it before its next step.
   async function send(text, images, mode, files = []) {
     const message = { text, images, files };
-    store.set(s => ({ sending: [...s.sending, message], notice: '', jump: s.jump + 1 }));
+    store.set(s => ({ sending: [...s.sending, message], notice: '', usageOut: false, jump: s.jump + 1 }));
     try {
       const { unarchived, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }) });
       // Each change of fast mode reaches the page over SSE, and a reply can be older than the last one.

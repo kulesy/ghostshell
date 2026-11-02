@@ -42,11 +42,11 @@ export function useBanners(on) {
       document.removeEventListener('visibilitychange', refresh);
     };
   }, [on, every, load]);
-  return { banners, act };
+  return { banners, act, load };
 }
 
 // A button that its own press makes busy keeps the focus, so it is marked aria-disabled rather than disabled.
-function Button({ action, onClick }) {
+export function Button({ action, onClick }) {
   const [sending, setSending] = useState(false);
   const waiting = sending || action.busy;
   const press = async () => {
@@ -54,11 +54,11 @@ function Button({ action, onClick }) {
     setSending(true);
     try { await onClick(); } finally { setSending(false); }
   };
-  return html`<button class="btn" type="button" disabled=${action.blocked} aria-disabled=${waiting ? 'true' : null} data-disabled=${waiting || null} onClick=${press}>${action.label}</button>`;
+  return html`<button class="btn" data-variant=${action.variant || null} type="button" disabled=${action.blocked} aria-disabled=${waiting ? 'true' : null} data-disabled=${waiting || null} onClick=${press}>${action.label}</button>`;
 }
 
 // A refusal answers one press, so it goes at the next press or once the server's state moves on.
-function useRefusal(...moved) {
+export function useRefusal(...moved) {
   const [refused, setRefused] = useState('');
   useEffect(() => setRefused(''), moved);
   return [refused, setRefused];

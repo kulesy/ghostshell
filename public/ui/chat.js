@@ -1,4 +1,6 @@
 // The chat pane: header, transcript and the dock under it. It owns one chat controller for as long as it is on screen.
+import { supportsAccounts } from './account-rules.js';
+import { SwitchAndContinue } from './accounts.js';
 import { Approvals } from './approvals.js';
 import { ArchiveButton } from './chat-archive.js';
 import { copyText } from './clipboard.js';
@@ -147,7 +149,9 @@ function blockClick(ctrl, e) {
 
 function Notice({ ctrl }) {
   const text = useStore(ctrl.store, s => s.notice);
-  return html`<p class="notice" id="notice" role="alert" hidden=${!text}>${text}</p>`;
+  const out = useStore(ctrl.store, s => s.usageOut);
+  const accounts = useStore(sessionIndex, s => supportsAccounts(s.ix));
+  return html`<p class="notice" id="notice" role="alert" hidden=${!text}>${text}</p><${SwitchAndContinue} ctrl=${ctrl} on=${accounts && out && !!text} />`;
 }
 
 // `row` is the list's entry for the session, which names it until the transcript answers. It is read once, so a

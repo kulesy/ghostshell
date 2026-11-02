@@ -186,7 +186,7 @@ test('Home has a Scheduled section with the pending and skipped entries and a st
   assert.equal(rows[3][2], 'Skipped: It was 48 h late, so it did not start.');
   assert.equal(rows[3][3], '#/scheduled');
   assert.equal(rows[3][4], 'problem');
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => [a.textContent, a.getAttribute('href')])`), [['Routines', '#/routines'], ['Scheduled', '#/scheduled'], ['Passkeys', '#/passkeys']]);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => [a.textContent, a.getAttribute('href')])`), [['Routines', '#/routines'], ['Scheduled', '#/scheduled'], ['Accounts', '#/accounts'], ['Passkeys', '#/passkeys']]);
   assert.deepEqual(page.problems, []);
 });
 
@@ -283,7 +283,7 @@ test('a server without scheduled sessions shows no Scheduled section or footer l
   const page = await appPage(t, older.origin);
   await page.until(`!!document.querySelector('.group-head')`);
   assert.equal(await page.evaluate(`!!document.querySelector('.group-head[data-key="scheduled"]')`), false);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => a.textContent)`), ['Routines', 'Passkeys']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => a.textContent)`), ['Routines', 'Accounts', 'Passkeys']);
   await page.evaluate(`location.hash = '#/scheduled'`);
   await page.until(`!!document.querySelector('.routines-failure')`);
   assert.match(await text(page, '.routines-failure'), /does not have scheduled sessions/);

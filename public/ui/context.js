@@ -50,7 +50,7 @@ function Parts({ figure, view, busy, failed }) {
 
 // The plan's limits are the account's, so they show for any chat. Each is a bar like the one above, and a row that is near its limit takes
 // the severity colour the server names.
-function Plan({ id, rows }) {
+export function Plan({ id, rows }) {
   return html`<section class="context-plan" aria-labelledby=${`${id}-plan`}>
     <h4 class="context-plan-title" id=${`${id}-plan`}>Plan usage</h4>
     <ul class="plan-list">

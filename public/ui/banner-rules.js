@@ -6,6 +6,7 @@ const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const pad = n => String(n).padStart(2, '0');
 export const LISTED = 5;
+export const SOON = 5 * 86_400_000;
 
 // "Fri 6 Nov, 09:36".
 export function endWords(ms) {

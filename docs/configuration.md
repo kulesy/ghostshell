@@ -53,7 +53,7 @@ Six environment variables win over both files:
 - `PORT` sets the port.
 - `CAPCOM_CLAUDE` sets the CLI.
 - `CAPCOM_GH` sets the GitHub CLI.
-- `CAPCOM_STATE` points a test instance at its own login, registry and routines.
+- `CAPCOM_STATE` points a test instance at its own login, accounts, registry and routines.
 - `CAPCOM_AUTO_TITLE` set to `0` turns off [`autoTitle`](#autotitle), and any other value turns it on.
 - `CAPCOM_SECURITY`, `CAPCOM_UPDATE_ROOT` and `CAPCOM_UPDATE_DELAY_MS` point a test instance at a stub for the macOS `security` tool and at a scratch folder for the checkout it would update, and set the wait in milliseconds before its first check for updates (60000 by default). Leave them unset in real use.
 - `CAPCOM_GROUP_UPDATE_SCALE` divides the waits of the [group updates](#groupupdates) by that number, so a test instance can see one in seconds. Leave it unset in real use.

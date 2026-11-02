@@ -34,25 +34,37 @@ export const CLI_MODELS = [
   { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8', supportsFastMode: true },
 ];
 // What the fake CLI does for `claude auth ...`, written to the home as claude-auth.cjs. It is the CLI itself when a session asks for no fake CLI, and
-// the fake CLI hands its auth calls to it. `auth status --json` prints loggedIn from auth-state.json in the home (signed in without it), and
-// `auth login --claudeai` signs in at once, or once a file named auth-release appears in the home when auth-state.json says `hold`, and ends with
-// its `loginExit` when that is not 0. Each call is logged to auth.log in the home with any CLAUDE_CODE_ or ANTHROPIC_ variable it was given. A
-// sign-in writes a fresh end date for the stub keychain tool. It prints nothing a token could be in.
+// the fake CLI hands its auth calls to it. Each CLAUDE_CONFIG_DIR has a sign-in of its own, kept in auth-state.json in that folder, or in the home without one.
+// A folder with no such file yet reads auth-state-next.json in the home for its `hold`, `loginExit` and `signInAs`, since a test cannot know the folder of an account it adds.
+// `auth status --json` prints loggedIn from it (signed in without a file for the home, signed out without one for a folder, as the real CLI is), and when signed in
+// the email, orgId and subscriptionType in it (made up from the folder's name without them). `auth login --claudeai` signs in at once, or once a file named
+// auth-release appears in the home when the state says `hold`, and ends with its `loginExit` when that is not 0. A sign-in leaves the state as `signInAs` says
+// ({ email, orgId, subscriptionType }), so a test can make the browser approve the account an earlier one already has. Each call is logged to auth.log in the
+// home with its CLAUDE_CONFIG_DIR and any CLAUDE_CODE_ or ANTHROPIC_ variable it was given. A sign-in writes a fresh end date for the stub keychain tool, to the
+// file for that folder's entry. It prints nothing a token could be in.
 const AUTH_CLI = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
 const home = process.env.HOME;
-const stateFile = path.join(home, 'auth-state.json');
+const dir = process.env.CLAUDE_CONFIG_DIR || '';
+const own = path.join(dir || home, 'auth-state.json');
+const stateFile = dir && !fs.existsSync(own) ? path.join(home, 'auth-state-next.json') : own;
 const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};
-fs.appendFileSync(path.join(home, 'auth.log'), JSON.stringify({ args: process.argv.slice(3), leaked: Object.keys(process.env).filter(k => /^(CLAUDE_CODE|ANTHROPIC)/.test(k)) }) + '\\n');
+fs.appendFileSync(path.join(home, 'auth.log'), JSON.stringify({ args: process.argv.slice(3), dir: dir || null, leaked: Object.keys(process.env).filter(k => /^(CLAUDE_CODE|ANTHROPIC)/.test(k)) }) + '\\n');
+const signedIn = dir ? state.loggedIn === true : state.loggedIn !== false;
+const who = dir ? path.basename(dir) : 'main';
 if (process.argv[3] === 'status') {
-  process.stdout.write(JSON.stringify({ loggedIn: state.loggedIn !== false }) + '\\n');
-  process.exit(state.loggedIn === false ? 1 : 0);
+  process.stdout.write(JSON.stringify(signedIn
+    ? { loggedIn: true, authMethod: 'claude.ai', email: state.email || who + '@example.com', orgId: state.orgId || 'org-' + who, orgName: 'Example', subscriptionType: state.subscriptionType || 'max' }
+    : { loggedIn: false }) + '\\n');
+  process.exit(signedIn ? 0 : 1);
 }
+const service = dir ? 'Claude Code-credentials-' + require('node:crypto').createHash('sha256').update(dir.normalize('NFC')).digest('hex').slice(0, 8) : 'Claude Code-credentials';
 const finish = () => {
   if (!state.loginExit) {
-    fs.writeFileSync(stateFile, JSON.stringify({ loggedIn: true }));
-    fs.writeFileSync(path.join(home, 'keychain-expiry'), String(Date.now() + 28 * 86_400_000));
+    fs.mkdirSync(dir || home, { recursive: true });
+    fs.writeFileSync(own, JSON.stringify({ loggedIn: true, ...state.signInAs }));
+    fs.writeFileSync(path.join(home, dir ? 'keychain-expiry-' + service : 'keychain-expiry'), String(Date.now() + 28 * 86_400_000));
   }
   process.exit(state.loginExit || 0);
 };
@@ -60,13 +72,17 @@ if (state.hold) setInterval(() => { if (fs.existsSync(path.join(home, 'auth-rele
 else finish();
 `;
 
-// The macOS `security` tool the server reads the sign-in's end date through. It prints a keychain entry with made-up secrets in it, and the
-// end date in the file keychain-expiry in the home (twenty days away without one), or fails as a missing entry does, with exit 44, when the file says `missing`.
+// The macOS `security` tool the server reads the sign-in's end date through. It takes the entry's service with -s and prints an entry with made-up secrets in
+// it, and the end date in the file keychain-expiry in the home for the plain service, or keychain-expiry-<service> for an account's own (twenty days away
+// without a file for the plain one, and no entry without one for the other), or fails as a missing entry does, with exit 44, when the file says `missing`.
 const FAKE_SECURITY = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
-const file = path.join(process.env.HOME, 'keychain-expiry');
-const value = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : '';
+const args = process.argv.slice(2);
+const service = args[args.indexOf('-s') + 1];
+const plain = service === 'Claude Code-credentials';
+const file = path.join(process.env.HOME, plain ? 'keychain-expiry' : 'keychain-expiry-' + service);
+const value = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : plain ? '' : 'missing';
 if (value === 'missing') {
   process.stderr.write('security: The specified item could not be found in the keychain.\\n');
   process.exit(44);
@@ -92,7 +108,9 @@ const freePort = () => new Promise(resolve => {
 // Started on `late-no-fast-by-the-fake` it refuses that request too, but holds the refusal until it is sent anything after 'begin a session'.
 // Sent 'finish the turn with fast mode off' it ends the turn as 'finish the turn' does, with a result that reports fast mode off.
 // Sent 'begin a session', or a message that opens with a file mention (as text, or as the text block beside pictures or documents) or with a <scheduled-task> tag, it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
-// sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, but copies layout.json as it is then to layout-at-interrupt.json in
+// sent 'fail the turn' it ends the turn with an error, sent 'hit the usage limit' it says it is out of usage as the real CLI does (an assistant message with error rate_limit, then an error result), and sent
+// 'hit a busy limit' it says rate_limit with the words of a transient 429. Its start log has the CLAUDE_CONFIG_DIR it was given as `configDir`, and a get_usage request is answered from
+// plan-usage.json in that folder when it has one. It never answers an interrupt, but copies layout.json as it is then to layout-at-interrupt.json in
 // the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none. A `get_usage` request is answered with the rate_limits.limits in plan-usage.json in the home, or with an error if there is none, and logged as `control` with its `skip`.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
@@ -187,7 +205,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
     "const say = message => process.stdout.write(JSON.stringify(message) + '\\n');",
     `if (process.argv[2] === 'auth') { await import(${JSON.stringify(path.join(home, 'claude-auth.cjs'))}); await new Promise(() => {}); }`,
-    "note({ started: process.argv.slice(2), cwd: process.cwd() });",
+    "note({ started: process.argv.slice(2), cwd: process.cwd(), configDir: process.env.CLAUDE_CONFIG_DIR ?? null });",
     "const startedOn = process.argv[process.argv.indexOf('--model') + 1];",
     "const namedId = process.argv.includes('--session-id') ? process.argv[process.argv.indexOf('--session-id') + 1] : null;",
     "const projects = path.join(process.env.HOME, '.claude', 'projects');",
@@ -210,7 +228,8 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     `    if (m.type === 'control_request' && m.request.subtype === 'interrupt') fs.copyFileSync(${JSON.stringify(path.join(state, 'layout.json'))}, ${JSON.stringify(path.join(home, 'layout-at-interrupt.json'))});`,
     `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)}, models: ${JSON.stringify(CLI_MODELS)} } } });`,
     "    if (m.type === 'control_request' && m.request.subtype === 'get_usage') {",
-    `      const limits = fs.existsSync(${JSON.stringify(path.join(home, 'plan-usage.json'))}) ? JSON.parse(fs.readFileSync(${JSON.stringify(path.join(home, 'plan-usage.json'))}, 'utf8')) : null;`,
+    `      const planFile = [process.env.CLAUDE_CONFIG_DIR && path.join(process.env.CLAUDE_CONFIG_DIR, 'plan-usage.json'), ${JSON.stringify(path.join(home, 'plan-usage.json'))}].find(f => f && fs.existsSync(f));`,
+    "      const limits = planFile ? JSON.parse(fs.readFileSync(planFile, 'utf8')) : null;",
     "      say({ type: 'control_response', response: limits ? { subtype: 'success', request_id: m.request_id, response: { rate_limits: { five_hour: null, limits } } } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } });",
     "    }",
     "    if (m.type === 'control_request' && m.request.subtype === 'get_context_usage') {",
@@ -253,6 +272,8 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    if (m.message.content === 'ask a question') say({ type: 'control_request', request_id: 'perm-ask', request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Which branch should it use?', header: 'Branch', multiSelect: false, options: [{ label: 'main', description: 'The default' }, { label: 'dev', description: 'The next one' }] }] } } });",
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'finish the turn with fast mode off') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: 'off' });",
+    "    if (m.message.content === 'hit the usage limit') { say({ type: 'assistant', error: 'rate_limit', message: { role: 'assistant', content: [{ type: 'text', text: \"You've hit your limit, resets at 3pm\" }] } }); say({ type: 'result', subtype: 'success', is_error: true, result: \"You've hit your limit, resets at 3pm\" }); }",
+    "    if (m.message.content === 'hit a busy limit') { say({ type: 'assistant', error: 'rate_limit', message: { role: 'assistant', content: [{ type: 'text', text: 'API Error: Request rejected (429)' }] } }); say({ type: 'result', subtype: 'success', is_error: true, result: 'API Error: Request rejected (429)' }); }",
     "    if (m.message.content === 'fail the turn') say({ type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' });",
     "    if (said === 'begin a session' || said.startsWith('@\\\"') || said.startsWith('<scheduled-task')) {",
     "      say({ type: 'system', subtype: 'init', session_id: namedId || 'begun-by-the-fake', model: 'stub' });",
@@ -330,6 +351,8 @@ async function launch(home, state, made) {
     ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, CAPCOM_AUTO_TITLE: made.autoTitle ? '1' : '0', CAPCOM_CLAUDE: made.cli ?? banners.auth,
     CAPCOM_SECURITY: banners.security, CAPCOM_UPDATE_ROOT: banners.updateRoot, ...(made.gh && { CAPCOM_GH: made.gh }), ...made.env,
   };
+  // The first account is the CLI's own sign-in, so a folder from the machine running the tests would point it away from the home.
+  if (!made.env?.CLAUDE_CONFIG_DIR) delete env.CLAUDE_CONFIG_DIR;
   const child = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });

@@ -1,5 +1,7 @@
 import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
+import { supportsAccounts } from './ui/account-rules.js';
+import { AccountsPane, AutoBanner, OutBanner } from './ui/accounts.js';
 import { supportsBanners } from './ui/banner-rules.js';
 import { LoginBanner, UpdateBanner, useBanners } from './ui/banners.js';
 import { ChatPane } from './ui/chat.js';
@@ -29,7 +31,7 @@ import { findRow, listedIds, nestRow, placeRow, sortByTitle, stampTurns, unnestR
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in),
-// #/passkeys the passkeys and #/routines the routines, with #/routines/new to add one and #/routines/<id> to edit one. #/scheduled is the same for scheduled sessions.
+// #/passkeys the passkeys, #/accounts the Claude accounts and #/routines the routines, with #/routines/new to add one and #/routines/<id> to edit one. #/scheduled is the same for scheduled sessions.
 function parseRoute(hash) {
   try {
     if (hash.startsWith('#/s/')) return { name: 'session', id: decodeURIComponent(hash.slice(4)) };
@@ -41,7 +43,7 @@ function parseRoute(hash) {
   if (routines) return { name: 'routines', ...routines };
   const scheduled = scheduledRoute(hash);
   if (scheduled) return { name: 'scheduled', ...scheduled };
-  return { name: hash === '#/passkeys' ? 'passkeys' : 'list' };
+  return { name: hash === '#/passkeys' ? 'passkeys' : hash === '#/accounts' ? 'accounts' : 'list' };
 }
 
 function App() {
@@ -348,20 +350,21 @@ function App() {
 
   return html`<${Fragment}>
   <div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} placeMany=${placeMany} edit=${edit} archive=${archive} archiveAll=${archiveAll} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
+    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} placeMany=${placeMany} edit=${edit} archive=${archive} archiveAll=${archiveAll} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'} accountsOpen=${route.name === 'accounts'}
       routines=${routines} routinesOpen=${route.name === 'routines'} refreshRoutines=${refreshRoutines}
       scheduled=${scheduled} scheduledOpen=${route.name === 'scheduled'} refreshScheduled=${refreshScheduled}
-      banner=${html`<${LoginBanner} ...${banners} /><${UpdateBanner} ...${banners} />${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null}`} />
+      banner=${html`<${LoginBanner} ...${banners} />${supportsAccounts(ix) ? html`<${OutBanner} ...${banners} /><${AutoBanner} ...${banners} />` : null}<${UpdateBanner} ...${banners} />${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null}`} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <div class="emblem" aria-hidden="true"><${Shell} class="emblem-shell" /><span class="emblem-shadow"></span></div>
         <p>Pick a session, press <kbd>${keyHint(mod, 'K')}</kbd> to find one, or <kbd>${keyHint(mod, 'N')}</kbd> to start a new one.</p>
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
+      ${view === 'chat' && route.name === 'accounts' && supportsAccounts(ix) ? html`<${AccountsPane} />` : null}
       ${view === 'chat' && route.name === 'routines' ? html`<${RoutinesPane} ix=${ix} route=${route} routines=${routines} error=${routinesError} reload=${loadRoutines} refresh=${refreshRoutines} />` : null}
       ${view === 'chat' && route.name === 'scheduled' ? html`<${ScheduledPane} ix=${ix} route=${route} scheduled=${scheduled} error=${scheduledError} reload=${loadScheduled} refresh=${refreshScheduled} />` : null}
       ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} edit=${edit} />` : null}
-      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'routines' && route.name !== 'scheduled' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} rename=${renamer} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'accounts' && route.name !== 'routines' && route.name !== 'scheduled' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} rename=${renamer} />` : null}
     </main>
   </div>
   <${Spotlight} open=${finding} ix=${ix} scheduled=${scheduled} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />
