@@ -741,6 +741,17 @@ test('a chip made by a sub session starts its session beside it under the sub se
   assert.equal(rowOf(await index(again, (await signIn(again)).token), beside.body().id).via, 'maker', 'a restart reads it from chips.json');
 });
 
+test('a chip from a session that shows as a head because its parent is archived nests its session under that session', async () => {
+  const sessions = SUB.map(r => (r.id === 'maker' ? { ...r, archived: true } : r));
+  const s = await start({ sessions, groups: GROUPS, claude: true, chips: SUB_CHIPS });
+  const { token } = await signIn(s);
+  assert.equal((await chipsOf(s, token, 'sub')).find(c => c.toolUseId === 'toolu_sub').opensIn.startsWith('Opens under this session'), true);
+  const res = await startFrom(s, token, 'sub', 'toolu_sub');
+  assert.equal(res.status, 200, res.text);
+  assert.equal(Object.hasOwn(res.body().chip, 'nestUnder'), false);
+  assert.equal(rowOf(await index(s, token), res.body().id).parent, 'sub');
+});
+
 test('a chip from a sub session that names a group writes no nestUnder, and the chips route words where each one opens', async () => {
   const s = await start({ sessions: SUB, groups: GROUPS, claude: true, chips: SUB_CHIPS });
   const { token } = await signIn(s);

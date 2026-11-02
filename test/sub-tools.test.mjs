@@ -357,6 +357,17 @@ test('a session and the one linked to it are siblings, so a send between them ne
   assert.equal(inOwnTree(subsFor(FLAT, { self: 'kid' }), 'head'), true, 'and the parent');
 });
 
+// Root is archived, so the list shows Left and Right as heads, and Left kid under Left.
+const SPLIT = [row('root', null, { archived: true }), row('left', 'root'), row('left-kid', 'left'), row('right', 'root')];
+
+test('a head under an archived root has no parent or siblings in its tree, and keeps its own child', () => {
+  assert.equal(inOwnTree(subsFor(SPLIT, { self: 'left' }), 'right'), false);
+  assert.equal(inOwnTree(subsFor(SPLIT, { self: 'right' }), 'left'), false);
+  assert.equal(inOwnTree(subsFor(SPLIT, { self: 'left' }), 'root'), false, 'nor the archived root');
+  assert.equal(inOwnTree(subsFor(SPLIT, { self: 'left' }), 'left-kid'), true);
+  assert.equal(inOwnTree(subsFor(SPLIT, { self: 'left-kid' }), 'left'), true);
+});
+
 test('a message to itself and one to an id that is no session are refused, and nothing is sent', () => {
   sent.length = 0;
   refused(() => send({ session_id: 'top', message: 'hi' }, { send: sender('idle') }), 'A session cannot send a message to itself.');

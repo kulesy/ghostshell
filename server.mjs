@@ -426,6 +426,9 @@ function placeStarted(id, home, { unlink = false } = {}) {
   }
 }
 
+// The head a session shows under in the live list. One under an archived root shows as a head itself, so it has none.
+const liveHeadOf = (row, rowOf = findRow) => (row?.via && !rowOf(row.via)?.archived ? row.via : null);
+
 // Where a chip's session opens, worded for its card from the group's name now. `row` is the session that made the chip. A section's chat
 // and a routine run, which never holds sessions, have nothing to say. A list of chips passes `rowOf` over one index.
 function withOpensIn(chip, row, rowOf = findRow) {
@@ -435,7 +438,7 @@ function withOpensIn(chip, row, rowOf = findRow) {
     if (chip.group) return nameOf(chip.group) ? `Opens in ${nameOf(chip.group)}` : 'Its group has been deleted';
     if (!row || row.routine) return null;
     if (row.groupSession) return nameOf(row.groupSession) ? `Opens in ${nameOf(row.groupSession)}` : null;
-    const beside = chip.status === 'started' ? chip.nestUnder : row.via;
+    const beside = chip.status === 'started' ? chip.nestUnder : liveHeadOf(row, rowOf);
     // An archived session shows nothing under it, so its chip's session stands in its place on its own. A started chip with a parent already sits there.
     if (row.archived && !(chip.status === 'started' && beside)) return nameOf(row.group) ? `Opens in ${nameOf(row.group)}` : null;
     if (beside) {
@@ -1641,7 +1644,7 @@ async function api(req, res, u) {
     }
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
     // A chip from a sub session starts its session beside it, under the sub session's parent. A chip naming a group is unlinked anyway.
-    const nestUnder = named ? null : findRow(known?.sessionId || sessionId)?.via;
+    const nestUnder = named ? null : liveHeadOf(findRow(known?.sessionId || sessionId));
     const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a
     // section's chip pins it or leaves it loose, as that section's own chat would. A group the chip names wins over both, and the session is
