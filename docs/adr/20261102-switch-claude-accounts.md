@@ -53,7 +53,7 @@ Checked on CLI 2.1.316 by reading its code and by `claude auth status --json` ag
 
 ### Adding and signing in
 
-The Accounts page (`#/accounts`, linked from the sidebar's footer) adds an account by name. GhostShell makes its folder and starts `claude auth login --claudeai` for it, exactly as the sign-in banner does, so the owner approves one page in the browser on the Mac. The page says to approve it with the account wanted, since the browser approves with whichever claude.ai account it is signed in to. One sign-in runs at a time across all accounts. An account that is signed out or ending within five days has a Sign in button on the page. The sidebar's sign-in banner follows the active account and names it when there is more than one.
+The Accounts page (`#/accounts`, in the Account menu of the sidebar's footer) adds an account by name. GhostShell makes its folder and starts `claude auth login --claudeai` for it, exactly as the sign-in banner does, so the owner approves one page in the browser on the Mac. The page says to approve it with the account wanted, since the browser approves with whichever claude.ai account it is signed in to. One sign-in runs at a time across all accounts. An account that is signed out or ending within five days has a Sign in button on the page. The sidebar's sign-in banner follows the active account and names it when there is more than one.
 
 ### Switching
 
