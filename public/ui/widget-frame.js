@@ -28,15 +28,14 @@ export const CSP = [
 
 export const HEIGHT_MIN = 40;
 export const HEIGHT_MAX = 4000;
-// A browser keeps a click active for about five seconds, so a widget gets one prompt sent per click, and a second in that time goes
-// to the owner.
+// A browser keeps a click active for about five seconds, so a widget gets one prompt sent or one link opened per click, and a second
+// in that time goes to the owner.
 export const ACTIVE_MS = 5000;
 // How long the page and the other frames must have been quiet before a prompt is sent. The extra second makes a click the page saw
 // outlast the activation it gave, a tap whose touchend refreshes it included.
 const QUIET_MS = ACTIVE_MS + 1000;
 export const PROMPT_MAX = 4000;
 export const LINK_MAX = 2048;
-export const LINK_GAP_MS = 1000;
 
 let cached = '';
 
@@ -202,9 +201,10 @@ export function promptGate({ text, active, focused, now, last, pending, pageActe
 }
 
 // What the page does with a link a widget passes up: 'open' it in a new tab at once, after a click on this widget, or 'ask' the owner.
-// At most one a second, so a script cannot open a burst of tabs from one click.
+// NOTE: [2 Nov 2026] EK - The gap is the whole life of a click, because WebKit 2311 leaves the click active after window.open and one
+// click opened three tabs 1.3 s apart. See https://github.com/kulesy/ghostshell/pull/40.
 export function linkGate({ active, focused, now, last, pageActed, othersActed }) {
-  return clickedHere({ active, focused, now, pageActed, othersActed }) && now - (last ?? -Infinity) >= LINK_GAP_MS ? 'open' : 'ask';
+  return clickedHere({ active, focused, now, pageActed, othersActed }) && now - (last ?? -Infinity) >= ACTIVE_MS ? 'open' : 'ask';
 }
 
 // NOTE: [19 Oct 2026] EK - Focus cannot say which widget was clicked, because a sandboxed frame can take it back after a click elsewhere

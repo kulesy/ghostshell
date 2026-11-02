@@ -8,7 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EFFORTS, GROUP_READ_NAMES, GROUP_START_NAME, handleMcp, makeChips, TOOL_NAMES } from '../lib/tools.mjs';
 import {
-  ACTIVE_MS, CDNS, HEIGHT_MAX, LINK_GAP_MS, LINK_MAX, parseGlyphs, PROMPT_MAX,
+  ACTIVE_MS, CDNS, HEIGHT_MAX, LINK_MAX, parseGlyphs, PROMPT_MAX,
 } from '../public/ui/widget-frame.js';
 import { hostCss, tokenCss } from '../public/ui/widget-theme.js';
 import { guideFor } from '../lib/groups.mjs';
@@ -179,8 +179,7 @@ test('the limits the guide states are the ones the frame enforces', () => {
   assert.equal(ACTIVE_MS, 5000);
   assert.ok(guide.includes('within five seconds of a send'));
   assert.ok(guide.includes(`at most ${LINK_MAX} characters`));
-  assert.equal(LINK_GAP_MS, 1000);
-  assert.ok(guide.includes('one a second at most'));
+  assert.ok(guide.includes('within five seconds of the last link opened'));
 });
 
 test('the guide holds no em dash or en dash', () => {

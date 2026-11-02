@@ -480,8 +480,6 @@ test('a prompt that is not text, says nothing, or arrives while the bar is alrea
 
 // ---- the links --------------------------------------------------------------------------------------------------------------
 
-// ---- the gate on a link -----------------------------------------------------------------------------------------------------
-
 const linkClick = { active: true, focused: true, now: 10_000, last: 0 };
 
 test('a link opens at once after a click on this widget with a quiet page, and anything else is put to the owner', () => {
@@ -495,9 +493,10 @@ test('a link opens at once after a click on this widget with a quiet page, and a
   assert.equal(linkGate({ ...linkClick, pageActed: 3_999, othersActed: 3_999 }), 'open');
 });
 
-test('a second link within a second of the last one opened is put to the owner, and one at exactly a second opens', () => {
-  assert.equal(linkGate({ ...linkClick, last: 9_001 }), 'ask');
-  assert.equal(linkGate({ ...linkClick, last: 9_000 }), 'open');
+test('a second link within five seconds of the last one opened is put to the owner, and one at exactly five seconds opens', () => {
+  assert.equal(linkGate({ ...linkClick, now: 11_000, last: 10_000 }), 'ask');
+  assert.equal(linkGate({ ...linkClick, now: 14_999, last: 10_000 }), 'ask');
+  assert.equal(linkGate({ ...linkClick, now: 15_000, last: 10_000 }), 'open');
   assert.equal(linkGate({ ...linkClick, last: undefined }), 'open');
 });
 
