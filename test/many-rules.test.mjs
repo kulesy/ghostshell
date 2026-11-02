@@ -7,7 +7,7 @@ import { everyRow } from '../public/ui/tree.js';
 
 const row = (id, extra = {}) => ({ id, title: id, source: 'capcom', group: null, pinned: false, parent: null, routine: null, ...extra });
 const SORT = { by: 'recency', ascending: false };
-// Boss (Work) holds Mid and Kid, and Leaf is nested under Mid. Peer is in Work, Fixed is pinned, and three sit loose.
+// Boss (Work) holds Mid, Kid and Leaf. Peer is in Work, Fixed is pinned, and three sit loose.
 const boss = row('boss', { group: 'cg-work', children: [row('mid', { group: 'cg-work', parent: 'boss' }), row('kid', { group: 'cg-work', parent: 'boss' }), row('leaf', { group: 'cg-work', parent: 'boss' })] });
 const IX = {
   projects: [{ id: 'cp-a', name: 'Capcom' }],

@@ -1,5 +1,5 @@
 // Run with `npm test`. The order a list puts its sessions in, which the server and the page share: Desktop's three sorts both ways, a
-// family placed in its list, and a family's children in depth-first order.
+// family placed in its list, and a family's children in two steps.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { comparator, DEFAULT_SORT, TITLE_SORT, sortFamily, sortRows, UNTITLED } from '../public/ui/order.js';

@@ -27,7 +27,7 @@ function transcript(id, entries) {
 }
 
 // The index the server builds is one level deep, so ROWS below goes deeper than it to test the walk itself.
-// `skip` is the nearest session that is not archived, which `parent` holds in an index that leaves the archived ones out.
+// `skip` is the topmost session that is not archived, which `parent` holds in an index that leaves the archived ones out.
 const row = (id, parent, extra) => ({ id, parent, skip: parent, title: `Session ${id}`, cwd: `/work/${id}`, branch: 'main', state: 'idle', archived: false, lastActivityAt: NOW - 2 * DAY, ...extra });
 //   up
 //     top (the asker)

@@ -251,15 +251,16 @@ function buildIndex({ archived = false } = {}) {
   const groupSort = id => desk.sorts.groups.get(id) ?? DEFAULT_SORT;
   const sortOf = r => (r.pinned ? sorts.pinned : r.group ? groupSort(r.group) : r.routine ? sorts.routines : sorts.sessions);
   const kids = new Map();
-  const rootOf = r => families.get(r.id).root;
-  for (const r of visible.filter(rootOf)) kids.set(rootOf(r), [...(kids.get(rootOf(r)) ?? []), r]);
+  // A family is listed under its topmost shown session: its holder in the archived rows, else the head its rows show under.
+  const placedUnder = r => (archived ? (families.get(r.id).holder === r.id ? null : families.get(r.id).holder) : r.parent);
+  for (const r of visible.filter(placedUnder)) kids.set(placedUnder(r), [...(kids.get(placedUnder(r)) ?? []), r]);
   for (const [id, list] of kids) {
     const parent = rows.get(id);
     parent.children = sortFamily(list, sortOf(parent));
   }
 
   // A child is listed under its parent only.
-  const top = visible.filter(r => !rootOf(r));
+  const top = visible.filter(r => !placedUnder(r));
   const pinned = sortRows(top.filter(r => r.pinned), sorts.pinned);
   const groups = own.groups.map(g => {
     const sort = groupSort(g.id);

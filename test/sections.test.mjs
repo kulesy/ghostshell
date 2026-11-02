@@ -129,7 +129,7 @@ test('the table has the five sections in sidebar order, named as the sidebar nam
   for (const s of SECTIONS) assert.doesNotMatch(`${s.name} ${s.holds}`, /[–—]/, s.id);
 });
 
-test('sectionOf puts pinned first, then a group, then a routine, then the loose section of the app, and a nested row follows the row it shows under, up to an archived root', () => {
+test('sectionOf puts pinned first, then a group, then a routine, then the loose section of the app, and a nested row follows the row it shows under', () => {
   const row = (id, extra) => ({ id, source: 'desktop', group: null, pinned: false, routine: null, parent: null, ...extra });
   const rows = new Map([
     row('pin', { pinned: true, group: 'cg-a', routine: 'r' }),
@@ -143,11 +143,9 @@ test('sectionOf puts pinned first, then a group, then a routine, then the loose 
     row('under-pin', { parent: 'pin', source: 'cli' }),
     row('under-grp', { parent: 'grp', source: 'cli' }),
     row('orphan', { parent: 'gone', source: 'cli' }),
-    row('head-under-root', { parent: 'cap', source: 'cli' }),
-    row('under-head', { parent: 'head-under-root', source: 'desktop' }),
   ].map(r => [r.id, r]));
   const sections = Object.fromEntries([...rows.keys()].map(id => [id, sectionOf(rows.get(id), rows)]));
-  assert.deepEqual(sections, { pin: 'pinned', grp: null, run: 'routines', cap: 'started', desk: 'ungrouped', cli: 'other', odd: null, 'under-cap': 'started', 'under-pin': 'pinned', 'under-grp': null, orphan: 'other', 'head-under-root': 'started', 'under-head': 'started' });
+  assert.deepEqual(sections, { pin: 'pinned', grp: null, run: 'routines', cap: 'started', desk: 'ungrouped', cli: 'other', odd: null, 'under-cap': 'started', 'under-pin': 'pinned', 'under-grp': null, orphan: 'other' });
 });
 
 test('sectionSessions gives the lists the sidebar draws, a routine\'s runs flattened latest first, and nothing for a name that is no section', () => {
@@ -293,6 +291,13 @@ test('each section\'s archived count is what api/archived?group= lists for it, t
   assert.equal((await get(s, token, '/api/archived')).archived.length, 12, 'with no group it lists them all');
 });
 
+// The server gives sectionOf a row's holder as its parent. In the index with the archived rows a parent can be a live head under the holder, so this walks up to it.
+const inHolder = (row, rows) => {
+  let holder = row;
+  while (holder.parent && rows.has(holder.parent)) holder = rows.get(holder.parent);
+  return sectionOf({ ...row, parent: holder === row ? null : holder.id }, rows);
+};
+
 test('sectionOf agrees with the lists the index builds for every row, in the live index and in the one with the archive', async () => {
   const { s, token } = await ready({ booked: [] });
   for (const route of ['/api/sessions', '/api/sessions?archived=1']) {
@@ -301,11 +306,11 @@ test('sectionOf agrees with the lists the index builds for every row, in the liv
     let checked = 0;
     for (const id of SECTION_IDS) {
       for (const row of withKids(sectionSessions(ix, id))) {
-        assert.equal(sectionOf(row, rows), id, `${row.id} in ${id} (${route})`);
+        assert.equal(inHolder(row, rows), id, `${row.id} in ${id} (${route})`);
         checked++;
       }
     }
-    for (const g of ix.groups) for (const row of withKids(g.sessions)) assert.equal(sectionOf(row, rows), null, `${row.id} in the group ${g.id} (${route})`);
+    for (const g of ix.groups) for (const row of withKids(g.sessions)) assert.equal(inHolder(row, rows), null, `${row.id} in the group ${g.id} (${route})`);
     assert.equal(checked, [...rows.values()].filter(r => !r.group || r.pinned).length, 'every row outside a group was in a section\'s list');
   }
 });
@@ -321,7 +326,7 @@ test('sectionOf agrees with api/archived?group= for every archived row of the in
   }
   const archived = [...rows.values()].filter(r => r.archived);
   assert.equal(archived.length, listedIn.size, 'every archived row is listed for one section or group');
-  for (const r of archived) assert.equal(sectionOf(r, rows) ?? r.group, listedIn.get(r.id), r.id);
+  for (const r of archived) assert.equal(inHolder(r, rows) ?? r.group, listedIn.get(r.id), r.id);
   for (const [id, holder] of [['ar-kid', 'ungrouped'], ['rn-run', 'started'], ['chain-c', 'ungrouped'], ['hold-old', 'ungrouped']]) assert.equal(listedIn.get(id), holder, id);
 });
 

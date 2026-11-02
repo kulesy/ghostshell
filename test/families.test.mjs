@@ -1,5 +1,5 @@
 // Run with `npm test`. Which sessions show under which: the walk up a session's links, and what an archived, missing or routine session
-// on the way changes. Each result is [holder, root] by session id (`root` is the topmost session the listing shows), and `near`, the nearest session a row shows under, is checked beside it.
+// on the way changes. Each result is [holder, parent] by session id, and `near`, the nearest session a row shows under, is checked beside it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chainOf, familiesOf } from '../lib/families.mjs';
@@ -11,7 +11,7 @@ const rowsOf = (links, { ids = [...new Set(Object.entries(links).flat())], archi
 const familiesIn = (links, { seeArchived = false, ...rest } = {}) => familiesOf(rowsOf(links, rest), id => links[id] ?? null, { archived: seeArchived });
 
 function walk(links, options) {
-  return Object.fromEntries([...familiesIn(links, options)].map(([id, { holder, root }]) => [id, [holder, root]]));
+  return Object.fromEntries([...familiesIn(links, options)].map(([id, { holder, parent }]) => [id, [holder, parent]]));
 }
 
 // The nearest session each row shows under, by session id.
@@ -68,20 +68,20 @@ test('a session whose links run into a cycle has the first session of it that th
 test('parent is the head the list shows, not the nearest session, so a chain of links nests every member one level deep', () => {
   const chainOfThree = { kid: 'boss', boss: 'peer' };
   const found = familiesIn(chainOfThree);
-  assert.deepEqual(found.get('kid'), { holder: 'peer', parent: 'peer', root: 'peer', near: 'boss' });
-  assert.deepEqual(found.get('boss'), { holder: 'peer', parent: 'peer', root: 'peer', near: 'peer' });
-  assert.deepEqual(found.get('peer'), { holder: 'peer', parent: null, root: null, near: null });
+  assert.deepEqual(found.get('kid'), { holder: 'peer', parent: 'peer', near: 'boss' });
+  assert.deepEqual(found.get('boss'), { holder: 'peer', parent: 'peer', near: 'peer' });
+  assert.deepEqual(found.get('peer'), { holder: 'peer', parent: null, near: null });
   assert.deepEqual(nests(chainOfThree, { archived: ['peer'] }), { peer: null, boss: null, kid: 'boss' }, 'an archived top: the middle is top level and the kid nests under it');
   assert.deepEqual(nests(chainOfThree, { archived: ['peer'], seeArchived: true }), { peer: null, boss: 'peer', kid: 'boss' }, 'the archive lists the top above the middle, which the list shows as the head');
 });
 
 // X links to a live Y under an archived M under an archived root R, Z links to R, and an archived A links to X.
-test('under an archived root a live head is the parent of its own members in both indexes, and the root is the topmost session the listing shows', () => {
+test('under an archived root a live head is the parent of its own members in both indexes', () => {
   const links = { X: 'Y', Y: 'M', M: 'R', Z: 'R', A: 'X' };
   const archived = ['M', 'R', 'A'];
-  const found = options => Object.fromEntries([...familiesIn(links, { archived, ...options })].map(([id, { parent, root, near }]) => [id, [parent, root, near]]));
-  assert.deepEqual(found({}), { R: [null, null, null], M: [null, null, null], Y: [null, null, null], Z: [null, null, null], X: ['Y', 'Y', 'Y'], A: ['Y', 'Y', 'X'] }, 'the live index');
-  assert.deepEqual(found({ seeArchived: true }), { R: [null, null, null], M: ['R', 'R', 'R'], Y: ['R', 'R', 'M'], Z: ['R', 'R', 'R'], X: ['Y', 'R', 'Y'], A: ['Y', 'R', 'X'] }, 'the index with the archived rows');
+  const found = options => Object.fromEntries([...familiesIn(links, { archived, ...options })].map(([id, { parent, near }]) => [id, [parent, near]]));
+  assert.deepEqual(found({}), { R: [null, null], M: [null, null], Y: [null, null], Z: [null, null], X: ['Y', 'Y'], A: ['Y', 'X'] }, 'the live index');
+  assert.deepEqual(found({ seeArchived: true }), { R: [null, null], M: ['R', 'R'], Y: ['R', 'M'], Z: ['R', 'R'], X: ['Y', 'Y'], A: ['Y', 'X'] }, 'the index with the archived rows');
 });
 
 test('a link to a routine run or to a session that is not listed gives no session to nest under', () => {
@@ -120,9 +120,9 @@ test('an archived session in a cycle the chain runs into does not give the famil
   assert.deepEqual(walk({ r: 'a1', a1: 'a2', a2: 'a1' }, { archived: ['a1'] }), { r: ['a1', null], a1: ['a1', null], a2: ['a2', null] }, 'the first session of the cycle is archived, so the family has no parent');
 });
 
-// Every way four sessions can link, with any of them archived, to see that whatever the links, a child has the holder of its root,
-// and its root has no root. A family is then one level deep and sits in one place.
-test('whatever the links, a child has the same holder as its root, a holder is its own holder, and no root has a root', () => {
+// Every way four sessions can link, with any of them archived, to see that whatever the links, a child has the holder of its parent.
+// A parent is top level in the live list. With the archived rows it may sit under an archived holder, and no further.
+test('whatever the links, a child has the same holder as its parent, a holder is its own holder, and a parent is top level or under an archived holder', () => {
   const ids = ['a', 'b', 'c', 'd'];
   const choices = [null, ...ids];
   let checked = 0;
@@ -132,19 +132,16 @@ test('whatever the links, a child has the same holder as its root, a holder is i
       const archived = ids.filter((_, i) => mask & (1 << i));
       for (const seeArchived of [false, true]) {
         const found = walk(links, { ids, archived, seeArchived });
-        const vias = nearest(links, { ids, archived, seeArchived });
-        const flat = nests(links, { ids, archived, seeArchived });
+        const near = nearest(links, { ids, archived, seeArchived });
         const where = JSON.stringify({ links, archived, seeArchived });
-        for (const [id, [holder, root]] of Object.entries(found)) {
+        for (const [id, [holder, parent]] of Object.entries(found)) {
           assert.equal(found[holder][0], holder, `holder of ${id}: ${where}`);
-          if (seeArchived && flat[id] !== root) {
-            assert.ok(archived.includes(root) && !archived.includes(flat[id]) && flat[flat[id]] === root, `${id} nests under the head the list shows, below its archived root: ${where}`);
-          } else assert.equal(flat[id], root, `${id} nests under its root, whatever its nearest is: ${where}`);
-          assert.equal(vias[id] === null, root === null, `${id} nests under a session exactly when it has a root: ${where}`);
-          if (!root) continue;
-          assert.equal(found[root][0], holder, `${id} and its root ${root} are in one place: ${where}`);
-          assert.equal(found[root][1], null, `${root} is top level: ${where}`);
-          assert.ok(vias[id] === root || found[vias[id]][1] === root, `${id} nests under ${vias[id]}, which is in the family of ${root}: ${where}`);
+          assert.equal(near[id] === null, parent === null, `${id} nests under a session exactly when it has a parent: ${where}`);
+          if (!parent) continue;
+          assert.equal(found[parent][0], holder, `${id} and its parent ${parent} are in one place: ${where}`);
+          const above = found[parent][1];
+          if (above !== null) assert.ok(seeArchived && !archived.includes(parent) && archived.includes(above) && found[above][1] === null, `${parent} is under only an archived top: ${where}`);
+          assert.ok(near[id] === parent || found[near[id]][1] === parent, `${id} nests under ${near[id]}, which is in the family of ${parent}: ${where}`);
         }
         checked++;
       }

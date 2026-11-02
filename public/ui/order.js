@@ -43,8 +43,8 @@ export function sortRows(rows, sort = DEFAULT_SORT) {
 }
 
 // A family's children: first those that nest under the head (their `parent` is not another child), in the list's order, each followed at
-// once by the children whose `parent` names it. Only the archive needs the second step, where a live head sits under an archived root.
-// A child that neither step reaches goes last.
+// once by the children whose `parent` names it. The live list sends no child under a child, so the second step is there for the
+// archive, where a live head sits among its archived root's children. A child that neither step reaches goes last.
 export function sortFamily(children, sort = DEFAULT_SORT) {
   const compare = comparator(sort);
   const ids = new Set(children.map(c => c.id));
