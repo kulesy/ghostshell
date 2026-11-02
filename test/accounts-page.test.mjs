@@ -73,7 +73,7 @@ async function openPage(t, c, hash = '', { phone = false, before = '' } = {}) {
 const rows = `[...document.querySelectorAll('#accounts .account')].map(li => ({
   name: li.querySelector('.account-name')?.textContent.trim(),
   active: !!li.querySelector('.badge'),
-  meta: [...li.querySelectorAll('.passkey-meta span')].map(x => x.textContent),
+  meta: [...li.querySelectorAll('.account-meta span')].map(x => x.textContent),
   line: li.querySelector('.account-line')?.textContent,
   buttons: [...li.querySelectorAll('.account-actions button')].map(b => b.textContent.trim()),
   plan: [...li.querySelectorAll('.plan-row')].map(r => r.querySelector('.plan-label').textContent + ' ' + r.querySelector('.plan-percent').textContent),
@@ -194,8 +194,10 @@ test('a chat whose turn ran out of usage offers to switch and continue, and the 
   const c = await open();
   const page = await openPage(t, c, '#/s/live');
   await page.until(`!!document.querySelector('#notice') && !!document.querySelector('.btn.context, textarea, .composer')`, 15_000);
+  await page.evaluate(`window.asked = []; const real = window.fetch; window.fetch = (...a) => { window.asked.push(String(a[0])); return real(...a); }`);
   await request(c.s, 'POST', '/api/sessions/live/send', { headers: { origin: c.s.origin, ...as(c.token) }, json: { text: 'hit the usage limit' } });
   await page.until(`!!document.querySelector('.notice-action button')`, 15_000);
+  assert.equal(await page.evaluate(`window.asked.includes('api/accounts')`), false, 'the pick comes from api/banners');
   assert.equal(await page.evaluate(`document.querySelector('#notice').textContent`), "You've hit your limit, resets at 3pm");
   assert.equal(await page.evaluate(`document.querySelector('.notice-action button').textContent`), 'Switch to Second and continue');
   await shot(page, 'c-chat-switch-and-continue');
@@ -229,5 +231,5 @@ test('the pane fits a phone and has no sideways scroll', { skip, timeout }, asyn
   const c = await open();
   const page = await openPage(t, c, '#/accounts', { phone: true });
   await page.until(`document.querySelectorAll('#accounts .account').length === 2`, 15_000);
-  assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth && document.querySelector('.passkeys-body').scrollWidth <= document.querySelector('.passkeys-body').clientWidth`), true);
+  assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth && document.querySelector('.accounts-body').scrollWidth <= document.querySelector('.accounts-body').clientWidth`), true);
 });

@@ -37,8 +37,9 @@ import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
-import { authInfo, makeLogin, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
+import { authInfo, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
+import { makeAccountLogins } from './lib/account-logins.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
@@ -767,13 +768,12 @@ async function contextFor(id, detail) {
 
 // Plan usage belongs to the account, so any chat Capcom runs on that account can answer it. The first asked is the one given, the first answer stands, and no chat
 // is ever started for it. Two others at most are tried, since each can take the full timeout to fail. The last answer of each account is kept with its time.
-const lastPlan = new Map();
 async function askPlan(account, first) {
   for (const chat of [first, ...runningChats().filter(c => c !== first && c.account === account).slice(0, 2)]) {
     const rows = await chat?.planUsage();
     if (rows) {
       const limits = shapePlan(rows);
-      lastPlan.set(account, { limits, at: Date.now() });
+      accountLogins.keepPlan(account, { limits, at: Date.now() });
       return limits;
     }
   }
@@ -1501,67 +1501,18 @@ const groupUpdates = makeGroupUpdates({
 // The sidebar banners: when Claude's sign-in ends, and merged changes waiting on main. Both answer from what was last worked out, so a request runs
 // no git, keychain or CLI work. See docs/adr/20261102-banners-for-sign-in-and-updates.md.
 // Each account has a sign-in of its own, a mark when it is out of usage, and its last plan usage. See docs/adr/20261102-switch-claude-accounts.md.
-const book = new Map();
-const INFO_MS = 10 * 60_000;
-function entryOf(account) {
-  let e = book.get(account.id);
-  if (!e) {
-    const extra = () => accounts.loginEnvOf(accounts.find(account.id));
-    e = { info: null, infoAt: 0, out: null };
-    // The CLI's answer also gives the email and plan, kept in memory for the Accounts page. orgId is kept only to tell that two accounts are the same one.
-    const ask = async () => {
-      const got = await authInfo({ claude: cfg.claude, extra: extra() });
-      if (got) { e.info = got.loggedIn ? { email: got.email, planType: got.subscriptionType, orgId: got.orgId } : null; e.infoAt = Date.now(); }
-      return got ? got.loggedIn : null;
-    };
-    e.ask = ask;
-    e.login = makeLogin({ readEnd: () => readLoginEnd({ security: cfg.security, service: accounts.serviceOf(accounts.find(account.id)) }), authStatus: ask, startSignIn: () => startSignIn({ claude: cfg.claude, extra: extra() }) });
-    book.set(account.id, e);
-  }
-  return e;
-}
-const eachEntry = () => accounts.list().map(a => ({ account: a, e: entryOf(a) }));
-const activeEntry = () => entryOf(accounts.active);
-const signInWaiting = () => eachEntry().some(({ e }) => e.login.state().stage === 'waiting');
-const usable = ({ e }) => !e.login.state().signedOut && !e.out;
-const spareAccount = () => eachEntry().find(x => x.account.id !== accounts.active.id && usable(x))?.account ?? null;
-const brief = a => a && { id: a.id, name: a.name };
-let switched = null;
-
-onAuthFailure(id => { const a = accounts.find(id); if (a) entryOf(a).login.authFailed().catch(() => {}); });
-
-// Moves new processes to another account, and stops the idle chats that are on the old one. The rest stop as they go idle.
-function switchTo(account) {
-  accounts.prepare(account);
-  accounts.setActive(account.id);
-  retireOtherAccounts();
-}
-
-// With the setting on, the first out-of-usage mark on the active account switches to another signed-in account that is not out. It never picks an account
-// that is out, so two spent accounts cannot flip back and forth, and it resends nothing.
-function autoSwitch(from) {
-  const to = spareAccount();
-  if (!accounts.autoSwitch || !to || accounts.active.id !== from) return;
-  switchTo(to);
-  switched = { from, to: to.id, at: Date.now() };
-}
-
-onUsage((id, text) => {
-  const a = accounts.find(id);
-  if (!a) return;
-  entryOf(a).out = text ? { text, at: Date.now() } : null;
-  if (text) autoSwitch(id);
+const accountLogins = makeAccountLogins({
+  accounts,
+  authInfo: opts => authInfo({ claude: cfg.claude, ...opts }),
+  readLoginEnd: opts => readLoginEnd({ security: cfg.security, ...opts }),
+  startSignIn: opts => startSignIn({ claude: cfg.claude, ...opts }),
+  retireOtherAccounts,
+  restarting: () => updates.state().stage === 'restarting',
 });
+onAuthFailure(accountLogins.authFailed);
+onUsage(accountLogins.markUsage);
 
-const accountsBanner = () => {
-  const spare = spareAccount();
-  const out = activeEntry().out;
-  return { count: accounts.list().length, out: out && spare ? { ...out, name: accounts.active.name, to: brief(spare) } : null, auto: switched && { at: switched.at, from: brief(accounts.find(switched.from)), to: brief(accounts.find(switched.to)) } };
-};
-// The sign-in banner follows the active account, and names it once there is more than one.
-const loginNow = () => ({ ...activeEntry().login.state(), ...(accounts.list().length > 1 && { account: accounts.active.name }) });
-const bannersNow = () => ({ login: loginNow(), update: updates.state(), accounts: accountsBanner() });
-const refreshLogins = () => Promise.all(eachEntry().map(({ e }) => e.login.refresh())).catch(() => {});
+const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.state(), accounts: accountLogins.banner() });
 
 const updates = makeUpdate({
   root: cfg.updateRoot,
@@ -1579,12 +1530,10 @@ async function bannersApi(req, res, parts) {
   if (req.method !== 'POST' || parts.length !== 3 || !['sign-in', 'update'].includes(step)) return send(res, 404, { error: 'Not found' });
   if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
   // `claude auth login` is not a chat, so the restart helper would not wait for it.
-  if (step === 'sign-in' && updates.state().stage === 'restarting') return send(res, 409, { error: 'GhostShell is about to restart, so sign in once it is back.' });
   if (step === 'sign-in') {
-    if (signInWaiting() && activeEntry().login.state().stage !== 'waiting') return send(res, 409, { error: 'Another sign-in is waiting on the Mac.' });
-    accounts.prepare(accounts.active);
-    activeEntry().login.signIn();
-  } else if (signInWaiting() && updates.state().restart) return send(res, 409, { error: 'A sign-in is waiting on the Mac, so GhostShell cannot restart yet.' });
+    const refused = accountLogins.signIn(accounts.active);
+    if (refused) return send(res, 409, { error: refused });
+  } else if (accountLogins.waiting() && updates.state().restart) return send(res, 409, { error: 'A sign-in is waiting on the Mac, so GhostShell cannot restart yet.' });
   else {
     const { problem } = await updates.update();
     if (problem) return send(res, 409, { error: problem });
@@ -1592,95 +1541,82 @@ async function bannersApi(req, res, parts) {
   return send(res, 200, bannersNow());
 }
 
-// What the Accounts page shows. The email and plan come from the CLI's own answer, asked again at most every 10 minutes. No token, orgId or setting is in it.
-async function accountsNow({ fresh = false } = {}) {
-  const now = Date.now();
-  if (fresh) await Promise.all(eachEntry().filter(({ e }) => now - e.infoAt > INFO_MS).map(({ e }) => e.ask()));
-  const list = eachEntry();
-  const same = ({ e }, x) => e.info?.orgId && e.info.email && x.e.info?.orgId === e.info.orgId && x.e.info.email === e.info.email;
-  return {
-    accounts: list.map(x => {
-      const { account, e } = x;
-      const { visible, ...login } = e.login.state();
-      const chats = runningChats().filter(c => c.account === account.id).map(c => ({ id: c.id, title: findRow(c.id)?.title || UNTITLED, state: c.state }));
-      return {
-        id: account.id, name: account.name, active: account.id === accounts.active.id, first: account.id === accounts.list()[0].id, ...login,
-        email: e.info?.email ?? null, planType: e.info?.planType ?? null,
-        sameAs: !login.signedOut ? list.find(y => y.account.id !== account.id && !y.e.login.state().signedOut && same(x, y))?.account.id ?? null : null,
-        out: e.out, plan: lastPlan.get(account.id) ?? null, chats,
-      };
-    }),
-    autoSwitch: accounts.autoSwitch,
-    auto: accountsBanner().auto,
-    waiting: signInWaiting(),
-  };
-}
+// What the Accounts page shows, from what was last worked out. No token, orgId or setting is in it.
+const accountsNow = () => ({
+  accounts: accountLogins.view().map(a => ({
+    ...a, active: a.id === accounts.active.id, first: a.id === accounts.list()[0].id,
+    chats: runningChats().filter(c => c.account === a.id).map(c => ({ id: c.id, title: findRow(c.id)?.title || UNTITLED, state: c.state })),
+  })),
+  autoSwitch: accounts.autoSwitch,
+  auto: accountLogins.banner().auto,
+  waiting: accountLogins.waiting(),
+});
 
 // Asks up to two running chats of each account for its plan usage, so the page can show every account's last answer. No chat is started.
 const askPlans = () => Promise.all(accounts.list().map(a => askPlan(a.id, null)));
+
+// Why a chat stays on the account it started under after a switch, and that it moves once that ends.
+function keptWords(chat) {
+  const [what, ends] = chat.pending.size ? ['waiting on an approval', 'it is answered'] : chat.state !== 'idle' ? ['still in a turn', 'the turn ends'] : ['still running a job', 'the job ends'];
+  return `That chat is ${what} on ${accounts.find(chat.account)?.name ?? 'the other account'}. It moves to ${accounts.active.name} once ${ends}.`;
+}
 
 // GET api/accounts lists them. POST api/accounts adds one by name and starts its sign-in, and POST api/accounts/<id>/sign-in starts one. The rest are
 // POST api/accounts/<id>/rename, POST api/accounts/<id>/use (with `continue`, a session to send "Continue." to), POST api/accounts/auto, POST api/accounts/seen and
 // POST api/accounts/plan. All of them run something as the owner, so they take the stricter origin check.
 async function accountsApi(req, res, parts) {
-  if (req.method === 'GET' && parts.length === 2) return send(res, 200, await accountsNow({ fresh: true }));
+  if (req.method === 'GET' && parts.length === 2) return send(res, 200, accountsNow());
   if (req.method !== 'POST') return send(res, 404, { error: 'Not found' });
   if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
   const body = await readJson(req, 10_000);
   if (!body) return send(res, 400, { error: 'Send a JSON body.' });
   const refuse = (status, error) => send(res, status, { error });
-  const blocked = () => (updates.state().stage === 'restarting' ? 'GhostShell is about to restart, so sign in once it is back.' : signInWaiting() ? 'Another sign-in is waiting on the Mac.' : '');
-  const signIn = account => {
-    accounts.prepare(account);
-    entryOf(account).login.signIn();
-  };
   if (parts.length === 2) {
-    if (blocked()) return refuse(409, blocked());
+    if (accountLogins.blocked()) return refuse(409, accountLogins.blocked());
     const { account, problem } = accounts.add(body.name);
     if (problem) return refuse(400, problem);
-    signIn(account);
-    await entryOf(account).login.refresh();
-    return send(res, 200, { ...(await accountsNow()), added: account.id });
+    accountLogins.signIn(account);
+    await accountLogins.refresh(account);
+    return send(res, 200, { ...accountsNow(), added: account.id });
   }
   const step = parts[2];
   if (parts.length === 3 && step === 'auto') {
     if (typeof body.on !== 'boolean') return refuse(400, 'Say whether to switch by itself.');
     accounts.setAuto(body.on);
-    return send(res, 200, await accountsNow());
+    return send(res, 200, accountsNow());
   }
   if (parts.length === 3 && step === 'seen') {
-    switched = null;
-    return send(res, 200, await accountsNow());
+    accountLogins.seen();
+    return send(res, 200, accountsNow());
   }
   if (parts.length === 3 && step === 'plan') {
     await askPlans();
-    return send(res, 200, await accountsNow());
+    return send(res, 200, accountsNow());
   }
   const account = accounts.find(parts[2]);
   if (!account || parts.length !== 4) return refuse(404, 'Not found');
   if (parts[3] === 'sign-in') {
-    if (blocked() && entryOf(account).login.state().stage !== 'waiting') return refuse(409, blocked());
-    signIn(account);
-    return send(res, 200, await accountsNow());
+    const refused = accountLogins.signIn(account);
+    if (refused) return refuse(409, refused);
+    return send(res, 200, accountsNow());
   }
   if (parts[3] === 'rename') {
     const { problem } = accounts.rename(account.id, body.name);
     if (problem) return refuse(400, problem);
-    return send(res, 200, await accountsNow());
+    return send(res, 200, accountsNow());
   }
   if (parts[3] !== 'use') return refuse(404, 'Not found');
   const row = body.continue === undefined ? null : typeof body.continue === 'string' && /^[\w-]+$/.test(body.continue) ? findRow(body.continue) : null;
   if (body.continue !== undefined && !row) return refuse(404, NO_SESSION);
-  const entry = entryOf(account);
-  await entry.login.refresh();
-  if (entry.login.state().signedOut) return refuse(409, `${account.name} is signed out. Sign it in first.`);
-  if (account.id !== accounts.active.id) switchTo(account);
-  // A chat with a background job keeps its process on the old account, so "Continue." would go to the account that is out.
+  await accountLogins.refresh(account);
+  if (accountLogins.state(account).signedOut) return refuse(409, `${account.name} is signed out. Sign it in first.`);
+  if (account.id !== accounts.active.id) accountLogins.switchTo(account);
+  // A chat that is busy keeps its process on the old account, so "Continue." would go to the account that is out.
   const kept = row && getChat(row.id);
   kept?.retire(true);
-  if (kept?.proc?.stdin.writable && kept.account !== accounts.active.id) return refuse(409, `That chat is still running a job on ${accounts.find(kept.account)?.name ?? 'the other account'}. It moves to ${accounts.active.name} once the job ends.`);
+  if (kept?.proc?.stdin.writable && kept.account !== accounts.active.id) return refuse(409, keptWords(kept));
   if (row) ensureChat(row.id, row).send('Continue.');
-  return send(res, 200, await accountsNow());
+  return send(res, 200, accountsNow());
 }
 
 async function api(req, res, u) {
@@ -2036,8 +1972,8 @@ server.listen(cfg.port, '127.0.0.1', () => {
   setInterval(checkRoutines, 30_000).unref();
   checkRoutines();
   accounts.prepare(accounts.active);
-  refreshLogins();
-  setInterval(refreshLogins, REFRESH_MS).unref();
+  accountLogins.refreshAll();
+  setInterval(accountLogins.refreshAll, REFRESH_MS).unref();
   setTimeout(updates.check, cfg.updateDelayMs).unref();
   setInterval(updates.check, CHECK_EVERY_MS).unref();
 });
@@ -2045,7 +1981,7 @@ setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
 setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates failed: ${e.message}`)), scaled(cfg.groupUpdateScale).tick).unref();
 // Whatever the terminal started ends with Capcom, so a restart leaves nothing running behind. A signal ends the process through
 // exit, which kills the command groups; without a handler the default would end it first.
-process.on('exit', () => { terminal.killAll(); for (const { e } of eachEntry()) e.login.stop(); });
+process.on('exit', () => { terminal.killAll(); accountLogins.stopAll(); });
 for (const name of ['SIGTERM', 'SIGINT']) process.on(name, () => process.exit(128 + os.constants.signals[name]));
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
 if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine && !s.scheduled && !awaitsFirstMessage(s.id)) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));

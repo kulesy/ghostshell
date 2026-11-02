@@ -2,7 +2,7 @@
 // usage and for a switch GhostShell made by itself, and the button in a chat that switches and carries on. See docs/adr/20261102-switch-claude-accounts.md.
 import { api } from './api.js';
 import { Banner } from './banner.js';
-import { autoBanner, needsSignIn, outBanner, planAsOf, sameAccountWords, signInLine, switchTarget, waitingWords } from './account-rules.js';
+import { autoBanner, needsSignIn, outBanner, planAsOf, sameAccountWords, signInLine, waitingWords } from './account-rules.js';
 import { Button, useRefusal } from './banners.js';
 import { Plan } from './context.js';
 import { planRows } from './context-rules.js';
@@ -92,7 +92,7 @@ function AccountRow({ a, list, act }) {
                 return !problem;
               }} />`
           : html`<p class="account-name"><span id=${`account-${a.id}`}>${a.name}</span>${a.active ? html` <span class="badge" data-variant="secondary">Active</span>` : null}</p>`}
-        <p class="passkey-meta">${a.email ? html`<span>${a.email}</span>` : null}${a.planType ? html`<span>${a.planType}</span>` : null}</p>
+        <p class="account-meta">${a.email ? html`<span>${a.email}</span>` : null}${a.planType ? html`<span>${a.planType}</span>` : null}</p>
         <p class="account-line">${signInLine(a)}</p>
       </div>
       <div class="account-actions">
@@ -149,11 +149,11 @@ export function AccountsPane() {
       <a class="btn back" data-variant="ghost" data-size="sm" href="#/" aria-label="Back to sessions">${chevron()}Sessions</a>
       <div class="chat-title"><h2>Accounts</h2></div>
     </header>
-    <div class="passkeys-body">
-      <div class="passkeys-inner">
-        <p class="quiet passkey-lead">Chats and routines run on the active account. Switching takes one click and no sign-in, and a chat carries on where it was.</p>
+    <div class="accounts-body">
+      <div class="accounts-inner">
+        <p class="quiet account-lead">Chats and routines run on the active account. Switching takes one click and no sign-in, and a chat carries on where it was.</p>
         ${list
-          ? html`<ul class="passkey-list account-list">${list.accounts.map(a => html`<${AccountRow} key=${a.id} a=${a} list=${list} act=${act} />`)}</ul>
+          ? html`<ul class="account-list">${list.accounts.map(a => html`<${AccountRow} key=${a.id} a=${a} list=${list} act=${act} />`)}</ul>
             <${AddForm} list=${list} act=${act} />
             <div class="account-auto">
               <label><input type="checkbox" checked=${list.autoSwitch} onChange=${toggle} aria-describedby="account-auto-hint" /> Switch accounts by itself</label>
@@ -191,14 +191,14 @@ export function AutoBanner({ banners, load }) {
   return html`<${Banner} ...${view} problem=${refused} actions=${html`<${Button} action=${{ label: 'Dismiss', variant: 'ghost' }} onClick=${dismiss} />`} />`;
 }
 
-// Under a chat's error notice, when its turn ran out of usage and another account can take over: switches to it and sends "Continue.".
+// Under a chat's error notice, when its turn ran out of usage and another account can take over: switches to the one the server picks for the banner and sends "Continue.".
 export function SwitchAndContinue({ ctrl, on }) {
   const [target, setTarget] = useState(null);
   useEffect(() => {
     setTarget(null);
     if (!on) return undefined;
     let live = true;
-    api('api/accounts').then(list => { if (live) setTarget(switchTarget(list)); }).catch(() => {});
+    api('api/banners').then(banners => { if (live) setTarget(banners?.accounts?.out?.to ?? null); }).catch(() => {});
     return () => { live = false; };
   }, [on]);
   if (!on || !target) return null;

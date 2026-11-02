@@ -157,6 +157,45 @@ test('a lock the CLI holds on the account\'s .claude.json skips the copy, and an
   assert.ok(!fs.existsSync(path.join(account.dir, '.claude.json')), 'no settings to copy');
 });
 
+test('a lock a killed CLI left over a minute ago is taken over, and a fresh one is not', () => {
+  const f = fresh();
+  fs.writeFileSync(f.json, JSON.stringify({ mcpServers: { a: {} } }));
+  const a = f.make();
+  const { account } = a.add('Second');
+  const lock = path.join(account.dir, '.claude.json.lock');
+  fs.mkdirSync(lock, { recursive: true });
+  const old = new Date(Date.now() - 61_000);
+  fs.utimesSync(lock, old, old);
+  a.prepare(account);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(account.dir, '.claude.json'), 'utf8')), { mcpServers: { a: {} } });
+  assert.ok(!fs.existsSync(lock), 'taken, used and let go');
+
+  fs.rmSync(path.join(account.dir, '.claude.json'));
+  const recent = new Date(Date.now() - 30_000);
+  fs.mkdirSync(lock);
+  fs.utimesSync(lock, recent, recent);
+  a.prepare(account);
+  assert.ok(!fs.existsSync(path.join(account.dir, '.claude.json')), 'a lock under a minute old is still held');
+  assert.ok(fs.existsSync(lock));
+});
+
+test('a corrupt accounts.json is moved aside without being quoted, and the first account carries on', () => {
+  const f = fresh();
+  fs.writeFileSync(path.join(f.state, 'accounts.json'), '{ "accounts": [ secret-token-text');
+  const said = [];
+  const a = makeAccounts(f.state, { env: {}, home: () => f.home, warn: m => said.push(m) });
+  assert.deepEqual(a.list(), [{ id: MAIN, name: 'Main' }]);
+  const aside = fs.readdirSync(f.state).filter(n => n.startsWith('accounts.json.bad-'));
+  assert.equal(aside.length, 1);
+  assert.equal(fs.readFileSync(path.join(f.state, aside[0]), 'utf8'), '{ "accounts": [ secret-token-text');
+  assert.ok(!fs.existsSync(path.join(f.state, 'accounts.json')));
+  assert.equal(said.length, 1);
+  assert.ok(!said[0].includes('secret-token-text'));
+
+  a.add('Second');
+  assert.equal(fs.readdirSync(f.state).filter(n => n.startsWith('accounts.json.bad-')).length, 1, 'the next save leaves the moved file alone');
+});
+
 test('the first account has no folder to prepare', () => {
   const f = fresh();
   const a = f.make();

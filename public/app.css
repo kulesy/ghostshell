@@ -4237,18 +4237,18 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .offer-progress:empty { display: none; }
 
-.passkeys-body, .routines-body {
+.passkeys-body, .routines-body, .accounts-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 1.25rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
 }
 
-.passkeys-inner { max-width: 36rem; margin-inline: auto; }
+.passkeys-inner, .accounts-inner { max-width: 36rem; margin-inline: auto; }
 
-.passkey-lead { margin: 0; }
+.passkey-lead, .account-lead { margin: 0; }
 
-.passkey-list { list-style: none; margin: 1.25rem 0 0; padding: 0; border-top: 1px solid var(--border); }
+.passkey-list, .account-list { list-style: none; margin: 1.25rem 0 0; padding: 0; border-top: 1px solid var(--border); }
 
 .passkey {
   display: flex;
@@ -4264,7 +4264,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .passkey-name { margin: 0; font-weight: 600; }
 
-.passkey-meta {
+.passkey-meta, .account-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0 0.9rem;
@@ -4281,7 +4281,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .passkey-why { margin: 0; font-size: 0.875rem; }
 
-.passkeys-inner .notice { margin: 0.85rem 0 0; }
+.passkeys-inner .notice, .accounts-inner .notice { margin: 0.85rem 0 0; }
 
 .passkey-status { margin: 0.85rem 0 0; font-size: 0.875rem; color: var(--success-foreground); }
 

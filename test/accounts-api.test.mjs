@@ -28,6 +28,7 @@ async function open({ signedOut = false, main = null, second = {}, auto = false,
   const c = { s, token, dir };
   await until(async () => (await get(c, '/api/banners')).body().login.endsAt !== null);
   await until(async () => by(await accountsOf(c), 'second').signedOut === signedOut);
+  await until(async () => (await accountsOf(c)).accounts.every(a => a.signedOut || a.email));
   return c;
 }
 
@@ -250,6 +251,19 @@ test('the switch and continue sends nothing to a chat whose background job keeps
   assert.equal(r.status, 409);
   assert.match(r.body().error, /still running a job on Main/);
   assert.equal(await activeOf(c), 'second');
+  assert.ok(!calls(c).some(x => x.user === 'Continue.'));
+});
+
+test('a chat that is mid-turn or waiting on an approval is told apart from one with a job when the switch cannot move it', async () => {
+  const c = await open();
+  await say(c, 'live', 'ask for approval');
+  await say(c, 'other', 'keep working');
+  await until(async () => by(await accountsOf(c), 'main').chats.map(x => x.state).sort().join() === 'waiting,working');
+  const waiting = await post(c, '/api/accounts/second/use', { continue: 'live' });
+  assert.equal(waiting.status, 409);
+  assert.equal(waiting.body().error, 'That chat is waiting on an approval on Main. It moves to Second once it is answered.');
+  const working = await post(c, '/api/accounts/second/use', { continue: 'other' });
+  assert.equal(working.body().error, 'That chat is still in a turn on Main. It moves to Second once the turn ends.');
   assert.ok(!calls(c).some(x => x.user === 'Continue.'));
 });
 

@@ -10,9 +10,6 @@ export const needsSignIn = (a, now = Date.now()) => a.signedOut || (a.endsAt !==
 
 export const planAsOf = at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-// The account a chat that ran out of usage can move to: the first one that is signed in, not out and not the active one.
-export const switchTarget = list => list?.accounts?.find(a => !a.active && !a.signedOut && !a.out) ?? null;
-
 export const sameAccountWords = (a, list) => {
   const other = list.accounts.find(x => x.id === a.sameAs);
   return other ? `This is the same Claude account as ${other.name}. The browser approved the sign-in page with the account it already had. Sign in again and approve it with a different account.` : '';
