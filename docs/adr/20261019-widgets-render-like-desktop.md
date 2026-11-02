@@ -47,6 +47,7 @@ Chosen option: "Give the frame host styles and a small script written for Capcom
 - ✅ A widget written for Desktop draws the same in Capcom, light and dark, and a change of theme does not reload it.
 - ✅ A widget cannot reach Capcom, its cookie or its API, and cannot send a message or open a link unless the owner clicked in a widget in the last five seconds.
 - ✅ The owner sees that a widget is coming, in the model's own phrases, from the moment the model starts writing it.
+- ✅ A message a widget sends leaves the chat scrolled where it is, where one from the prompt box goes to the end, so the owner keeps their place in a widget with a button for each step ([#36](https://github.com/kulesy/ghostshell/issues/36)).
 - ✅ The guide is read once per chat that draws a widget, so the cost is not in every request.
 - ❌ A widget can still navigate its own frame once, which sends one request to any address. Capcom closes the frame on the second load.
 - ❌ A click anywhere inside a widget lets it send one message whose text it chooses, and the owner sees the text in the chat only after it is sent.
