@@ -76,12 +76,12 @@ test('Capcom\'s own choice beats Desktop\'s link in both directions: a null take
   assert.deepEqual(places(await index(s, token)).groups, { 'cg-work': ['Boss [Kid two, Peer]'], 'cg-home': ['Kid'] });
 });
 
-test('links that lead back to each other show their sessions at the top level, and a chain of links shows one level deep with each session after the one it nests under', async () => {
+test('links that lead back to each other show their sessions at the top level, and a chain of links shows one level deep in the list order', async () => {
   const { s, token } = await ready({
     sessions: [{ id: 'a', title: 'A', ago: 1 }, { id: 'b', title: 'B', ago: 2 }, { id: 'c', title: 'C', ago: 3 }, { id: 'x', title: 'X', ago: 4 }, { id: 'y', title: 'Y', ago: 5 }, { id: 'z', title: 'Z', ago: 6 }],
     layout: { parents: { a: 'b', b: 'a', x: 'y', y: 'z' } },
   });
-  assert.deepEqual(shape((await index(s, token)).ungrouped), ['A', 'B', 'C', 'Z [Y, X]']);
+  assert.deepEqual(shape((await index(s, token)).ungrouped), ['A', 'B', 'C', 'Z [X, Y]']);
 });
 
 test('the nest route refuses what cannot be nested with a short sentence, and a refusal writes nothing', async () => {
@@ -146,7 +146,7 @@ test('a parent dropped on another session nests there with its children, which s
   const res = await call(s, token, 'nest', { id: 'boss', parent: 'peer' });
   assert.equal(res.body().parent, 'peer');
   assert.deepEqual(onDisk(s).parents, { boss: 'peer' }, "only the parent is written, the children's links to it stay Desktop's");
-  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Boss, Kid, Kid two]']);
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Kid two, Boss]']);
   assert.deepEqual((await index(s, token)).groups[0].sessions[0].children.map(r => r.parent), ['peer', 'peer', 'peer']);
 });
 
@@ -255,7 +255,7 @@ test('archiving a child archives it with the sessions below it and no more, and 
   assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer']);
 });
 
-// Peer holds Boss and Pal, and Kid and Kid two link to Boss, so they show under Peer with no link to it of their own. Pal links to Peer.
+// Peer holds Boss and Pal, and Kid and Kid two link to Boss, so they show under Peer, beside Boss, with no link to it of their own. Pal links to Peer.
 const HIDDEN = [
   { id: 'peer', title: 'Peer', group: 'cg-work', ago: 6 },
   { id: 'boss', title: 'Boss', parent: 'peer', ago: 5 },
@@ -271,7 +271,7 @@ async function underPeer(way) {
   const byCapcom = way === WAYS[1];
   const made = await ready({ sessions: byCapcom ? HIDDEN.map(({ id, parent, ...rest }) => ({ id, ...rest, ...(id !== 'boss' && parent && { parent }) })) : HIDDEN });
   if (byCapcom) await call(made.s, made.token, 'nest', { id: 'boss', parent: 'peer' });
-  assert.deepEqual(places(await index(made.s, made.token)).groups['cg-work'], ['Peer [Pal, Boss, Kid, Kid two]', 'Other'], way);
+  assert.deepEqual(places(await index(made.s, made.token)).groups['cg-work'], ['Peer [Kid, Kid two, Pal, Boss]', 'Other'], way);
   return { ...made, linked: byCapcom ? { boss: 'peer' } : {} };
 }
 
@@ -309,19 +309,20 @@ for (const way of WAYS) {
     assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Other']);
     assert.deepEqual(onDisk(s).parents, linked);
     await call(s, token, 'archive', { id: 'peer', archived: false });
-    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Pal, Boss, Kid, Kid two]', 'Other']);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Kid two, Pal, Boss]', 'Other']);
   });
 
-  test(`${way}: Boss brought back alone from an archived Peer moves up to its place with Kid and Kid two still under it`, async () => {
+  test(`${way}: Boss brought back alone from an archived Peer moves up to its place, and Kid and Kid two, shown beside it under Peer, stay archived`, async () => {
     const { s, token, linked } = await underPeer(way);
     await call(s, token, 'archive', { id: 'peer', archived: true });
-    assert.equal((await call(s, token, 'archive', { id: 'boss', archived: false })).body().subs, 2);
-    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss [Kid, Kid two]', 'Other']);
+    assert.equal((await call(s, token, 'archive', { id: 'boss', archived: false })).body().subs, undefined);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss', 'Other']);
+    assert.deepEqual(titles(await archivedList(s, token)).sort(), ['Kid', 'Kid two', 'Pal', 'Peer']);
     assert.deepEqual(onDisk(s).parents, linked);
   });
 }
 
-// Head holds Alpha and Charlie, Bravo links to Alpha and Delta to Bravo, so the family shows Charlie, then Alpha, Bravo and Delta.
+// Head holds Alpha and Charlie, Bravo links to Alpha and Delta to Bravo, so the family shows Charlie, Delta, Bravo and Alpha, in the list order.
 const LINE = [
   { id: 'head', title: 'Head', group: 'cg-work', ago: 50 },
   { id: 'a', title: 'Alpha', parent: 'head', ago: 40 },
@@ -331,7 +332,7 @@ const LINE = [
   { id: 'other', title: 'Other', group: 'cg-work', ago: 60 },
 ];
 
-test('a session with nothing under it that leaves its family, by any route, leaves the rest depth first and writes no link for them', async () => {
+test('a session that leaves its family, by any route, leaves the rest in the list order and writes no link for them', async () => {
   for (const [route, json, own] of [
     ['archive', { id: 'c', archived: true }, {}],
     ['nest', { id: 'c', parent: null }, { c: null }],
@@ -340,14 +341,14 @@ test('a session with nothing under it that leaves its family, by any route, leav
     ['pin', { id: 'c', pinned: true }, { c: null }],
   ]) {
     const { s, token } = await ready({ sessions: LINE });
-    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Head [Charlie, Alpha, Bravo, Delta]', 'Other']);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Head [Charlie, Delta, Bravo, Alpha]', 'Other']);
     assert.equal((await call(s, token, route, json)).status, 200, route);
-    assert.deepEqual(titles(rowOf(await index(s, token), 'head').children), ['Alpha', 'Bravo', 'Delta'], route);
+    assert.deepEqual(titles(rowOf(await index(s, token), 'head').children), ['Delta', 'Bravo', 'Alpha'], route);
     assert.deepEqual(onDisk(s).parents, own, route);
   }
 });
 
-test('a session that leaves its family hands the ones straight under it to the session it showed under, and those further down keep their links', async () => {
+test('a session that leaves its family hands the ones linked straight to it to the parent, and those further down keep their links', async () => {
   for (const [route, json, own] of [
     ['nest', { id: 'a', parent: null }, { a: null }],
     ['nest', { id: 'a', parent: 'other' }, { a: 'other' }],
@@ -357,31 +358,51 @@ test('a session that leaves its family hands the ones straight under it to the s
     const { s, token } = await ready({ sessions: LINE });
     assert.equal((await call(s, token, route, json)).status, 200, route);
     const ix = await index(s, token);
-    assert.deepEqual(titles(rowOf(ix, 'head').children), ['Charlie', 'Bravo', 'Delta'], route);
-    assert.equal(rowOf(ix, 'd').via, 'b', route);
+    assert.deepEqual(titles(rowOf(ix, 'head').children), ['Charlie', 'Delta', 'Bravo'], route);
+    assert.deepEqual([rowOf(ix, 'd').via, rowOf(ix, 'd').near], ['head', 'b'], route);
     assert.deepEqual(onDisk(s).parents, { ...own, b: 'head' }, route);
   }
 });
 
-test('archiving a session in a family writes no link, as the ones under it go with it and come back under it when it returns', async () => {
+// T links to H and G links to T, by Desktop's link or by Capcom's own, and the list shows T and G side by side under H.
+const INCIDENT = {
+  Desktop: { sessions: [{ id: 'h', title: 'H', group: 'cg-work', ago: 30 }, { id: 't', title: 'T', parent: 'h', ago: 20 }, { id: 'g', title: 'G', parent: 't', ago: 10 }] },
+  Capcom: { sessions: [{ id: 'h', title: 'H', group: 'cg-work', ago: 30 }, { id: 't', title: 'T', parent: 'h', ago: 20 }, { id: 'g', title: 'G', ago: 10 }], layout: { parents: { g: 't' } } },
+};
+
+for (const [way, mine] of Object.entries(INCIDENT)) {
+  test(`${way} links G to T: moving, pinning, nesting or archiving T leaves G under H, with a link to H of its own unless T was archived`, async () => {
+    for (const [route, json] of [['move', { id: 't', group: 'cg-home' }], ['pin', { id: 't', pinned: true }], ['nest', { id: 't', parent: null }], ['archive', { id: 't', archived: true }]]) {
+      const { s, token } = await ready(mine);
+      assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['H [G, T]'], `${way} ${route}`);
+      assert.equal((await call(s, token, route, json)).status, 200, route);
+      const ix = await index(s, token);
+      assert.deepEqual([rowOf(ix, 'g').parent, rowOf(ix, 'g').via], ['h', 'h'], route);
+      assert.deepEqual(titles(rowOf(ix, 'h').children), ['G'], route);
+      assert.equal(onDisk(s).parents.g, route === 'archive' ? (way === 'Capcom' ? 't' : undefined) : 'h', route);
+    }
+  });
+}
+
+test('archiving a session in a family writes no link and takes only it, as the ones linked to it show beside it, and it comes back in its place', async () => {
   const { s, token } = await ready({ sessions: LINE });
-  await call(s, token, 'archive', { id: 'a', archived: true });
-  assert.deepEqual(titles(rowOf(await index(s, token), 'head').children), ['Charlie']);
+  assert.equal((await call(s, token, 'archive', { id: 'a', archived: true })).body().subs, undefined);
+  assert.deepEqual(titles(rowOf(await index(s, token), 'head').children), ['Charlie', 'Delta', 'Bravo']);
   await call(s, token, 'archive', { id: 'a', archived: false });
-  assert.deepEqual(titles(rowOf(await index(s, token), 'head').children), ['Charlie', 'Alpha', 'Bravo', 'Delta']);
+  assert.deepEqual(titles(rowOf(await index(s, token), 'head').children), ['Charlie', 'Delta', 'Bravo', 'Alpha']);
   assert.deepEqual(onDisk(s).parents, {});
 });
 
-test('a head nested under another session takes its family along in the same order, and only the head is written', async () => {
+test('a head nested under another session takes its family along in the list order, and only the head is written', async () => {
   const { s, token } = await ready({ sessions: LINE });
   assert.equal((await call(s, token, 'nest', { id: 'head', parent: 'other' })).body().parent, 'other');
-  assert.deepEqual(titles(rowOf(await index(s, token), 'other').children), ['Head', 'Charlie', 'Alpha', 'Bravo', 'Delta']);
+  assert.deepEqual(titles(rowOf(await index(s, token), 'other').children), ['Charlie', 'Delta', 'Bravo', 'Alpha', 'Head']);
   assert.deepEqual(onDisk(s).parents, { head: 'other' });
 });
 
 test('an archived session in a family gets no link of its own when another leaves, and shows under the session it is linked to when it comes back', async () => {
   const { s, token } = await ready({ sessions: HIDDEN.map(r => (r.id === 'kid2' ? { ...r, archived: true } : r)) });
-  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Pal, Boss, Kid]', 'Other']);
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Pal, Boss]', 'Other']);
   assert.equal((await call(s, token, 'nest', { id: 'boss', parent: null })).status, 200);
   assert.deepEqual(onDisk(s).parents, { kid: 'peer', boss: null });
   assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Pal]', 'Boss', 'Other']);
@@ -599,14 +620,14 @@ test('a chip that is open, dismissed or has no started session, or no session th
   assert.deepEqual(shape(ix.started), ['A', 'B', 'D']);
 });
 
-test('a session started from a chip by a session that is nested itself shows under the topmost parent, after its starter', async () => {
+test('a session started from a chip by a session that is nested itself shows under the topmost parent, beside its starter', async () => {
   const { s, token } = await ready({
     sessions: [{ id: 'top', title: 'Top', group: 'cg-work', ago: 8 }, { id: 'maker', title: 'Maker', parent: 'top', ago: 5 }, { id: 'made', title: 'Made', source: 'capcom', ago: 1 }],
     chips: STARTED,
   });
   const ix = await index(s, token);
-  assert.deepEqual(places(ix).groups['cg-work'], ['Top [Maker, Made]']);
-  assert.deepEqual([rowOf(ix, 'made').parent, rowOf(ix, 'made').via], ['top', 'maker']);
+  assert.deepEqual(places(ix).groups['cg-work'], ['Top [Made, Maker]']);
+  assert.deepEqual([rowOf(ix, 'made').parent, rowOf(ix, 'made').via, rowOf(ix, 'made').near], ['top', 'top', 'maker']);
   assert.equal(Object.hasOwn(onDisk(s), 'parents'), false);
 });
 

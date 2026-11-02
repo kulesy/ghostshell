@@ -10,9 +10,10 @@ import { findChromium, launch, notFound } from './browser.mjs';
 import { as, PASSWORD, request, signIn, start, until } from './harness.mjs';
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
+// Grand links to Kid, and the list shows it beside Kid under Top.
 //   top
 //     kid (asks a question)
-//       grand
+//     grand
 //   lead
 //     mover (moves while the tests run)
 //   loner
@@ -162,8 +163,8 @@ test('a chat with sub sessions has the Sub sessions tab, open and first, and a h
   assert.equal(await page.evaluate(`!!document.querySelector('#subsButton .subs-mark')`), true);
   assert.equal(await page.evaluate(`document.activeElement?.closest('#panel') === null`), true, 'opening by itself leaves the focus where it was');
   assert.equal(await text(page, '.subs-sum'), '2 sub sessions, 1 waiting on you');
-  assert.deepEqual(await all(page, '.subs .status-heading', 'el.textContent'), ['Waiting on you (1)'], 'Kid is under Waiting on you and not Recent activity');
-  assert.deepEqual(await all(page, '.subs .status-part .sub-title', 'el.firstChild.textContent'), ['Kid']);
+  assert.deepEqual(await all(page, '.subs .status-heading', 'el.textContent'), ['Waiting on you (1)', 'Recent activity (1)'], 'Kid is under Waiting on you and Grand, beside it, under Recent activity');
+  assert.deepEqual(await all(page, '.subs .status-part .sub-title', 'el.firstChild.textContent'), ['Kid', 'Grand']);
   assert.deepEqual(page.problems, []);
 });
 
@@ -172,17 +173,17 @@ test('a line has its title as a link, when it last moved, what to do next about 
   await page.until(`document.querySelector('.sub .sub-next')?.textContent === 'Answer its question: Shall I merge it?'`);
   assert.equal(await page.evaluate(`document.querySelector('.sub .sub-next').dataset.tone`), 'needs', 'Kid is marked as awaiting');
   assert.equal(await page.evaluate(`document.querySelectorAll('.sub .sub-said, .sub .sub-wait').length`), 0, 'one line, not a sentence and a line');
-  assert.deepEqual(await all(page, '#panel .sub-title', 'el.getAttribute("href") + " " + el.firstChild.textContent'), ['#/s/kid Kid']);
-  assert.equal(await text(page, '.sub .sub-roll'), '1 sub session');
+  assert.deepEqual(await all(page, '#panel .sub-title', 'el.getAttribute("href") + " " + el.firstChild.textContent'), ['#/s/kid Kid', '#/s/grand Grand']);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.sub .sub-roll').length`), 0, 'no line has sessions below it, so none has a roll-up');
   assert.equal(await page.evaluate(`!!document.querySelector('.sub .status-time')?.textContent`), true);
   assert.equal(await text(page, '.sub-card .sub-pill'), 'Waiting on you');
   assert.equal(await page.evaluate(`!!document.querySelector('.sub .row-dot')`), false, 'the pill carries the state, not a dot');
   assert.equal(await page.evaluate(`document.querySelector('.sub .sub-fold').tagName`), 'BUTTON');
-  assert.deepEqual(await asked(page), [['kid', null]], 'one request, for the one line drawn');
+  assert.deepEqual((await asked(page)).flatMap(([ids]) => ids.split(',')).sort(), ['grand', 'kid'], 'the lines drawn, and no others');
   assert.deepEqual(page.problems, []);
 });
 
-test('a line opens to its whole reply and the sessions under it, and closes again, and a reply from another session has no Run', { skip, timeout }, async t => {
+test('a line opens to its whole reply with nothing under it, and closes again, and a reply from another session has no Run', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/top');
   await page.until(`!!document.querySelector('.sub .sub-fold')`);
   assert.equal(await page.evaluate(`document.querySelector('.sub-fold').getAttribute('aria-expanded')`), 'false');
@@ -195,11 +196,8 @@ test('a line opens to its whole reply and the sessions under it, and closes agai
   assert.match(await text(page, '.sub-reply'), /^The tests pass\. Merging next\./);
   assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.sub-reply [data-code="run"]')).display`), 'none', 'a block of another session\'s reply cannot be run here');
   assert.equal(await page.evaluate(`!!document.querySelector('.sub-reply [data-code="copy"]')`), true);
-  await page.until(`document.querySelectorAll('.sub-under .sub-title').length === 1`);
-  assert.equal(await text(page, '.sub-under .sub-title'), 'Grand');
-  assert.equal(controls.length, 2);
-  assert.equal(await page.evaluate(`document.getElementById(${JSON.stringify(controls[1])}) === document.querySelector('.sub-under')`), true);
-  assert.equal(await page.evaluate(`!document.querySelector('.sub-card').contains(document.querySelector('.sub-under'))`), true, 'the sessions under a card are not inside it');
+  assert.equal(await page.evaluate(`document.querySelectorAll('.sub-under').length`), 0, 'Grand is beside Kid, not under it');
+  assert.equal(controls.length, 1);
   const requests = await asked(page);
   assert.deepEqual(requests.filter(([, detail]) => detail === '1'), [['kid', '1']], 'the reply is read for the one line that was opened');
   assert.deepEqual(requests.flatMap(([ids]) => ids.split(',')).sort(), ['grand', 'kid', 'kid']);

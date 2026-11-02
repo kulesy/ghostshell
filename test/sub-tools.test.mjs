@@ -26,6 +26,7 @@ function transcript(id, entries) {
   indexTranscripts(projects, 0);
 }
 
+// The index the server builds is one level deep, so ROWS below goes deeper than it to test the walk itself.
 // `skip` is the nearest session that is not archived, which `via` holds in an index that leaves the archived ones out.
 const row = (id, via, extra) => ({ id, via, skip: via, title: `Session ${id}`, cwd: `/work/${id}`, branch: 'main', state: 'idle', archived: false, lastActivityAt: NOW - 2 * DAY, ...extra });
 //   up
@@ -335,6 +336,25 @@ test('a chip\'s new session is a sibling of its maker, so a send to it needs no 
   assert.match(sendSession({ session_id: 'made', message: 'hi' }, subs), /use read_sub_session later to see it\.$/);
   assert.match(sendSession({ session_id: 'kid', message: 'hi' }, subsFor(BESIDE, { self: 'made', send: sender('idle') })), /read_sub_session reaches only sub sessions and the sessions its chips started, so you cannot read it/);
   assert.match(sent.at(-1)[1], /from-name="Session made \(another session\)"/);
+});
+
+// The index is one level deep: Grand links to Kid, which links to Head, and all three show under Head.
+const FLAT = [row('head', null), row('kid', 'head'), row('grand', 'head', { near: 'kid' }), row('made', 'head', { near: 'kid', startedBy: 'kid' })];
+
+test('a session linked to another shows beside it, so the other does not list or read it, and one its chip started is still listed beside it', () => {
+  const kid = subsFor(FLAT, { self: 'kid' });
+  const list = listSubSessions({}, kid, NOW);
+  assert.match(list, /^Session "Session kid": no sub sessions, 1 started beside it\n/);
+  assert.doesNotMatch(list, /\[grand\]/);
+  assert.match(list, /beside it:\n- Session made \[made\]/);
+  refused(() => readSubSession({ session_id: 'grand' }, kid, NOW), NOT_BELOW);
+  assert.match(listSubSessions({}, subsFor(FLAT, { self: 'head' }), NOW), /^Session "Session head": 3 sub sessions\n/);
+});
+
+test('a session and the one linked to it are siblings, so a send between them needs no card', () => {
+  assert.equal(inOwnTree(subsFor(FLAT, { self: 'kid' }), 'grand'), true);
+  assert.equal(inOwnTree(subsFor(FLAT, { self: 'grand' }), 'kid'), true);
+  assert.equal(inOwnTree(subsFor(FLAT, { self: 'kid' }), 'head'), true, 'and the parent');
 });
 
 test('a message to itself and one to an id that is no session are refused, and nothing is sent', () => {

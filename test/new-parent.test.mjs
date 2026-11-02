@@ -131,7 +131,7 @@ test('a selection that holds a session and its child keeps the link between them
   assert.deepEqual(onDisk(s).parents, { boss: made.id });
   const ix = await index(s, token);
   assert.deepEqual(titles(rowOf(ix, made.id).children).sort(), ['Boss', 'Kid', 'Leaf', 'Mid'], 'the family follows its head');
-  assert.equal(rowOf(ix, 'kid').via, 'boss');
+  assert.deepEqual([rowOf(ix, 'kid').via, rowOf(ix, 'kid').near], [made.id, 'boss']);
   assert.equal(rowOf(ix, 'boss').via, made.id);
 });
 
@@ -164,17 +164,18 @@ test('an unselected child under a selected nested session stays with the session
   assert.deepEqual(titles(rowOf(ix, made.id).children), ['Mid', 'Peer']);
 });
 
-test('a selected child of a selected nested session rides along with it, and the rule for an unselected one is dropped for it', async () => {
+test('a selected session linked to another selected nested session shows beside it, so each links to the new parent and no rule for either is kept', async () => {
   const { s, token } = await ready();
   const made = (await make(s, token, { ids: ['mid', 'leaf', 'peer'], title: 'Mid, leaf and peer' })).body();
-  assert.deepEqual(onDisk(s).parents, { mid: made.id, peer: made.id });
-  assert.equal(rowOf(await index(s, token), 'leaf').via, 'mid');
+  assert.deepEqual(onDisk(s).parents, { leaf: made.id, mid: made.id, peer: made.id });
+  const leaf = rowOf(await index(s, token), 'leaf');
+  assert.deepEqual([leaf.via, leaf.near], [made.id, made.id]);
 });
 
 test('a selected child whose parent is not picked is linked straight to the new parent and not back to the one it showed under', async () => {
   const { s, token } = await ready();
   const made = (await make(s, token, { ids: ['mid', 'leaf'], title: 'Mid and leaf' })).body();
-  assert.deepEqual(onDisk(s).parents, { mid: made.id }, 'leaf rides with mid');
+  assert.deepEqual(onDisk(s).parents, { leaf: made.id, mid: made.id }, 'leaf shows beside mid, so it links to the new parent too');
   const second = (await make(s, token, { ids: ['leaf', 'peer'], title: 'Leaf and peer' })).body();
   assert.deepEqual([onDisk(s).parents.leaf, onDisk(s).parents.peer], [second.id, second.id]);
 });

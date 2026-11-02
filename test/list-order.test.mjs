@@ -135,7 +135,7 @@ test('the sections of the scope that holds the groups are used, and otherwise th
   assert.deepEqual([both.sort, titles(both.sessions)], [RECENT, ['Zulu', 'Alpha']], 'the groups\' own scope wins though it comes second');
 });
 
-test('a family goes depth first, each session after the one it nests under, with the siblings of each level in the list\'s sort', async () => {
+test('a family is one level deep in the list\'s sort, however deep its links go', async () => {
   const sessions = [
     { id: 'head', title: 'Head', ago: 50 },
     { id: 'a', title: 'Alpha', parent: 'head', ago: 40 },
@@ -145,15 +145,15 @@ test('a family goes depth first, each session after the one it nests under, with
   ];
   const newest = await ready({ sessions });
   const recent = await index(newest.s, newest.token);
-  assert.deepEqual(shape(recent.ungrouped), ['Head [Charlie, Alpha, Bravo, Delta]']);
-  assert.deepEqual(recent.ungrouped[0].children.map(r => [r.id, r.via, r.parent]), [['c', 'head', 'head'], ['a', 'head', 'head'], ['b', 'a', 'head'], ['d', 'b', 'head']]);
+  assert.deepEqual(shape(recent.ungrouped), ['Head [Delta, Charlie, Bravo, Alpha]']);
+  assert.deepEqual(recent.ungrouped[0].children.map(r => [r.id, r.via, r.parent]), [['d', 'head', 'head'], ['c', 'head', 'head'], ['b', 'head', 'head'], ['a', 'head', 'head']]);
   assert.equal(rowOf(recent, 'head').via, null);
 
   const byTitle = await ready({ sessions, sections: [section('loose', 'sessions', 'alpha', false)] });
-  assert.deepEqual(shape((await index(byTitle.s, byTitle.token)).ungrouped), ['Head [Alpha, Bravo, Delta, Charlie]']);
+  assert.deepEqual(shape((await index(byTitle.s, byTitle.token)).ungrouped), ['Head [Alpha, Bravo, Charlie, Delta]']);
 });
 
-test('a session that nests under an archived one nests under the next one up, and under it in the archive', async () => {
+test('a session linked to an archived one shows under the next one up, and beside it in the archive', async () => {
   const { s, token } = await ready({
     sessions: [
       { id: 'head', title: 'Head', ago: 10 },
@@ -167,8 +167,9 @@ test('a session that nests under an archived one nests under the next one up, an
   assert.deepEqual(['y', 'z'].map(id => [rowOf(listed, id).via, rowOf(listed, id).parent]), [['head', 'head'], ['head', 'head']]);
 
   const archive = await index(s, token, '?archived=1');
-  assert.deepEqual(shape(archive.ungrouped), ['Head [Direct, Archived middle, Under the archived one]']);
-  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).via), ['head', 'x', 'head']);
+  assert.deepEqual(shape(archive.ungrouped), ['Head [Direct, Under the archived one, Archived middle]']);
+  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).via), ['head', 'head', 'head']);
+  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).near), ['head', 'x', 'head']);
 });
 
 // Desktop's own rule for a link: a side session, a fork or a suggested task nests under the session it came from, unless it is detached.
