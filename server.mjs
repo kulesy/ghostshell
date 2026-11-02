@@ -28,7 +28,7 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
-import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, runningChats, startChat, sweep, activeStates, useActiveAccount } from './lib/runner.mjs';
+import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, useActiveAccount } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
 import { makeTitler } from './lib/titler.mjs';
@@ -61,6 +61,7 @@ const uploads = makeUploads(cfg.stateDir);
 const accounts = makeAccounts(cfg.stateDir, { warn: console.error });
 const activeEnv = () => accounts.envFor(accounts.active);
 useActiveAccount(() => ({ id: accounts.active.id, env: activeEnv() }));
+retireWhenQuietFor(cfg.retireQuietMs);
 const summaries = makeSummaries({ transcriptFor });
 const pulls = makePulls({ transcriptFor, gh: cfg.gh });
 // A mention of a file in front of /name stops the CLI reading the message as a command.
@@ -1676,6 +1677,7 @@ async function accountsApi(req, res, parts) {
   if (account.id !== accounts.active.id) switchTo(account);
   // A chat with a background job keeps its process on the old account, so "Continue." would go to the account that is out.
   const kept = row && getChat(row.id);
+  kept?.retire(true);
   if (kept?.proc?.stdin.writable && kept.account !== accounts.active.id) return refuse(409, `That chat is still running a job on ${accounts.find(kept.account)?.name ?? 'the other account'}. It moves to ${accounts.active.name} once the job ends.`);
   if (row) ensureChat(row.id, row).send('Continue.');
   return send(res, 200, await accountsNow());

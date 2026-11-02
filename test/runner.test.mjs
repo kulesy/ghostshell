@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
-import { activeStates, chatFor, onAuthFailure, onTurn, onUsage, retireOtherAccounts, startChat, sweep, useActiveAccount } from '../lib/runner.mjs';
+import { activeStates, chatFor, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useActiveAccount } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -1384,7 +1384,9 @@ function accountCli(dir) {
     `fs.appendFileSync(${JSON.stringify(path.join(dir, 'started.log'))}, JSON.stringify({ dir: process.env.CLAUDE_CONFIG_DIR ?? null }) + '\\n');`,
     "const said = text => ({ type: 'assistant', error: 'rate_limit', message: { id: 'm', role: 'assistant', content: [{ type: 'text', text }] } });",
     "const tasks = list => out({ type: 'system', subtype: 'background_tasks_changed', tasks: list });",
-    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    "const reply = text => out({ type: 'result', subtype: 'success', is_error: false, result: text, total_cost_usd: 0 });",
+    // Like the CLI, it exits once its input is closed, so a process stopped too soon loses the turn it was about to run.
+    "readline.createInterface({ input: process.stdin }).on('close', () => process.exit(0)).on('line', line => {",
     '  const m = JSON.parse(line);',
     "  if (m.type !== 'user') return;",
     '  const word = m.message.content;',
@@ -1392,6 +1394,8 @@ function accountCli(dir) {
     "  if (word === 'hold') return;",
     "  if (word === 'job') tasks([{ task_id: 'b1', task_type: 'local_bash' }]);",
     "  if (word === 'jobend') tasks([]);",
+    // The job ends, then the CLI runs a turn of its own for the job's notice.
+    "  if (word === 'jobnotice') { tasks([]); reply('ok'); return setTimeout(() => { out({ type: 'system', subtype: 'status', status: 'requesting' }); setTimeout(() => reply('read the notice'), 50); }, 50); }",
     "  const text = { limit: \"You've hit your limit, resets 3pm\", reached: \"You've reached your weekly limit\", credits: \"You're out of usage credits\", extra: \"You're out of extra usage\", busy: 'API Error: Request rejected (429)', overloaded: 'The server is overloaded' }[word];",
     "  if (text) out(said(text));",
     "  out({ type: 'result', subtype: 'success', is_error: !!text, result: text, total_cost_usd: 0 });",
@@ -1402,7 +1406,7 @@ function accountCli(dir) {
 }
 const startedDirs = dir => fs.readFileSync(path.join(dir, 'started.log'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l).dir);
 const asAccount = (id, folder) => ({ id, env: { ...process.env, ...(folder ? { CLAUDE_CONFIG_DIR: folder } : { CLAUDE_CONFIG_DIR: undefined }) } });
-const resetAccount = () => { useActiveAccount(() => ({ id: 'main', env: process.env })); onUsage(null); };
+const resetAccount = () => { useActiveAccount(() => ({ id: 'main', env: process.env })); onUsage(null); retireWhenQuietFor(15_000); };
 
 test('a process starts with the active account\'s environment and its chat records that account, so a later start uses the account then active', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
@@ -1427,6 +1431,7 @@ test('a switch stops the idle chats of the other account at once, lets a chat mi
   const cli = accountCli(dir);
   let now = asAccount('main', null);
   useActiveAccount(() => now);
+  retireWhenQuietFor(200);
   t.after(resetAccount);
   const open = async id => {
     const chat = chatFor(id, { cwd: dir, mode: 'manual', claude: cli, chrome: false, chips: null });
@@ -1463,6 +1468,28 @@ test('a switch stops the idle chats of the other account at once, lets a chat mi
   assert.equal(startedDirs(dir).at(-1), '/accounts/second');
   retireOtherAccounts();
   assert.equal(idle.status().running, true, 'a chat on the active account stays');
+});
+
+test('a switched chat runs the turn the CLI starts for a job that ended before it stops', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = accountCli(dir);
+  let now = asAccount('main', null);
+  useActiveAccount(() => now);
+  retireWhenQuietFor(200);
+  t.after(resetAccount);
+  const chat = chatFor('notice-one', { cwd: dir, mode: 'manual', claude: cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  const ends = [];
+  chat.listeners.add(ev => { if (ev.type === 'turn-end') ends.push(ev.data); });
+  chat.send('start');
+  chat.send('job');
+  await until(() => chat.jobs === 1 && chat.state === 'idle');
+
+  now = asAccount('second', '/accounts/second');
+  retireOtherAccounts();
+  chat.send('jobnotice');
+  await until(() => !chat.status().running);
+  assert.equal(ends.length, 3, 'the notice turn ran to its end');
 });
 
 test('only the CLI\'s own limit words mark an account out, the turn-end says so, and a turn that ends well clears the mark', async t => {
