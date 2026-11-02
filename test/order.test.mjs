@@ -134,60 +134,55 @@ test('placing a family does not reorder its children', () => {
   assert.deepEqual(ids(placed.children), ['x', 'y']);
 });
 
-// A family is a head with children. A child's `parent` names the session it nests under, and one with none nests under the head.
-const head = row('H', 100);
-
-test('a family goes depth first: each child of the head in the list\'s order, then at once the children that nest under it', () => {
+// A family is a head with children. A child's `parent` is the head, or in the archive a child under an archived root that names a live
+// head among the children.
+test('a family goes in two steps: each child under the head in the list\'s order, then at once the children that name it', () => {
   const kids = [
     row('a', 50),
     row('b', 40),
     row('a1', 30, { parent: 'a' }),
     row('a2', 45, { parent: 'a' }),
     row('b1', 60, { parent: 'b' }),
-    row('a2x', 10, { parent: 'a2' }),
   ];
-  assert.deepEqual(ids(sortFamily(head, kids, recency(false))), ['a', 'a2', 'a2x', 'a1', 'b', 'b1']);
-  assert.deepEqual(ids(sortFamily(head, kids, recency(true))), ['b', 'b1', 'a', 'a1', 'a2', 'a2x']);
+  assert.deepEqual(ids(sortFamily(kids, recency(false))), ['a', 'a2', 'a1', 'b', 'b1']);
+  assert.deepEqual(ids(sortFamily(kids, recency(true))), ['b', 'b1', 'a', 'a1', 'a2']);
 });
 
-test('the siblings of each level go by the list\'s own sort, alpha included', () => {
+test('the siblings of each step go by the list\'s own sort, alpha included', () => {
   const kids = [
     row('k1', 1, { title: 'Delta' }),
     row('k2', 2, { title: 'Alpha' }),
     row('k3', 3, { title: 'Charlie', parent: 'k1' }),
     row('k4', 4, { title: 'Bravo', parent: 'k1' }),
   ];
-  assert.deepEqual(ids(sortFamily(head, kids, alpha(false))), ['k2', 'k1', 'k4', 'k3']);
-  assert.deepEqual(ids(sortFamily(head, kids, alpha(true))), ['k1', 'k3', 'k4', 'k2']);
+  assert.deepEqual(ids(sortFamily(kids, alpha(false))), ['k2', 'k1', 'k4', 'k3']);
+  assert.deepEqual(ids(sortFamily(kids, alpha(true))), ['k1', 'k3', 'k4', 'k2']);
 });
 
-test('a child with no parent nests under the head, and the order of the rows given does not matter', () => {
+test('a child with no parent, or whose parent is the head, is under the head, and the order of the rows given does not matter', () => {
   const kids = [row('b', 20, { parent: 'a' }), row('a', 30), row('c', 10)];
   const want = ['a', 'b', 'c'];
-  assert.deepEqual(ids(sortFamily(head, kids, recency(false))), want);
-  assert.deepEqual(ids(sortFamily(head, [...kids].reverse(), recency(false))), want);
-  assert.deepEqual(ids(sortFamily(head, kids.map(c => ({ ...c, parent: c.parent ?? 'H' })), recency(false))), want, 'a parent naming the head is the same');
+  assert.deepEqual(ids(sortFamily(kids, recency(false))), want);
+  assert.deepEqual(ids(sortFamily([...kids].reverse(), recency(false))), want);
+  assert.deepEqual(ids(sortFamily(kids.map(c => ({ ...c, parent: c.parent ?? 'H' })), recency(false))), want, 'a parent naming the head is the same');
 });
 
-test('a child whose parent names no session in the family follows the rest, in the list\'s order, and none is lost', () => {
+test('a child whose parent is no child of the family is under the head with the rest, and none is lost', () => {
   const kids = [row('a', 50), row('lost1', 20, { parent: 'gone' }), row('a1', 10, { parent: 'a' }), row('lost2', 70, { parent: 'gone' })];
-  assert.deepEqual(ids(sortFamily(head, kids, recency(false))), ['a', 'a1', 'lost2', 'lost1']);
+  assert.deepEqual(ids(sortFamily(kids, recency(false))), ['lost2', 'a', 'a1', 'lost1']);
 });
 
-test('links that lead back to each other cannot loop, and the sessions in them follow the rest', () => {
-  const kids = [row('a', 50, { parent: 'b' }), row('b', 40, { parent: 'a' }), row('c', 60)];
-  assert.deepEqual(ids(sortFamily(head, kids, recency(false))), ['c', 'a', 'b']);
+test('links that lead back to each other, or to themselves, cannot loop, and the sessions in them follow the rest', () => {
+  const kids = [row('a', 50, { parent: 'b' }), row('b', 40, { parent: 'a' }), row('c', 60), row('s', 5, { parent: 's' })];
+  assert.deepEqual(ids(sortFamily(kids, recency(false))), ['c', 'a', 'b', 's']);
 });
 
-test('the walk stops 32 levels down, and the sessions below follow the rest in the list\'s order', () => {
-  const chain = Array.from({ length: 40 }, (_, i) => row(`c${i + 1}`, 1000 + i, { parent: i ? `c${i}` : undefined }));
-  const out = ids(sortFamily(head, chain, recency(false)));
-  assert.deepEqual(out.slice(0, 32), chain.slice(0, 32).map(r => r.id), 'the first 32 levels run down the chain');
-  assert.deepEqual(out.slice(32), chain.slice(32).map(r => r.id).reverse(), 'the rest are newest first');
-  assert.equal(new Set(out).size, 40);
+test('a child two steps down follows the rest in the list\'s order, and none is lost', () => {
+  const chain = Array.from({ length: 4 }, (_, i) => row(`c${i + 1}`, 1000 + i, { parent: i ? `c${i}` : undefined }));
+  assert.deepEqual(ids(sortFamily(chain, recency(false))), ['c1', 'c2', 'c4', 'c3']);
 });
 
 test('a family of one level, or with no children, comes back as it is sorted', () => {
-  assert.deepEqual(sortFamily(head, [], recency(false)), []);
-  assert.deepEqual(ids(sortFamily(head, [row('a', 1), row('b', 2)])), ['b', 'a']);
+  assert.deepEqual(sortFamily([], recency(false)), []);
+  assert.deepEqual(ids(sortFamily([row('a', 1), row('b', 2)])), ['b', 'a']);
 });

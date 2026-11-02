@@ -255,7 +255,7 @@ function buildIndex({ archived = false } = {}) {
   for (const r of visible.filter(rootOf)) kids.set(rootOf(r), [...(kids.get(rootOf(r)) ?? []), r]);
   for (const [id, list] of kids) {
     const parent = rows.get(id);
-    parent.children = sortFamily(parent, list, sortOf(parent));
+    parent.children = sortFamily(list, sortOf(parent));
   }
 
   // A child is listed under its parent only.

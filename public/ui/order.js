@@ -42,24 +42,13 @@ export function sortRows(rows, sort = DEFAULT_SORT) {
   return [...rows].sort((a, b) => compare(placed.get(a), placed.get(b)));
 }
 
-const MAX_DEPTH = 32;
-
-// A family's children depth first: each child of the head in the list's order, followed at once by those whose `parent` names it, and so on.
-// A child with no `parent` nests under the head, and one that no walk reaches, deeper than the limit, goes last.
-export function sortFamily(head, children, sort = DEFAULT_SORT) {
+// A family's children: first those that nest under the head (their `parent` is not another child), in the list's order, each followed at
+// once by the children whose `parent` names it. Only the archive needs the second step, where a live head sits under an archived root.
+// A child that neither step reaches goes last.
+export function sortFamily(children, sort = DEFAULT_SORT) {
   const compare = comparator(sort);
-  const under = new Map();
-  for (const child of children) under.set(child.parent ?? head.id, [...(under.get(child.parent ?? head.id) ?? []), child]);
-  const walked = new Set();
-  const order = [];
-  const walk = (id, depth) => {
-    for (const child of [...(under.get(id) ?? [])].sort(compare)) {
-      if (walked.has(child)) continue;
-      walked.add(child);
-      order.push(child);
-      if (depth < MAX_DEPTH) walk(child.id, depth + 1);
-    }
-  };
-  walk(head.id, 1);
-  return [...order, ...children.filter(c => !walked.has(c)).sort(compare)];
+  const ids = new Set(children.map(c => c.id));
+  const placed = children.filter(c => !ids.has(c.parent)).sort(compare).flatMap(c => [c, ...children.filter(k => k.parent === c.id).sort(compare)]);
+  const done = new Set(placed);
+  return [...placed, ...children.filter(c => !done.has(c)).sort(compare)];
 }

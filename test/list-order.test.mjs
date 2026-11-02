@@ -172,6 +172,26 @@ test('a session linked to an archived one shows under the next one up, and besid
   assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).near), ['head', 'x', 'head']);
 });
 
+// R is an archived root, M an archived session under it, Y a live one under M with X under Y and an archived A under X, and Z is under R.
+test('the archive lists an archived root with every session under it, each live head followed at once by its own members', async () => {
+  const { s, token } = await ready({
+    sessions: [
+      { id: 'r', title: 'R', archived: true, ago: 100 },
+      { id: 'm', title: 'M', parent: 'r', archived: true, ago: 90 },
+      { id: 'y', title: 'Y', parent: 'm', ago: 80 },
+      { id: 'z', title: 'Z', parent: 'r', ago: 5 },
+      { id: 'x', title: 'X', parent: 'y', ago: 70 },
+      { id: 'a', title: 'A', parent: 'x', archived: true, ago: 60 },
+    ],
+  });
+  const archive = await index(s, token, '?archived=1');
+  assert.deepEqual(shape(archive.ungrouped), ['R [Z, Y, A, X, M]']);
+  assert.deepEqual(['r', 'm', 'y', 'z', 'x', 'a'].map(id => rowOf(archive, id).parent), [null, 'r', 'r', 'r', 'y', 'y']);
+  const listed = await index(s, token);
+  assert.deepEqual(shape(listed.ungrouped), ['Z', 'Y [X]']);
+  assert.deepEqual(['y', 'z', 'x'].map(id => rowOf(listed, id).parent), [null, null, 'y']);
+});
+
 // Desktop's own rule for a link: a side session, a fork or a suggested task nests under the session it came from, unless it is detached.
 // A is nobody's child. B is a suggested task from A. C was spawned from A and detached, so it stands alone. D and E are suggested tasks from C.
 test('a session detached from its parent keeps the sessions that came from it, which show under it', async () => {
