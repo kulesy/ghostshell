@@ -242,6 +242,17 @@ test('the switch and continue sends "Continue." to the chat under the new accoun
   assert.equal(started.at(-1).configDir, c.dir, 'sent to a process on the new account');
 });
 
+test('the switch and continue sends nothing to a chat whose background job keeps it on the old account', async () => {
+  const c = await open();
+  await say(c, 'live', 'hit the usage limit with a job running');
+  await until(async () => by(await accountsOf(c), 'main').out);
+  const r = await post(c, '/api/accounts/second/use', { continue: 'live' });
+  assert.equal(r.status, 409);
+  assert.match(r.body().error, /still running a job on Main/);
+  assert.equal(await activeOf(c), 'second');
+  assert.ok(!calls(c).some(x => x.user === 'Continue.'));
+});
+
 test('with the setting on the first out-of-usage mark switches once to an account that is not out, shows a dismissible notice, and never switches to an account that is out', async () => {
   const c = await open({ auto: true });
   await say(c, 'live', 'hit the usage limit');

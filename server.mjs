@@ -1674,6 +1674,9 @@ async function accountsApi(req, res, parts) {
   await entry.login.refresh();
   if (entry.login.state().signedOut) return refuse(409, `${account.name} is signed out. Sign it in first.`);
   if (account.id !== accounts.active.id) switchTo(account);
+  // A chat with a background job keeps its process on the old account, so "Continue." would go to the account that is out.
+  const kept = row && getChat(row.id);
+  if (kept?.proc?.stdin.writable && kept.account !== accounts.active.id) return refuse(409, `That chat is still running a job on ${accounts.find(kept.account)?.name ?? 'the other account'}. It moves to ${accounts.active.name} once the job ends.`);
   if (row) ensureChat(row.id, row).send('Continue.');
   return send(res, 200, await accountsNow());
 }
