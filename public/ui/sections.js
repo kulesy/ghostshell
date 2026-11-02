@@ -20,9 +20,11 @@ export const sectionById = id => SECTIONS.find(s => s.id === id) ?? null;
 export const supportsSections = ix => !!ix?.features?.sectionSessions;
 
 // The section a row shows in, or null when it is in a group. Pinned wins over a group, a group over a routine, and a nested row follows the
-// row it shows under, because the index lists a family in its holder's place. `rows` maps ids to the index's rows.
+// row it shows under, because the index lists a family in its holder's place. A live head under an archived root follows the root, so a
+// row's parent is followed twice. `rows` maps ids to the index's rows.
 export function sectionOf(row, rows) {
-  const holder = (row.parent && rows.get(row.parent)) || row;
+  const up = r => (r.parent && rows.get(r.parent)) || r;
+  const holder = up(up(row));
   if (holder.pinned) return 'pinned';
   if (holder.group) return null;
   if (holder.routine) return 'routines';

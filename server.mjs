@@ -135,9 +135,9 @@ const groupList = () => layout.read().groups.map(({ id, name }) => ({ id, name }
 // A nested session that leaves its place would take the sessions linked straight to it along, though they show beside it, so each is
 // linked to the parent instead, and those further down keep their links. A head takes its whole family along.
 function keepFamily(id, rows) {
-  const { via } = rows.get(id);
+  const { parent } = rows.get(id);
   const links = {};
-  if (via) for (const r of rows.values()) if (!r.archived && r.near === id) links[r.id] = via;
+  if (parent) for (const r of rows.values()) if (!r.archived && r.near === id) links[r.id] = parent;
   return links;
 }
 
@@ -219,7 +219,7 @@ function buildIndex({ archived = false } = {}) {
   for (const g of ownedChats) {
     const row = rows.get(g.session) ?? { lastActivityAt: 0, sortAt: 0, createdAt: 0, state: stateOf(g.session, 0) };
     rows.delete(g.session);
-    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, via: null, groupSession: g.id, ...(retired.has(g.session) && { retired: true }) });
+    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, groupSession: g.id, ...(retired.has(g.session) && { retired: true }) });
   }
 
   // A family shows in the place of its holder, the topmost session its links reach, so a child takes the place its holder has now.
@@ -227,8 +227,8 @@ function buildIndex({ archived = false } = {}) {
   const families = familiesOf(rows, id => linkOf(own, fromChips, desk, id), { archived });
   const places = new Map([...rows.values()].map(r => [r.id, { group: r.group, pinned: r.pinned }]));
   for (const r of rows.values()) {
-    const { holder, parent, via, near } = families.get(r.id);
-    Object.assign(r, { parent, via, near }, places.get(holder));
+    const { holder, parent, near } = families.get(r.id);
+    Object.assign(r, { parent, near }, places.get(holder));
   }
   const visible = [...rows.values()].filter(r => archived || !r.archived);
   // Counted by the place a family gives each row, which is what api/archived?group= lists by.
@@ -251,14 +251,15 @@ function buildIndex({ archived = false } = {}) {
   const groupSort = id => desk.sorts.groups.get(id) ?? DEFAULT_SORT;
   const sortOf = r => (r.pinned ? sorts.pinned : r.group ? groupSort(r.group) : r.routine ? sorts.routines : sorts.sessions);
   const kids = new Map();
-  for (const r of visible.filter(r => r.parent)) kids.set(r.parent, [...(kids.get(r.parent) ?? []), r]);
+  const rootOf = r => families.get(r.id).root;
+  for (const r of visible.filter(rootOf)) kids.set(rootOf(r), [...(kids.get(rootOf(r)) ?? []), r]);
   for (const [id, list] of kids) {
     const parent = rows.get(id);
     parent.children = sortFamily(parent, list, sortOf(parent));
   }
 
   // A child is listed under its parent only.
-  const top = visible.filter(r => !r.parent);
+  const top = visible.filter(r => !rootOf(r));
   const pinned = sortRows(top.filter(r => r.pinned), sorts.pinned);
   const groups = own.groups.map(g => {
     const sort = groupSort(g.id);
@@ -372,7 +373,7 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
 // What a chat reaches the sessions under it through, and what every chat sends to, archives, unarchives, renames and moves any session with. Each call looks the index up again, so a session archived or nested since is seen
-// as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for. The sessions of groups and sections
+// as it is now. Every row is in the index whether archived or not, and `parent` skips the archived ones unless they are asked for. The sessions of groups and sections
 // are listed too, so one can send and be sent to, and none is ever below another. A deleted group's chat is left out, as nothing would answer its tools.
 function subCtx(sessionId) {
   return {
@@ -433,7 +434,7 @@ function placeStarted(id, home, { unlink = false } = {}) {
 }
 
 // The head a session shows under in the live list. One under an archived root shows as a head itself, so it has none.
-const liveHeadOf = (row, rowOf = findRow) => (row?.via && !rowOf(row.via)?.archived ? row.via : null);
+const liveHeadOf = (row, rowOf = findRow) => (row?.parent && !rowOf(row.parent)?.archived ? row.parent : null);
 
 // Where a chip's session opens, worded for its card from the group's name now. `row` is the session that made the chip. A section's chat
 // and a routine run, which never holds sessions, have nothing to say. A list of chips passes `rowOf` over one index.
@@ -990,7 +991,7 @@ function newParent({ ids, title, place }) {
   if (!home.pinned && home.group !== null && !now.groups.some(g => g.id === home.group)) throw refuse(400, 'Unknown group.');
 
   const chosen = new Set(ids);
-  const direct = ids.filter(id => !chosen.has(rows.get(id).via));
+  const direct = ids.filter(id => !chosen.has(rows.get(id).parent));
   const parent = crypto.randomUUID();
   const relinks = {};
   for (const id of direct) for (const [kid, to] of Object.entries(keepFamily(id, rows))) if (!chosen.has(kid)) relinks[kid] = to;
@@ -1061,7 +1062,7 @@ function manyChange({ ids, to }) {
   if (aim === 'group' && to.group !== null && !now.groups.some(g => g.id === to.group)) throw refuse(400, 'Unknown group.');
 
   const chosen = new Set(ids);
-  const direct = ids.filter(id => !chosen.has(rows.get(id).via));
+  const direct = ids.filter(id => !chosen.has(rows.get(id).parent));
   const own = linksNow();
   // A nested session that leaves its place keeps the picked sessions under it and leaves the others under the one it showed under.
   const leave = id => {
@@ -1101,7 +1102,7 @@ function manyChange({ ids, to }) {
   const undo = crypto.randomUUID();
   const changed = new Set(steps.map(step => step.id));
   // A picked session that rides along counts when the one it rides with was changed.
-  const headOf = id => (chosen.has(rows.get(id).via) ? headOf(rows.get(id).via) : id);
+  const headOf = id => (chosen.has(rows.get(id).parent) ? headOf(rows.get(id).parent) : id);
   const count = ids.filter(id => changed.has(headOf(id))).length;
   manyUndos.set(undo, { before, at, count });
   return { undo, count };

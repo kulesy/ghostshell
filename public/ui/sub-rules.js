@@ -1,5 +1,5 @@
 // How the sessions below a session add up, as rules that need no page, so node can test them and the server shares them. The rows are the
-// index's as a flat list (`withKids` flattens a list that nests them), and a row's `via` names the head it shows under.
+// index's as a flat list (`withKids` flattens a list that nests them), and a row's `parent` names the head it shows under.
 import { BUCKETS, bucketOf } from './group-rules.js';
 import { everyRow, withKids, withoutRow } from './tree.js';
 
@@ -12,21 +12,21 @@ export const rankOf = row => (row.archived ? 0 : Math.max(DOTS.indexOf(row.dot ?
 
 const mostUrgent = rows => DOTS[rows.reduce((top, row) => Math.max(top, rankOf(row)), 0)];
 
-export const subsOf = (rows, id) => rows.filter(row => row.via === id);
+export const subsOf = (rows, id) => rows.filter(row => row.parent === id);
 
-function underVia(rows) {
+function underParent(rows) {
   const under = new Map();
   for (const row of rows) {
-    if (row.via == null) continue;
-    if (under.has(row.via)) under.get(row.via).push(row);
-    else under.set(row.via, [row]);
+    if (row.parent == null) continue;
+    if (under.has(row.parent)) under.get(row.parent).push(row);
+    else under.set(row.parent, [row]);
   }
   return under;
 }
 
 // Every session below `id` at any depth, nearest first. A session is met once, so a loop in the links ends the walk.
 export function descendantsOf(rows, id) {
-  const under = underVia(rows);
+  const under = underParent(rows);
   const seen = new Set([id]);
   const found = [];
   for (const queue = [id]; queue.length;) {
@@ -56,7 +56,7 @@ export function orderLines(nodes, now = Date.now()) {
 }
 
 export function treeOf(rows, id, now = Date.now()) {
-  const under = underVia(rows);
+  const under = underParent(rows);
   const seen = new Set([id]);
   const build = parent => {
     const found = [];

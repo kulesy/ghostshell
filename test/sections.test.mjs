@@ -129,7 +129,7 @@ test('the table has the five sections in sidebar order, named as the sidebar nam
   for (const s of SECTIONS) assert.doesNotMatch(`${s.name} ${s.holds}`, /[–—]/, s.id);
 });
 
-test('sectionOf puts pinned first, then a group, then a routine, then the loose section of the app, and a nested row follows the row it shows under', () => {
+test('sectionOf puts pinned first, then a group, then a routine, then the loose section of the app, and a nested row follows the row it shows under, up to an archived root', () => {
   const row = (id, extra) => ({ id, source: 'desktop', group: null, pinned: false, routine: null, parent: null, ...extra });
   const rows = new Map([
     row('pin', { pinned: true, group: 'cg-a', routine: 'r' }),
@@ -143,9 +143,11 @@ test('sectionOf puts pinned first, then a group, then a routine, then the loose 
     row('under-pin', { parent: 'pin', source: 'cli' }),
     row('under-grp', { parent: 'grp', source: 'cli' }),
     row('orphan', { parent: 'gone', source: 'cli' }),
+    row('head-under-root', { parent: 'cap', source: 'cli' }),
+    row('under-head', { parent: 'head-under-root', source: 'desktop' }),
   ].map(r => [r.id, r]));
   const sections = Object.fromEntries([...rows.keys()].map(id => [id, sectionOf(rows.get(id), rows)]));
-  assert.deepEqual(sections, { pin: 'pinned', grp: null, run: 'routines', cap: 'started', desk: 'ungrouped', cli: 'other', odd: null, 'under-cap': 'started', 'under-pin': 'pinned', 'under-grp': null, orphan: 'other' });
+  assert.deepEqual(sections, { pin: 'pinned', grp: null, run: 'routines', cap: 'started', desk: 'ungrouped', cli: 'other', odd: null, 'under-cap': 'started', 'under-pin': 'pinned', 'under-grp': null, orphan: 'other', 'head-under-root': 'started', 'under-head': 'started' });
 });
 
 test('sectionSessions gives the lists the sidebar draws, a routine\'s runs flattened latest first, and nothing for a name that is no section', () => {

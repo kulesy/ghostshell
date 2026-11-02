@@ -10,7 +10,7 @@ import {
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
 const MINUTE = 60_000;
-const row = (id, via, state, ago, extra) => ({ id, via, state, dot: null, archived: false, lastActivityAt: NOW - ago, ...extra });
+const row = (id, parent, state, ago, extra) => ({ id, parent, state, dot: null, archived: false, lastActivityAt: NOW - ago, ...extra });
 const ids = list => list.map(r => r.id);
 const shape = nodes => nodes.map(n => (n.subs.length ? [n.row.id, shape(n.subs)] : n.row.id));
 const WORK = 'chat-of-work';

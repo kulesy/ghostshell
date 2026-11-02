@@ -159,7 +159,7 @@ function Line({ node, shared }) {
     if (archiving.size) return;
     const root = button.closest('.subs');
     // A session's children move up into its place, so they are the first to take the focus.
-    const near = [...rows.filter(r => r.via === row.id).map(r => r.id), ...neighbours(button.closest('li.sub'))];
+    const near = [...rows.filter(r => r.parent === row.id).map(r => r.id), ...neighbours(button.closest('li.sub'))];
     const other = () => near.map(titleLink).find(Boolean) ?? root.querySelector('.subs-sum') ?? root;
     let left = false;
     closeSession({

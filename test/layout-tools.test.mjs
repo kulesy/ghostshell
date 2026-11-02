@@ -49,7 +49,7 @@ function subsFor({ self = 'top', rows = ROWS } = {}) {
     unarchive(id) {
       editable(id);
       calls.push(['unarchive', id]);
-      return rows.filter(r => r.archived && r.via === id).length;
+      return rows.filter(r => r.archived && r.parent === id).length;
     },
     rename(id, title) {
       editable(id);
@@ -84,9 +84,9 @@ test('archiving is refused for the session itself, a running or waiting one, one
 const FAMILY = [
   row('top'),
   row('boss', { title: 'Boss' }),
-  row('kid', { title: 'Kid', via: 'boss' }),
-  row('grand', { title: 'Grand', via: 'kid', state: 'idle' }),
-  row('stale', { title: 'Stale', via: 'boss', archived: true }),
+  row('kid', { title: 'Kid', parent: 'boss' }),
+  row('grand', { title: 'Grand', parent: 'kid', state: 'idle' }),
+  row('stale', { title: 'Stale', parent: 'boss', archived: true }),
 ];
 
 test('archiving a parent says how many sub sessions went with it, and one with nothing below it says what it always did', () => {
@@ -112,7 +112,7 @@ test('archiving is refused when a session below the parent is running or in anot
 });
 
 test('unarchiving says how many sub sessions came back with the session', () => {
-  const rows = [row('boss', { archived: true, title: 'Boss' }), row('kid', { archived: true, via: 'boss' }), row('grand', { archived: true, via: 'boss' })];
+  const rows = [row('boss', { archived: true, title: 'Boss' }), row('kid', { archived: true, parent: 'boss' }), row('grand', { archived: true, parent: 'boss' })];
   assert.equal(unarchiveSession({ session_id: 'boss' }, subsFor({ rows })), 'Unarchived "Boss" [boss] and the 2 sub sessions archived with it. They are back in their places in the sidebar with no process running, and send_session starts each.');
 });
 
@@ -154,7 +154,7 @@ test('a move says when the session is still archived, and when the calling group
 });
 
 test('a move into the calling group\'s own group says its chat can read the sessions under the moved one too, archived ones included, and that they move with it', () => {
-  const rows = [row('top'), row('parent'), row('kid', { via: 'parent' }), row('grandkid', { via: 'kid', archived: true }), row('alone')];
+  const rows = [row('top'), row('parent'), row('kid', { parent: 'parent' }), row('grandkid', { parent: 'kid', archived: true }), row('alone')];
   const subs = subsFor({ rows });
   const card = (id, own) => layoutSummary('move_session_to_group', { session_id: id, group: 'cg-a' }, subs, GROUPS, own);
   assert.equal(card('parent', 'cg-a'), 'move "Session parent" [parent] to "Needs Review" (this group\'s chat can then read it and the 2 sessions under it)');
@@ -220,9 +220,9 @@ test('the unarchive card counts the sessions that come back with it: those archi
   const rows = [
     row('top'),
     row('boss', { title: 'Boss', archived: true }),
-    row('kid', { title: 'Kid', via: 'boss', archived: true, archivedWith: 'boss' }),
-    row('grand', { title: 'Grand', via: 'kid', archived: true, archivedWith: 'boss' }),
-    row('apart', { title: 'Apart', via: 'boss', archived: true }),
+    row('kid', { title: 'Kid', parent: 'boss', archived: true, archivedWith: 'boss' }),
+    row('grand', { title: 'Grand', parent: 'kid', archived: true, archivedWith: 'boss' }),
+    row('apart', { title: 'Apart', parent: 'boss', archived: true }),
     row('moved', { title: 'Moved', archived: true, archivedWith: 'boss' }),
   ];
   const card = id => layoutSummary('unarchive_session', { session_id: id }, subsFor({ rows }), GROUPS);

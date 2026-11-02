@@ -1246,7 +1246,7 @@ test('a tool call from an ordinary chat is refused by the tool server as unknown
 });
 
 const SUB_SEND = 'mcp__capcom__send_session';
-const subsOf = (rows = [{ id: 'kid', title: 'Review - dialogs' }, { id: 'stranger', title: 'Elsewhere', via: null }]) => () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: rows.map(r => ({ via: 'me', ...r })) }), pending: () => [], summary: () => null });
+const subsOf = (rows = [{ id: 'kid', title: 'Review - dialogs' }, { id: 'stranger', title: 'Elsewhere', parent: null }]) => () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: rows.map(r => ({ parent: 'me', ...r })) }), pending: () => [], summary: () => null });
 
 test('an ordinary chat that has sub sessions asks before every send to one, a group chat asks for it in its own list, one with no sub sessions is given no rule, and Chrome\'s stays beside it', async t => {
   const rules = async (id, options) => {

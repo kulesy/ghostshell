@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import { carriedOf, guessMany, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNote, NEST_SELF, nestedNote, NO_GROUP, pinnedNote, placeName, placeTo, refuseNest, topmost, unnestedNote } from '../public/ui/many-rules.js';
 import { everyRow } from '../public/ui/tree.js';
 
-const row = (id, extra = {}) => ({ id, title: id, source: 'capcom', group: null, pinned: false, parent: null, via: null, routine: null, ...extra });
+const row = (id, extra = {}) => ({ id, title: id, source: 'capcom', group: null, pinned: false, parent: null, routine: null, ...extra });
 const SORT = { by: 'recency', ascending: false };
 // Boss (Work) holds Mid and Kid, and Leaf is nested under Mid. Peer is in Work, Fixed is pinned, and three sit loose.
-const boss = row('boss', { group: 'cg-work', children: [row('mid', { group: 'cg-work', parent: 'boss', via: 'boss' }), row('kid', { group: 'cg-work', parent: 'boss', via: 'boss' }), row('leaf', { group: 'cg-work', parent: 'boss', via: 'mid' })] });
+const boss = row('boss', { group: 'cg-work', children: [row('mid', { group: 'cg-work', parent: 'boss' }), row('kid', { group: 'cg-work', parent: 'boss' }), row('leaf', { group: 'cg-work', parent: 'boss' })] });
 const IX = {
   projects: [{ id: 'cp-a', name: 'Capcom' }],
   sorts: { pinned: SORT, routines: SORT, sessions: SORT },
@@ -26,10 +26,10 @@ const IX = {
 const rows = (...ids) => ids.map(id => everyRow(IX).find(r => r.id === id));
 const ids = list => list.map(r => r.id);
 
-test('carriedOf leaves out a picked session whose nearest shown parent is picked, and keeps the picked ones in screen order', () => {
+test('carriedOf leaves out a picked session whose parent is picked, and keeps the picked ones in screen order', () => {
   assert.deepEqual(ids(carriedOf(IX, ['boss', 'kid', 'mine'])), ['boss', 'mine']);
   assert.deepEqual(ids(carriedOf(IX, ['kid', 'mine'])), ['kid', 'mine']);
-  assert.deepEqual(ids(carriedOf(IX, ['boss', 'leaf'])), ['boss', 'leaf'], 'mid is between them and is not picked, so leaf is changed on its own');
+  assert.deepEqual(ids(carriedOf(IX, ['boss', 'leaf'])), ['boss'], 'leaf shows straight under boss, so it is carried');
   assert.deepEqual(carriedOf(IX, ['nobody']), []);
 });
 
@@ -126,7 +126,7 @@ test('Move out names the parent when the nested sessions share one, and covers o
   assert.deepEqual([ids(leavers(IX, rows('kid', 'mid', 'mine')).rows), leavers(IX, rows('kid', 'mid', 'mine')).parent.id], [['kid', 'mid'], 'boss']);
   assert.equal(leavers(IX, rows('kid', 'mine')).parent.id, 'boss');
   assert.deepEqual(leavers(IX, rows('mine', 'peer')), { rows: [], parent: null });
-  const two = { ...IX, started: [row('c', { parent: 'mine', via: 'mine' })] };
+  const two = { ...IX, started: [row('c', { parent: 'mine' })] };
   assert.equal(leavers(two, [two.started[0], ...rows('kid')]).parent, null, 'two different parents');
 });
 

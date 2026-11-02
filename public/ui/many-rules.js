@@ -20,7 +20,7 @@ export function topmost(ix, ids) {
 // The picked sessions a move or a nest changes on their own: those whose parent is not picked. The others travel with it.
 export function carriedOf(ix, ids) {
   const picked = new Set(ids);
-  return rowsOf(ix, ids).filter(r => !picked.has(r.via));
+  return rowsOf(ix, ids).filter(r => !picked.has(r.parent));
 }
 
 // The sentence for a nest that cannot be, or an empty string. The row it lands under is the target's top level session.

@@ -134,17 +134,17 @@ test('placing a family does not reorder its children', () => {
   assert.deepEqual(ids(placed.children), ['x', 'y']);
 });
 
-// A family is a head with children. A child's `via` names the session it nests under, and one with none nests under the head.
+// A family is a head with children. A child's `parent` names the session it nests under, and one with none nests under the head.
 const head = row('H', 100);
 
 test('a family goes depth first: each child of the head in the list\'s order, then at once the children that nest under it', () => {
   const kids = [
     row('a', 50),
     row('b', 40),
-    row('a1', 30, { via: 'a' }),
-    row('a2', 45, { via: 'a' }),
-    row('b1', 60, { via: 'b' }),
-    row('a2x', 10, { via: 'a2' }),
+    row('a1', 30, { parent: 'a' }),
+    row('a2', 45, { parent: 'a' }),
+    row('b1', 60, { parent: 'b' }),
+    row('a2x', 10, { parent: 'a2' }),
   ];
   assert.deepEqual(ids(sortFamily(head, kids, recency(false))), ['a', 'a2', 'a2x', 'a1', 'b', 'b1']);
   assert.deepEqual(ids(sortFamily(head, kids, recency(true))), ['b', 'b1', 'a', 'a1', 'a2', 'a2x']);
@@ -154,33 +154,33 @@ test('the siblings of each level go by the list\'s own sort, alpha included', ()
   const kids = [
     row('k1', 1, { title: 'Delta' }),
     row('k2', 2, { title: 'Alpha' }),
-    row('k3', 3, { title: 'Charlie', via: 'k1' }),
-    row('k4', 4, { title: 'Bravo', via: 'k1' }),
+    row('k3', 3, { title: 'Charlie', parent: 'k1' }),
+    row('k4', 4, { title: 'Bravo', parent: 'k1' }),
   ];
   assert.deepEqual(ids(sortFamily(head, kids, alpha(false))), ['k2', 'k1', 'k4', 'k3']);
   assert.deepEqual(ids(sortFamily(head, kids, alpha(true))), ['k1', 'k3', 'k4', 'k2']);
 });
 
-test('a child with no via nests under the head, and the order of the rows given does not matter', () => {
-  const kids = [row('b', 20, { via: 'a' }), row('a', 30), row('c', 10)];
+test('a child with no parent nests under the head, and the order of the rows given does not matter', () => {
+  const kids = [row('b', 20, { parent: 'a' }), row('a', 30), row('c', 10)];
   const want = ['a', 'b', 'c'];
   assert.deepEqual(ids(sortFamily(head, kids, recency(false))), want);
   assert.deepEqual(ids(sortFamily(head, [...kids].reverse(), recency(false))), want);
-  assert.deepEqual(ids(sortFamily(head, kids.map(c => ({ ...c, via: c.via ?? 'H' })), recency(false))), want, 'a via naming the head is the same');
+  assert.deepEqual(ids(sortFamily(head, kids.map(c => ({ ...c, parent: c.parent ?? 'H' })), recency(false))), want, 'a parent naming the head is the same');
 });
 
-test('a child whose via names no session in the family follows the rest, in the list\'s order, and none is lost', () => {
-  const kids = [row('a', 50), row('lost1', 20, { via: 'gone' }), row('a1', 10, { via: 'a' }), row('lost2', 70, { via: 'gone' })];
+test('a child whose parent names no session in the family follows the rest, in the list\'s order, and none is lost', () => {
+  const kids = [row('a', 50), row('lost1', 20, { parent: 'gone' }), row('a1', 10, { parent: 'a' }), row('lost2', 70, { parent: 'gone' })];
   assert.deepEqual(ids(sortFamily(head, kids, recency(false))), ['a', 'a1', 'lost2', 'lost1']);
 });
 
 test('links that lead back to each other cannot loop, and the sessions in them follow the rest', () => {
-  const kids = [row('a', 50, { via: 'b' }), row('b', 40, { via: 'a' }), row('c', 60)];
+  const kids = [row('a', 50, { parent: 'b' }), row('b', 40, { parent: 'a' }), row('c', 60)];
   assert.deepEqual(ids(sortFamily(head, kids, recency(false))), ['c', 'a', 'b']);
 });
 
 test('the walk stops 32 levels down, and the sessions below follow the rest in the list\'s order', () => {
-  const chain = Array.from({ length: 40 }, (_, i) => row(`c${i + 1}`, 1000 + i, { via: i ? `c${i}` : undefined }));
+  const chain = Array.from({ length: 40 }, (_, i) => row(`c${i + 1}`, 1000 + i, { parent: i ? `c${i}` : undefined }));
   const out = ids(sortFamily(head, chain, recency(false)));
   assert.deepEqual(out.slice(0, 32), chain.slice(0, 32).map(r => r.id), 'the first 32 levels run down the chain');
   assert.deepEqual(out.slice(32), chain.slice(32).map(r => r.id).reverse(), 'the rest are newest first');

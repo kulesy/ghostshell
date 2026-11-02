@@ -27,8 +27,8 @@ function transcript(id, entries) {
 }
 
 // The index the server builds is one level deep, so ROWS below goes deeper than it to test the walk itself.
-// `skip` is the nearest session that is not archived, which `via` holds in an index that leaves the archived ones out.
-const row = (id, via, extra) => ({ id, via, skip: via, title: `Session ${id}`, cwd: `/work/${id}`, branch: 'main', state: 'idle', archived: false, lastActivityAt: NOW - 2 * DAY, ...extra });
+// `skip` is the nearest session that is not archived, which `parent` holds in an index that leaves the archived ones out.
+const row = (id, parent, extra) => ({ id, parent, skip: parent, title: `Session ${id}`, cwd: `/work/${id}`, branch: 'main', state: 'idle', archived: false, lastActivityAt: NOW - 2 * DAY, ...extra });
 //   up
 //     top (the asker)
 //       a (waiting)
@@ -56,7 +56,7 @@ const ASKS = { pending: () => [], summaries: {} };
 function subsFor(rows, { self = 'top', pending = () => [], summaries = {}, send = () => 'idle' } = {}) {
   return {
     send,
-    lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived).map(r => ({ ...r, via: archived ? r.via : r.skip })) }),
+    lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived).map(r => ({ ...r, parent: archived ? r.parent : r.skip })) }),
     pending,
     summary: id => (summaries[id] === undefined ? null : { line: summaries[id], reply: summaries[id], at: null }),
   };

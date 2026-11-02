@@ -146,8 +146,8 @@ test('a family is one level deep in the list\'s sort, however deep its links go'
   const newest = await ready({ sessions });
   const recent = await index(newest.s, newest.token);
   assert.deepEqual(shape(recent.ungrouped), ['Head [Delta, Charlie, Bravo, Alpha]']);
-  assert.deepEqual(recent.ungrouped[0].children.map(r => [r.id, r.via, r.parent]), [['d', 'head', 'head'], ['c', 'head', 'head'], ['b', 'head', 'head'], ['a', 'head', 'head']]);
-  assert.equal(rowOf(recent, 'head').via, null);
+  assert.deepEqual(recent.ungrouped[0].children.map(r => [r.id, r.parent]), [['d', 'head'], ['c', 'head'], ['b', 'head'], ['a', 'head']]);
+  assert.equal(rowOf(recent, 'head').parent, null);
 
   const byTitle = await ready({ sessions, sections: [section('loose', 'sessions', 'alpha', false)] });
   assert.deepEqual(shape((await index(byTitle.s, byTitle.token)).ungrouped), ['Head [Alpha, Bravo, Charlie, Delta]']);
@@ -164,11 +164,11 @@ test('a session linked to an archived one shows under the next one up, and besid
   });
   const listed = await index(s, token);
   assert.deepEqual(shape(listed.ungrouped), ['Head [Direct, Under the archived one]']);
-  assert.deepEqual(['y', 'z'].map(id => [rowOf(listed, id).via, rowOf(listed, id).parent]), [['head', 'head'], ['head', 'head']]);
+  assert.deepEqual(['y', 'z'].map(id => rowOf(listed, id).parent), ['head', 'head']);
 
   const archive = await index(s, token, '?archived=1');
   assert.deepEqual(shape(archive.ungrouped), ['Head [Direct, Under the archived one, Archived middle]']);
-  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).via), ['head', 'head', 'head']);
+  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).parent), ['head', 'head', 'head']);
   assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).near), ['head', 'x', 'head']);
 });
 
@@ -186,7 +186,7 @@ test('a session detached from its parent keeps the sessions that came from it, w
   });
   const ix = await index(s, token);
   assert.deepEqual(shape(ix.ungrouped), ['C [E, D]', 'A [B]']);
-  assert.deepEqual(['a', 'b', 'c', 'd', 'e'].map(id => [rowOf(ix, id).parent, rowOf(ix, id).via]), [[null, null], ['a', 'a'], [null, null], ['c', 'c'], ['c', 'c']]);
+  assert.deepEqual(['a', 'b', 'c', 'd', 'e'].map(id => rowOf(ix, id).parent), [null, 'a', null, 'c', 'c']);
 });
 
 test('a list is cut at its first 60 as it is sorted, so a list that goes by title keeps the first names and not the newest', async () => {
