@@ -232,6 +232,26 @@ test('a chat lists and reads the session its chip started beside it, archiving t
 });
 
 // A chip started before nestUnder links its session to Kid itself, which is how the Video session came to be archived with Talk.
+// Root is archived, so the list shows Left and Right as two heads, each with its own child.
+const SPLIT = { sessions: [
+  { id: 'root', title: 'Root', archived: true, ago: 9 },
+  { id: 'left', title: 'Left', parent: 'root', ago: 4 },
+  { id: 'left-kid', title: 'Left kid', parent: 'left', ago: 3 },
+  { id: 'right', title: 'Right', parent: 'root', ago: 6 },
+  { id: 'right-kid', title: 'Right kid', parent: 'right', ago: 5 },
+] };
+
+test('under an archived root, each session the list shows as a head reaches its own child and not the other head\'s', async () => {
+  const { s, token } = await ready(SPLIT);
+  const list = textOf(await callTool(s, token, 'left', 'list_sub_sessions'));
+  assert.match(list, /^Session "Left": 1 sub session\n/);
+  assert.match(list, /\[left-kid\]/);
+  assert.match(textOf(await callTool(s, token, 'left', 'list_sub_sessions', { include_archived: true })), /\[left-kid\]/, 'and with the archived ones listed');
+  assert.equal((await callTool(s, token, 'left', 'read_sub_session', { session_id: 'left-kid' })).result.isError, undefined);
+  assert.deepEqual((await callTool(s, token, 'left', 'read_sub_session', { session_id: 'right-kid' })).result, refusal);
+  assert.match(textOf(await callTool(s, token, 'left-kid', 'list_sub_sessions')), /has no sub sessions\.$/);
+});
+
 test('a session an old chip of a nested chat started shows beside it, stays reachable, and stays live when that chat is archived', async () => {
   const { s, token } = await ready({ ...MADE, chips: [{ sessionId: 'kid', toolUseId: 'toolu_made', status: 'started', startedId: 'made' }] });
   assert.match(textOf(await callTool(s, token, 'kid', 'list_sub_sessions')), /beside it:\n- Made \[made\]/);
