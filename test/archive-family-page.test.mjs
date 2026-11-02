@@ -103,13 +103,13 @@ test('a parent\'s row menu archives it with the sessions below it, the note coun
   assert.deepEqual(page.problems, []);
 });
 
-test('a sub session\'s row menu archives it with the sessions below it and leaves its parent', { skip, timeout }, async t => {
+test('a sub session\'s row menu archives only it, leaving its parent and the session linked to it', { skip, timeout }, async t => {
   const { s, page } = await ready(t);
   await rightClick(page, 'kid');
   await choose(page, 'Archive');
-  await page.until(`document.querySelector('${NOTE} [data-title]')?.textContent === 'Archived “Kid” and 1 sub session.'`);
-  assert.deepEqual(Object.keys(onDisk(s).archived).sort(), ['grand', 'kid']);
-  await page.until(`!document.querySelector('a.row[data-id="grand"]') && !!document.querySelector('a.row[data-id="boss"]')`);
+  await page.until(`document.querySelector('${NOTE} [data-title]')?.textContent === 'Archived “Kid”.'`);
+  assert.deepEqual(Object.keys(onDisk(s).archived), ['kid']);
+  await page.until(`!document.querySelector('a.row[data-id="kid"]') && !!document.querySelector('a.row[data-id="grand"]') && !!document.querySelector('a.row[data-id="boss"]')`);
   assert.deepEqual(page.problems, []);
 });
 

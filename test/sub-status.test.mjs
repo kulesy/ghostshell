@@ -10,11 +10,12 @@ import { as, cliCalls, listen, request, signIn, start, until as waitFor } from '
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 const LAYOUT_TOOLS = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group'];
 const NOT_BELOW = 'That session is not a sub session of this session, nor one its chips started beside it. Use list_sub_sessions to see the ones you can reach.';
+// Grand links to Kid and Under gone to Gone, and the list shows both beside the session they link to, under Top.
 //   top
 //     kid
-//       grand
+//     grand
 //     gone (archived)
-//       under-gone
+//     under-gone
 //   peer
 //     peer-kid
 const SESSIONS = [
@@ -138,7 +139,7 @@ test('the index tells the page this server knows sub session status, and puts th
   const { s, token } = await ready();
   const ix = (await get(s, token, '/api/sessions?archived=1')).body();
   assert.equal(ix.features.subStatus, true);
-  assert.deepEqual(findRow(ix, 'top').children.map(r => [r.id, r.via]).sort(), [['gone', 'top'], ['grand', 'kid'], ['kid', 'top'], ['under-gone', 'gone']]);
+  assert.deepEqual(findRow(ix, 'top').children.map(r => [r.id, r.via]).sort(), [['gone', 'top'], ['grand', 'top'], ['kid', 'top'], ['under-gone', 'top']]);
 });
 
 test('an ordinary chat is offered the sub session tools after the ones every chat has, and a group\'s chat is not', async () => {
@@ -159,17 +160,19 @@ test('an ordinary chat is offered the sub session tools after the ones every cha
   assert.deepEqual(refused.result, { content: [{ type: 'text', text: 'GhostShell has no tool called list_sub_sessions.' }], isError: true });
 });
 
-test('a chat lists the sessions under it at any depth, archived ones only when asked and the sessions under them either way, and reads any of them', async () => {
+test('a chat lists the sessions under it, one level deep, archived ones only when asked and the sessions linked to them either way, and reads any of them', async () => {
   const { s, token } = await ready();
   says(s, 'grand', 'The grandchild is done. Nothing else.');
   const list = textOf(await callTool(s, token, 'top', 'list_sub_sessions'));
   assert.match(list, /^Session "Top": 3 sub sessions\n\n/);
-  assert.match(list, /\n- Kid \[kid\] · idle ·.*\n {2}1 sub session\n {2}- Grand \[grand\] · (?:idle|active) ·.*\n {4}"The grandchild is done\."/);
-  assert.match(list, /\[under-gone\]/, 'the session under an archived one shows straight under this one');
+  assert.match(list, /\n- Grand \[grand\] · (?:idle|active) ·.*\n {2}"The grandchild is done\."\n- Kid \[kid\] · idle ·/);
+  assert.doesNotMatch(list, /sub session\n {2}-/, 'none is listed below another');
+  assert.match(list, /\[under-gone\]/, 'the session linked to an archived one shows under this one');
   assert.doesNotMatch(list, /\[gone\]|\[peer\]|\[peer-kid\]|\[loose\]|\[top\]/);
   const all = textOf(await callTool(s, token, 'top', 'list_sub_sessions', { include_archived: true }));
   assert.match(all, /^Session "Top": 3 sub sessions, 1 archived\n/);
-  assert.match(all, /\n- Gone \[gone\] · archived ·.*\n {2}1 sub session\n {2}- Under gone \[under-gone\]/);
+  assert.match(all, /\n- Gone \[gone\] · archived ·/);
+  assert.match(all, /\n- Under gone \[under-gone\]/, 'beside the archived one it links to, not below it');
 
   for (const id of ['kid', 'grand', 'gone', 'under-gone']) {
     const reply = await callTool(s, token, 'top', 'read_sub_session', { session_id: id });
@@ -188,12 +191,8 @@ test('a chat is refused every session that is not under it with one sentence, ho
   assert.deepEqual((await callTool(s, token, 'top', 'read_sub_session', {})).result, refusal);
   assert.deepEqual((await callTool(s, token, 'top', 'read_sub_session', { session_id: ['kid'] })).result, refusal);
 
-  const own = textOf(await callTool(s, token, 'kid', 'list_sub_sessions'));
-  assert.match(own, /^Session "Kid": 1 sub session\n/);
-  assert.match(own, /\[grand\]/);
-  assert.doesNotMatch(own, /\[gone\]|\[top\]|\[under-gone\]/);
-  for (const id of ['top', 'gone', 'under-gone', 'kid']) assert.deepEqual((await callTool(s, token, 'kid', 'read_sub_session', { session_id: id })).result, refusal, id);
-  assert.equal((await callTool(s, token, 'kid', 'read_sub_session', { session_id: 'grand' })).result.isError, undefined);
+  assert.equal(textOf(await callTool(s, token, 'kid', 'list_sub_sessions')), 'Session "Kid" has no sub sessions.', 'Grand is beside Kid, not below it');
+  for (const id of ['top', 'gone', 'under-gone', 'kid', 'grand']) assert.deepEqual((await callTool(s, token, 'kid', 'read_sub_session', { session_id: id })).result, refusal, id);
   assert.equal(textOf(await callTool(s, token, 'grand', 'list_sub_sessions')), 'Session "Grand" has no sub sessions.');
 });
 
@@ -220,17 +219,45 @@ const archivedIds = async (s, token) => (await get(s, token, '/api/archived')).b
 test('a chat lists and reads the session its chip started beside it, archiving the maker leaves that session alone, and archiving the parent takes both', async () => {
   const { s, token } = await ready(MADE);
   const list = textOf(await callTool(s, token, 'kid', 'list_sub_sessions'));
-  assert.match(list, /^Session "Kid": 1 sub session, 1 started beside it\n[^]*\n\nStarted from this session's chips, beside it:\n- Made \[made\]/);
+  assert.match(list, /^Session "Kid": no sub sessions, 1 started beside it\n\nStarted from this session's chips, beside it:\n- Made \[made\]/);
   assert.equal((await callTool(s, token, 'kid', 'read_sub_session', { session_id: 'made' })).result.isError, undefined);
   assert.match(textOf(await callTool(s, token, 'top', 'list_sub_sessions')), /\[made\]/, 'the parent has it below');
 
   assert.equal((await post(s, token, '/api/layout/archive', { id: 'kid', archived: true })).status, 200);
   const afterKid = await archivedIds(s, token);
-  assert.ok(afterKid.includes('kid') && afterKid.includes('grand'));
-  assert.equal(afterKid.includes('made'), false, 'it is not below its maker');
+  assert.deepEqual([...afterKid].sort(), ['gone', 'kid'], 'Gone was archived before, and Grand and Made, beside Kid, stay');
   assert.equal((await post(s, token, '/api/layout/archive', { id: 'top', archived: true })).status, 200);
   const afterTop = await archivedIds(s, token);
   assert.ok(['top', 'kid', 'made'].every(id => afterTop.includes(id)), afterTop.join());
+});
+
+// A chip started before nestUnder links its session to Kid itself, which is how the Video session came to be archived with Talk.
+// Root is archived, so the list shows Left and Right as two heads, each with its own child.
+const SPLIT = { sessions: [
+  { id: 'root', title: 'Root', archived: true, ago: 9 },
+  { id: 'left', title: 'Left', parent: 'root', ago: 4 },
+  { id: 'left-kid', title: 'Left kid', parent: 'left', ago: 3 },
+  { id: 'right', title: 'Right', parent: 'root', ago: 6 },
+  { id: 'right-kid', title: 'Right kid', parent: 'right', ago: 5 },
+] };
+
+test('under an archived root, each session the list shows as a head reaches its own child and not the other head\'s', async () => {
+  const { s, token } = await ready(SPLIT);
+  const list = textOf(await callTool(s, token, 'left', 'list_sub_sessions'));
+  assert.match(list, /^Session "Left": 1 sub session\n/);
+  assert.match(list, /\[left-kid\]/);
+  assert.match(textOf(await callTool(s, token, 'left', 'list_sub_sessions', { include_archived: true })), /\[left-kid\]/, 'and with the archived ones listed');
+  assert.equal((await callTool(s, token, 'left', 'read_sub_session', { session_id: 'left-kid' })).result.isError, undefined);
+  assert.deepEqual((await callTool(s, token, 'left', 'read_sub_session', { session_id: 'right-kid' })).result, refusal);
+  assert.match(textOf(await callTool(s, token, 'left-kid', 'list_sub_sessions')), /has no sub sessions\.$/);
+});
+
+test('a session an old chip of a nested chat started shows beside it, stays reachable, and stays live when that chat is archived', async () => {
+  const { s, token } = await ready({ ...MADE, chips: [{ sessionId: 'kid', toolUseId: 'toolu_made', status: 'started', startedId: 'made' }] });
+  assert.match(textOf(await callTool(s, token, 'kid', 'list_sub_sessions')), /beside it:\n- Made \[made\]/);
+  assert.equal((await callTool(s, token, 'kid', 'read_sub_session', { session_id: 'made' })).result.isError, undefined);
+  assert.equal((await post(s, token, '/api/layout/archive', { id: 'kid', archived: true })).status, 200);
+  assert.equal((await archivedIds(s, token)).includes('made'), false);
 });
 
 test('a chat no longer reaches the session its chip started once the owner has put that session somewhere else', async () => {

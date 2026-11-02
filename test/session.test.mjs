@@ -413,6 +413,19 @@ test('a message sent from the page reloads the list when its turn reports work, 
   });
 });
 
+test('a message from the prompt box scrolls the chat to its end, and one from a widget leaves the chat where it is', async () => {
+  await withChanges(() => ({ status: 200, ok: true, json: async () => ({ ...SETTINGS, state: 'working' }) }), async () => {
+    const { chat } = await openChat('chat-widget-scroll');
+    const jump = () => chat.store.get().jump;
+    await chat.send('typed', [], 'manual');
+    assert.equal(jump(), 1);
+    assert.equal(await chat.prompt('from a widget'), true);
+    assert.equal(jump(), 1, 'the widget message moved nothing');
+    assert.deepEqual(chat.store.get().sending.map(m => m.text), ['typed', 'from a widget'], 'and still shows as sent');
+    chat.close();
+  });
+});
+
 test('a chat opened in the middle of a turn does not reload the list as that turn\'s work arrives', async () => {
   const { chat, stream, reloads } = await openChat('chat-list-midway');
   stream.emit('status', { state: 'working', pending: [], work: workOf(4000, 10) });

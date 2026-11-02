@@ -132,17 +132,18 @@ const linkNow = id => linksNow()(id);
 // What a chip's group name is looked up in when the chip is made. Each call reads the layout again, so a group renamed since is seen as it is now.
 const groupList = () => layout.read().groups.map(({ id, name }) => ({ id, name }));
 
-// A nested session that leaves its place would take the sessions straight under it along, so each is linked to the one it showed
-// under instead, and those further down keep their links. A head takes its whole family along.
+// A nested session that leaves its place would take the sessions linked straight to it along, though they show beside it, so each is
+// linked to the parent instead, and those further down keep their links. A head takes its whole family along.
 function keepFamily(id, rows) {
   const { via } = rows.get(id);
   const links = {};
-  if (via) for (const r of rows.values()) if (!r.archived && r.via === id) links[r.id] = via;
+  if (via) for (const r of rows.values()) if (!r.archived && r.near === id) links[r.id] = via;
   return links;
 }
 
-// Every session below one at any depth, archived ones included, which archiving and unarchiving take along.
-const belowNow = id => descendantsOf([...buildIndex({ archived: true }).rows.values()], id);
+// The sessions shown under a head, which archiving takes along from the live list and unarchiving brings back from the archived one, so
+// both take what the owner sees. A nested session has none.
+const belowNow = (id, { archived }) => descendantsOf([...buildIndex({ archived }).rows.values()], id);
 
 // A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone knows a session's link.
 const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex().rows) });
@@ -226,8 +227,8 @@ function buildIndex({ archived = false } = {}) {
   const families = familiesOf(rows, id => linkOf(own, fromChips, desk, id), { archived });
   const places = new Map([...rows.values()].map(r => [r.id, { group: r.group, pinned: r.pinned }]));
   for (const r of rows.values()) {
-    const { holder, parent, via } = families.get(r.id);
-    Object.assign(r, { parent, via }, places.get(holder));
+    const { holder, parent, via, near } = families.get(r.id);
+    Object.assign(r, { parent, via, near }, places.get(holder));
   }
   const visible = [...rows.values()].filter(r => archived || !r.archived);
   // Counted by the place a family gives each row, which is what api/archived?group= lists by.
@@ -399,7 +400,7 @@ function subCtx(sessionId) {
     archive(id) {
       const root = editableRow(id);
       const elsewhere = r => !getChat(r.id)?.proc && r.state === 'active';
-      const away = belowNow(id).filter(r => !r.archived && elsewhere(r)).length;
+      const away = belowNow(id, { archived: false }).filter(r => !r.archived && elsewhere(r)).length;
       if (away || elsewhere(root)) return { was: 'elsewhere', self: elsewhere(root), subs: away };
       try {
         return { was: 'done', archivedSubs: CHANGES.archived(id, true, false).subs ?? 0 };
@@ -431,6 +432,9 @@ function placeStarted(id, home, { unlink = false } = {}) {
   }
 }
 
+// The head a session shows under in the live list. One under an archived root shows as a head itself, so it has none.
+const liveHeadOf = (row, rowOf = findRow) => (row?.via && !rowOf(row.via)?.archived ? row.via : null);
+
 // Where a chip's session opens, worded for its card from the group's name now. `row` is the session that made the chip. A section's chat
 // and a routine run, which never holds sessions, have nothing to say. A list of chips passes `rowOf` over one index.
 function withOpensIn(chip, row, rowOf = findRow) {
@@ -440,7 +444,7 @@ function withOpensIn(chip, row, rowOf = findRow) {
     if (chip.group) return nameOf(chip.group) ? `Opens in ${nameOf(chip.group)}` : 'Its group has been deleted';
     if (!row || row.routine) return null;
     if (row.groupSession) return nameOf(row.groupSession) ? `Opens in ${nameOf(row.groupSession)}` : null;
-    const beside = chip.status === 'started' ? chip.nestUnder : row.via;
+    const beside = chip.status === 'started' ? chip.nestUnder : liveHeadOf(row, rowOf);
     // An archived session shows nothing under it, so its chip's session stands in its place on its own. A started chip with a parent already sits there.
     if (row.archived && !(chip.status === 'started' && beside)) return nameOf(row.group) ? `Opens in ${nameOf(row.group)}` : null;
     if (beside) {
@@ -704,7 +708,7 @@ function ensureChat(id, row, { mode } = {}) {
 // The message is already sent by now, so a layout that cannot be written is logged, not reported as a failed send.
 function unarchive(id) {
   try {
-    layout.unarchive(id, { under: belowNow(id).map(r => r.id) });
+    layout.unarchive(id, { under: belowNow(id, { archived: true }).map(r => r.id) });
     return true;
   } catch (e) {
     console.error(`Could not unarchive ${id}: ${e.message}`);
@@ -883,7 +887,7 @@ async function editLayout(req, res, change) {
 function setArchived(id, archived, stop, { alone = false } = {}) {
   if (typeof archived !== 'boolean') throw Object.assign(new Error('Archived or not?'), { status: 400 });
   if (stop !== undefined && typeof stop !== 'boolean') throw Object.assign(new Error('Stop it or not?'), { status: 400 });
-  const below = alone ? [] : belowNow(id);
+  const below = alone ? [] : belowNow(id, { archived: !archived });
   if (!archived) {
     const back = layout.unarchive(id, { under: below.map(r => r.id) });
     return { archived, ...(back.length > 1 && { subs: back.length - 1 }) };
@@ -970,7 +974,7 @@ const MAX_PICKED = 100;
 const UNDO_WINDOW_MS = 10 * 60_000;
 
 // Makes a session that is booked and not run the parent of several, in one write. See docs/adr/20261022-nest-sessions-under-a-parent.md.
-// A picked session whose nearest shown parent is picked too keeps its link and rides along. The rest link straight to the new parent.
+// A picked session whose parent is picked too keeps its link and rides along. The rest link straight to the new parent.
 function newParent({ ids, title, place }) {
   if (Array.isArray(ids) && ids.length > MAX_PICKED) throw refuse(400, `Pick at most ${MAX_PICKED} sessions.`);
   if (!Array.isArray(ids) || ids.length < 2) throw refuse(400, 'Pick at least two sessions.');
@@ -1044,7 +1048,7 @@ function aimOf(to) {
 }
 
 // Moves, pins, nests or unnests several sessions in one write, with one Undo. `to` is { group } (null for each one's loose list), { pinned: true },
-// { parent } or { parent: null }. A picked session whose nearest shown parent is picked too rides along with its family and is left alone. Any
+// { parent } or { parent: null }. A picked session whose parent is picked too rides along with its family and is left alone. Any
 // refusal writes nothing.
 function manyChange({ ids, to }) {
   if (!Array.isArray(ids) || ids.length < 1) throw refuse(400, 'Pick at least one session.');
@@ -1745,7 +1749,7 @@ async function api(req, res, u) {
     }
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
     // A chip from a sub session starts its session beside it, under the sub session's parent. A chip naming a group is unlinked anyway.
-    const nestUnder = named ? null : findRow(known?.sessionId || sessionId)?.via;
+    const nestUnder = named ? null : liveHeadOf(findRow(known?.sessionId || sessionId));
     const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a
     // section's chip pins it or leaves it loose, as that section's own chat would. A group the chip names wins over both, and the session is

@@ -158,7 +158,7 @@ export function nestRow(ix, id, parent) {
   const root = rootOf(ix, parent);
   if (!row || !root || root.id === id || row.parent === root.id) return ix;
   const at = { group: root.group, pinned: root.pinned };
-  const family = [row, ...(row.children ?? [])].map(({ children, ...r }) => ({ ...r, ...at, parent: root.id, ...(r.id === id && { via: root.id }) }));
+  const family = [row, ...(row.children ?? [])].map(({ children, ...r }) => ({ ...r, ...at, parent: root.id, via: root.id }));
   const adopt = (list, sort) => (list.some(r => r.id === root.id)
     ? sortRows(list.map(r => (r.id === root.id ? reorder({ ...r, children: [...(r.children ?? []), ...family] }, sort) : r)), sort)
     : list);

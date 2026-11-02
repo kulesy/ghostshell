@@ -296,9 +296,10 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // ---- talking to Claude -------------------------------------------------------------------------------
 
   // Sent while Claude works, a message redirects it without stopping: Claude reads it before its next step.
-  async function send(text, images, mode, files = []) {
+  // `stay` leaves the chat scrolled where it is, for a message sent from a widget the owner is still using.
+  async function send(text, images, mode, files = [], { stay = false } = {}) {
     const message = { text, images, files };
-    store.set(s => ({ sending: [...s.sending, message], notice: '', usageOut: false, jump: s.jump + 1 }));
+    store.set(s => ({ sending: [...s.sending, message], notice: '', usageOut: false, jump: stay ? s.jump : s.jump + 1 }));
     try {
       const { unarchived, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }) });
       // Each change of fast mode reaches the page over SSE, and a reply can be older than the last one.
@@ -312,7 +313,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   }
 
   // A widget's button sends its text as the owner's message, in the mode the prompt box would use for a plain message.
-  const prompt = text => send(text, [], (state().status || { mode: 'manual' }).mode);
+  const prompt = text => send(text, [], (state().status || { mode: 'manual' }).mode, [], { stay: true });
 
   async function stop() {
     try { await api(`api/sessions/${enc(id)}/stop`, {}); } catch (e) { notice(e.message); }
