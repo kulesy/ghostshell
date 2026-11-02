@@ -28,7 +28,7 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
-import { chatFor, getChat, onAuthFailure, onTurn, runningChats, startChat, sweep, activeStates } from './lib/runner.mjs';
+import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, useActiveAccount } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
 import { makeTitler } from './lib/titler.mjs';
@@ -37,7 +37,9 @@ import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
-import { authStatus, makeLogin, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
+import { authInfo, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
+import { makeAccounts } from './lib/accounts.mjs';
+import { makeAccountLogins } from './lib/account-logins.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
@@ -57,6 +59,10 @@ const marks = makeMarks(cfg.stateDir);
 const routineStore = makeRoutines(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
 const uploads = makeUploads(cfg.stateDir);
+const accounts = makeAccounts(cfg.stateDir, { warn: console.error });
+const activeEnv = () => accounts.envFor(accounts.active);
+useActiveAccount(() => ({ id: accounts.active.id, env: activeEnv() }));
+retireWhenQuietFor(cfg.retireQuietMs);
 const summaries = makeSummaries({ transcriptFor });
 const pulls = makePulls({ transcriptFor, gh: cfg.gh });
 // A mention of a file in front of /name stops the CLI reading the message as a command.
@@ -112,7 +118,7 @@ onTurn(({ id, kind, at }) => writeMark(() => {
 const ownTitle = (own, id) => (Object.hasOwn(own.titles, id) && typeof own.titles[id] === 'string' && own.titles[id].trim() ? own.titles[id] : '');
 
 // A session started here is named from its first turn, and a title the owner set is never replaced. See docs/adr/20261027-name-sessions-from-their-first-turn.md.
-const titler = makeTitler({ ask: askClaude(cfg.claude), own: id => ownTitle(layout.read(), id), record: (id, title) => layout.rename(id, title), enabled: cfg.autoTitle });
+const titler = makeTitler({ ask: askClaude(cfg.claude, { env: activeEnv }), own: id => ownTitle(layout.read(), id), record: (id, title) => layout.rename(id, title), enabled: cfg.autoTitle });
 
 // What a session is linked to: Capcom's own choice, a null included, wins over the chip it was started from, and that over Desktop's link.
 const linkOf = (own, fromChips, desk, id) => (Object.hasOwn(own.parents, id) ? own.parents[id] : fromChips.get(id) ?? desk.links.get(id) ?? null);
@@ -764,15 +770,23 @@ async function contextFor(id, detail) {
   return transcriptFigure(found, windows.get(modelKey(chat || settingsFor(id, findRow(id)))));
 }
 
-// Plan usage belongs to the account, so any chat Capcom runs can answer it. This chat is asked first, the first answer stands, and no chat
-// is ever started for it. Two others at most are tried, since each can take the full timeout to fail.
+// Plan usage belongs to the account, so any chat Capcom runs on that account can answer it. The first asked is the one given, the first answer stands, and no chat
+// is ever started for it. Two others at most are tried, since each can take the full timeout to fail. The last answer of each account is kept with its time.
+async function askPlan(account, first) {
+  for (const chat of [first, ...runningChats().filter(c => c !== first && c.account === account).slice(0, 2)]) {
+    const rows = await chat?.planUsage();
+    if (rows) {
+      const limits = shapePlan(rows);
+      accountLogins.keepPlan(account, { limits, at: Date.now() });
+      return limits;
+    }
+  }
+  return null;
+}
+
 async function planFor(id) {
   const own = getChat(id);
-  for (const chat of [own, ...runningChats().filter(c => c !== own).slice(0, 2)]) {
-    const rows = await chat?.planUsage();
-    if (rows) return { limits: shapePlan(rows) };
-  }
-  return { limits: null };
+  return { limits: await askPlan(own?.proc ? own.account : accounts.active.id, own) };
 }
 
 // What the page redraws from. The clock is left out because it moves on every read.
@@ -1162,7 +1176,7 @@ async function askLists(req, res, key, list) {
     return send(res, 400, { error: 'That folder does not exist on this Mac.' });
   }
   try {
-    return send(res, 200, { [key]: await list(folder, cfg.claude) });
+    return send(res, 200, { [key]: await list(folder, cfg.claude, { env: activeEnv }) });
   } catch (e) {
     return send(res, 502, { error: e.message });
   }
@@ -1490,8 +1504,20 @@ const groupUpdates = makeGroupUpdates({
 
 // The sidebar banners: when Claude's sign-in ends, and merged changes waiting on main. Both answer from what was last worked out, so a request runs
 // no git, keychain or CLI work. See docs/adr/20261102-banners-for-sign-in-and-updates.md.
-const login = makeLogin({ readEnd: () => readLoginEnd({ security: cfg.security }), authStatus: () => authStatus({ claude: cfg.claude }), startSignIn: () => startSignIn({ claude: cfg.claude }) });
-onAuthFailure(() => login.authFailed().catch(() => {}));
+// Each account has a sign-in of its own, a mark when it is out of usage, and its last plan usage. See docs/adr/20261102-switch-claude-accounts.md.
+const accountLogins = makeAccountLogins({
+  accounts,
+  authInfo: opts => authInfo({ claude: cfg.claude, ...opts }),
+  readLoginEnd: opts => readLoginEnd({ security: cfg.security, ...opts }),
+  startSignIn: opts => startSignIn({ claude: cfg.claude, ...opts }),
+  retireOtherAccounts,
+  restarting: () => updates.state().stage === 'restarting',
+});
+onAuthFailure(accountLogins.authFailed);
+onUsage(accountLogins.markUsage);
+
+const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.state(), accounts: accountLogins.banner() });
+
 const updates = makeUpdate({
   root: cfg.updateRoot,
   locked: () => lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
@@ -1499,7 +1525,6 @@ const updates = makeUpdate({
   busy: () => Object.values(activeStates()).filter(state => state !== 'idle').length,
   log: path.join(cfg.stateDir, 'restart.log'),
 });
-const bannersNow = () => ({ login: login.state(), update: updates.state() });
 
 // GET api/banners gives both banners. POST api/banners/sign-in starts a sign-in on the Mac and POST api/banners/update pulls the merged changes,
 // then restarts if they need it. Both run something as the owner, so they take the stricter origin check.
@@ -1509,9 +1534,10 @@ async function bannersApi(req, res, parts) {
   if (req.method !== 'POST' || parts.length !== 3 || !['sign-in', 'update'].includes(step)) return send(res, 404, { error: 'Not found' });
   if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
   // `claude auth login` is not a chat, so the restart helper would not wait for it.
-  if (step === 'sign-in' && updates.state().stage === 'restarting') return send(res, 409, { error: 'GhostShell is about to restart, so sign in once it is back.' });
-  if (step === 'sign-in') login.signIn();
-  else if (login.state().stage === 'waiting' && updates.state().restart) return send(res, 409, { error: 'A sign-in is waiting on the Mac, so GhostShell cannot restart yet.' });
+  if (step === 'sign-in') {
+    const refused = accountLogins.signIn(accounts.active);
+    if (refused) return send(res, 409, { error: refused });
+  } else if (accountLogins.waiting() && updates.state().restart) return send(res, 409, { error: 'A sign-in is waiting on the Mac, so GhostShell cannot restart yet.' });
   else {
     const { problem } = await updates.update();
     if (problem) return send(res, 409, { error: problem });
@@ -1519,9 +1545,88 @@ async function bannersApi(req, res, parts) {
   return send(res, 200, bannersNow());
 }
 
+// What the Accounts page shows, from what was last worked out. No token, orgId or setting is in it.
+const accountsNow = () => ({
+  accounts: accountLogins.view().map(a => ({
+    ...a, active: a.id === accounts.active.id, first: a.id === accounts.list()[0].id,
+    chats: runningChats().filter(c => c.account === a.id).map(c => ({ id: c.id, title: findRow(c.id)?.title || UNTITLED, state: c.state })),
+  })),
+  autoSwitch: accounts.autoSwitch,
+  auto: accountLogins.banner().auto,
+  waiting: accountLogins.waiting(),
+});
+
+// Asks up to two running chats of each account for its plan usage, so the page can show every account's last answer. No chat is started.
+const askPlans = () => Promise.all(accounts.list().map(a => askPlan(a.id, null)));
+
+// Why a chat stays on the account it started under after a switch, and that it moves once that ends.
+function keptWords(chat) {
+  const [what, ends] = chat.pending.size ? ['waiting on an approval', 'it is answered'] : chat.state !== 'idle' ? ['still in a turn', 'the turn ends'] : ['still running a job', 'the job ends'];
+  return `That chat is ${what} on ${accounts.find(chat.account)?.name ?? 'the other account'}. It moves to ${accounts.active.name} once ${ends}.`;
+}
+
+// GET api/accounts lists them. POST api/accounts adds one by name and starts its sign-in, and POST api/accounts/<id>/sign-in starts one. The rest are
+// POST api/accounts/<id>/rename, POST api/accounts/<id>/use (with `continue`, a session to send "Continue." to), POST api/accounts/auto, POST api/accounts/seen and
+// POST api/accounts/plan. All of them run something as the owner, so they take the stricter origin check.
+async function accountsApi(req, res, parts) {
+  if (req.method === 'GET' && parts.length === 2) return send(res, 200, accountsNow());
+  if (req.method !== 'POST') return send(res, 404, { error: 'Not found' });
+  if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+  const body = await readJson(req, 10_000);
+  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+  const refuse = (status, error) => send(res, status, { error });
+  if (parts.length === 2) {
+    if (accountLogins.blocked()) return refuse(409, accountLogins.blocked());
+    const { account, problem } = accounts.add(body.name);
+    if (problem) return refuse(400, problem);
+    accountLogins.signIn(account);
+    await accountLogins.refresh(account);
+    return send(res, 200, { ...accountsNow(), added: account.id });
+  }
+  const step = parts[2];
+  if (parts.length === 3 && step === 'auto') {
+    if (typeof body.on !== 'boolean') return refuse(400, 'Say whether to switch by itself.');
+    accounts.setAuto(body.on);
+    return send(res, 200, accountsNow());
+  }
+  if (parts.length === 3 && step === 'seen') {
+    accountLogins.seen();
+    return send(res, 200, accountsNow());
+  }
+  if (parts.length === 3 && step === 'plan') {
+    await askPlans();
+    return send(res, 200, accountsNow());
+  }
+  const account = accounts.find(parts[2]);
+  if (!account || parts.length !== 4) return refuse(404, 'Not found');
+  if (parts[3] === 'sign-in') {
+    const refused = accountLogins.signIn(account);
+    if (refused) return refuse(409, refused);
+    return send(res, 200, accountsNow());
+  }
+  if (parts[3] === 'rename') {
+    const { problem } = accounts.rename(account.id, body.name);
+    if (problem) return refuse(400, problem);
+    return send(res, 200, accountsNow());
+  }
+  if (parts[3] !== 'use') return refuse(404, 'Not found');
+  const row = body.continue === undefined ? null : typeof body.continue === 'string' && /^[\w-]+$/.test(body.continue) ? findRow(body.continue) : null;
+  if (body.continue !== undefined && !row) return refuse(404, NO_SESSION);
+  await accountLogins.refresh(account);
+  if (accountLogins.state(account).signedOut) return refuse(409, `${account.name} is signed out. Sign it in first.`);
+  if (account.id !== accounts.active.id) accountLogins.switchTo(account);
+  // A chat that is busy keeps its process on the old account, so "Continue." would go to the account that is out.
+  const kept = row && getChat(row.id);
+  kept?.retire(true);
+  if (kept?.proc?.stdin.writable && kept.account !== accounts.active.id) return refuse(409, keptWords(kept));
+  if (row) ensureChat(row.id, row).send('Continue.');
+  return send(res, 200, accountsNow());
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'banners') return bannersApi(req, res, parts);
+  if (parts[1] === 'accounts') return accountsApi(req, res, parts);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
   if (parts[1] === 'scheduled') return scheduledApi(req, res, parts);
   if (parts[1] === 'schedule' && parts.length === 2) return scheduleApi(req, res, u);
@@ -1551,7 +1656,7 @@ async function api(req, res, u) {
       delete r.sortKey;
     }
     // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, many: true } });
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, many: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1870,8 +1975,9 @@ server.listen(cfg.port, '127.0.0.1', () => {
   console.log(`Capcom on http://localhost:${cfg.port}`);
   setInterval(checkRoutines, 30_000).unref();
   checkRoutines();
-  login.refresh();
-  setInterval(login.refresh, REFRESH_MS).unref();
+  accounts.prepare(accounts.active);
+  accountLogins.refreshAll();
+  setInterval(accountLogins.refreshAll, REFRESH_MS).unref();
   setTimeout(updates.check, cfg.updateDelayMs).unref();
   setInterval(updates.check, CHECK_EVERY_MS).unref();
 });
@@ -1879,7 +1985,7 @@ setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
 setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates failed: ${e.message}`)), scaled(cfg.groupUpdateScale).tick).unref();
 // Whatever the terminal started ends with Capcom, so a restart leaves nothing running behind. A signal ends the process through
 // exit, which kills the command groups; without a handler the default would end it first.
-process.on('exit', () => { terminal.killAll(); login.stop(); });
+process.on('exit', () => { terminal.killAll(); accountLogins.stopAll(); });
 for (const name of ['SIGTERM', 'SIGINT']) process.on(name, () => process.exit(128 + os.constants.signals[name]));
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
 if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine && !s.scheduled && !awaitsFirstMessage(s.id)) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));

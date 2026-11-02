@@ -2,6 +2,7 @@
 // sessions started here or in a terminal, and a project has its groups. Pinned sessions show in every view. A row can be dragged
 // onto a section to move it there, or onto another row to nest it under that one, and a group's header can be dragged among the groups
 // or onto a project. Everything else is done from menus, so a phone can do it all.
+import { supportsAccounts } from './account-rules.js';
 import { ask } from './ask.js';
 import { isRunning, stopQuestion, subsRunning } from './close.js';
 import { dragRows, pointIn } from './drag.js';
@@ -331,7 +332,7 @@ const problemNote = text => say(text, { problem: true });
 // refused because one was running and `stop` was false. `archiveAll(ids, archived, { stop })` does that for several, one after another,
 // and resolves with { done, stopped, failed }: the ids it took, how many were running chats it stopped, and { id, message, running } for
 // each it refused.
-export function SessionList({ ix, projects, error, current, place, nest, placeMany, edit, archive, archiveAll, onFind, passkeys, routines, routinesOpen, refreshRoutines, scheduled, scheduledOpen, refreshScheduled, banner }) {
+export function SessionList({ ix, projects, error, current, place, nest, placeMany, edit, archive, archiveAll, onFind, passkeys, accountsOpen, routines, routinesOpen, refreshRoutines, scheduled, scheduledOpen, refreshScheduled, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [folded, setFolded] = useLocal('folded', {});
   const { view } = projects;
@@ -1165,6 +1166,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       <div class="foot-links">
         <a class="btn" data-variant="ghost" data-size="sm" href="#/routines" aria-current=${routinesOpen ? 'page' : null}>Routines</a>
         ${supportsScheduled(ix) ? html`<a class="btn" data-variant="ghost" data-size="sm" href=${SCHEDULED_HASH} aria-current=${scheduledOpen ? 'page' : null}>Scheduled</a>` : null}
+        ${supportsAccounts(ix) ? html`<a class="btn" data-variant="ghost" data-size="sm" href="#/accounts" aria-current=${accountsOpen ? 'page' : null}>Accounts</a>` : null}
         <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       </div>
       <form method="post" action="logout" onSubmit=${forgetDrafts}><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>

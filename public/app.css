@@ -1641,6 +1641,7 @@ body.dragging .rows .more { opacity: 0; }
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom));
   border-top: 1px solid var(--sidebar-border);
@@ -4236,18 +4237,18 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .offer-progress:empty { display: none; }
 
-.passkeys-body, .routines-body {
+.passkeys-body, .routines-body, .accounts-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 1.25rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
 }
 
-.passkeys-inner { max-width: 36rem; margin-inline: auto; }
+.passkeys-inner, .accounts-inner { max-width: 36rem; margin-inline: auto; }
 
-.passkey-lead { margin: 0; }
+.passkey-lead, .account-lead { margin: 0; }
 
-.passkey-list { list-style: none; margin: 1.25rem 0 0; padding: 0; border-top: 1px solid var(--border); }
+.passkey-list, .account-list { list-style: none; margin: 1.25rem 0 0; padding: 0; border-top: 1px solid var(--border); }
 
 .passkey {
   display: flex;
@@ -4263,7 +4264,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .passkey-name { margin: 0; font-weight: 600; }
 
-.passkey-meta {
+.passkey-meta, .account-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0 0.9rem;
@@ -4280,13 +4281,67 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .passkey-why { margin: 0; font-size: 0.875rem; }
 
-.passkeys-inner .notice { margin: 0.85rem 0 0; }
+.passkeys-inner .notice, .accounts-inner .notice { margin: 0.85rem 0 0; }
 
 .passkey-status { margin: 0.85rem 0 0; font-size: 0.875rem; color: var(--success-foreground); }
 
 .passkey-fine { margin: 1.5rem 0 0; font-size: 0.8125rem; }
 
-.foot-links { display: flex; align-items: center; gap: 0.25rem; }
+.account { padding: 0.85rem 0; border-bottom: 1px solid var(--border); }
+
+.account-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+
+.account-info { min-width: 0; flex: 1 1 14rem; }
+
+.account-name { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0; font-weight: 600; }
+
+.account-line { margin: 0.1rem 0 0; font-size: 0.8125rem; color: var(--muted-foreground); }
+
+.account-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.account .routine-alert { margin: 0.6rem 0 0; }
+
+.account-progress { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--muted-foreground); }
+
+.account-progress:empty { display: none; }
+
+.account .notice { margin: 0.5rem 0 0; }
+
+.account-plan { margin-top: 0.75rem; }
+
+.account-plan .context-plan { margin-top: 0; }
+
+.account-chats { margin-top: 0.75rem; }
+
+.account-sub { margin: 0; font-size: 0.75rem; font-weight: 500; line-height: 1rem; color: var(--muted-foreground); }
+
+.account-chats ul { display: grid; gap: 0.2rem; margin: 0.25rem 0 0; padding: 0; list-style: none; font-size: 0.875rem; }
+
+.account-chats li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.6rem; }
+
+.account-chats a { min-width: 0; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+
+.account-add { display: grid; gap: 0.4rem; margin-top: 1.25rem; }
+
+.account-add label { font-size: 0.875rem; font-weight: 500; }
+
+.account-add-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.account-add-row .input { flex: 1 1 12rem; width: auto; }
+
+.account-hint { margin: 0; font-size: 0.8125rem; }
+
+.account-add .notice, .account-auto .notice { margin: 0.25rem 0 0; }
+
+.account-auto { display: grid; gap: 0.3rem; margin-top: 1.5rem; font-size: 0.875rem; }
+
+.account-auto label { display: flex; align-items: center; gap: 0.5rem; font-weight: 500; }
+
+.notice-action { margin: 0 0 0.6rem; }
+
+.dock .notice-action { margin: -0.25rem auto 0.5rem; }
+
+.foot-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
 
 .routines-inner { max-width: 46rem; margin-inline: auto; }
 

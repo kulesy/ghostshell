@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
-import { activeStates, chatFor, onAuthFailure, onTurn, startChat, sweep } from '../lib/runner.mjs';
+import { activeStates, chatFor, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useActiveAccount } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -1371,4 +1371,181 @@ test('a reply that carries error authentication_failed tells the hook once, and 
   await until(() => heard === 1);
   await until(() => chat.state === 'idle');
   assert.equal(heard, 1);
+});
+
+// A CLI that logs the folder it was started with, then answers by the word it is sent.
+function accountCli(dir) {
+  const cli = path.join(dir, 'account-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import fs from 'node:fs';",
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    `fs.appendFileSync(${JSON.stringify(path.join(dir, 'started.log'))}, JSON.stringify({ dir: process.env.CLAUDE_CONFIG_DIR ?? null }) + '\\n');`,
+    "const said = text => ({ type: 'assistant', error: 'rate_limit', message: { id: 'm', role: 'assistant', content: [{ type: 'text', text }] } });",
+    "const tasks = list => out({ type: 'system', subtype: 'background_tasks_changed', tasks: list });",
+    "const reply = text => out({ type: 'result', subtype: 'success', is_error: false, result: text, total_cost_usd: 0 });",
+    // Like the CLI, it exits once its input is closed, so a process stopped too soon loses the turn it was about to run.
+    "readline.createInterface({ input: process.stdin }).on('close', () => process.exit(0)).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type !== 'user') return;",
+    '  const word = m.message.content;',
+    "  if (word === 'start') return out({ type: 'system', subtype: 'init', session_id: 'sess-account', model: 'stub' });",
+    "  if (word === 'hold') return;",
+    "  if (word === 'job') tasks([{ task_id: 'b1', task_type: 'local_bash' }]);",
+    "  if (word === 'jobend') tasks([]);",
+    // The job ends, then the CLI runs a turn of its own for the job's notice.
+    "  if (word === 'jobnotice') { tasks([]); reply('ok'); return setTimeout(() => { out({ type: 'system', subtype: 'status', status: 'requesting' }); setTimeout(() => reply('read the notice'), 50); }, 50); }",
+    "  const text = { limit: \"You've hit your limit, resets 3pm\", reached: \"You've reached your weekly limit\", credits: \"You're out of usage credits\", extra: \"You're out of extra usage\", busy: 'API Error: Request rejected (429)', overloaded: 'The server is overloaded' }[word];",
+    "  if (text) out(said(text));",
+    "  out({ type: 'result', subtype: 'success', is_error: !!text, result: text, total_cost_usd: 0 });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  return cli;
+}
+const startedDirs = dir => fs.readFileSync(path.join(dir, 'started.log'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l).dir);
+const asAccount = (id, folder) => ({ id, env: { ...process.env, ...(folder ? { CLAUDE_CONFIG_DIR: folder } : { CLAUDE_CONFIG_DIR: undefined }) } });
+const resetAccount = () => { useActiveAccount(() => ({ id: 'main', env: process.env })); onUsage(null); retireWhenQuietFor(15_000); };
+
+test('a process starts with the active account\'s environment and its chat records that account, so a later start uses the account then active', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = accountCli(dir);
+  let now = asAccount('second', '/accounts/second');
+  useActiveAccount(() => now);
+  t.after(resetAccount);
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  assert.equal(chat.status().account, 'second');
+  assert.deepEqual(startedDirs(dir), ['/accounts/second']);
+
+  now = asAccount('main', null);
+  const other = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
+  t.after(() => other.stop());
+  assert.equal(other.status().account, 'main');
+  assert.deepEqual(startedDirs(dir), ['/accounts/second', null]);
+});
+
+test('a switch stops the idle chats of the other account at once, lets a chat mid-turn finish and stops it as it goes idle, and leaves a chat with a background job until the job ends', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = accountCli(dir);
+  let now = asAccount('main', null);
+  useActiveAccount(() => now);
+  retireWhenQuietFor(200);
+  t.after(resetAccount);
+  const open = async id => {
+    const chat = chatFor(id, { cwd: dir, mode: 'manual', claude: cli, chrome: false, chips: null });
+    t.after(() => chat.stop());
+    chat.send('start');
+    chat.send('ok');
+    await until(() => chat.state === 'idle');
+    return chat;
+  };
+  const idle = await open('idle-one');
+  const busy = await open('busy-one');
+  const job = await open('job-one');
+  busy.send('hold');
+  job.send('job');
+  await until(() => job.jobs === 1 && job.state === 'idle');
+  assert.deepEqual([idle.account, busy.account, job.account], ['main', 'main', 'main']);
+
+  now = asAccount('second', '/accounts/second');
+  retireOtherAccounts();
+  await until(() => !idle.status().running);
+  assert.equal(busy.status().running, true, 'mid-turn');
+  assert.equal(job.status().running, true, 'the job would die with the CLI');
+
+  busy.proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: 'ok' } }) + '\n');
+  await until(() => !busy.status().running);
+  assert.equal(job.status().running, true);
+
+  job.send('jobend');
+  await until(() => !job.status().running);
+
+  idle.send('again');
+  await until(() => idle.state === 'idle');
+  assert.equal(idle.account, 'second', 'the next message starts a process on the new account');
+  assert.equal(startedDirs(dir).at(-1), '/accounts/second');
+  retireOtherAccounts();
+  assert.equal(idle.status().running, true, 'a chat on the active account stays');
+});
+
+test('a switched chat runs the turn the CLI starts for a job that ended before it stops', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = accountCli(dir);
+  let now = asAccount('main', null);
+  useActiveAccount(() => now);
+  retireWhenQuietFor(200);
+  t.after(resetAccount);
+  const chat = chatFor('notice-one', { cwd: dir, mode: 'manual', claude: cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  const ends = [];
+  chat.listeners.add(ev => { if (ev.type === 'turn-end') ends.push(ev.data); });
+  chat.send('start');
+  chat.send('job');
+  await until(() => chat.jobs === 1 && chat.state === 'idle');
+
+  now = asAccount('second', '/accounts/second');
+  retireOtherAccounts();
+  chat.send('jobnotice');
+  await until(() => !chat.status().running);
+  assert.equal(ends.length, 3, 'the notice turn ran to its end');
+});
+
+test('only the CLI\'s own limit words mark an account out, the turn-end says so, and a turn that ends well clears the mark', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = accountCli(dir);
+  useActiveAccount(() => asAccount('second', '/accounts/second'));
+  t.after(resetAccount);
+  const heard = [];
+  onUsage((account, text) => heard.push([account, text]));
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  const ends = [];
+  chat.listeners.add(ev => { if (ev.type === 'turn-end') ends.push(ev.data); });
+
+  for (const word of ['busy', 'overloaded']) {
+    chat.send(word);
+    await until(() => ends.length === (word === 'busy' ? 1 : 2));
+  }
+  assert.deepEqual(heard, [], 'a transient rate_limit neither marks nor clears');
+  assert.ok(ends.every(e => e.error && !('usageOut' in e)));
+
+  for (const [word, words] of [['limit', "You've hit your limit, resets 3pm"], ['reached', "You've reached your weekly limit"], ['credits', "You're out of usage credits"], ['extra', "You're out of extra usage"]]) {
+    chat.send(word);
+    await until(() => heard.length && heard.at(-1)[1] === words);
+    await until(() => chat.state === 'idle');
+  }
+  assert.equal(heard.length, 4);
+  assert.ok(heard.every(([account]) => account === 'second'));
+  assert.equal(ends.filter(e => e.usageOut).length, 4);
+  assert.ok(ends.filter(e => e.usageOut).every(e => e.error === true));
+
+  chat.send('ok');
+  await until(() => heard.length === 5);
+  assert.deepEqual(heard.at(-1), ['second', null]);
+  assert.equal(ends.at(-1).usageOut, undefined);
+});
+
+test('the title namer and the folder probe start with the environment they are given', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const seen = path.join(dir, 'seen.log');
+  const cli = path.join(dir, 'echo-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import fs from 'node:fs';",
+    "import readline from 'node:readline';",
+    `fs.appendFileSync(${JSON.stringify(seen)}, JSON.stringify(process.env.CLAUDE_CONFIG_DIR ?? null) + '\\n');`,
+    "if (process.argv.includes('json')) { process.stdin.on('data', () => {}).on('end', () => { process.stdout.write(JSON.stringify({ type: 'result', result: 'A title', is_error: false })); process.exit(0); }); }",
+    "else readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  process.stdout.write(JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: [{ name: 'x', description: 'x' }], models: [] } } }) + '\\n');",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const { askClaude } = await import('../lib/title-ask.mjs');
+  const env = () => ({ ...process.env, CLAUDE_CONFIG_DIR: '/accounts/second' });
+  assert.equal(await askClaude(cli, { env })('name this'), 'A title');
+  await listCommands(fs.mkdtempSync(path.join(dir, 'f-')), cli, { env });
+  assert.deepEqual(fs.readFileSync(seen, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)), ['/accounts/second', '/accounts/second']);
 });

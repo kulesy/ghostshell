@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { authStatus, AUTH_GAP_MS, cleanEnv, makeLogin, readLoginEnd, SOON_MS, startSignIn, TIMED_OUT } from '../lib/login.mjs';
+import { authInfo, authStatus, AUTH_GAP_MS, cleanEnv, makeLogin, readLoginEnd, SOON_MS, startSignIn, TIMED_OUT } from '../lib/login.mjs';
 
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-11-02T00:00:00Z');
@@ -212,4 +212,31 @@ test('nothing a sign-in or the keychain gave ends up in the state', async () => 
   assert.doesNotMatch(JSON.stringify(r.login.state()), /secret|token|sk-ant/i);
   assert.deepEqual(Object.keys(r.login.state()).sort(), ['endsAt', 'problem', 'signedOut', 'stage', 'visible']);
   r.login.stop();
+});
+
+test('an account reads the entry of its own service and is asked for under its own folder, with the clean environment plus that folder alone', async () => {
+  process.env.ANTHROPIC_BASE_URL = 'http://example.test';
+  try {
+    const asked = script('security-service', `require('node:fs').writeFileSync(${JSON.stringify(path.join(dir, 'service-args.json'))}, JSON.stringify(process.argv.slice(2))); console.log('{}');`);
+    await readLoginEnd({ security: asked, user: 'someone', service: 'Claude Code-credentials-96c3c1f3' });
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'service-args.json'), 'utf8')), ['find-generic-password', '-s', 'Claude Code-credentials-96c3c1f3', '-a', 'someone', '-w']);
+
+    assert.deepEqual(cleanEnv({ HOME: '/h', ANTHROPIC_BASE_URL: 'x' }, { CLAUDE_CONFIG_DIR: '/acct' }), { HOME: '/h', CLAUDE_CONFIG_DIR: '/acct' });
+    const seen = path.join(dir, 'folder-env.json');
+    const cli = script('claude-folder', `require('node:fs').writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ args: process.argv.slice(2), keys: Object.keys(process.env).sort(), dir: process.env.CLAUDE_CONFIG_DIR }));
+console.log(JSON.stringify({ loggedIn: true, email: 'second@example.com', subscriptionType: 'pro', orgId: 'org-1', accessToken: 'sk-ant-secret' }));`);
+    const extra = { CLAUDE_CONFIG_DIR: '/accounts/second' };
+    assert.deepEqual(await authInfo({ claude: cli, extra }), { loggedIn: true, email: 'second@example.com', subscriptionType: 'pro', orgId: 'org-1' });
+    assert.equal(JSON.parse(fs.readFileSync(seen, 'utf8')).dir, '/accounts/second');
+    assert.ok(!JSON.parse(fs.readFileSync(seen, 'utf8')).keys.includes('ANTHROPIC_BASE_URL'));
+    assert.equal(await authStatus({ claude: cli, extra }), true);
+    assert.deepEqual(await authInfo({ claude: script('claude-out', "console.log(JSON.stringify({ loggedIn: false }));") }), { loggedIn: false, email: null, subscriptionType: null, orgId: null });
+    assert.equal(await authInfo({ claude: script('claude-nothing', "console.log('nope');") }), null);
+
+    const login = script('claude-login-folder', `require('node:fs').writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ dir: process.env.CLAUDE_CONFIG_DIR }));`);
+    await startSignIn({ claude: login, extra }).exited;
+    assert.equal(JSON.parse(fs.readFileSync(seen, 'utf8')).dir, '/accounts/second');
+  } finally {
+    delete process.env.ANTHROPIC_BASE_URL;
+  }
 });
