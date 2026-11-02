@@ -17,7 +17,7 @@ export function topmost(ix, ids) {
   return picked.filter(r => !picked.some(o => o !== r && descendantsOf(all, o.id).some(d => d.id === r.id)));
 }
 
-// The picked sessions a move or a nest changes on their own: those whose nearest shown parent is not picked. The others travel with it.
+// The picked sessions a move or a nest changes on their own: those whose parent is not picked. The others travel with it.
 export function carriedOf(ix, ids) {
   const picked = new Set(ids);
   return rowsOf(ix, ids).filter(r => !picked.has(r.via));

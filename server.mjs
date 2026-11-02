@@ -1031,7 +1031,7 @@ function aimOf(to) {
 }
 
 // Moves, pins, nests or unnests several sessions in one write, with one Undo. `to` is { group } (null for each one's loose list), { pinned: true },
-// { parent } or { parent: null }. A picked session whose nearest shown parent is picked too rides along with its family and is left alone. Any
+// { parent } or { parent: null }. A picked session whose parent is picked too rides along with its family and is left alone. Any
 // refusal writes nothing.
 function manyChange({ ids, to }) {
   if (!Array.isArray(ids) || ids.length < 1) throw refuse(400, 'Pick at least one session.');
