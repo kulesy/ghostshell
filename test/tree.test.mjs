@@ -265,7 +265,7 @@ test('a session nested under another leaves its list and joins the other\'s chil
 test('a parent nests with its children, all under the new parent, and a drop on a nested session nests under that session\'s parent', () => {
   const nested = nestRow(FAM, 'g1', 'g2');
   assert.deepEqual(work(nested), ['g2[g1,k1,k2]']);
-  assert.deepEqual(nested.groups[0].sessions[0].children.map(c => [c.parent, 'children' in c]), [['g2', false], ['g2', false], ['g2', false]]);
+  assert.deepEqual(nested.groups[0].sessions[0].children.map(c => [c.parent, c.via, 'children' in c]), [['g2', 'g2', false], ['g2', 'g2', false], ['g2', 'g2', false]]);
   assert.deepEqual(work(nestRow(FAM, 'u1', 'k1')), ['g1[k1,k2,u1]', 'g2']);
 });
 
