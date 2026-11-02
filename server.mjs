@@ -134,10 +134,10 @@ const groupList = () => layout.read().groups.map(({ id, name }) => ({ id, name }
 
 // A nested session that leaves its place would take the sessions linked straight to it along, though they show beside it, so each is
 // linked to the parent instead, and those further down keep their links. A head takes its whole family along.
-function keepFamily(id, rows) {
+function keepFamily(id, { rows, families }) {
   const { parent } = rows.get(id);
   const links = {};
-  if (parent) for (const r of rows.values()) if (!r.archived && r.near === id) links[r.id] = parent;
+  if (parent) for (const r of rows.values()) if (!r.archived && families.get(r.id).near === id) links[r.id] = parent;
   return links;
 }
 
@@ -146,7 +146,7 @@ function keepFamily(id, rows) {
 const belowNow = (id, { archived }) => descendantsOf([...buildIndex({ archived }).rows.values()], id);
 
 // A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone knows a session's link.
-const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex().rows) });
+const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex()) });
 
 function buildIndex({ archived = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
@@ -227,8 +227,8 @@ function buildIndex({ archived = false } = {}) {
   const families = familiesOf(rows, id => linkOf(own, fromChips, desk, id), { archived });
   const places = new Map([...rows.values()].map(r => [r.id, { group: r.group, pinned: r.pinned }]));
   for (const r of rows.values()) {
-    const { holder, parent, near } = families.get(r.id);
-    Object.assign(r, { parent, near }, places.get(holder));
+    const { holder, parent } = families.get(r.id);
+    Object.assign(r, { parent }, places.get(holder));
   }
   const visible = [...rows.values()].filter(r => archived || !r.archived);
   // Counted by the place a family gives each row, which is what api/archived?group= lists by.
@@ -293,6 +293,8 @@ function buildIndex({ archived = false } = {}) {
     rows,
     groupSessions,
     archivedSection,
+    // Only keepFamily reads `near`, so it stays off the rows that the list and the tools send.
+    families,
   };
 }
 
@@ -924,10 +926,11 @@ const CHANGES = {
 // child's parent. The answer carries the parent the list now shows.
 function nest(id, parent) {
   if (parent !== null && typeof parent !== 'string') throw refuse(400, 'Nest it under which session?');
-  const { rows, groupSessions } = buildIndex();
+  const index = buildIndex();
+  const { rows, groupSessions } = index;
   if (parent === null) {
     // A null written with no link to override would hide one that Desktop makes later.
-    if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, rows) });
+    if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, index) });
     return { parent: null };
   }
   if (groupSessions.has(parent)) throw refuse(400, `A ${kindOf(groupSessions.get(parent))}'s session cannot hold sessions.`);
@@ -940,7 +943,7 @@ function nest(id, parent) {
   const root = target.parent ?? target.id;
   // A session that shows under that parent already keeps its own group and its link.
   if (rows.get(id).parent === root) return { parent: root };
-  layout.nest(id, root, { relink: keepFamily(id, rows) });
+  layout.nest(id, root, { relink: keepFamily(id, index) });
   return { parent: buildIndex().rows.get(id).parent };
 }
 
@@ -979,7 +982,8 @@ const UNDO_WINDOW_MS = 10 * 60_000;
 function newParent({ ids, title, place }) {
   if (Array.isArray(ids) && ids.length > MAX_PICKED) throw refuse(400, `Pick at most ${MAX_PICKED} sessions.`);
   if (!Array.isArray(ids) || ids.length < 2) throw refuse(400, 'Pick at least two sessions.');
-  const { rows } = listedRows(ids, 'An archived session cannot be nested.');
+  const index = listedRows(ids, 'An archived session cannot be nested.');
+  const { rows } = index;
   const picked = ids.map(id => rows.get(id));
   const shared = picked.every(r => placeKey(r) === placeKey(picked[0])) ? picked[0] : null;
   if (place == null && !shared) throw refuse(400, 'The sessions are in different places. Choose where it goes.');
@@ -994,7 +998,7 @@ function newParent({ ids, title, place }) {
   const direct = ids.filter(id => !chosen.has(rows.get(id).parent));
   const parent = crypto.randomUUID();
   const relinks = {};
-  for (const id of direct) for (const [kid, to] of Object.entries(keepFamily(id, rows))) if (!chosen.has(kid)) relinks[kid] = to;
+  for (const id of direct) for (const [kid, to] of Object.entries(keepFamily(id, index))) if (!chosen.has(kid)) relinks[kid] = to;
   const links = { ...relinks, ...Object.fromEntries(direct.map(id => [id, parent])) };
   const own = linksNow();
   const final = id => (Object.hasOwn(links, id) ? links[id] : own(id));
@@ -1056,7 +1060,8 @@ function manyChange({ ids, to }) {
   if (ids.length > MAX_PICKED) throw refuse(400, `Pick at most ${MAX_PICKED} sessions.`);
   const aim = aimOf(to);
   if (!aim) throw refuse(400, 'Where should they go?');
-  const { rows, groupSessions } = listedRows(ids, `An archived session cannot be ${aim === 'parent' ? 'nested' : 'moved'}.`);
+  const index = listedRows(ids, `An archived session cannot be ${aim === 'parent' ? 'nested' : 'moved'}.`);
+  const { rows, groupSessions } = index;
   const now = layout.read();
   if (now.problem) throw refuse(500, now.problem);
   if (aim === 'group' && to.group !== null && !now.groups.some(g => g.id === to.group)) throw refuse(400, 'Unknown group.');
@@ -1067,7 +1072,7 @@ function manyChange({ ids, to }) {
   // A nested session that leaves its place keeps the picked sessions under it and leaves the others under the one it showed under.
   const leave = id => {
     if (own(id) === null) return {};
-    return { unlink: true, relink: Object.fromEntries(Object.entries(keepFamily(id, rows)).filter(([kid]) => !chosen.has(kid))) };
+    return { unlink: true, relink: Object.fromEntries(Object.entries(keepFamily(id, index)).filter(([kid]) => !chosen.has(kid))) };
   };
   const stays = (id, group, pinned) => own(id) === null && (pinned ? rows.get(id).pinned : !rows.get(id).pinned && rows.get(id).group === group);
   let steps;
@@ -1634,7 +1639,7 @@ async function api(req, res, u) {
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const withArchived = u.searchParams.get('archived') === '1';
-    const { rows, groupSessions, archivedSection, ...index } = buildIndex({ archived: withArchived });
+    const { rows, groupSessions, archivedSection, families, ...index } = buildIndex({ archived: withArchived });
     // The turns and the marks go onto the rows here and not in buildIndex, which findRow runs for every request.
     const now = Date.now();
     const shared = { desk: loadDesktop(cfg.desktopDir), mine: marks.read(), now };

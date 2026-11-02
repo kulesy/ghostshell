@@ -131,7 +131,7 @@ test('a selection that holds a session and its child keeps the link between them
   assert.deepEqual(onDisk(s).parents, { boss: made.id });
   const ix = await index(s, token);
   assert.deepEqual(titles(rowOf(ix, made.id).children).sort(), ['Boss', 'Kid', 'Leaf', 'Mid'], 'the family follows its head');
-  assert.deepEqual([rowOf(ix, 'kid').parent, rowOf(ix, 'kid').near], [made.id, 'boss']);
+  assert.equal(rowOf(ix, 'kid').parent, made.id);
   assert.equal(rowOf(ix, 'boss').parent, made.id);
 });
 
@@ -169,7 +169,7 @@ test('a selected session linked to another selected nested session shows beside 
   const made = (await make(s, token, { ids: ['mid', 'leaf', 'peer'], title: 'Mid, leaf and peer' })).body();
   assert.deepEqual(onDisk(s).parents, { leaf: made.id, mid: made.id, peer: made.id });
   const leaf = rowOf(await index(s, token), 'leaf');
-  assert.deepEqual([leaf.parent, leaf.near], [made.id, made.id]);
+  assert.equal(leaf.parent, made.id);
 });
 
 test('a selected child whose parent is not picked is linked straight to the new parent and not back to the one it showed under', async () => {

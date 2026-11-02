@@ -359,7 +359,7 @@ test('a session that leaves its family hands the ones linked straight to it to t
     assert.equal((await call(s, token, route, json)).status, 200, route);
     const ix = await index(s, token);
     assert.deepEqual(titles(rowOf(ix, 'head').children), ['Charlie', 'Delta', 'Bravo'], route);
-    assert.deepEqual([rowOf(ix, 'd').parent, rowOf(ix, 'd').near], ['head', 'b'], route);
+    assert.equal(rowOf(ix, 'd').parent, 'head', route);
     assert.deepEqual(onDisk(s).parents, { ...own, b: 'head' }, route);
   }
 });
@@ -627,7 +627,7 @@ test('a session started from a chip by a session that is nested itself shows und
   });
   const ix = await index(s, token);
   assert.deepEqual(places(ix).groups['cg-work'], ['Top [Made, Maker]']);
-  assert.deepEqual([rowOf(ix, 'made').parent, rowOf(ix, 'made').near], ['top', 'maker']);
+  assert.equal(rowOf(ix, 'made').parent, 'top');
   assert.equal(Object.hasOwn(onDisk(s), 'parents'), false);
 });
 

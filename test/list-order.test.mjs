@@ -169,7 +169,6 @@ test('a session linked to an archived one shows under the next one up, and besid
   const archive = await index(s, token, '?archived=1');
   assert.deepEqual(shape(archive.ungrouped), ['Head [Direct, Under the archived one, Archived middle]']);
   assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).parent), ['head', 'head', 'head']);
-  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).near), ['head', 'x', 'head']);
 });
 
 // R is an archived root, M an archived session under it, Y a live one under M with X under Y and an archived A under X, and Z is under R.
@@ -190,6 +189,22 @@ test('the archive lists an archived root with every session under it, each live 
   const listed = await index(s, token);
   assert.deepEqual(shape(listed.ungrouped), ['Z', 'Y [X]']);
   assert.deepEqual(['y', 'z', 'x'].map(id => rowOf(listed, id).parent), [null, null, 'y']);
+});
+
+test('the nearest session a row shows under stays in the server, with the archived rows listed or not', async () => {
+  const { s, token } = await ready({
+    sessions: [
+      { id: 'head', title: 'Head', ago: 10 },
+      { id: 'x', title: 'Archived middle', parent: 'head', archived: true, ago: 20 },
+      { id: 'y', title: 'Under the archived one', parent: 'x', ago: 5 },
+    ],
+  });
+  for (const query of ['', '?archived=1']) {
+    const ix = await index(s, token, query);
+    assert.equal(everyRow(ix).length, query ? 3 : 2);
+    assert.ok(everyRow(ix).every(r => !('near' in r)), `no near on a row ${query}`);
+    assert.equal('families' in ix, false, `nor on the index ${query}`);
+  }
 });
 
 // Desktop's own rule for a link: a side session, a fork or a suggested task nests under the session it came from, unless it is detached.
