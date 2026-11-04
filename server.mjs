@@ -243,6 +243,8 @@ const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepF
 
 // Each row's account, for the page. Only built when more than one account is listed or a pin exists, so a single-account station sends the rows it always did.
 // The facts are the ones a process start uses, so a row never says different from the account its process runs on. A row a pin blocks carries `blocked` even when one account is listed.
+const withWords = b => b && { ...b, message: blockedMessage(b) };
+
 function accountRows(index) {
   const d = accountData(index);
   const many = accounts.list().length > 1;
@@ -250,8 +252,8 @@ function accountRows(index) {
   const states = accountStates();
   for (const r of [...index.rows.values(), ...index.groupSessions.values()]) {
     const got = accountFor({ id: r.id, ...d.facts(r.id) }, d);
-    const blocked = blockedBy(got, states, d.nameOf);
-    if (!many && !blocked) continue;
+    const blocked = withWords(blockedBy(got, states, d.nameOf));
+    if (!many && !blocked && !d.own.accounts[r.id]) continue;
     Object.assign(r, { account: got.account, accountFrom: got.from }, d.own.accounts[r.id] && { accountPin: d.own.accounts[r.id] }, blocked && { blocked });
   }
 }
@@ -2203,7 +2205,7 @@ const server = http.createServer(async (req, res) => {
     send(res, 404, 'Not found', 'text/plain');
   } catch (e) {
     // A start refused for a pinned account that is signed out is the caller's to fix, so it is told with the data and not logged as a fault.
-    if (e.blocked && !res.headersSent) return send(res, 409, { error: e.message, blocked: e.blocked });
+    if (e.blocked && !res.headersSent) return send(res, 409, { error: e.message, blocked: withWords(e.blocked) });
     console.error(e);
     if (!res.headersSent) send(res, 500, { error: e.message });
   }

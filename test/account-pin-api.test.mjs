@@ -399,3 +399,24 @@ test('changing a routine\'s account stops its idle run on the old account', asyn
   assert.equal(edited.status, 200, edited.text);
   await until(() => calls(c).filter(x => x.closed).length === 1);
 });
+
+test('a blocked row and a refused send carry the words the page shows', async () => {
+  const c = await open();
+  await pin(c, 'session', 'live', 'second');
+  await signOutSecond(c);
+  const refused = await say(c, 'live');
+  assert.equal(refused.status, 409);
+  const { blocked } = refused.body();
+  assert.match(blocked.message, /Second/);
+  assert.match((await rowOf(c, 'live')).blocked.message, /pinned to Second, which is signed out/);
+});
+
+test('a session the pin names keeps its accountPin when only one account is listed', async () => {
+  const c = await open();
+  assert.equal((await pin(c, 'session', 'other', 'second')).status, 200);
+  fs.writeFileSync(path.join(c.s.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: false, accounts: [{ id: 'main', name: 'Main' }] }));
+  const lone = { ...c, s: await restart(c.s) };
+  lone.token = (await signIn(lone.s)).token;
+  assert.equal((await accountsOf(lone)).accounts.length, 1);
+  assert.equal((await rowOf(lone, 'other')).accountPin, 'second');
+});
