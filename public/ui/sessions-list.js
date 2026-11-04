@@ -546,7 +546,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       if (!archived?.some(r => r.id === current) || location.hash !== sessionHash(current)) return;
       const landed = next ? sessionHash(next) : '#/';
       location.replace(landed);
-      if (next) box.current.querySelector(rowOf(next))?.scrollIntoView({ block: 'nearest' });
+      if (next) box.current?.querySelector(rowOf(next))?.scrollIntoView({ block: 'nearest' });
       say(`Archived “${head.title || UNTITLED}”.`, { action: undoAction({ id: head.id, title: head.title || UNTITLED, landed, open: current }) });
     }, () => {});
   });
@@ -590,7 +590,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   async function archiving(ids, gone, send) {
     if (gone.includes(settle.current.pending())) settle.current(null);
     const here = heading.current?.from === location.hash ? heading.current.to : location.hash;
-    const open = gone.find(g => here === sessionHash(g));
+    const open = gone.find(g => location.hash === sessionHash(g)) ?? gone.find(g => here === sessionHash(g));
     const to = open ? nextOpen(latestIx.current, drawnSections(), gone) : focusAfter(ids);
     if (open) heading.current = { from: location.hash, to: to ? sessionHash(to) : '#/' };
     gone.forEach(g => flying.current.add(g));
