@@ -10,6 +10,27 @@ export function nextStop(count, at, key, start = 0) {
   return to < count ? to : -1;
 }
 
+// Opens the session an arrow walk reaches. The first step opens at once and a held key opens the one it rests on, so a hold loads two
+// sessions, not every one between. `step(id)` takes the session stepped onto, or null for a stop that is not one. `step.pending()` is
+// the session a walk in progress wants, or null.
+export function settling(open, ms) {
+  let wanted = null;
+  let opened = null;
+  let timer = null;
+  const step = id => {
+    if (timer === null) opened = null;
+    wanted = id;
+    if (timer === null && id !== null) { opened = id; open(id); }
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      if (wanted !== null && wanted !== opened) open(wanted);
+    }, ms);
+  };
+  step.pending = () => (timer === null ? null : wanted);
+  return step;
+}
+
 // Dropped on any of these, a session leaves its group and shows in the one that matches the app it came from.
 export const LOOSE_HOME = { capcom: 'started', desktop: 'ungrouped', cli: 'other' };
 export const LOOSE_NAMES = { started: 'Started here', ungrouped: 'Ungrouped', other: 'Terminal and other' };
