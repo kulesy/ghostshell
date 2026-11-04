@@ -204,6 +204,10 @@ test('an address reads as a pull request with its repo, whatever its scheme, www
     'https://github.com/acme/web/pull/7969/commits',
     'https://github.com/acme/web/pull/7969/changes',
     'https://github.com/acme/web/pull/7969/files/',
+    'https://github.com/acme/web/pull/7969/commits/0a1b2c3',
+    'https://github.com/acme/web/pull/7969/files/0a1b2c3..4d5e6f7',
+    'https://github.com/acme/web/pull/7969/checks',
+    'https://github.com/acme/web/pull/7969/checks?check_run_id=1',
     'https://github.com/acme/web/pull/7969?diff=split',
     'https://github.com/acme/web/pull/7969/files?w=1#diff-abc',
     'https://github.com/acme/web/pull/7969#discussion_r123',
@@ -218,7 +222,7 @@ test('anything else is not a pull request reference, and a number must have the 
   for (const word of [
     '', 'login', 'acme', '0', '007', '12abc', '#0', '#', 'pull/', 'pull/0', 'pull/12abc', 'pulls/12', '1234567890', '79 69', '#79#', 'acme/web#7969',
     'https://github.com/acme/web/issues/7969', 'https://github.com/acme/web/pull/', 'https://github.com/acme/web/pull/007', 'https://github.com/acme/web/pull/12abc',
-    'https://github.com/acme/web/pull/7969/other', 'https://github.com.evil.com/acme/web/pull/7969', 'https://gitlab.com/acme/web/pull/7969', 'https://github.com/acme/pull/7969',
+    'https://github.com.evil.com/acme/web/pull/7969', 'https://gitlab.com/acme/web/pull/7969', 'https://github.com/acme/pull/7969',
     null, undefined, 7969, {},
   ]) assert.equal(pullReference(word), null, String(word));
 });

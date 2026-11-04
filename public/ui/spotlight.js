@@ -95,7 +95,7 @@ function Palette({ ix, scheduled, archive, onShow, onClose }) {
     return () => { live = false; };
   }, []);
 
-  // The pull request links are read by the server in the background, so while it says it is still reading they are fetched again.
+  // The pull request links are read by the server in the background, so they are fetched again while it says it is still reading, or after a read fails.
   useEffect(() => {
     let live = true;
     let timer;
@@ -103,7 +103,7 @@ function Palette({ ix, scheduled, archive, onShow, onClose }) {
       if (!live) return;
       setPulls({ links: d.links || {}, reading: !!d.reading });
       if (d.reading) timer = setTimeout(read, READ_AGAIN_MS);
-    }).catch(() => {});
+    }).catch(() => { if (live) timer = setTimeout(read, READ_AGAIN_MS); });
     read();
     return () => { live = false; clearTimeout(timer); };
   }, []);

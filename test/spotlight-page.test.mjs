@@ -45,7 +45,7 @@ after(async () => {
   await browser?.close();
 });
 
-async function searchPage(t, chip, size) {
+async function searchPage(t, chip, size, beforeOpening) {
   const page = await browser.open(`${app.origin}/`);
   if (size) await page.resize(...size);
   t.after(() => page.close());
@@ -56,6 +56,7 @@ async function searchPage(t, chip, size) {
     await page.until(LIST, 10_000);
   }
   await page.evaluate(`document.querySelector('.offer .btn:last-child')?.click()`);
+  if (beforeOpening) await page.evaluate(beforeOpening);
   await page.click('button.find');
   await page.until(`!!document.querySelector('.chips .chip')`);
   await page.evaluate(`[...document.querySelectorAll('.chips .chip')].find(b => b.textContent === ${JSON.stringify(chip)}).click()`);
@@ -117,6 +118,20 @@ test('a number, #number and pull/number find every session that links that pull 
   assert.deepEqual((await pullsOf(page, 'Release notes')).sort(), ['acme/docs #7969', 'acme/web #7969']);
   assert.equal(await page.evaluate(`(${rowOf('Release notes')}).querySelector('[data-part="hit-pull"] > .sr').textContent`), 'Pull request ', 'a screen reader hears what the repo and number are');
   assert.deepEqual(page.problems, []);
+});
+
+test('a read of the pull requests that fails is tried again while the search stays open', { skip, timeout }, async t => {
+  const page = await searchPage(t, 'Sessions', null, `(() => {
+    const real = window.fetch;
+    let refused = false;
+    window.fetch = (path, ...rest) => {
+      if (refused || !String(path).endsWith('api/pull-links')) return real(path, ...rest);
+      refused = true;
+      return Promise.reject(new TypeError('offline'));
+    };
+  })()`);
+  await ask(page, '#7969', [RETRY, 'Document the new flag', 'Release notes']);
+  assert.deepEqual(await pullsOf(page, RETRY), ['acme/web #7969']);
 });
 
 test('a pasted address finds only the sessions that link that repo\'s pull request, and a word that finds a title alone shows no pull request', { skip, timeout }, async t => {

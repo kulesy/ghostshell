@@ -31,7 +31,7 @@ export function pullUrlsIn(text) {
 }
 
 const REFERENCE = new RegExp(`^(?:#|pull/)?(${NUMBER})$`, 'i');
-const ADDRESS = new RegExp(`^(?:https?://)?(?:www\\.)?github\\.com/(${OWNER})/(${REPO})/pull/(${NUMBER})(?:/(?:files|commits|changes))?/?(?:[?#].*)?$`, 'i');
+const ADDRESS = new RegExp(`^(?:https?://)?(?:www\\.)?github\\.com/(${OWNER})/(${REPO})/pull/(${NUMBER})(?:/[^?#]*)?(?:[?#].*)?$`, 'i');
 
 // A search word read as a pull request: 7969, #7969 and pull/7969 give a number alone, and an address in any of the forms people paste gives its
 // repo too. Anything else is null, and so is a number that is not the shape of one (0, 007, 12abc).
