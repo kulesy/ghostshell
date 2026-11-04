@@ -1,4 +1,4 @@
-// Run with `npm test`. Capcom's own keys: Ctrl+N anywhere and Cmd+N only in the installed app, Ctrl+K or Cmd+K, Ctrl+B or
+// Run with `npm test`. Capcom's own keys: Alt with the down or up arrow anywhere, Ctrl+N anywhere and Cmd+N only in the installed app, Ctrl+K or Cmd+K, Ctrl+B or
 // Cmd+B and Ctrl+' or Cmd+' anywhere, Cmd+A on a Mac outside a text field, and the modifier the hints name. The page is a stand-in with just the
 // display-mode media feature, set to what Chrome reports, the platform navigator reports, and an event target that says whether it
 // is inside a text field.
@@ -118,6 +118,23 @@ test('Alt, Shift or a composition under way turns Ctrl or Cmd with N, K, B, A or
       }
     }
   }
+});
+
+test('Alt with the down or up arrow asks for the next or the previous session, in a tab and in the app, on any system', () => {
+  for (mode of ['browser', 'standalone']) {
+    for (platform of ['MacIntel', 'Win32']) {
+      assert.equal(shortcut(press('ArrowDown', { altKey: true })), 'next', `${mode}, ${platform}`);
+      assert.equal(shortcut(press('ArrowUp', { altKey: true })), 'previous', `${mode}, ${platform}`);
+    }
+  }
+});
+
+test('the arrows alone, with Alt and another modifier, during a composition, or with Alt and another key ask for nothing', () => {
+  for (const key of ['ArrowDown', 'ArrowUp']) {
+    assert.equal(shortcut(press(key)), null, key);
+    for (const extra of ['ctrlKey', 'metaKey', 'shiftKey', 'isComposing']) assert.equal(shortcut(press(key, { altKey: true, [extra]: true })), null, `${key} with Alt and ${extra}`);
+  }
+  for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'k', 'constructor']) assert.equal(shortcut(press(key, { altKey: true })), null, key);
 });
 
 test('N with both Ctrl and Cmd, N alone or another letter asks for nothing', () => {

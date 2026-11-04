@@ -43,8 +43,10 @@ export function useModifier() {
 // Whether the window is wide enough for the projects to sit in a column beside the list. app.css changes its grid at the same width.
 const WIDE = '(min-width: 56rem)';
 
+export const isWide = () => matchMedia(WIDE).matches;
+
 export function useWide() {
-  const [wide, setWide] = useState(() => matchMedia(WIDE).matches);
+  const [wide, setWide] = useState(isWide);
   useEffect(() => {
     const query = matchMedia(WIDE);
     const sync = () => setWide(query.matches);
