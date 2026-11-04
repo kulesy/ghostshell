@@ -55,9 +55,9 @@ const SATURDAY = new Date(2026, 10, 7, 8, 0);
 const MONDAY_EARLY = new Date(2026, 10, 2, 8, 0);
 
 function rig(over = {}) {
-  const r = { ...repos(), restarts: [], busy: 0, locked: false, at: SATURDAY, ...over };
+  const r = { ...repos(), restarts: [], busy: 0, locked: false, at: SATURDAY, uptime: 3600, ...over };
   r.update = makeUpdate({
-    root: r.live, restart: (root, minutes) => { r.restarts.push([root, minutes]); return Promise.resolve(''); }, locked: () => r.locked, busy: () => r.busy, now: () => r.at, graceMs: r.graceMs ?? 60_000, log: r.log,
+    root: r.live, restart: (root, minutes) => { r.restarts.push([root, minutes]); return Promise.resolve(''); }, locked: () => r.locked, busy: () => r.busy, now: () => r.at, uptime: () => r.uptime, graceMs: r.graceMs ?? 60_000, log: r.log,
     ...(r.git && { git: r.git(r.live) }),
   });
   return r;
@@ -153,7 +153,7 @@ test('a server change is merged, then the restart helper is asked once, to wait 
   r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
   r.merge('Move the button (#3)', { 'public/app.js': 'export const app = 2;\n' });
   await r.update.check();
-  assert.deepEqual([r.update.state().kind, r.update.state().count, r.update.state().restart, r.update.state().busy], ['update', 2, true, 0]);
+  assert.deepEqual([r.update.state().kind, r.update.state().count, r.update.state().restart, r.update.state().busy], ['update', 2, true, 2], 'the count is there while idle, for the force question');
   assert.deepEqual(r.update.state().changes.map(c => c.title), ['Move the button', 'Change the server'], 'newest first');
   assert.deepEqual(await r.update.update(), {});
   assert.equal(head(r), originHead(r));
@@ -362,4 +362,107 @@ test('a failed read of server.mjs is tried again on the next check instead of le
   assert.deepEqual(r.update.state(), { show: false });
   await r.update.check();
   assert.equal(r.update.state().restart, true);
+});
+
+test('a force while idle restarts at once, with no wait, and then reports it is going', async () => {
+  const r = rig();
+  r.busy = 2;
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  assert.deepEqual([r.update.state().force, r.update.state().busy], [true, 2]);
+  assert.deepEqual(await r.update.update({ force: true }), {});
+  assert.equal(head(r), originHead(r));
+  assert.deepEqual(r.restarts, [[r.live, null]]);
+  const state = r.update.state();
+  assert.deepEqual([state.stage, state.force, state.busy], ['restarting', false, 0]);
+  assert.deepEqual(await r.update.update({ force: true }), { problem: 'A restart is already under way.' });
+  assert.equal(r.restarts.length, 1);
+});
+
+test('a force goes through while a helper waits, and a second force is refused', async () => {
+  const r = rig();
+  r.busy = 3;
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  await r.update.update();
+  r.locked = true;
+  assert.deepEqual(r.restarts, [[r.live, 30]]);
+  const waiting = r.update.state();
+  assert.deepEqual([waiting.stage, waiting.force, waiting.busy], ['restarting', true, 3]);
+  assert.deepEqual(await r.update.update(), { problem: 'A restart is already under way.' }, 'a normal press is still refused');
+  assert.deepEqual(await r.update.update({ force: true }), {});
+  assert.deepEqual(r.restarts, [[r.live, 30], [r.live, null]]);
+  const going = r.update.state();
+  assert.deepEqual([going.stage, going.force, going.busy], ['restarting', false, 0]);
+  assert.deepEqual(await r.update.update({ force: true }), { problem: 'A restart is already under way.' });
+  assert.equal(r.restarts.length, 2);
+});
+
+test('a force goes ahead inside the quiet window, where a normal update is refused', async () => {
+  const r = rig({ at: MONDAY_EARLY });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  assert.deepEqual([r.update.state().blocked, r.update.state().force], [QUIET_REASON, true]);
+  assert.deepEqual(await r.update.update(), { problem: QUIET_REASON });
+  assert.equal(r.restarts.length, 0);
+  assert.deepEqual(await r.update.update({ force: true }), {});
+  assert.deepEqual(r.restarts, [[r.live, null]]);
+});
+
+test('a force merges the unmerged changes first, also when a fetch since found more', async () => {
+  const r = rig();
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  const checked = originHead(r);
+  r.merge('Move the button (#3)', { 'public/app.js': 'export const app = 2;\n' });
+  await r.update.check();
+  r.locked = true;
+  await r.update.update({ force: true });
+  assert.notEqual(head(r), checked, 'it merged the commit the latest check looked at');
+  assert.equal(head(r), originHead(r));
+  assert.deepEqual(r.restarts, [[r.live, null]]);
+});
+
+test('a force whose merge fails restarts nothing', async () => {
+  const r = rig();
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  put(r.live, 'docs/a.md', 'edited\n');
+  const before = head(r);
+  assert.deepEqual(await r.update.update({ force: true }), { problem: 'This checkout has uncommitted changes.' });
+  assert.deepEqual([head(r), r.restarts], [before, []]);
+  assert.equal(r.update.state().stage, 'idle');
+});
+
+test('a force on a young server is refused with the guard\'s reason, before anything is merged', async () => {
+  const r = rig({ uptime: 20.6 });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  const before = head(r);
+  const { problem } = await r.update.update({ force: true });
+  assert.match(problem, /Wait 40 more seconds before restarting it/);
+  assert.deepEqual([head(r), r.restarts], [before, []]);
+  r.uptime = 60;
+  assert.deepEqual(await r.update.update({ force: true }), {});
+});
+
+test('a page-only change refuses a force and offers none', async () => {
+  const r = rig();
+  r.merge('Move the button (#2)', { 'public/app.js': 'export const app = 2;\n' });
+  await r.update.check();
+  assert.equal(r.update.state().force, false);
+  const before = head(r);
+  assert.deepEqual(await r.update.update({ force: true }), { problem: 'Nothing waiting needs a restart.' });
+  assert.deepEqual([head(r), r.restarts], [before, []]);
+});
+
+test('no force is offered while an update is under way, and none is possible with nothing waiting', async () => {
+  const r = rig();
+  assert.deepEqual(await r.update.update({ force: true }), { problem: 'There is nothing to update.' });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  const pending = r.update.update();
+  assert.equal(r.update.state().stage, 'updating');
+  assert.equal(r.update.state().force, false);
+  await pending;
 });

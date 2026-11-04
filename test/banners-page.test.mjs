@@ -1,6 +1,6 @@
 // Run with `npm test`. The sign-in and update banners in the real page against the real server: stacked in the order sign-in, update, with the roles
-// and labels a screen reader reads, and a sign-in that waits on the Mac and clears when it is approved. The update button is never pressed here, since
-// pressing it would ask the restart helper to run. It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
+// and labels a screen reader reads, and a sign-in that waits on the Mac and clears when it is approved. The update and force buttons are never confirmed here, since
+// that would ask the restart helper to run. It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -92,7 +92,7 @@ test('a sign-in ending in three days and a waiting change are stacked sign-in fi
   assert.match(login.label, /^Claude's sign-in ends in [23] days$/);
   assert.deepEqual([login.labelledby, login.tone, login.icon, login.alert, login.status, login.buttons], ['banner-login-title', null, false, true, true, [{ name: 'Sign in on the Mac', disabled: false }]]);
   assert.deepEqual([update.label, update.labelledby, update.alert, update.status, update.items, update.buttons], [
-    '1 merged change is waiting', 'banner-update-title', true, true, ['Change the server'], [{ name: 'Update and restart', disabled: false }],
+    '1 merged change is waiting', 'banner-update-title', true, true, ['Change the server'], [{ name: 'Update and restart', disabled: false }, { name: 'Force restart', disabled: false }],
   ]);
   const text = await page.evaluate(`document.querySelector('aside.offer .offer-text').textContent`);
   assert.match(text, /^It ends on \w{3} \d{1,2} \w{3}, \d\d:\d\d\. Chats and routines stop until you sign in again\. Signing in now starts a fresh four weeks\.$/);
@@ -116,4 +116,21 @@ test('a signed out Claude is a warning with an icon, and signing in waits on the
 
   fs.writeFileSync(path.join(s.home, 'auth-release'), '');
   await page.until(`!document.querySelector('aside.offer[data-tone=warning]')`, 15_000);
+});
+
+test('Force restart opens the question with the count and Cancel changes nothing', { skip, timeout }, async t => {
+  const root = checkout();
+  const s = await open({ 'keychain-expiry': String(Date.now() + 20 * DAY) }, root);
+  const page = await listPage(t, s);
+  await page.until(`!!document.querySelector('#banner-update-title')`, 15_000);
+  const before = git(root, 'rev-parse', 'HEAD');
+  assert.deepEqual((await page.evaluate(banners))[0].buttons.map(b => b.name), ['Update and restart', 'Force restart']);
+  await page.evaluate(`[...document.querySelectorAll('aside.offer button')].find(b => b.textContent === 'Force restart').click()`);
+  await page.until(`!!document.querySelector('#ask-detail')`, 10_000);
+  assert.equal(await page.evaluate(`document.querySelector('#ask-title').textContent`), 'Force restart “GhostShell”?');
+  assert.equal(await page.evaluate(`document.querySelector('#ask-detail').textContent`), 'No chat is running, so none will be cut. The 1 merged change will be pulled first.');
+  await page.evaluate(`document.querySelector('[data-slot=alert-dialog-cancel]').click()`);
+  await page.until(`!document.querySelector('#ask-detail')`, 10_000);
+  assert.equal(git(root, 'rev-parse', 'HEAD'), before, 'nothing was pulled');
+  assert.deepEqual([(await page.evaluate(banners))[0].label, await page.evaluate(`document.querySelector('.offer-progress').textContent`)], ['1 merged change is waiting', '']);
 });

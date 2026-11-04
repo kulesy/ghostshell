@@ -43,7 +43,7 @@ npm run restart
 
 By default the command waits until no chat is running, then restarts the service once. It returns at once with exit code 0 and does the work in one background process, so a failure shows only in the log. This is because a chat that runs it is itself ended by the restart. Progress goes to `restart.log` in the state folder (`~/.config/capcom/` unless you changed `stateDir`), and a `restart.lock` file there stops a second restart starting while one is under way.
 
-1. `--now` restarts without waiting.
+1. `--now` restarts without waiting. When a worker is already waiting, `--now` does not start a second one: it sends that worker `SIGUSR2`, which makes it stop waiting and restart at once, and exits 0. Only a live process that is a restart worker is signalled, so a stale lock never sends a signal to a process that reused its pid. A `--wait` run with a worker already waiting still refuses.
 2. `--wait <minutes>` sets how long to wait, 30 by default. When the time is up the worker restarts nothing, exits with an error and logs which chats were still running.
 3. `--label <name>` names the launchd job. By default it is the job that is running the server, found with `launchctl list`, and `local.capcom` when none is found.
 4. `--foreground` runs in the terminal you are in, without the background process.
@@ -66,6 +66,8 @@ Every 30 minutes the server fetches `origin/main` and compares it with the commi
 4. Update refuses, and changes nothing, when the checkout is not on `main`, has uncommitted changes to tracked files, has commits that are not on `origin/main`, or a restart is already under way.
 
 If the helper gives up because a chat kept running, the banner stays and offers Restart.
+
+A change that needs a restart also offers Force restart beside the main button. It asks first, naming how many running chats it will cut, then pulls if anything is waiting and runs `npm run restart -- --now`. That also works while an Update is waiting for chats: the waiting helper is told to go now. It ignores the quiet window and the wait for chats, and it still refuses when the server started less than 60 seconds ago.
 
 The same place warns when Claude's sign-in is five days from its end or already over, and signs in again on the Mac. [The decision record](adr/20261102-banners-for-sign-in-and-updates.md) has the reasons.
 

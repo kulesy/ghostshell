@@ -77,10 +77,21 @@ test('an update is refused when the checkout is not a repository, and the update
   assert.deepEqual([refused.status, refused.body()], [409, { error: 'There is nothing to update.' }]);
   assert.equal((await post(c, 'update', {})).status, 403);
   assert.equal((await post(c, 'nothing')).status, 404);
+  assert.equal((await request(c.s, 'GET', '/api/banners/force-restart', { headers: as(c.token) })).status, 404);
   assert.equal((await request(c.s, 'GET', '/api/banners/update', { headers: as(c.token) })).status, 404);
 });
 
 test('the banner routes need a signed-in session', async () => {
   const c = await open();
   assert.equal((await request(c.s, 'GET', '/api/banners')).status, 401);
+});
+
+test('the force route takes the strict origin check and a signed-in session', async () => {
+  const c = await open();
+  assert.equal((await post(c, 'force-restart', {})).status, 403, 'a request with no Origin is refused');
+  assert.equal((await post(c, 'force-restart', { origin: 'http://elsewhere.test' })).status, 403);
+  const signedOut = await request(c.s, 'POST', '/api/banners/force-restart', { headers: { connection: 'close', origin: c.s.origin }, json: {} });
+  assert.equal(signedOut.status, 401);
+  const refused = await post(c, 'force-restart');
+  assert.deepEqual([refused.status, refused.body()], [409, { error: 'There is nothing to update.' }], 'it reaches the update, which has no checkout here');
 });

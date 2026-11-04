@@ -260,3 +260,53 @@ test('without --foreground the command returns at once and one detached worker d
   s.track();
   assert.deepEqual(s.calls(), [kickstart]);
 });
+
+test('--now beside a waiting worker tells it to go now, and the one restart is the waiter\'s', async () => {
+  const s = await scenario('takeover');
+  const waiter = s.restart('--wait', '5');
+  assert.ok(await until(() => fs.existsSync(path.join(s.state, 'restart.lock'))), 'the worker holds the lock');
+  await sleep(500);
+  assert.deepEqual(s.calls(), [], 'the worker waits while the chat is mid-turn');
+  const forced = await s.restart('--now');
+  assert.equal(forced.code, 0, forced.out);
+  assert.match(forced.out, /Told the waiting restart worker \(pid \d+\) to restart now/);
+  const done = await waiter;
+  s.track();
+  assert.equal(done.code, 0, done.out);
+  assert.match(done.out, /Told to stop waiting, so restarting now/);
+  assert.deepEqual(s.calls(), [kickstart]);
+  assert.equal(fs.existsSync(path.join(s.state, 'restart.lock')), false, 'the lock is removed');
+});
+
+test('a --wait run beside a waiting worker still refuses and signals nothing', async () => {
+  const s = await scenario('wait-refused');
+  const waiter = s.restart('--wait', '5');
+  assert.ok(await until(() => fs.existsSync(path.join(s.state, 'restart.lock'))));
+  const second = await s.restart('--wait', '5');
+  assert.equal(second.code, 1);
+  assert.match(second.out, /already under way/);
+  s.write('end_turn');
+  const done = await waiter;
+  s.track();
+  assert.equal(done.code, 0, done.out);
+  assert.doesNotMatch(done.out, /Told to stop waiting/);
+  assert.deepEqual(s.calls(), [kickstart]);
+});
+
+test('--now with a lock that names a live process that is not a restart worker does not signal it', async () => {
+  const s = await scenario('stale-lock', { transcript: 'end_turn' });
+  const other = spawn('sleep', ['60'], { stdio: 'ignore' });
+  live.add(other.pid);
+  try {
+    fs.writeFileSync(path.join(s.state, 'restart.lock'), String(other.pid));
+    const { code, out } = await s.restart('--now');
+    s.track();
+    assert.equal(code, 1);
+    assert.match(out, /already under way/);
+    assert.equal(other.exitCode === null && other.signalCode === null, true, 'the other process is untouched');
+    assert.doesNotThrow(() => process.kill(other.pid, 0));
+    assert.deepEqual(s.calls(), []);
+  } finally {
+    other.kill('SIGKILL');
+  }
+});
