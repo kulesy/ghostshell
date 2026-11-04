@@ -44,6 +44,7 @@ const ROW = id => `a.row[data-id="${id}"]`;
 const ROWS = `[...document.querySelectorAll('a.row[data-id]')].map(a => a.dataset.id)`;
 const FOCUSED = `document.activeElement.dataset?.id ?? document.activeElement.id ?? document.activeElement.className`;
 const OPEN = `location.hash.replace('#/s/', '')`;
+const TIPS = `document.querySelectorAll('[data-slot="tooltip-content"]').length`;
 
 async function appPage(t, hash = '', { phone = false, scope = null, width } = {}) {
   const setter = await browser.open(`${app.origin}/healthz`);
@@ -155,6 +156,51 @@ test('a key held on a real keyboard opens two sessions with Alt and the arrows, 
   const page = await appPage(t, '#/s/pin');
   const order = await page.evaluate(ROWS);
   assert.deepEqual(await hold(page, 'ArrowDown', ALT), [`#/s/${order[1]}`, `#/s/${order[4]}`]);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a walk that opens a session leaves no tooltip over the chat, with plain arrows and with Alt, and a narrow window keeps the row\'s', { skip, timeout }, async t => {
+  const page = await appPage(t);
+  await page.press('ArrowDown');
+  await page.press('ArrowDown');
+  await page.until(`${OPEN} === 'pin'`);
+  assert.equal(await page.evaluate(`!!document.querySelector('${ROW('pin')}').dataset.tip`), true, 'the row has words for a tooltip');
+  assert.equal(await page.evaluate(TIPS), 0, 'none just after a plain Down');
+  await pause(page, 400);
+  assert.equal(await page.evaluate(TIPS), 0, 'none once it has settled');
+  await page.press('ArrowDown', ALT);
+  assert.equal(await page.evaluate(TIPS), 0, 'none just after Alt and Down');
+  await pause(page, 400);
+  assert.equal(await page.evaluate(TIPS), 0, 'none once that has settled');
+  assert.equal(await page.evaluate(`document.activeElement.matches('a.row')`), true);
+
+  const narrow = await appPage(t, '', { width: 800 });
+  await narrow.press('ArrowDown');
+  await narrow.press('ArrowDown');
+  await narrow.until(`${TIPS} === 1`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('Alt with up to the first session scrolls the list to the top, so its section header shows', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/loose', { width: 1280 });
+  await page.resize(1280, 240);
+  const order = await page.evaluate(ROWS);
+  await focus(page, 'loose');
+  await page.evaluate(`document.querySelector('#sections').scrollTop = 1e6`);
+  assert.equal(await page.evaluate(`document.querySelector('#sections').scrollTop > 0`), true, 'the list is scrolled down');
+  for (let i = 0; i < order.length; i++) await page.press('ArrowUp', ALT);
+  await page.until(`${OPEN} === '${order[0]}'`);
+  await pause(page);
+  assert.equal(await page.evaluate(`document.querySelector('#sections').scrollTop`), 0);
+  assert.deepEqual(page.problems, []);
+});
+
+test('Alt in the same tick as a hash change starts from the session the hash names, not the row still marked open', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/pin');
+  const order = await page.evaluate(ROWS);
+  await page.evaluate(`(() => { location.hash = '#/s/work'; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true, cancelable: true })); })()`);
+  await pause(page, 500);
+  assert.equal(await page.evaluate(OPEN), order[order.indexOf('work') + 1]);
   assert.deepEqual(page.problems, []);
 });
 

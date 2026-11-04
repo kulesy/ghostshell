@@ -33,6 +33,7 @@ import { familyNote } from './sub-panel-rules.js';
 import { descendantsOf } from './sub-rules.js';
 import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
+import { dismissTooltip } from './tooltip.js';
 import { archiveTarget, everyRow, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, settling, stayAbove, TITLE_MAX, withKids } from './tree.js';
 
 // The target a row is while another is dragged over it, which only its middle half counts as. See targetAt in drag.js.
@@ -916,21 +917,33 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   };
 
   // Plain arrows only move the focus while rows are picked, which they step between, and below 56rem, where an open chat hides the list.
-  latestLand.current = (id, held) => { if (!pick.ids.length && isWide()) settle.current(id, held); };
+  // The row's tooltip, which the focus has just shown, goes with the open session, as a press on the row would close it.
+  latestLand.current = (id, held) => {
+    if (pick.ids.length || !isWide()) return;
+    settle.current(id, held);
+    if (id) dismissTooltip();
+  };
 
-  // Alt with down or up opens the next or previous session in the list, from the walk's target while one settles, else from the open
-  // session, else the first. The focus follows only when it is in the list, and a dialog, a name box anywhere or a selection is left alone.
+  // Alt with down or up opens the next or previous session in the list, from the walk's target while one settles, else from the session
+  // the address names, which is ahead of the marked row until the page has drawn, else from the marked row, else the first. The focus
+  // follows only when it is in the list, and a dialog, a name box anywhere or a selection is left alone.
   latestFlip.current = (e, asked) => {
     const el = document.activeElement;
     if (document.querySelector(MODAL) || el?.closest('.name-form')) return;
     const rows = [...box.current.querySelectorAll('a.row[data-id]')];
     if (!rows.length) return;
     e.preventDefault();
-    const from = settle.current.pending() ?? box.current.querySelector('a.row[aria-current="page"]')?.dataset.id;
+    const hashed = rows.find(r => location.hash === sessionHash(r.dataset.id))?.dataset.id;
+    const from = settle.current.pending() ?? hashed ?? box.current.querySelector('a.row[aria-current="page"]')?.dataset.id;
     const to = nextStop(rows.length, rows.findIndex(r => r.dataset.id === from), asked === 'next' ? 'ArrowDown' : 'ArrowUp');
     if (to < 0) return;
-    if (box.current.contains(el)) rows[to].focus({ preventScroll: true });
-    rows[to].scrollIntoView({ block: 'nearest' });
+    if (box.current.contains(el)) {
+      rows[to].focus({ preventScroll: true });
+      dismissTooltip();
+    }
+    // The first row has its section header above it, which the nearest edge would leave hidden.
+    if (to === 0) box.current.scrollTop = 0;
+    else rows[to].scrollIntoView({ block: 'nearest' });
     settle.current(rows[to].dataset.id, e.repeat);
   };
 

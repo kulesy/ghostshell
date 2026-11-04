@@ -369,7 +369,7 @@ The up and down arrows move through the section headers and the sessions, and Ho
 
 - Right on a row whose nested sessions show moves to the first of them.
 - Left on a nested session or an earlier run moves back to the row above it.
-- Up and down also open the session they land on, and the focus stays on its row. Headers, routines and scheduled sessions only take the focus, and so do Home, End, left and right. A key held down opens the first session at once and the one it rests on after a short pause, not every one between.
+- Up and down also open the session they land on, and the focus stays on its row, with no tooltip over the chat. Headers, routines and scheduled sessions only take the focus, and so do Home, End, left and right. A key held down opens the first session at once and the one it rests on after a short pause, not every one between.
 - Nothing opens while rows are picked, so up and down can step between a Shift+arrow selection, or in a window under 56rem wide, where an open chat would hide the list.
 - Enter opens the focused session.
 - The menu key or Shift+F10 opens its menu.
@@ -377,7 +377,7 @@ The up and down arrows move through the section headers and the sessions, and Ho
 
 With no chat open, up or down steps into the list. Enter on a header opens its chat. Tab reaches the buttons on a header, and Enter or Space on the dots opens the menu.
 
-Option with the up or down arrow (Alt off a Mac) opens the session below or above the open one, from anywhere, including the message box and the terminal. It starts at the first session when none is open, stops at the ends, and skips sessions nested under a folded row. The focus moves to that row only when it was in the list. It leaves a selection alone, works at any width, and does nothing while a dialog, the search or a name box is open.
+Option with the up or down arrow (Alt off a Mac) opens the session below or above the open one, from anywhere, including the message box and the terminal. It starts at the first session when none is open, stops at the ends, and skips sessions nested under a folded row. The focus moves to that row, with no tooltip over the chat, only when it was in the list. It leaves a selection alone, works at any width, and does nothing while a dialog, the search or a name box is open.
 
 ### Menus
 
