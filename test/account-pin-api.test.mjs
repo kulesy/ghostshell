@@ -318,11 +318,18 @@ async function moveAsk(c, caller, input) {
 test('a move inside the caller\'s tree that would change the session\'s account asks the owner and names the account, and one that leaves it the same goes with no card', async () => {
   const c = await open({ sessions: [{ id: 'top', title: 'Top', ago: 5 }, { id: 'kid', title: 'Kid', ago: 6, parent: 'top', group: 'cg-b' }, { id: 'solo', title: 'Solo', ago: 7 }] });
   assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
-  assert.equal(await moveAsk(c, 'top', { session_id: 'top', group: 'Work' }), 'allowed', 'main to main');
-  assert.equal(await moveAsk(c, 'top', { session_id: 'kid', group: 'Work' }), 'move "Kid" [kid] to "Work", which runs it on Main', 'out of a pinned group');
+  assert.equal(await moveAsk(c, 'top', { session_id: 'top', group: 'Work' }), 'move "Top" [top] to "Work", which runs it on the active account, now Main, and the 1 session under it can change account too', 'the session under it can follow');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'allowed', 'main to main with nothing under it');
+  assert.equal(await moveAsk(c, 'top', { session_id: 'kid', group: 'Work' }), 'move "Kid" [kid] to "Work", which runs it on the active account, now Main', 'out of a pinned group');
   assert.equal(await moveAsk(c, 'kid', { session_id: 'kid', group: 'Loose' }), 'allowed', 'second to second');
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Loose' }), 'move "Solo" [solo] to "Loose", which runs it on Second', 'into a pinned group');
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Nowhere' }), 'move "Solo" [solo] to "Nowhere"', 'a group that is not there still asks, with no account to name');
+});
+
+test('a move that drops a pin on the active account\'s own id asks the owner, since a later switch would part them', async () => {
+  const c = await open({ sessions: [{ id: 'held', title: 'Held', ago: 5, group: 'cg-b' }] });
+  assert.equal((await pin(c, 'group', 'cg-b', 'main')).status, 200);
+  assert.equal(await moveAsk(c, 'held', { session_id: 'held', group: 'Work' }), 'move "Held" [held] to "Work", which runs it on the active account, now Main');
 });
 
 test('a row says the account its process runs on when its parent has dropped out of the list for age', async () => {
