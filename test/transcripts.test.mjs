@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { IMAGE_TYPES } from '../lib/images.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
-import { completeEnd, listImages, readAfter, readBefore, readHead, readImage, toolSummary } from '../lib/transcripts.mjs';
+import { completeEnd, keepScans, listImages, readAfter, readBefore, readHead, readImage, toolSummary } from '../lib/transcripts.mjs';
 import { threadImages } from '../public/ui/gallery.js';
 import { absorb, prepend } from '../public/ui/thread.js';
 
@@ -1059,4 +1059,21 @@ test('the end of the last complete line is found without reading a byte twice, a
 test('a send to a sub session is summarised as its recipient and the start of the message', () => {
   assert.equal(toolSummary('mcp__capcom__send_session', { session_id: 'abc', message: 'Please\nrebase' }), 'to abc: Please rebase');
   assert.equal(toolSummary('mcp__capcom__send_session', {}), '');
+});
+
+test('a scan is kept for the newest 16 files unless the caller passes a number or Infinity, so a longer list is not read again from the start', () => {
+  const files = Array.from({ length: 5 }, (_, n) => {
+    const file = path.join(base, `kept-${n}.jsonl`);
+    fs.writeFileSync(file, 'one needle\n');
+    return { file };
+  });
+  const rounds = kept => {
+    let read = 0;
+    const scan = keepScans({ needles: [Buffer.from('needle')], fresh: () => ({}), onLine: () => read++, kept });
+    for (let round = 0; round < 2; round++) for (const t of files) scan(t);
+    return read;
+  };
+  assert.equal(rounds(undefined), 5, 'five files fit in the default');
+  assert.equal(rounds(2), 10, 'two kept of five in turn means each is read again');
+  assert.equal(rounds(Infinity), 5);
 });

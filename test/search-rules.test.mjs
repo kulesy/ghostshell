@@ -368,3 +368,83 @@ test('the Groups chip with nothing typed says there are no groups yet, and anyth
   assert.equal(emptyText('all', ''), 'Nothing matches.');
   assert.equal(emptyText('sessions', ''), 'Nothing matches.');
 });
+
+const LINKED = () => list({
+  started: [row('a', { title: 'Fix login', lastActivityAt: 90 }), row('b', { title: 'Docs', lastActivityAt: 80 }), row('c', { title: 'Plain', lastActivityAt: 70 }), row('d', { title: 'Release 7969 notes', lastActivityAt: 60 })],
+  groups: [],
+});
+const LINKS = { a: ['acme/web#7969'], b: ['Acme/Docs#7969', 'acme/web#12'], d: ['acme/web#5'] };
+const sessionsFound = (query, links = LINKS, chip = 'all') => sectionOf(sectionsFor(chip, LINKED(), [], query, NEW, [], links), 'session');
+
+test('a number, #number and pull/number find every session that links that pull request, in any repo', () => {
+  assert.deepEqual(ids(sessionsFound('7969')), ['a', 'b', 'd'], 'and the session with 7969 in its title');
+  for (const query of ['#7969', 'pull/7969']) assert.deepEqual(ids(sessionsFound(query)), ['a', 'b'], query);
+});
+
+test('a link must match the number exactly, so a part of it finds nothing by link, while a bare number still matches titles', () => {
+  assert.deepEqual(ids(sessionsFound('79')), ['d'], 'only the title with 7969 in it');
+  assert.deepEqual(ids(sessionsFound('796')), ['d']);
+  assert.deepEqual(ids(sessionsFound('#79')), []);
+  assert.deepEqual(ids(sessionsFound('12')), ['b']);
+});
+
+test('an address finds only the sessions that link that repo, without regard to case in the address or the link', () => {
+  assert.deepEqual(ids(sessionsFound('https://github.com/acme/web/pull/7969')), ['a']);
+  assert.deepEqual(ids(sessionsFound('https://github.com/ACME/DOCS/pull/7969/files')), ['b']);
+  assert.deepEqual(ids(sessionsFound('github.com/acme/docs/pull/7969?x=1#r2')), ['b']);
+  assert.deepEqual(ids(sessionsFound('https://github.com/acme/other/pull/7969')), []);
+});
+
+test('a session found by a link carries the links the words matched, and one found by its title alone carries none', () => {
+  const found = sessionsFound('7969');
+  const pulls = id => found.items.find(it => it.key === id).pulls;
+  assert.deepEqual(pulls('a'), ['acme/web#7969']);
+  assert.deepEqual(pulls('b'), ['Acme/Docs#7969'], 'only the matching link of the two');
+  assert.equal('pulls' in found.items.find(it => it.key === 'd'), false);
+  assert.equal(sessionsFound('login').items.every(it => !('pulls' in it)), true);
+  assert.equal(sessionsFound('', LINKS, 'sessions').items.every(it => !('pulls' in it)), true);
+});
+
+test('a session with the same number in two repos shows both when the number is typed and one when an address is', () => {
+  const links = { a: ['acme/web#7969', 'acme/docs#7969'] };
+  assert.deepEqual(sessionsFound('7969', links).items[0].pulls, ['acme/web#7969', 'acme/docs#7969']);
+  assert.deepEqual(sessionsFound('https://github.com/acme/docs/pull/7969', links).items[0].pulls, ['acme/docs#7969']);
+});
+
+test('a word that names a pull request and a word that does not are both needed, each found in the text or a link', () => {
+  assert.deepEqual(ids(sessionsFound('login 7969')), ['a']);
+  assert.deepEqual(ids(sessionsFound('7969 login')), ['a']);
+  assert.deepEqual(ids(sessionsFound('docs 7969')), ['b']);
+  assert.deepEqual(ids(sessionsFound('login 12')), []);
+});
+
+test('the repo name is not searched as text, so typing it finds no session that merely links it', () => {
+  assert.deepEqual(ids(sessionsFound('acme')), []);
+  assert.deepEqual(ids(sessionsFound('web')), []);
+});
+
+test('a link finds sessions in the Sessions, Archived and Routines chips too, and in All for a sub session or an archived one', () => {
+  const archived = [row('z', { title: 'Old', archived: true })];
+  const links = { z: ['acme/web#7969'], 'run-3': ['acme/web#7969'], 'web-1-kid': ['acme/web#7969'] };
+  const at = (chip, query = '7969') => sectionsFor(chip, list(), archived, query, NEW, [], links).flatMap(s => s.items).filter(it => it.pulls);
+  assert.deepEqual(at('archived').map(it => it.key), ['z']);
+  assert.deepEqual(at('sessions').map(it => it.key), ['web-1-kid']);
+  assert.deepEqual(at('routines').map(it => it.key), ['run-3']);
+  assert.deepEqual(at('all').map(it => it.key).sort(), ['run-3', 'web-1-kid', 'z']);
+  assert.deepEqual(at('all', 'https://github.com/acme/web/pull/7969').map(it => it.key).sort(), ['run-3', 'web-1-kid', 'z']);
+});
+
+test('with no links given a number finds titles as before', () => {
+  assert.deepEqual(ids(sectionOf(sectionsFor('all', LINKED(), [], '7969', NEW), 'session')), ['d']);
+  assert.deepEqual(ids(sessionsFound('7969', {})), ['d']);
+});
+
+test('while the pull requests are still being read a search that names one says so, and any other search says nothing matches', () => {
+  for (const query of ['7969', '#7969', 'pull/7969', 'https://github.com/acme/web/pull/7969', 'login 7969']) {
+    assert.match(emptyText('all', query, true), /Still reading the pull requests/, query);
+    assert.equal(emptyText('all', query, false), 'Nothing matches.', query);
+    assert.equal(emptyText('all', query), 'Nothing matches.', query);
+  }
+  assert.equal(emptyText('all', 'zebra', true), 'Nothing matches.');
+  assert.equal(emptyText('groups', '', true), 'No groups yet.');
+});

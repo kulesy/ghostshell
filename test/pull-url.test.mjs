@@ -1,7 +1,7 @@
 // Run with `npm test`. What counts as a pull request address: the full string, and the ones found inside prose.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isIssueUrl, isPullUrl, ISSUE_URL, PULL_URL, pullUrlsIn } from '../public/ui/pull-url.js';
+import { isIssueUrl, isPullUrl, ISSUE_URL, linkMatches, PULL_URL, pullReference, pullUrlsIn } from '../public/ui/pull-url.js';
 
 const PR = 'https://github.com/example-org/example-repo/pull/12';
 
@@ -186,4 +186,52 @@ test('anything but the plain form of an issue is refused', () => {
 
 test('an issue address does not count as a pull request address in text', () => {
   assert.deepEqual(pullUrlsIn('See https://github.com/o/r/issues/4 and https://github.com/o/r/pull/5.'), ['https://github.com/o/r/pull/5']);
+});
+
+test('a number, #number and pull/number read as a pull request with no repo', () => {
+  for (const word of ['7969', '#7969', 'pull/7969', 'PULL/7969']) assert.deepEqual(pullReference(word), { number: 7969, repo: null }, word);
+});
+
+test('an address reads as a pull request with its repo, whatever its scheme, www, case, ending or query', () => {
+  for (const word of [
+    'https://github.com/acme/web/pull/7969',
+    'http://github.com/acme/web/pull/7969',
+    'github.com/acme/web/pull/7969',
+    'https://www.github.com/acme/web/pull/7969',
+    'HTTPS://GitHub.com/acme/web/PULL/7969',
+    'https://github.com/acme/web/pull/7969/',
+    'https://github.com/acme/web/pull/7969/files',
+    'https://github.com/acme/web/pull/7969/commits',
+    'https://github.com/acme/web/pull/7969/changes',
+    'https://github.com/acme/web/pull/7969/files/',
+    'https://github.com/acme/web/pull/7969?diff=split',
+    'https://github.com/acme/web/pull/7969/files?w=1#diff-abc',
+    'https://github.com/acme/web/pull/7969#discussion_r123',
+  ]) {
+    const { number, repo } = pullReference(word);
+    assert.deepEqual([number, repo.toLowerCase()], [7969, 'acme/web'], word);
+  }
+  assert.equal(pullReference('https://github.com/Acme/Web/pull/7969').repo, 'Acme/Web', 'the repo keeps its case');
+});
+
+test('anything else is not a pull request reference, and a number must have the shape of one', () => {
+  for (const word of [
+    '', 'login', 'acme', '0', '007', '12abc', '#0', '#', 'pull/', 'pull/0', 'pull/12abc', 'pulls/12', '1234567890', '79 69', '#79#', 'acme/web#7969',
+    'https://github.com/acme/web/issues/7969', 'https://github.com/acme/web/pull/', 'https://github.com/acme/web/pull/007', 'https://github.com/acme/web/pull/12abc',
+    'https://github.com/acme/web/pull/7969/other', 'https://github.com.evil.com/acme/web/pull/7969', 'https://gitlab.com/acme/web/pull/7969', 'https://github.com/acme/pull/7969',
+    null, undefined, 7969, {},
+  ]) assert.equal(pullReference(word), null, String(word));
+});
+
+test('a link matches the number exactly, never a part of it, and an address also needs the same repo without regard to case', () => {
+  const link = 'Acme/Web#7969';
+  assert.equal(linkMatches(link, pullReference('7969')), true);
+  assert.equal(linkMatches(link, pullReference('#7969')), true);
+  assert.equal(linkMatches(link, pullReference('pull/7969')), true);
+  for (const word of ['796', '969', '79', '17969', '79690']) assert.equal(linkMatches(link, pullReference(word)), false, word);
+  assert.equal(linkMatches(link, pullReference('https://github.com/acme/web/pull/7969')), true, 'case of the repo is ignored');
+  assert.equal(linkMatches('acme/web#7969', pullReference('https://github.com/ACME/WEB/pull/7969/files')), true);
+  assert.equal(linkMatches(link, pullReference('https://github.com/acme/docs/pull/7969')), false, 'another repo');
+  assert.equal(linkMatches(link, pullReference('https://github.com/acme/web/pull/7970')), false, 'another number');
+  assert.equal(linkMatches('acme/web-app#7969', pullReference('https://github.com/acme/web/pull/7969')), false, 'a repo that only starts with the name');
 });

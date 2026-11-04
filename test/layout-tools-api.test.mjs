@@ -249,6 +249,14 @@ test('moving a session with sessions under it into the group of the chat that as
   assert.ok(members.sessions.some(r => r.id === 'top'));
 });
 
+test('find_sessions finds a session by a pull request its transcript names, from the number alone or from a url of the other repo', async () => {
+  const link = n => `https://github.com/acme/web/pull/${n}`;
+  const { s, token } = await ready({ sessions: [...SESSIONS, { id: 'pr', title: 'Ship uploads', ago: 3, said: [`Opened ${link(7969)}`] }] });
+  await until(async () => !(await get(s, token, '/api/pull-links')).body().reading);
+  assert.match(textOf(await callTool(s, token, 'top', 'find_sessions', { query: '#7969' })), /- Ship uploads \[pr\] · .* · links acme\/web#7969$/m);
+  assert.match(textOf(await callTool(s, token, 'top', 'find_sessions', { query: 'https://github.com/acme/docs/pull/7969' })), /^No session has/);
+});
+
 test('find_sessions and list_chips are allowed with no card, in an ordinary chat and a group\'s, and never in a chat that has no callbacks for them', async () => {
   const { s, token } = await ready();
   for (const id of ['top', WORK]) {

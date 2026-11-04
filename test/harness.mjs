@@ -118,10 +118,10 @@ const freePort = () => new Promise(resolve => {
 // `autoTitle` turns on naming sessions from their first turn, which is off in the tests unless they ask, since the fake CLI would be asked as well.
 // `env` is added to the server's environment.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
-// edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
+// edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
 // `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
 // lastTurnEdgeAt and createdAt, `forkedFrom` its forkedFromSessionId, `verdict` the status_category of its postTurnSummary, and `errorAgo` an error and when it
-// happened. `fields` is merged over the record last, so a key set to undefined is left out of it.
+// happened. `fields` is merged over the record last, so a key set to undefined is left out of it. `said` is what the assistant says after the first line, one text each.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, with its `routine`, and 'cli' has a transcript only, as a terminal
 // session does. `groups` and `layout` are written as they are, and so is a session's `remoteMcpServersConfig`, a null included. A record has no such key without it.
 // `parent` is the id of the session Desktop links this one to, as a side chat: the record's `spawnedFrom` names it with `sideSession` true. `spawnedFrom` and
@@ -164,7 +164,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     fs.writeFileSync(path.join(state, 'chips.json'), JSON.stringify(Object.fromEntries(made.map(c => [c.toolUseId, c]))));
   }
   const started = [];
-  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }) => {
+  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said = [] }) => {
     const at = back(ago);
     if (source === 'desktop') {
       const record = path.join(records, `local_${id}.json`);
@@ -182,7 +182,8 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     }
     if (source === 'capcom') started.push({ id, cwd: home, at, title, ...(routine && { routine }) });
     const transcript = path.join(transcripts, `${id}.jsonl`);
-    fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } })}\n`);
+    const spoken = said.map((text, n) => ({ type: 'assistant', message: { id: `m${n}`, role: 'assistant', content: [{ type: 'text', text }] } }));
+    fs.writeFileSync(transcript, [{ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } }, ...spoken].map(e => `${JSON.stringify(e)}\n`).join(''));
     fs.utimesSync(transcript, back(fileAgo) / 1000, back(fileAgo) / 1000);
   });
   if (started.length) fs.writeFileSync(path.join(state, 'started.json'), JSON.stringify(started));
