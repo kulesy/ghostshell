@@ -941,9 +941,10 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       rows[to].focus({ preventScroll: true });
       dismissTooltip();
     }
-    // The first row has its section header above it, which the nearest edge would leave hidden.
+    // The first row has its section header above it, which the nearest edge alone would leave hidden. Tall Scheduled and Routines lists
+    // can push the row below the fold even from the top, so the row is brought into view after.
     if (to === 0) box.current.scrollTop = 0;
-    else rows[to].scrollIntoView({ block: 'nearest' });
+    rows[to].scrollIntoView({ block: 'nearest' });
     settle.current(rows[to].dataset.id, e.repeat);
   };
 

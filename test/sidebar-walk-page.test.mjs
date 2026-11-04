@@ -195,6 +195,17 @@ test('Alt with up to the first session scrolls the list to the top, so its secti
   assert.deepEqual(page.problems, []);
 });
 
+test('Alt with up to the first session keeps its row in view when the rows above it are taller than the list', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/work', { width: 1280 });
+  await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: '#sections::before { content: ""; display: block; flex: none; height: 3000px }' }))`);
+  await page.press('ArrowUp', ALT);
+  await page.until(`${OPEN} === 'pin'`);
+  assert.equal(await page.evaluate(`(() => {
+    const row = document.querySelector('${ROW('pin')}').getBoundingClientRect(), box = document.querySelector('#sections').getBoundingClientRect();
+    return row.top >= box.top && row.bottom <= box.bottom;
+  })()`), true);
+});
+
 test('Alt in the same tick as a hash change starts from the session the hash names, not the row still marked open', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/pin');
   const order = await page.evaluate(ROWS);
