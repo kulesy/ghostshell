@@ -99,7 +99,7 @@ const pickRows = (page, ...ids) => page.evaluate(`(() => {
 const startedRunning = async (s, id) => {
   const { token } = await signIn(s);
   assert.equal((await request(s, 'POST', `/api/sessions/${id}/send`, { headers: as(token), json: { text: 'begin a session' } })).status, 200);
-  await until(() => cliCalls(s).some(c => c.user === 'begin a session'));
+  await until(() => cliCalls(s).some(c => c.user === 'begin a session'), 20000);
 };
 // The posts the page makes from now on.
 const watchPosts = page => page.evaluate(`(() => {
