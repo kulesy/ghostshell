@@ -59,20 +59,20 @@ async function appPage(t, origin, hash) {
 const onDisk = s => JSON.parse(fs.readFileSync(s.layout, 'utf8'));
 const pressNoteButton = page => page.evaluate(`document.querySelector('[data-sonner-toast] [data-action]').click()`);
 
-test('an idle session\'s header archives it at once with a note that offers Undo, and the button then reads Unarchive', { skip, timeout }, async t => {
+test('an idle session\'s header archives it at once with a note that offers Undo, and the window moves on to the next session', { skip, timeout }, async t => {
   const s = await start({ sessions: SESSIONS, groups: GROUPS, claude: true });
   const page = await appPage(t, s.origin, '#/s/s1');
   await page.until(`${LABEL} === 'Archive'`);
   assert.equal(await page.evaluate(`document.querySelector('${BUTTON}').closest('.chat-tools') !== null`), true);
   await page.click(BUTTON);
   await page.until(`${NOTE}.includes('Archived “In reviewing”.')`);
-  await page.until(`${LABEL} === 'Unarchive'`);
+  await page.until(`location.hash === '#/s/s2'`);
   assert.ok(onDisk(s).archived.s1);
   assert.equal(await page.evaluate(`!document.querySelector('.ask, [data-slot="alert-dialog-title"]')`), true, 'an idle session is not asked about');
 
   await pressNoteButton(page);
   await page.until(`${NOTE}.includes('Unarchived “In reviewing”.')`);
-  await page.until(`${LABEL} === 'Archive'`);
+  await page.until(`location.hash === '#/s/s1' && ${LABEL} === 'Archive'`);
   assert.equal(onDisk(s).archived.s1, undefined);
   assert.deepEqual(page.problems, []);
 });
@@ -91,7 +91,7 @@ test('an archived session\'s header offers Unarchive, which brings it back to it
   assert.deepEqual(page.problems, []);
 });
 
-test('the button reads Unarchive after an archive whose request lands after the page looked the archive up, and a double click archives once', { skip, timeout }, async t => {
+test('a double click on the header button archives once when the request is slow, and the window moves on once', { skip, timeout }, async t => {
   const s = await start({ sessions: SESSIONS, groups: GROUPS, claude: true });
   const page = await appPage(t, s.origin, '#/s/s1');
   await page.until(`${LABEL} === 'Archive'`);
@@ -108,7 +108,7 @@ test('the button reads Unarchive after an archive whose request lands after the 
   })()`);
   await page.evaluate(`(() => { const b = document.querySelector('${BUTTON}'); b.click(); b.click(); })()`);
   await page.until(`${NOTE}.includes('Archived “In reviewing”.')`, 10_000);
-  await page.until(`${LABEL} === 'Unarchive'`);
+  await page.until(`location.hash === '#/s/s2'`);
   assert.equal(await page.evaluate('window.__posts.length'), 1, 'one request');
   assert.ok(onDisk(s).archived.s1);
   assert.deepEqual(page.problems, []);
@@ -131,7 +131,7 @@ test('a running session\'s button reads Stop and archive and asks first, Cancel 
   await page.until(`!!document.querySelector('#ask-title')`);
   await page.evaluate(`document.querySelector('[data-slot="alert-dialog-action"]').click()`);
   await page.until(`${NOTE}.includes('Stopped and archived “In reviewing”.')`);
-  await page.until(`${LABEL} === 'Unarchive'`);
+  await page.until(`location.hash === '#/s/s2'`);
   assert.ok(onDisk(s).archived.s1);
   await until(() => cliCalls(s).some(c => c.control === 'interrupt'));
   assert.deepEqual(page.problems, []);

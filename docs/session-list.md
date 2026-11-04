@@ -309,7 +309,7 @@ When the chat is working or waiting for an approval, the item reads Stop and arc
 
 ### Archive from the chat
 
-The header of an open session has an Archive button first among its tools. It follows the same rules: an idle session is archived at once with a note that offers Undo, and a working one asks "Stop and archive" first. The chat stays open afterwards, and the button reads Unarchive, which brings the session back as the archived list's Unarchive does. A group's chat, a section's chat and a new session have no button. The list the page holds has no archived rows, so a chat that is not in it is looked up in the archived list once, and the button shows when that answers.
+The header of an open session has an Archive button first among its tools. It follows the same rules: an idle session is archived at once with a note that offers Undo, and a working one asks "Stop and archive" first. The window then opens the next session, as [Archiving the session on screen](#archiving-the-session-on-screen) describes. A group's chat, a section's chat and a new session have no button. An archived session you open from the search shows Unarchive in its place, which brings it back as the archived list's Unarchive does, and the chat stays open. The list the page holds has no archived rows, so a chat that is not in it is looked up in the archived list once, and the button shows when that answers.
 
 ### Cmd+A
 
@@ -335,7 +335,16 @@ After an archive the focus stays at the same level of the tree.
 
 After the key archives a session the ring moves there too, so pressing the key again archives that one. When no row is left, the ring moves to the first header, or to the Projects button when there is no header.
 
-Archiving the open chat, from the key or the menu, opens the session the focus went to, or the list when there is none. Undo then opens the archived chat again if you haven't moved on.
+### Archiving the session on screen
+
+When the session on screen is archived, the window opens the next session in the list. This holds for every way it can happen: the menu, Cmd+A, the header's button, the pick bar, and an archive made from another tab, another device or a tool, which the page notices the next time it refreshes. It does not depend on where the focus went. The next session is the first of these that exists:
+
+1. The row below it in the same section, as the list draws it.
+2. The row above it in the section, when it was the last.
+3. The nearest session in another section, those below first, then those above.
+4. The list, when none is left.
+
+The archived session's own sub sessions are skipped, as is anything hidden or folded away. Archiving several together counts from the last of them in the list. Opening the next session is a change of address that replaces the archived chat in the browser's history, so Back does not return to it, and it writes nothing. Archiving a session that is not on screen leaves the window where it is, and so does an archive the server refuses. Undo opens the archived session again if the page is still where the archive left it. A swipe on a phone starts from the list, where no session is on screen, so it opens nothing.
 
 ### Unarchiving
 

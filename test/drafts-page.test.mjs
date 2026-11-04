@@ -96,8 +96,7 @@ test('an archived session\'s message stays while its chat is open and is gone af
   await type(page, 'about to go');
   await page.until(`${SAVED}.s2 === 'about to go'`);
   await page.click('#archiveButton');
-  await page.until(`document.querySelector('#archiveButton')?.getAttribute('aria-label') === 'Unarchive'`);
-  await openChat(page, '#/s/s1');
+  await page.until(`location.hash === '#/s/s1'`);
   assert.equal(await page.evaluate(`${SAVED}.s2`), 'about to go', 'nothing is pruned until the page loads again');
   await reload(page);
   await page.until(`!!document.querySelector('#text')`);
