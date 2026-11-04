@@ -224,7 +224,9 @@ test('Rename puts a box with the name in place of the header, and Enter saves it
   await rightClick(page, 'Backlog');
   await choose(page, 'Rename');
   await page.until(`document.activeElement.matches('.bar > .name-form .input')`);
-  assert.deepEqual(await page.evaluate(`[document.activeElement.getAttribute('aria-label'), document.activeElement.value, document.activeElement.maxLength, document.querySelectorAll('.bar[data-handle="cg-b"]').length, getComputedStyle(document.activeElement).userSelect]`), ['Rename group', 'Backlog', 80, 0, 'text']);
+  assert.deepEqual(await page.evaluate(`[document.activeElement.getAttribute('aria-label'), document.activeElement.value, document.querySelectorAll('.bar[data-handle="cg-b"]').length, getComputedStyle(document.activeElement).userSelect]`), ['Rename group', 'Backlog', 0, 'text']);
+  await page.evaluate(`(input => { input.value = 'x'.repeat(81); input.dispatchEvent(new Event('input', { bubbles: true })); })(document.activeElement)`);
+  assert.equal(await page.evaluate(`document.activeElement.value`), 'Backlog', 'a name past 80 characters is undone');
   await page.press('Escape');
   await page.until(`!document.querySelector('.name-form')`);
   await page.until(`${FOCUSED} === 'Backlog'`);
@@ -251,9 +253,9 @@ test('a name the server refuses keeps the box open and the old name', { skip, ti
   await rightClick(page, 'Notes');
   await choose(page, 'Rename');
   await page.until(`document.activeElement.matches('.bar > .name-form .input')`);
-  await page.evaluate(`(input => { input.removeAttribute('maxlength'); input.value = 'x'.repeat(81); input.dispatchEvent(new Event('input', { bubbles: true })); })(document.activeElement)`);
+  await page.evaluate(`(input => { input.value = '\u200b'; input.dispatchEvent(new Event('input', { bubbles: true })); })(document.activeElement)`);
   await page.press('Enter');
-  await page.until(`/80 characters/.test(document.body.textContent)`);
+  await page.until(`/Give it a name/.test(document.body.textContent)`);
   assert.equal(await page.evaluate(`!!document.querySelector('.bar > .name-form')`), true);
   assert.equal(onDisk(s).groups[2].name, 'Notes');
   assert.deepEqual(page.problems.filter(p => !/400/.test(p)), []);
