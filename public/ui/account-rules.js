@@ -42,3 +42,24 @@ export function autoBanner(accounts) {
     text: `${auto.from.name} ran out of usage, so new messages now go to ${auto.to.name}.`,
   };
 }
+
+// The banner that Chrome's Claude extension is not on the account just switched to, or null while the check runs or when there is nothing to say.
+// `on` is the account Chrome is on, when it is known.
+export function chromeBanner(chrome) {
+  if (!chrome?.state || chrome.checking) return null;
+  const { to, on, email, opened } = chrome;
+  const elsewhere = chrome.state === 'elsewhere';
+  const who = email || `the ${to.name} account`;
+  return {
+    id: 'banner-chrome',
+    tone: elsewhere ? 'warning' : null,
+    title: elsewhere ? `Chrome is still on ${on.name}` : `Check Chrome is on ${to.name}`,
+    text: elsewhere
+      ? `Chats on ${to.name} can't use Chrome until the Claude extension is on ${to.name} too.`
+      : `Chrome may be closed, or on another account. Chats on ${to.name} reach Chrome only when the Claude extension is on ${to.name} too.`,
+    steps: elsewhere ? ['Press Log out in the settings.', `Log in with ${who}, picking it on the sign-in page.`] : ['Open the settings. If Chrome was only closed, this banner clears.', `If it stays, press Log out, then log in with ${who}.`],
+    warning: "Logging out deletes the extension's saved shortcuts and scheduled tasks.",
+    label: 'Open in Chrome on the Mac',
+    progress: opened ? `Opened on the Mac. This clears once Chrome is on ${to.name}.` : '',
+  };
+}

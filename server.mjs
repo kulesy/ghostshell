@@ -37,9 +37,10 @@ import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
-import { authInfo, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
+import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins } from './lib/account-logins.mjs';
+import { browserSeen, CHROME_SETTINGS_URL, makeChromeCheck } from './lib/chrome-check.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
@@ -1518,12 +1519,21 @@ const accountLogins = makeAccountLogins({
   readLoginEnd: opts => readLoginEnd({ security: cfg.security, ...opts }),
   startSignIn: opts => startSignIn({ claude: cfg.claude, ...opts }),
   retireOtherAccounts,
+  afterSwitch: account => chromeCheck.switched(account),
   restarting: () => updates.state().stage === 'restarting',
 });
 onAuthFailure(accountLogins.authFailed);
 onUsage(accountLogins.markUsage);
 
-const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.state(), accounts: accountLogins.banner() });
+// After a switch, whether Chrome's Claude extension is on the new account, and the banner that says to move it when it is not.
+const chromeCheck = makeChromeCheck({
+  accounts,
+  probe: account => browserSeen({ claude: cfg.claude, env: cleanEnv(process.env, accounts.loginEnvOf(account)) }),
+  emailOf: id => accountLogins.view().find(a => a.id === id)?.email ?? '',
+  openSettings: () => new Promise((resolve, reject) => execFile(cfg.open, ['-a', 'Google Chrome', CHROME_SETTINGS_URL], { timeout: 10_000 }, err => (err ? reject(err) : resolve()))),
+});
+
+const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.state(), accounts: accountLogins.banner(), chrome: chromeCheck.state() });
 
 const updates = makeUpdate({
   root: cfg.updateRoot,
@@ -1560,6 +1570,7 @@ const accountsNow = () => ({
   })),
   autoSwitch: accounts.autoSwitch,
   auto: accountLogins.banner().auto,
+  chrome: chromeCheck.state(),
   waiting: accountLogins.waiting(),
 });
 
@@ -1573,8 +1584,8 @@ function keptWords(chat) {
 }
 
 // GET api/accounts lists them. POST api/accounts adds one by name and starts its sign-in, and POST api/accounts/<id>/sign-in starts one. The rest are
-// POST api/accounts/<id>/rename, POST api/accounts/<id>/use (with `continue`, a session to send "Continue." to), POST api/accounts/auto, POST api/accounts/seen and
-// POST api/accounts/plan. All of them run something as the owner, so they take the stricter origin check.
+// POST api/accounts/<id>/rename, POST api/accounts/<id>/use (with `continue`, a session to send "Continue." to), POST api/accounts/auto, POST api/accounts/seen,
+// POST api/accounts/plan, POST api/accounts/chrome-open (the extension's settings on the Mac) and POST api/accounts/chrome-seen. All of them run something as the owner, so they take the stricter origin check.
 async function accountsApi(req, res, parts) {
   if (req.method === 'GET' && parts.length === 2) return send(res, 200, accountsNow());
   if (req.method !== 'POST') return send(res, 404, { error: 'Not found' });
@@ -1598,6 +1609,14 @@ async function accountsApi(req, res, parts) {
   }
   if (parts.length === 3 && step === 'seen') {
     accountLogins.seen();
+    return send(res, 200, accountsNow());
+  }
+  if (parts.length === 3 && step === 'chrome-open') {
+    try { await chromeCheck.open(); } catch (e) { return refuse(409, e.message); }
+    return send(res, 200, accountsNow());
+  }
+  if (parts.length === 3 && step === 'chrome-seen') {
+    chromeCheck.dismiss();
     return send(res, 200, accountsNow());
   }
   if (parts.length === 3 && step === 'plan') {

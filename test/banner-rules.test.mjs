@@ -98,6 +98,9 @@ test('the page polls fast while a sign-in waits or a restart is under way, and s
   assert.equal(pollMs({ login: { stage: 'waiting' }, update: { show: false } }), FAST_MS);
   assert.equal(pollMs({ login: { stage: 'idle' }, update: { stage: 'restarting' } }), FAST_MS);
   assert.equal(pollMs({ login: { stage: 'idle' }, update: { stage: 'updating' } }), FAST_MS);
+  assert.equal(pollMs({ login: { stage: 'idle' }, update: { stage: 'idle' }, chrome: { checking: true } }), FAST_MS);
+  assert.equal(pollMs({ login: { stage: 'idle' }, update: { stage: 'idle' }, chrome: { state: 'unknown' } }), SLOW_MS);
+  assert.equal(pollMs({ chrome: null }), SLOW_MS);
 });
 
 test('a failed read while restarting keeps the banner and drops the count of chats, since the server is gone', () => {

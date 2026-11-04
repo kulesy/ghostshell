@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { serviceFor } from '../lib/accounts.mjs';
 import { findChromium, launch, notFound } from './browser.mjs';
-import { as, cliCalls, PASSWORD, request, restart, signIn, start, until } from './harness.mjs';
+import { as, cliCalls, openCalls, PASSWORD, request, restart, signIn, start, until } from './harness.mjs';
 
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
@@ -24,7 +24,8 @@ after(async () => {
 
 const row = (over = {}) => ({ kind: 'weekly_all', group: 'weekly', percent: 71, severity: 'normal', resets_at: new Date(Date.now() + 3 * DAY).toISOString(), scope: null, is_active: true, ...over });
 
-async function open({ second = true, same = false } = {}) {
+// With `chrome`, Chrome is set up and the first account's folder sees a browser on this Mac, so a switch to the second finds Chrome still on the first.
+async function open({ second = true, same = false, chrome = false } = {}) {
   const first = await start({ claude: true, sessions: [{ id: 'live', title: 'Runs', source: 'cli', ago: 1 }, { id: 'other', title: 'Fix the build', source: 'cli', ago: 2 }] });
   const dir = path.join(first.state, 'accounts', 'second');
   fs.mkdirSync(dir, { recursive: true });
@@ -32,6 +33,10 @@ async function open({ second = true, same = false } = {}) {
   fs.writeFileSync(path.join(first.home, 'auth-state.json'), JSON.stringify(same ? { email: 'same@example.com', orgId: 'org-same' } : { email: 'main@example.com' }));
   fs.writeFileSync(path.join(dir, 'auth-state.json'), JSON.stringify(same ? { loggedIn: true, email: 'same@example.com', orgId: 'org-same' } : { loggedIn: true, email: 'second@example.com', orgId: 'org-2', subscriptionType: 'pro' }));
   fs.writeFileSync(path.join(first.home, `keychain-expiry-${serviceFor(dir)}`), String(Date.now() + 20 * DAY));
+  if (chrome) {
+    fs.writeFileSync(path.join(first.home, '.claude.json'), JSON.stringify({ cachedChromeExtensionInstalled: true }));
+    fs.writeFileSync(path.join(first.home, 'chrome-state.json'), JSON.stringify({ browsers: [{ deviceId: 'd1', name: 'Fake', osPlatform: 'darwin', connectedAt: 1, isLocal: true, inUse: false }] }));
+  }
   fs.writeFileSync(path.join(dir, 'plan-usage.json'), JSON.stringify([row({ kind: 'session', group: 'session', percent: 34, resets_at: new Date(Date.now() + 2 * 3_600_000).toISOString() }), row()]));
   const s = await restart(first);
   const { token } = await signIn(s);
@@ -258,4 +263,60 @@ test('the pane fits a phone and has no sideways scroll', { skip, timeout }, asyn
   const page = await openPage(t, c, '#/accounts', { phone: true });
   await page.until(`document.querySelectorAll('#accounts .account').length === 2`, 15_000);
   assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth && document.querySelector('.accounts-body').scrollWidth <= document.querySelector('.accounts-body').clientWidth`), true);
+});
+
+const chromeSel = 'aside.offer[aria-labelledby=banner-chrome-title]';
+const chromeView = `(a => ({ title: a.querySelector('h2').textContent, text: a.querySelector('.offer-text').textContent, tone: a.dataset.tone, icon: !!a.querySelector('h2 svg'), steps: [...a.querySelectorAll('ol.offer-list li')].map(x => x.textContent), warning: a.querySelector('ol.offer-list + .offer-text').textContent, buttons: [...a.querySelectorAll('button')].map(b => b.textContent), inPane: !!a.closest('#accounts') }))(document.querySelector('${chromeSel}'))`;
+
+test('a switch on the Accounts pane shows the Chrome banner in the pane and not in the sidebar, Open shows its progress, and Dismiss clears it', { skip, timeout }, async t => {
+  const c = await open({ chrome: true });
+  const page = await openPage(t, c, '#/accounts');
+  await page.until(`document.querySelectorAll('#accounts .account').length === 2`, 15_000);
+  assert.equal(await page.evaluate(`!!document.querySelector('${chromeSel}')`), false);
+  await page.click('#accounts .account:nth-child(2) .account-actions button');
+  await page.until(`!!document.querySelector('${chromeSel}')`, 15_000);
+  assert.deepEqual(await page.evaluate(chromeView), {
+    title: 'Chrome is still on Main',
+    text: "Chats on Second can't use Chrome until the Claude extension is on Second too.",
+    tone: 'warning',
+    icon: true,
+    steps: ['Press Log out in the settings.', 'Log in with second@example.com, picking it on the sign-in page.'],
+    warning: "Logging out deletes the extension's saved shortcuts and scheduled tasks.",
+    buttons: ['Open in Chrome on the Mac', 'Dismiss'],
+    inPane: true,
+  });
+  assert.equal(await page.evaluate(`document.querySelectorAll('${chromeSel}').length`), 1, 'one banner, none in the sidebar');
+  await shot(page, 'e-chrome-banner');
+
+  await page.click(`${chromeSel} .offer-actions button`);
+  await page.until(`document.querySelector('${chromeSel} .offer-progress')?.textContent === 'Opened on the Mac. This clears once Chrome is on Second.'`, 10_000);
+  assert.deepEqual(openCalls(c.s).at(-1), ['-a', 'Google Chrome', 'https://clau.de/chrome/permissions']);
+
+  fs.writeFileSync(path.join(c.s.home, 'open-fails'), '');
+  await page.click(`${chromeSel} .offer-actions button`);
+  await page.until(`document.querySelector('${chromeSel} .notice')?.textContent.startsWith('Could not open Chrome')`, 10_000);
+  assert.equal(await page.evaluate(`document.querySelector('${chromeSel} .offer-progress').textContent`), '', 'a refused press does not claim Chrome opened');
+
+  await page.click(`${chromeSel} .offer-actions button:last-child`);
+  await page.until(`!document.querySelector('${chromeSel}')`, 10_000);
+  assert.equal((await accounts(c)).chrome, null);
+});
+
+test('on another route the sidebar shows the Chrome banner, and the pane takes it over when the Accounts page opens', { skip, timeout }, async t => {
+  const c = await open({ chrome: true });
+  await post(c, '/api/accounts/second/use');
+  await until(async () => (await accounts(c)).chrome?.state === 'elsewhere');
+  const page = await openPage(t, c);
+  await page.until(`!!document.querySelector('${chromeSel}')`, 15_000);
+  assert.deepEqual(await page.evaluate(chromeView).then(v => [v.title, v.inPane]), ['Chrome is still on Main', false]);
+
+  await page.evaluate(`location.hash = '#/accounts'`);
+  await page.until(`!!document.querySelector('#accounts ${chromeSel}')`, 15_000);
+  assert.equal(await page.evaluate(`document.querySelectorAll('${chromeSel}').length`), 1);
+
+  await page.click(`${chromeSel} .offer-actions button:last-child`);
+  await page.until(`!document.querySelector('${chromeSel}')`, 10_000);
+  await page.evaluate(`location.hash = '#/'`);
+  await new Promise(done => setTimeout(done, 500));
+  assert.equal(await page.evaluate(`!!document.querySelector('${chromeSel}')`), false, 'dismissed for good');
 });

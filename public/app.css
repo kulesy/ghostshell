@@ -4223,13 +4223,15 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .offer[data-tone="warning"] { border-color: var(--warning); background: var(--warning-muted); }
 
-.offer[data-tone="warning"] :is(h2, .offer-text, .offer-progress) { color: var(--warning-foreground); }
+.offer[data-tone="warning"] :is(h2, .offer-text, .offer-progress, .offer-list) { color: var(--warning-foreground); }
 
 .offer h2 svg { flex: none; width: 1rem; height: 1rem; margin-top: 0.1875rem; }
 
 .offer-list { margin: 0.5rem 0 0; padding-left: 1.1rem; font-size: 0.8125rem; }
 
 .offer-list li + li { margin-top: 0.15rem; }
+
+ol.offer-list { padding-left: 1.4rem; }
 
 .offer-list a { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 
@@ -4282,6 +4284,10 @@ html.viewing, html.viewing body { overflow: hidden; }
 .passkey-why { margin: 0; font-size: 0.875rem; }
 
 .passkeys-inner .notice, .accounts-inner .notice { margin: 0.85rem 0 0; }
+
+.accounts-inner .offer { margin: 0 0 1.25rem; }
+
+.accounts-inner .offer .notice { margin: 0.5rem 0 0; }
 
 .passkey-status { margin: 0.85rem 0 0; font-size: 0.875rem; color: var(--success-foreground); }
 

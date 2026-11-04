@@ -42,11 +42,27 @@ export const CLI_MODELS = [
 // ({ email, orgId, subscriptionType }), so a test can make the browser approve the account an earlier one already has. Each call is logged to auth.log in the
 // home with its CLAUDE_CONFIG_DIR and any CLAUDE_CODE_ or ANTHROPIC_ variable it was given. A sign-in writes a fresh end date for the stub keychain tool, to the
 // file for that folder's entry. It prints nothing a token could be in.
+// Given `--claude-in-chrome-mcp` it is the stdio server instead: it answers list_connected_browsers from chrome-state.json in the folder (the home without one) with
+// its `browsers` (none without a file), or with its `text` as plain words, and logs the folder of each call to chrome.log in the home.
 const AUTH_CLI = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
 const home = process.env.HOME;
 const dir = process.env.CLAUDE_CONFIG_DIR || '';
+if (process.argv[2] === '--claude-in-chrome-mcp') {
+  const file = path.join(dir || home, 'chrome-state.json');
+  const chrome = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  const say = message => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');
+  require('node:readline').createInterface({ input: process.stdin }).on('line', line => {
+    const m = JSON.parse(line);
+    if (m.method === 'initialize') say({ id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'fake', version: '0' } } });
+    if (m.method === 'tools/call') {
+      fs.appendFileSync(path.join(home, 'chrome.log'), JSON.stringify({ dir: dir || null }) + '\\n');
+      say({ id: m.id, result: { content: [{ type: 'text', text: chrome.text ?? JSON.stringify(chrome.browsers ?? []) }] } });
+    }
+  }).on('close', () => process.exit(0));
+  return;
+}
 const own = path.join(dir || home, 'auth-state.json');
 const stateFile = dir && !fs.existsSync(own) ? path.join(home, 'auth-state-next.json') : own;
 const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};
@@ -90,6 +106,14 @@ if (value === 'missing') {
 console.log(JSON.stringify({ claudeAiOauth: {
   accessToken: 'fake-access-secret', refreshToken: 'fake-refresh-secret', refreshTokenExpiresAt: value ? Number(value) : Date.now() + 20 * 86_400_000, scopes: ['user:inference'],
 } }));
+`;
+
+// The macOS `open` tool, so no test can start the real Chrome. It logs its arguments to open.log in the home, and fails when a file named open-fails is there.
+const FAKE_OPEN = `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+fs.appendFileSync(path.join(process.env.HOME, 'open.log'), JSON.stringify(process.argv.slice(2)) + '\\n');
+if (fs.existsSync(path.join(process.env.HOME, 'open-fails'))) process.exit(1);
 `;
 
 const running = [];
@@ -204,7 +228,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "import readline from 'node:readline';",
     `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
     "const say = message => process.stdout.write(JSON.stringify(message) + '\\n');",
-    `if (process.argv[2] === 'auth') { await import(${JSON.stringify(path.join(home, 'claude-auth.cjs'))}); await new Promise(() => {}); }`,
+    `if (['auth', '--claude-in-chrome-mcp'].includes(process.argv[2])) { await import(${JSON.stringify(path.join(home, 'claude-auth.cjs'))}); await new Promise(() => {}); }`,
     "note({ started: process.argv.slice(2), cwd: process.cwd(), configDir: process.env.CLAUDE_CONFIG_DIR ?? null });",
     "const startedOn = process.argv[process.argv.indexOf('--model') + 1];",
     "const namedId = process.argv.includes('--session-id') ? process.argv[process.argv.indexOf('--session-id') + 1] : null;",
@@ -338,11 +362,13 @@ export async function start(mac) {
 function furnishBanners(home) {
   const auth = path.join(home, 'claude-auth.cjs');
   const security = path.join(home, 'security');
+  const open = path.join(home, 'open');
   const updateRoot = path.join(home, 'update-root');
   fs.writeFileSync(auth, AUTH_CLI, { mode: 0o755 });
   fs.writeFileSync(security, FAKE_SECURITY, { mode: 0o755 });
+  fs.writeFileSync(open, FAKE_OPEN, { mode: 0o755 });
   fs.mkdirSync(updateRoot, { recursive: true });
-  return { auth, security, updateRoot };
+  return { auth, security, open, updateRoot };
 }
 
 async function launch(home, state, made) {
@@ -350,7 +376,7 @@ async function launch(home, state, made) {
   const banners = furnishBanners(home);
   const env = {
     ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, CAPCOM_AUTO_TITLE: made.autoTitle ? '1' : '0', CAPCOM_CLAUDE: made.cli ?? banners.auth,
-    CAPCOM_SECURITY: banners.security, CAPCOM_UPDATE_ROOT: banners.updateRoot, CAPCOM_RETIRE_QUIET_MS: '300', ...(made.gh && { CAPCOM_GH: made.gh }), ...made.env,
+    CAPCOM_SECURITY: banners.security, CAPCOM_OPEN: banners.open, CAPCOM_UPDATE_ROOT: banners.updateRoot, CAPCOM_RETIRE_QUIET_MS: '300', ...(made.gh && { CAPCOM_GH: made.gh }), ...made.env,
   };
   // The first account is the CLI's own sign-in, so a folder from the machine running the tests would point it away from the home.
   if (!made.env?.CLAUDE_CONFIG_DIR) delete env.CLAUDE_CONFIG_DIR;
@@ -406,6 +432,18 @@ export async function signIn(s, headers) {
 
 // What the fake CLI has logged so far: how it was started, each message and control message it was sent, and when its input closed.
 export const cliCalls = s => (fs.existsSync(s.cliLog) ? fs.readFileSync(s.cliLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []);
+
+// The `open` calls the stub tool has logged: the arguments of each.
+export const openCalls = s => {
+  const file = path.join(s.home, 'open.log');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+};
+
+// The `claude --claude-in-chrome-mcp` calls the stub CLI has logged: { dir } for each.
+export const chromeCalls = s => {
+  const file = path.join(s.home, 'chrome.log');
+  return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+};
 
 // The `claude auth` calls the stub CLI has logged: { args, leaked } for each, with the names of any CLAUDE_CODE_ or ANTHROPIC_ variables it was given.
 export const authCalls = s => {

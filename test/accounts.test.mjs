@@ -202,3 +202,30 @@ test('the first account has no folder to prepare', () => {
   a.prepare(a.active);
   assert.deepEqual(fs.readdirSync(f.state), []);
 });
+
+test('usesChrome is true when the shared .claude.json says the extension is installed or its onboarding is done, and false otherwise', () => {
+  const f = fresh();
+  const a = f.make();
+  assert.equal(a.usesChrome, false, 'no file');
+  fs.writeFileSync(f.json, '{ not json');
+  assert.equal(a.usesChrome, false, 'unreadable');
+  fs.writeFileSync(f.json, JSON.stringify({ cachedChromeExtensionInstalled: 'yes', hasCompletedClaudeInChromeOnboarding: 1 }));
+  assert.equal(a.usesChrome, false, 'only true counts');
+  fs.writeFileSync(f.json, JSON.stringify({ cachedChromeExtensionInstalled: true }));
+  assert.equal(a.usesChrome, true);
+  fs.writeFileSync(f.json, JSON.stringify({ cachedChromeExtensionInstalled: false, hasCompletedClaudeInChromeOnboarding: true }));
+  assert.equal(a.usesChrome, true);
+  fs.writeFileSync(f.json, '[]');
+  assert.equal(a.usesChrome, false, 'not an object');
+});
+
+test('usesChrome reads the .claude.json inside a CLAUDE_CONFIG_DIR when the first account has one', () => {
+  const f = fresh();
+  const folder = path.join(f.root, 'elsewhere');
+  fs.mkdirSync(folder);
+  const a = f.make({ CLAUDE_CONFIG_DIR: folder });
+  fs.writeFileSync(f.json, JSON.stringify({ cachedChromeExtensionInstalled: true }));
+  assert.equal(a.usesChrome, false, 'the home file is not the one');
+  fs.writeFileSync(path.join(folder, '.claude.json'), JSON.stringify({ hasCompletedClaudeInChromeOnboarding: true }));
+  assert.equal(a.usesChrome, true);
+});
