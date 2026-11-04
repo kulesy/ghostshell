@@ -1,7 +1,7 @@
 import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
 import { supportsAccounts } from './ui/account-rules.js';
-import { AccountsPane, AutoBanner, OutBanner } from './ui/accounts.js';
+import { AccountsPane, AutoBanner, ChromeBanner, OutBanner } from './ui/accounts.js';
 import { supportsBanners } from './ui/banner-rules.js';
 import { LoginBanner, UpdateBanner, useBanners } from './ui/banners.js';
 import { ChatPane } from './ui/chat.js';
@@ -309,6 +309,9 @@ function App() {
   const owner = parsed.name === 'session' ? groupOfSession(ix, parsed.id) : null;
   useEffect(() => { if (owner) location.replace(`#/g/${encodeURIComponent(owner.id)}`); }, [owner?.id]);
   const route = useMemo(() => (owner ? { name: 'group', id: owner.id } : parsed), [parsed, owner?.id]);
+  // The Accounts pane can dismiss the Chrome banner, so the sidebar reads again when it is left.
+  const onAccounts = route.name === 'accounts';
+  useEffect(() => { if (!onAccounts) banners.load(); }, [onAccounts, banners.load]);
   // A new session needs no list, so it opens at once.
   const view = route.name !== 'list' && (route.name === 'new' || ready || ix) ? 'chat' : 'list';
   const id = route.name === 'session' ? route.id : null;
@@ -353,7 +356,7 @@ function App() {
     <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} placeMany=${placeMany} edit=${edit} archive=${archive} archiveAll=${archiveAll} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'} accountsOpen=${route.name === 'accounts'}
       routines=${routines} routinesOpen=${route.name === 'routines'} refreshRoutines=${refreshRoutines}
       scheduled=${scheduled} scheduledOpen=${route.name === 'scheduled'} refreshScheduled=${refreshScheduled}
-      banner=${html`<${LoginBanner} ...${banners} />${supportsAccounts(ix) ? html`<${OutBanner} ...${banners} /><${AutoBanner} ...${banners} />` : null}<${UpdateBanner} ...${banners} />${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null}`} />
+      banner=${html`<${LoginBanner} ...${banners} />${supportsAccounts(ix) ? html`<${OutBanner} ...${banners} /><${AutoBanner} ...${banners} />${route.name !== 'accounts' ? html`<${ChromeBanner} chrome=${banners.banners?.chrome} load=${banners.load} />` : null}` : null}<${UpdateBanner} ...${banners} />${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null}`} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <div class="emblem" aria-hidden="true"><${Shell} class="emblem-shell" /><span class="emblem-shadow"></span></div>

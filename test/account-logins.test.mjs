@@ -10,7 +10,7 @@ const MIN = 60_000;
 
 // `who` maps an account id to what its fake CLI says. An id with `null` says nothing usable, and one with `loggedIn: false` is signed out.
 function rig({ ids = ['main', 'second', 'third'], auto = false, who = {}, restarting = false } = {}) {
-  const r = { at: START, noEnd: false, asks: [], ends: 0, retired: 0, begun: [], prepared: [], restarting, who };
+  const r = { at: START, noEnd: false, asks: [], ends: 0, retired: 0, begun: [], prepared: [], switches: [], restarting, who };
   for (const id of ids) if (!(id in r.who)) r.who[id] = { loggedIn: true, email: `${id}@example.com`, subscriptionType: 'max', orgId: `org-${id}` };
   const list = ids.map(id => ({ id, name: id[0].toUpperCase() + id.slice(1) }));
   let active = ids[0];
@@ -30,6 +30,7 @@ function rig({ ids = ['main', 'second', 'third'], auto = false, who = {}, restar
     readLoginEnd: async () => { r.ends++; return r.noEnd ? null : r.at + 20 * DAY; },
     startSignIn: ({ extra }) => { r.begun.push(extra.CLAUDE_CONFIG_DIR); return { exited: new Promise(() => {}), stop() {} }; },
     retireOtherAccounts: () => { r.retired++; },
+    afterSwitch: a => r.switches.push([a.id, active]),
     restarting: () => r.restarting,
     now: () => r.at,
   });
@@ -176,4 +177,13 @@ test('the last plan answer is kept on the account it belongs to', async () => {
   r.logins.keepPlan('second', { limits: [], at: START });
   r.logins.keepPlan('nobody', { limits: [], at: START });
   assert.deepEqual(r.logins.view().map(a => a.plan), [null, { limits: [], at: START }]);
+});
+
+test('a switch by hand and a switch by itself both tell afterSwitch, once the new account is active', async () => {
+  const r = await checked(rig({ ids: ['main', 'second'], auto: true }));
+  r.logins.switchTo(r.accounts.find('second'));
+  assert.deepEqual(r.switches, [['second', 'second']]);
+  r.logins.switchTo(r.accounts.find('main'));
+  r.logins.markUsage('main', 'out');
+  assert.deepEqual(r.switches, [['second', 'second'], ['main', 'main'], ['second', 'second']]);
 });

@@ -73,8 +73,8 @@ export function updateBanner(update) {
 export const FAST_MS = 2000;
 export const SLOW_MS = 15_000;
 
-// Faster while a sign-in waits on the Mac or a restart is under way, so the banner clears soon after it is done.
-export const pollMs = banners => (banners?.login?.stage === 'waiting' || ['updating', 'restarting'].includes(banners?.update?.stage) ? FAST_MS : SLOW_MS);
+// Faster while a sign-in waits on the Mac, a restart is under way or the Chrome check runs, so the banner clears or appears soon.
+export const pollMs = banners => (banners?.login?.stage === 'waiting' || ['updating', 'restarting'].includes(banners?.update?.stage) || banners?.chrome?.checking ? FAST_MS : SLOW_MS);
 
 // The server is down for a moment while it restarts, so a failed read keeps the banner and says only that it is restarting.
 export function keptWhileRestarting(banners) {

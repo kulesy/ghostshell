@@ -1,8 +1,8 @@
 // The Claude accounts in the page: the pane that lists, adds, signs in, renames and switches them, the sidebar banners for an account that is out of
-// usage and for a switch GhostShell made by itself, and the button in a chat that switches and carries on. See docs/adr/20261102-switch-claude-accounts.md.
+// usage and for a switch GhostShell made by itself, the reminder that Chrome is on another account, and the button in a chat that switches and carries on. See docs/adr/20261102-switch-claude-accounts.md.
 import { api } from './api.js';
 import { Banner } from './banner.js';
-import { autoBanner, needsSignIn, outBanner, planAsOf, sameAccountWords, signInLine, waitingWords } from './account-rules.js';
+import { autoBanner, chromeBanner, needsSignIn, outBanner, planAsOf, sameAccountWords, signInLine, waitingWords } from './account-rules.js';
 import { Button, useRefusal } from './banners.js';
 import { Plan } from './context.js';
 import { planRows } from './context-rules.js';
@@ -42,12 +42,12 @@ function useAccountList() {
       return e.message;
     }
   }, []);
-  const waiting = !!list?.waiting;
+  const fast = !!list?.waiting || !!list?.chrome?.checking;
   useEffect(() => {
     load();
-    const timer = setInterval(() => { if (!document.hidden) load(); }, waiting ? FAST_MS : SLOW_MS);
+    const timer = setInterval(() => { if (!document.hidden) load(); }, fast ? FAST_MS : SLOW_MS);
     return () => clearInterval(timer);
-  }, [waiting]);
+  }, [fast]);
   // The plan usage of each account is asked for when the pane opens, and again each minute while it stays open.
   useEffect(() => {
     act('api/accounts/plan');
@@ -140,7 +140,7 @@ function AddForm({ list, act }) {
 
 export function AccountsPane() {
   useDocumentTitle('Accounts · GhostShell');
-  const { list, problem, act } = useAccountList();
+  const { list, problem, act, load } = useAccountList();
   const [refused, setRefused] = useState('');
   const toggle = async e => { setRefused(''); setRefused(await act('api/accounts/auto', { on: e.currentTarget.checked })); };
 
@@ -151,6 +151,7 @@ export function AccountsPane() {
     </header>
     <div class="accounts-body">
       <div class="accounts-inner">
+        <${ChromeBanner} chrome=${list?.chrome} load=${load} />
         <p class="quiet account-lead">Chats and routines run on the active account. Switching takes one click and no sign-in, and a chat carries on where it was.</p>
         ${list
           ? html`<ul class="account-list">${list.accounts.map(a => html`<${AccountRow} key=${a.id} a=${a} list=${list} act=${act} />`)}</ul>
@@ -189,6 +190,22 @@ export function AutoBanner({ banners, load }) {
     try { await api('api/accounts/seen', {}); await load(); } catch (e) { setRefused(e.message); }
   };
   return html`<${Banner} ...${view} problem=${refused} actions=${html`<${Button} action=${{ label: 'Dismiss', variant: 'ghost' }} onClick=${dismiss} />`} />`;
+}
+
+// The reminder that Chrome's Claude extension is still on another account after a switch. See docs/adr/20261104-chrome-follows-the-account.md. The Accounts pane shows it in place of the sidebar, which a phone hides there.
+export function ChromeBanner({ chrome, load }) {
+  const view = chromeBanner(chrome);
+  const [refused, setRefused] = useRefusal(chrome?.state, chrome?.to?.id);
+  if (!view) return null;
+  const press = step => async () => {
+    setRefused('');
+    try { await api(`api/accounts/${step}`, {}); await load(); } catch (e) { setRefused(e.message); }
+  };
+  const actions = html`<${Button} action=${{ label: view.label }} onClick=${press('chrome-open')} /><${Button} action=${{ label: 'Dismiss', variant: 'ghost' }} onClick=${press('chrome-seen')} />`;
+  return html`<${Banner} ...${view} problem=${refused} progress=${refused ? '' : view.progress} actions=${actions}>
+    <ol class="offer-list">${view.steps.map(step => html`<li key=${step}>${step}</li>`)}</ol>
+    <p class="offer-text">${view.warning}</p>
+  <//>`;
 }
 
 // Under a chat's error notice, when its turn ran out of usage and another account can take over: switches to the one the server picks for the banner and sends "Continue.".

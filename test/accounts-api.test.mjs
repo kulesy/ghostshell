@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { serviceFor } from '../lib/accounts.mjs';
-import { as, authCalls, cliCalls, listen, request, restart, signIn, start, until } from './harness.mjs';
+import { OPEN_FAILED } from '../lib/chrome-check.mjs';
+import { as, authCalls, chromeCalls, cliCalls, listen, openCalls, request, restart, signIn, start, until } from './harness.mjs';
 
 const DAY = 86_400_000;
 const SECRETS = /fake-access-secret|fake-refresh-secret|org-hidden|mcp-api-key/;
@@ -13,12 +14,13 @@ const texts = [];
 const row = (over = {}) => ({ kind: 'weekly_all', group: 'weekly', percent: 71, severity: 'normal', resets_at: new Date(Date.now() + 3 * DAY).toISOString(), scope: null, is_active: true, ...over });
 
 // A server with a second account, "Second" (id `second`), set up in its state before the server starts: signed in with its own email and plan unless `signedOut`.
-async function open({ signedOut = false, main = null, second = {}, auto = false, claude = true, sessions = [{ id: 'live', title: 'Runs', source: 'cli', ago: 1 }, { id: 'other', title: 'Another', source: 'cli', ago: 2 }, { id: 'cold', title: 'Cold', source: 'cli', ago: 3 }] } = {}) {
+async function open({ signedOut = false, main = null, second = {}, auto = false, claude = true, chrome = false, sessions = [{ id: 'live', title: 'Runs', source: 'cli', ago: 1 }, { id: 'other', title: 'Another', source: 'cli', ago: 2 }, { id: 'cold', title: 'Cold', source: 'cli', ago: 3 }] } = {}) {
   const first = await start({ claude, sessions });
   const dir = path.join(first.state, 'accounts', 'second');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(first.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: auto, accounts: [{ id: 'main', name: 'Main' }, { id: 'second', name: 'Second', dir }] }));
   if (main) fs.writeFileSync(path.join(first.home, 'auth-state.json'), JSON.stringify(main));
+  if (chrome) fs.writeFileSync(path.join(first.home, '.claude.json'), JSON.stringify({ cachedChromeExtensionInstalled: true }));
   if (!signedOut) {
     fs.writeFileSync(path.join(dir, 'auth-state.json'), JSON.stringify({ loggedIn: true, email: 'second@example.com', orgId: 'org-hidden-2', subscriptionType: 'pro', ...second }));
     fs.writeFileSync(path.join(first.home, `keychain-expiry-${serviceFor(dir)}`), String(Date.now() + 20 * DAY));
@@ -318,4 +320,73 @@ test('no response from the account routes or the banners holds a token, an organ
   assert.ok(texts.length > 10);
   for (const text of texts) assert.doesNotMatch(text, SECRETS);
   for (const call of authCalls(c.s)) assert.deepEqual(call.leaked, []);
+});
+
+// A browser on this Mac, as the fake `claude --claude-in-chrome-mcp` lists it for the folder: the home is main's, and `c.dir` is second's.
+const browser = { deviceId: 'd1', name: 'Fake', osPlatform: 'darwin', connectedAt: 1, isLocal: true, inUse: false };
+const seesChrome = folder => fs.writeFileSync(path.join(folder, 'chrome-state.json'), JSON.stringify({ browsers: [browser] }));
+
+test('a switch with Chrome set up reports it checking at once, then names the account Chrome is still on, and a read never asks again', async () => {
+  const c = await open({ chrome: true });
+  seesChrome(c.s.home);
+  assert.equal((await accountsOf(c)).chrome, null);
+  const used = await post(c, '/api/accounts/second/use');
+  assert.deepEqual(used.body().chrome, { checking: true });
+  await until(async () => (await accountsOf(c)).chrome?.state === 'elsewhere');
+  const expected = { state: 'elsewhere', to: { id: 'second', name: 'Second' }, on: { id: 'main', name: 'Main' }, email: 'second@example.com', opened: false };
+  assert.deepEqual((await accountsOf(c)).chrome, expected);
+  assert.deepEqual((await get(c, '/api/banners')).body().chrome, expected);
+  assert.deepEqual(chromeCalls(c.s).map(x => x.dir).sort(), [c.dir, null]);
+  for (let i = 0; i < 3; i++) { await accountsOf(c); await get(c, '/api/banners'); }
+  assert.equal(chromeCalls(c.s).length, 2);
+});
+
+test('a switch where Chrome is on the new account, or where Chrome is not set up, shows no banner', async () => {
+  const set = await open({ chrome: true });
+  seesChrome(set.dir);
+  await post(set, '/api/accounts/second/use');
+  await until(() => chromeCalls(set.s).length === 2);
+  await new Promise(done => setTimeout(done, 200));
+  assert.equal((await accountsOf(set)).chrome, null);
+
+  const none = await open();
+  seesChrome(none.s.home);
+  await post(none, '/api/accounts/second/use');
+  assert.equal((await accountsOf(none)).chrome, null);
+  await new Promise(done => setTimeout(done, 300));
+  assert.deepEqual([chromeCalls(none.s).length, openCalls(none.s).length], [0, 0], 'nothing probed, nothing opened');
+});
+
+test('chrome-open refuses a cross-site request, opens the extension settings through the open tool, and says so when it fails', async () => {
+  const c = await open({ chrome: true });
+  seesChrome(c.s.home);
+  await post(c, '/api/accounts/second/use');
+  await until(async () => (await accountsOf(c)).chrome?.state === 'elsewhere');
+  assert.equal((await post(c, '/api/accounts/chrome-open', {}, {})).status, 403);
+  assert.equal((await post(c, '/api/accounts/chrome-open', {}, { origin: 'http://elsewhere.test' })).status, 403);
+  assert.deepEqual(openCalls(c.s), []);
+
+  fs.writeFileSync(path.join(c.s.home, 'open-fails'), '');
+  const failed = await post(c, '/api/accounts/chrome-open');
+  assert.deepEqual([failed.status, failed.body()], [409, { error: OPEN_FAILED }]);
+  assert.equal((await accountsOf(c)).chrome.opened, false);
+
+  fs.rmSync(path.join(c.s.home, 'open-fails'));
+  const opened = await post(c, '/api/accounts/chrome-open');
+  assert.equal(opened.status, 200);
+  assert.equal(opened.body().chrome.opened, true);
+  assert.deepEqual(openCalls(c.s).at(-1), ['-a', 'Google Chrome', 'https://clau.de/chrome/permissions']);
+});
+
+test('chrome-seen clears the banner, and refuses a cross-site request', async () => {
+  const c = await open({ chrome: true });
+  seesChrome(c.s.home);
+  await post(c, '/api/accounts/second/use');
+  await until(async () => (await accountsOf(c)).chrome?.state === 'elsewhere');
+  assert.equal((await post(c, '/api/accounts/chrome-seen', {}, {})).status, 403);
+  assert.equal((await accountsOf(c)).chrome.state, 'elsewhere');
+  const seen = await post(c, '/api/accounts/chrome-seen');
+  assert.equal(seen.status, 200);
+  assert.equal(seen.body().chrome, null);
+  assert.equal((await get(c, '/api/banners')).body().chrome, null);
 });
