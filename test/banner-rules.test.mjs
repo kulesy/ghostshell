@@ -2,11 +2,11 @@
 // so the test reads the same anywhere.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { daysLeft, endWords, FAST_MS, keptWhileRestarting, loginBanner, pollMs, SLOW_MS, supportsBanners, updateBanner } from '../public/ui/banner-rules.js';
+import { daysLeft, endWords, FAST_MS, forceQuestion, keptWhileRestarting, loginBanner, pollMs, SLOW_MS, supportsBanners, updateBanner } from '../public/ui/banner-rules.js';
 
 const NOW = new Date(2026, 10, 2, 8, 0).getTime();
 const login = over => ({ visible: true, signedOut: false, endsAt: new Date(2026, 10, 6, 9, 36).getTime(), stage: 'idle', problem: '', ...over });
-const update = over => ({ show: true, kind: 'update', stage: 'idle', count: 3, changes: [], restart: true, blocked: '', busy: 0, problem: '', ...over });
+const update = over => ({ show: true, kind: 'update', stage: 'idle', count: 3, changes: [], restart: true, blocked: '', busy: 0, force: true, problem: '', ...over });
 
 test('only a server that sets banners gets the banners', () => {
   assert.equal(supportsBanners({ features: { banners: true } }), true);
@@ -105,8 +105,29 @@ test('the page polls fast while a sign-in waits or a restart is under way, and s
 
 test('a failed read while restarting keeps the banner and drops the count of chats, since the server is gone', () => {
   const before = { login: { stage: 'idle' }, update: { stage: 'restarting', busy: 2, show: true } };
-  assert.deepEqual(keptWhileRestarting(before).update, { stage: 'restarting', busy: 0, show: true });
+  assert.deepEqual(keptWhileRestarting(before).update, { stage: 'restarting', busy: 0, force: false, show: true });
   const idle = { update: { stage: 'idle', busy: 0 } };
   assert.equal(keptWhileRestarting(idle), idle);
   assert.equal(keptWhileRestarting(null), null);
+});
+
+test('the Force restart button is offered only when the server says so, as an outline button', () => {
+  assert.deepEqual(updateBanner(update()).force, { label: 'Force restart', variant: 'outline' });
+  assert.equal(updateBanner(update({ force: false })).force, null);
+  assert.equal(updateBanner(update({ force: undefined })).force, null, 'an older server sends none');
+});
+
+test('the Force restart question counts the chats it cuts, in the singular too', () => {
+  assert.equal(forceQuestion(update({ kind: 'pulled', busy: 3 })), '3 running chats will be cut.');
+  assert.equal(forceQuestion(update({ kind: 'pulled', busy: 1 })), '1 running chat will be cut.');
+  assert.equal(forceQuestion(update({ kind: 'pulled', busy: 0 })), 'No chat is running, so none will be cut.');
+});
+
+test('the Force restart question says the changes are pulled first, and that it goes ahead inside the quiet window', () => {
+  assert.equal(forceQuestion(update({ busy: 2, count: 3 })), '2 running chats will be cut. The 3 merged changes will be pulled first.');
+  assert.equal(forceQuestion(update({ busy: 0, count: 1 })), 'No chat is running, so none will be cut. The 1 merged change will be pulled first.');
+  assert.equal(
+    forceQuestion(update({ kind: 'pulled', busy: 1, blocked: 'Restarts wait until 09:45 on weekdays.' })),
+    '1 running chat will be cut. This goes ahead inside the quiet window, which holds restarts until 09:45 on weekdays.',
+  );
 });

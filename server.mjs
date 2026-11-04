@@ -1554,11 +1554,12 @@ const updates = makeUpdate({
 });
 
 // GET api/banners gives both banners. POST api/banners/sign-in starts a sign-in on the Mac and POST api/banners/update pulls the merged changes,
-// then restarts if they need it. Both run something as the owner, so they take the stricter origin check.
+// then restarts if they need it. POST api/banners/force-restart does the same without waiting for chats, so it can cut one. All three run
+// something as the owner, so they take the stricter origin check, and the page is the only way to reach the force.
 async function bannersApi(req, res, parts) {
   const step = parts[2];
   if (req.method === 'GET' && parts.length === 2) return send(res, 200, bannersNow());
-  if (req.method !== 'POST' || parts.length !== 3 || !['sign-in', 'update'].includes(step)) return send(res, 404, { error: 'Not found' });
+  if (req.method !== 'POST' || parts.length !== 3 || !['sign-in', 'update', 'force-restart'].includes(step)) return send(res, 404, { error: 'Not found' });
   if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
   // `claude auth login` is not a chat, so the restart helper would not wait for it.
   if (step === 'sign-in') {
@@ -1566,7 +1567,7 @@ async function bannersApi(req, res, parts) {
     if (refused) return send(res, 409, { error: refused });
   } else if (accountLogins.waiting() && updates.state().restart) return send(res, 409, { error: 'A sign-in is waiting on the Mac, so GhostShell cannot restart yet.' });
   else {
-    const { problem } = await updates.update();
+    const { problem } = await updates.update({ force: step === 'force-restart' });
     if (problem) return send(res, 409, { error: problem });
   }
   return send(res, 200, bannersNow());

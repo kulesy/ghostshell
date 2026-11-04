@@ -65,9 +65,18 @@ export function updateBanner(update) {
     changes: shown,
     more: Math.max(0, update.count - shown.length),
     action: { label: stage === 'updating' ? 'Updating' : stage === 'restarting' ? 'Restarting' : label, busy: stage !== 'idle', blocked: stage === 'idle' && !!update.blocked },
+    force: update.force ? { label: 'Force restart', variant: 'outline' } : null,
     progress,
     problem: update.problem ?? '',
   };
+}
+
+// What the Force restart question says under its title: what the restart will cut, and the two things a plain update would have waited for.
+export function forceQuestion(update) {
+  const cut = update.busy > 0 ? `${plural(update.busy, 'running chat', 'running chats')} will be cut.` : 'No chat is running, so none will be cut.';
+  const pull = update.kind === 'update' ? ` The ${plural(update.count, 'merged change', 'merged changes')} will be pulled first.` : '';
+  const quiet = update.blocked ? ' This goes ahead inside the quiet window, which holds restarts until 09:45 on weekdays.' : '';
+  return `${cut}${pull}${quiet}`;
 }
 
 export const FAST_MS = 2000;
@@ -78,5 +87,5 @@ export const pollMs = banners => (banners?.login?.stage === 'waiting' || ['updat
 
 // The server is down for a moment while it restarts, so a failed read keeps the banner and says only that it is restarting.
 export function keptWhileRestarting(banners) {
-  return banners?.update?.stage === 'restarting' ? { ...banners, update: { ...banners.update, busy: 0 } } : banners;
+  return banners?.update?.stage === 'restarting' ? { ...banners, update: { ...banners.update, busy: 0, force: false } } : banners;
 }

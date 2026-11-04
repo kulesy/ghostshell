@@ -20,8 +20,20 @@ const pollMs = Number(process.env.CAPCOM_RESTART_POLL_MS || POLL_MS);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = text => console.log(`${new Date().toISOString()} ${text}`);
 
+// Only --now --take-over (the banner's Force restart) tells a waiting worker to stop waiting and exits; plain --now refuses, so a chat cannot cut other chats. Only a live restart worker is signalled,
+// because a stale lock's pid can belong to another process by now, and an unhandled SIGUSR2 would kill it.
+async function takeOver(pid) {
+  if (!opts.takeOver) return false;
+  const row = (await psRows()).find(r => r.pid === pid);
+  const words = row?.command.split(/\s+/) ?? [];
+  if (!words.includes('--foreground') || !words.some(w => w.endsWith('/restart.mjs'))) return false;
+  try { process.kill(pid, 'SIGUSR2'); } catch { return false; }
+  console.log(`Told the waiting restart worker (pid ${pid}) to restart now. See ${logFile}.`);
+  process.exit(0);
+}
+
 const holder = fs.existsSync(lockFile) ? lockHolder(lockFile, process.pid) : null;
-if (holder) { console.error(`A restart is already under way (pid ${holder}). See ${logFile}.`); process.exit(1); }
+if (holder && !(await takeOver(holder))) { console.error(`A restart is already under way (pid ${holder}). See ${logFile}.`); process.exit(1); }
 
 if (!opts.foreground) {
   const fd = fs.openSync(logFile, 'a');
@@ -31,8 +43,13 @@ if (!opts.foreground) {
   process.exit(0);
 }
 
+// Installed before the lock is written, so a pid in the lock always has a handler and a SIGUSR2 to it never kills it.
+let goNow = false;
+process.on('SIGUSR2', () => { goNow = true; });
+
 try { fs.writeFileSync(lockFile, String(process.pid), { flag: 'wx' }); } catch {
-  if (lockHolder(lockFile, process.pid)) { console.error(`A restart is already under way. See ${logFile}.`); process.exit(1); }
+  const raced = lockHolder(lockFile, process.pid);
+  if (raced && !(await takeOver(raced))) { console.error(`A restart is already under way. See ${logFile}.`); process.exit(1); }
   fs.writeFileSync(lockFile, String(process.pid));
 }
 const unlock = () => { try { if (Number(fs.readFileSync(lockFile, 'utf8')) === process.pid) fs.unlinkSync(lockFile); } catch {} };
@@ -60,12 +77,13 @@ else {
     let clear = 0;
     log(`Waiting for no chat to be running (server pid ${oldPid}, up to ${opts.wait} minutes).`);
     // Two clear polls in a row, because a chat can go mid-turn between one check and the restart.
-    while (clear < 2) {
+    while (clear < 2 && !goNow) {
       const busy = await runningChats(oldPid);
       clear = busy.length ? 0 : clear + 1;
       if (busy.length && Date.now() >= deadline) fail(`Gave up after ${opts.wait} minutes without restarting. Still running: ${busy.map(c => `pid ${c.pid}`).join(', ')}.`);
       if (clear < 2) await sleep(pollMs);
     }
+    if (goNow) log('Told to stop waiting, so restarting now.');
   }
 }
 
