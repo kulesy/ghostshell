@@ -102,5 +102,5 @@ export function UpdateBanner({ banners, act, load }) {
         ${view.more ? html`<li>and ${view.more} more</li>` : null}
       </ul>`
     : null;
-  return html`<${Banner} ...${view} problem=${refused || view.problem} actions=${html`<${Button} action=${view.action} onClick=${go} />${view.force ? html`<${Button} action=${{ ...view.force, busy: forcing }} onClick=${force} />` : null}`}>${list}<//>`;
+  return html`<${Banner} ...${view} problem=${refused || view.problem} actions=${html`<${Button} action=${forcing ? { ...view.action, busy: true } : view.action} onClick=${go} />${view.force ? html`<${Button} action=${{ ...view.force, busy: forcing }} onClick=${force} />` : null}`}>${list}<//>`;
 }

@@ -4245,6 +4245,10 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .offer-actions .btn { max-width: 100%; height: auto; min-height: 2.25rem; padding-block: 0.4rem; white-space: normal; }
 
+@media (max-width: 339px) {
+  .offer-actions .btn { padding-inline: 0.75rem; }
+}
+
 .offer[data-tone="warning"] { border-color: var(--warning); background: var(--warning-muted); }
 
 .offer[data-tone="warning"] :is(h2, .offer-text, .offer-progress, .offer-list) { color: var(--warning-foreground); }
