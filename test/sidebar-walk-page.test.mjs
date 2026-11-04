@@ -131,6 +131,33 @@ test('a held key opens the first session at once and the last after the pause, a
   assert.deepEqual(page.problems, []);
 });
 
+// A key held on a real keyboard: one press, a pause longer than the settle, then repeats back to back, so a busy machine cannot stretch them
+// past the settle. Resolves with the hashes the page opened.
+async function hold(page, key, modifiers = 0, repeats = 3) {
+  await page.evaluate(`window.opened = []; addEventListener('hashchange', () => opened.push(location.hash))`);
+  await page.press(key, modifiers);
+  await pause(page, 400);
+  for (let i = 0; i < repeats; i++) await page.press(key, modifiers, { repeat: true });
+  await pause(page, 600);
+  return page.evaluate('opened');
+}
+
+test('a key held on a real keyboard opens two sessions with the plain arrows, the first and the last', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/boss');
+  await focus(page, 'boss');
+  // Boss is followed by its two nested sessions and then Loose, so one press and two repeats reach Loose.
+  assert.deepEqual(await hold(page, 'ArrowDown', 0, 2), ['#/s/kid', '#/s/loose']);
+  assert.equal(await page.evaluate(FOCUSED), 'loose');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a key held on a real keyboard opens two sessions with Alt and the arrows, the first and the last', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/pin');
+  const order = await page.evaluate(ROWS);
+  assert.deepEqual(await hold(page, 'ArrowDown', ALT), [`#/s/${order[1]}`, `#/s/${order[4]}`]);
+  assert.deepEqual(page.problems, []);
+});
+
 test('a selection or a narrow window turns the opening off and the arrows only move the focus', { skip, timeout }, async t => {
   const page = await appPage(t);
   await focus(page, 'pin');
@@ -251,6 +278,38 @@ test('Alt with the arrows does nothing in a name box in the list', { skip, timeo
   await page.press('ArrowDown', ALT);
   await pause(page);
   assert.equal(await page.evaluate(OPEN), 'boss');
+  assert.deepEqual(page.problems, []);
+});
+
+test('Alt with the arrows does nothing in the New project box, which renders outside the list, and leaves its text and caret to the box', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/boss');
+  if (!(await page.evaluate(`!!document.querySelector('.new-project')`))) await page.press('b', CTRL);
+  await page.until(`!!document.querySelector('.new-project')`);
+  await page.click('.new-project');
+  await page.until(`document.activeElement.matches('.name-form input')`);
+  assert.equal(await page.evaluate(`!document.querySelector('#sections').contains(document.activeElement)`), true, 'the box is outside the list');
+  await page.insert('Notes');
+  // Whatever hears the key last says if it was claimed, because the box's own caret movement is the browser's default.
+  await page.evaluate(`window.claimed = null; addEventListener('keydown', e => { claimed = e.defaultPrevented; })`);
+  await page.press('ArrowDown', ALT);
+  await pause(page);
+  assert.equal(await page.evaluate('claimed'), false, 'the key is left to the box');
+  assert.equal(await page.evaluate(OPEN), 'boss');
+  assert.equal(await page.evaluate(`document.activeElement.value`), 'Notes');
+  assert.deepEqual(page.problems, []);
+});
+
+test('Alt with the arrows walks from the terminal\'s input', { skip, timeout }, async t => {
+  // Wide enough that the panel sits beside the chat, as a dialog over it would turn the walk off.
+  const page = await appPage(t, '#/s/boss', { width: 1400 });
+  await page.until(`!!document.querySelector('#terminalButton')`);
+  await page.click('#terminalButton');
+  await page.until(`document.activeElement?.id === 'term-input'`);
+  await pause(page);
+  const order = await page.evaluate(ROWS);
+  const next = order[order.indexOf('boss') + 1];
+  await page.press('ArrowDown', ALT);
+  await page.until(`${OPEN} === '${next}'`);
   assert.deepEqual(page.problems, []);
 });
 

@@ -153,11 +153,12 @@ export async function launch(chromium) {
     const settled = () => evaluate('new Promise(done => { requestAnimationFrame(() => setTimeout(done)); setTimeout(done, 100); })');
 
     // Only a keyDown that carries text types a character, which the printable keys and Enter do. The rest are the key alone.
-    // `modifiers` is the sum of Alt 1, Ctrl 2, Cmd 4 and Shift 8 held down.
-    async function press(key, modifiers = 0) {
+    // `modifiers` is the sum of Alt 1, Ctrl 2, Cmd 4 and Shift 8 held down. `repeat` sends the key as an OS hold's repeat, with no keyUp and
+    // no wait, so a test can space repeats as closely as a keyboard does.
+    async function press(key, modifiers = 0, { repeat = false } = {}) {
       const printable = /^[a-z0-9]$/i.test(key);
       if (!printable && !KEYS[key]) throw new Error(`press does not know the key ${key}`);
-      await settled();
+      if (!repeat) await settled();
       const text = printable ? key : key === 'Enter' ? '\r' : undefined;
       const which = {
         key,
@@ -165,8 +166,8 @@ export async function launch(chromium) {
         windowsVirtualKeyCode: printable ? key.toUpperCase().charCodeAt(0) : KEYS[key],
         modifiers,
       };
-      await call('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...which, ...(text && { text }) });
-      await call('Input.dispatchKeyEvent', { type: 'keyUp', ...which });
+      await call('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...which, ...(text && { text }), ...(repeat && { autoRepeat: true }) });
+      if (!repeat) await call('Input.dispatchKeyEvent', { type: 'keyUp', ...which });
     }
 
     // Text arriving as one insertion, as a paste or the emoji picker puts it, with no key presses.

@@ -49,6 +49,17 @@ test('a held key opens the first session at once and the last after the pause, a
   assert.deepEqual(opened, ['a', 'd']);
 });
 
+test('a real hold opens the first session at once and the last after the pause, because its repeats start after a gap longer than the settle', t => {
+  const { opened, step } = walking();
+  t.after(() => mock.timers.reset());
+  step('a');
+  mock.timers.tick(500);
+  for (const id of ['b', 'c', 'd']) { step(id, true); mock.timers.tick(40); }
+  assert.deepEqual(opened, ['a']);
+  mock.timers.tick(150);
+  assert.deepEqual(opened, ['a', 'd']);
+});
+
 test('a walk that comes back to the session it opened, or ends on a stop that is no session, opens nothing more', t => {
   const { opened, step } = walking();
   t.after(() => mock.timers.reset());

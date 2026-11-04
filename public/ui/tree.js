@@ -10,17 +10,18 @@ export function nextStop(count, at, key, start = 0) {
   return to < count ? to : -1;
 }
 
-// Opens the session an arrow walk reaches. The first step opens at once and a held key opens the one it rests on, so a hold loads two
-// sessions, not every one between. `step(id)` takes the session stepped onto, or null for a stop that is not one. `step.pending()` is
-// the session a walk in progress wants, or null.
+// Opens the session an arrow walk reaches. A fresh press opens at once and a held key opens the one it rests on, so a hold loads two
+// sessions, not every one between. An OS hold sends a repeat only after a pause longer than `ms`, so a repeat never opens at once.
+// `step(id, held)` takes the session stepped onto, or null for a stop that is not one, and whether the key is held (`e.repeat`).
+// `step.pending()` is the session a walk in progress wants, or null.
 export function settling(open, ms) {
   let wanted = null;
   let opened = null;
   let timer = null;
-  const step = id => {
+  const step = (id, held = false) => {
     if (timer === null) opened = null;
     wanted = id;
-    if (timer === null && id !== null) { opened = id; open(id); }
+    if (timer === null && id !== null && !held) { opened = id; open(id); }
     clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;

@@ -278,7 +278,7 @@ function stopBeside(el) {
   return el;
 }
 
-// `landed(id)` hears the session an up or down arrow came to, or null for a stop that is not one and for Home and End.
+// `landed(id, held)` hears the session an up or down arrow came to, or null for a stop that is not one and for Home and End. `held` is e.repeat.
 function walk(e, box, landed) {
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !box || e.target.closest?.('input, textarea, form')) return;
   const stops = [...box.querySelectorAll(STOPS)];
@@ -288,7 +288,7 @@ function walk(e, box, landed) {
   const to = nextStop(stops.length, at, e.key, Math.max(stops.indexOf(box.querySelector('a.row[aria-current="page"]')), 0));
   if (to >= 0) {
     go(stops[to]);
-    landed?.(e.key.startsWith('Arrow') ? stops[to].dataset.id ?? null : null);
+    landed?.(e.key.startsWith('Arrow') ? stops[to].dataset.id ?? null : null, e.repeat);
     return;
   }
   const here = stops[at];
@@ -916,13 +916,13 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   };
 
   // Plain arrows only move the focus while rows are picked, which they step between, and below 56rem, where an open chat hides the list.
-  latestLand.current = id => { if (!pick.ids.length && isWide()) settle.current(id); };
+  latestLand.current = (id, held) => { if (!pick.ids.length && isWide()) settle.current(id, held); };
 
   // Alt with down or up opens the next or previous session in the list, from the walk's target while one settles, else from the open
-  // session, else the first. The focus follows only when it is in the list, and a dialog, a name box or a selection is left alone.
+  // session, else the first. The focus follows only when it is in the list, and a dialog, a name box anywhere or a selection is left alone.
   latestFlip.current = (e, asked) => {
     const el = document.activeElement;
-    if (document.querySelector(MODAL) || (box.current.contains(el) && el.closest('input, textarea, form'))) return;
+    if (document.querySelector(MODAL) || el?.closest('.name-form')) return;
     const rows = [...box.current.querySelectorAll('a.row[data-id]')];
     if (!rows.length) return;
     e.preventDefault();
@@ -931,7 +931,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     if (to < 0) return;
     if (box.current.contains(el)) rows[to].focus({ preventScroll: true });
     rows[to].scrollIntoView({ block: 'nearest' });
-    settle.current(rows[to].dataset.id);
+    settle.current(rows[to].dataset.id, e.repeat);
   };
 
   // Esc in the list ends a selection, unless a menu, dialog or tooltip has used it or the focus is in a text field. It is marked used, so
