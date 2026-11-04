@@ -391,6 +391,7 @@ function subCtx(sessionId) {
     },
     pending: pendingOf,
     summary: (id, cwd) => summaries.get(id, cwd),
+    pulls: async rows => (await pullsFor(rows)).lists,
     // The same path as a message typed into the session: its chat is resumed if it has no process, and queued behind a running turn. Answers the state it found.
     send(row, text) {
       const chat = getChat(row.id);
@@ -1420,16 +1421,21 @@ function summariesApi(res, u) {
   return send(res, 200, { summaries: Object.fromEntries(found) });
 }
 
+// The pull requests each of `sessions` (rows with an id and a cwd) is working on, as a map of id to the status gh gave, and whether some are still being read.
+async function pullsFor(sessions) {
+  const urls = new Map(sessions.map(({ id, cwd }) => [id, pulls.urlsFor(id, cwd)]));
+  const { found, settling } = await pulls.lookup([...new Set([...urls.values()].flat())]);
+  return { lists: new Map([...urls].map(([id, list]) => [id, list.filter(url => found.has(url)).map(url => found.get(url))])), settling };
+}
+
 // GET api/pulls?ids=a,b,c answers for each id that is a session: the pull requests it is working on, with their status from GitHub, and
 // whether some are still being read. An id that is no session, or is a group's chat, is left out without a word, and a broken or missing gh gives empty lists.
 async function pullsApi(res, u) {
   const ids = askedIds(u);
   if (typeof ids === 'string') return send(res, 400, { error: ids });
   const { rows } = buildIndex({ archived: true });
-  const urls = new Map(ids.filter(id => rows.has(id)).map(id => [id, pulls.urlsFor(id, rows.get(id).cwd)]));
-  const { found, settling } = await pulls.lookup([...new Set([...urls.values()].flat())]);
-  const answer = Object.fromEntries([...urls].map(([id, list]) => [id, list.filter(url => found.has(url)).map(url => found.get(url))]));
-  return send(res, 200, { pulls: answer, settling });
+  const { lists, settling } = await pullsFor(ids.filter(id => rows.has(id)).map(id => rows.get(id)));
+  return send(res, 200, { pulls: Object.fromEntries(lists), settling });
 }
 
 // GET api/sessions/<id>/subagents/<agentId> answers one helper the session started: its state, its last steps and, once it has ended, its reply.
