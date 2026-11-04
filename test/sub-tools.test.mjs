@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readGroupSession } from '../lib/groups.mjs';
-import { inOwnTree, listSubSessions, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
+import { inOwnTree, listSubSessions, listSubSessionsWithPulls, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
 import { GROUP_READ_NAMES, handleMcp, SUB_READ_NAMES, SEND_NAME, TOOL_NAMES } from '../lib/tools.mjs';
 import { indexTranscripts } from '../lib/transcripts.mjs';
@@ -484,4 +484,33 @@ test('a session below is told the message comes from its parent, and a closing t
 test('a session that looks active in another app, with no process of GhostShell\'s own, is refused', () => {
   sent.length = 0;
   refused(() => send({ session_id: 'b', message: 'hi' }, { send: sender('elsewhere') }), /looks to be running in another app/);
+});
+
+const PULL = 'https://github.com/o/r/pull/7';
+const merged = { url: PULL, state: 'merged' };
+
+test('a session with a main pull request shows the card\'s status line and address before its reply, in the tree and beside it, and one without shows none', async () => {
+  const rows = [...ROWS, row('made', null, { startedBy: 'top' })];
+  const asked = [];
+  const subs = { ...subsFor(rows, { summaries: { a: 'A waits on you.', made: 'Made is done.' } }), pulls: async list => { asked.push(list.map(r => r.id)); return new Map([['a', [merged]], ['made', [{ url: PULL, state: 'draft' }]], ['b', [{ url: 'not a pull address' }]]]); } };
+  const text = await listSubSessionsWithPulls({}, subs, NOW);
+  assert.match(text, new RegExp(`\\n {2}2 sub sessions, 1 working\\n {2}PR: Merged, nothing to do ${PULL}\\n {2}"A waits on you\\."\\n`));
+  assert.match(text, new RegExp(`beside it:\\n- Session made \\[made\\][^\\n]*\\n {2}PR: Still a draft ${PULL}\\n {2}"Made is done\\."$`));
+  assert.equal(text.split('\n').filter(l => l.includes('PR: ')).length, 2, 'b has no valid pull request address');
+  assert.deepEqual(asked[0].sort(), ['a', 'a1', 'a2x', 'b', 'made']);
+  assert.equal(await listSubSessionsWithPulls({}, subsFor(rows), NOW), listSubSessions({}, subsFor(rows), NOW), 'a callback-less context is the plain list');
+});
+
+test('only the rows the list shows are asked about, so archived ones and those past the limit are not', async () => {
+  const asked = [];
+  const subs = { ...subsFor(ROWS), pulls: async list => { asked.push(list.map(r => r.id)); return new Map(); } };
+  await listSubSessionsWithPulls({}, subs, NOW);
+  await listSubSessionsWithPulls({ include_archived: true }, subs, NOW);
+  await listSubSessionsWithPulls({ limit: 2 }, subs, NOW);
+  assert.deepEqual(asked.map(ids => ids.sort()), [['a', 'a1', 'a2x', 'b'], ['a', 'a1', 'a2', 'a2x', 'b'], ['a', 'a1']]);
+});
+
+test('the list still comes back when the pull request reader throws', async () => {
+  const subs = { ...subsFor(ROWS, { summaries: { a: 'A waits on you.' } }), pulls: async () => { throw new Error('gh is broken'); } };
+  assert.equal(await listSubSessionsWithPulls({}, subs, NOW), listSubSessions({}, subsFor(ROWS, { summaries: { a: 'A waits on you.' } }), NOW));
 });
