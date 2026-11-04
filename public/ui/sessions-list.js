@@ -13,7 +13,7 @@ import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js'
 import { GroupChatHead, NewHereButton } from './group-button.js';
 import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } from './group-drag-rules.js';
 import { deleteDetail, groupById, newRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
-import { useClock, useLocal, useModifier } from './hooks.js';
+import { isWide, useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { carriedOf, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNote, nestedNote, pinnedNote, placeName, placeTo, refuseNest, topmost, unnestedNote } from './many-rules.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
@@ -33,12 +33,18 @@ import { familyNote } from './sub-panel-rules.js';
 import { descendantsOf } from './sub-rules.js';
 import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
-import { archiveTarget, everyRow, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, stayAbove, TITLE_MAX, withKids } from './tree.js';
+import { dismissTooltip } from './tooltip.js';
+import { archiveTarget, everyRow, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, settling, stayAbove, TITLE_MAX, withKids } from './tree.js';
 
 // The target a row is while another is dragged over it, which only its middle half counts as. See targetAt in drag.js.
 const NEST = 'nest:';
 
 const sessionHash = id => `#/s/${encodeURIComponent(id)}`;
+
+const MODAL = '[aria-modal="true"], [data-slot$="dialog-content"], [data-mobile="true"]';
+
+// Long enough that a held arrow key opens the session it rests on, not every one it passes.
+const WALK_SETTLE_MS = 150;
 
 // `drop` is whether a dragged row can nest here, and `over` whether it would land here now, which the row says at its right end, or `refused` when
 // the drop would be turned away.
@@ -263,7 +269,8 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
 }
 
 // The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a section or the sessions
-// nested under a row. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
+// nested under a row. Up and down also open the session they land on (see `landed`), and Enter opens the focused row, as a link does.
+// With nothing focused, up or down starts at the open session.
 const STOPS = '.group-head, a.row[data-id], a.row[data-idle], a.row[data-scheduled]';
 
 // A header's menu button and a row's menu and fold buttons belong to the header or row beside them, so the arrows carry on from there.
@@ -272,14 +279,19 @@ function stopBeside(el) {
   return el;
 }
 
-function walk(e, box) {
+// `landed(id, held)` hears the session an up or down arrow came to, or null for a stop that is not one and for Home and End. `held` is e.repeat.
+function walk(e, box, landed) {
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !box || e.target.closest?.('input, textarea, form')) return;
   const stops = [...box.querySelectorAll(STOPS)];
   const at = stops.indexOf(stopBeside(document.activeElement));
   // focus() alone would put a stop that was out of view in the middle of the list, so the list scrolls only as far as its nearest edge.
   const go = el => { e.preventDefault(); el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); };
   const to = nextStop(stops.length, at, e.key, Math.max(stops.indexOf(box.querySelector('a.row[aria-current="page"]')), 0));
-  if (to >= 0) return go(stops[to]);
+  if (to >= 0) {
+    go(stops[to]);
+    landed?.(e.key.startsWith('Arrow') ? stops[to].dataset.id ?? null : null, e.repeat);
+    return;
+  }
   const here = stops[at];
   if (!here || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
   const opening = e.key === 'ArrowRight';
@@ -361,6 +373,10 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   const latestKey = useRef(null);
   const latestSwipe = useRef(null);
   const latestStep = useRef(null);
+  const latestFlip = useRef(null);
+  const latestLand = useRef(null);
+  const settle = useRef(null);
+  settle.current ||= settling(id => { if (location.hash !== sessionHash(id)) location.hash = sessionHash(id); }, WALK_SETTLE_MS);
   const latestSlot = useRef(null);
   const latestDrop = useRef(null);
   const latestHeader = useRef(null);
@@ -412,14 +428,17 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     onSwipe: row => latestSwipe.current.archive(row.dataset.id),
   }), []);
 
-  // With no chat open and nothing focused, up or down steps into the list. With a chat open they are left to scroll it.
+  // With no chat open and nothing focused, up or down steps into the list. With a chat open they are left to scroll it. Alt with up or
+  // down opens the session below or above from anywhere, and the plain arrows open the one they land on.
   useEffect(() => {
     const onKey = e => {
-      if (shortcut(e) === 'archive') return latestKey.current(e);
+      const asked = shortcut(e);
+      if (asked === 'archive') return latestKey.current(e);
+      if (asked === 'next' || asked === 'previous') return latestFlip.current(e, asked);
       const el = document.activeElement;
-      if (box.current?.contains(el)) return e.shiftKey ? latestStep.current(e) : walk(e, box.current);
+      if (box.current?.contains(el)) return e.shiftKey ? latestStep.current(e) : walk(e, box.current, latestLand.current);
       const idle = (!el || el === document.body) && !document.getElementById('session');
-      if (idle && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) walk(e, box.current);
+      if (idle && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) walk(e, box.current, latestLand.current);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -857,7 +876,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     const ringed = inList && el.matches(':focus-visible');
     const row = ringed && el.matches('a.row[data-id]');
     const target = archiveTarget({
-      modal: !!document.querySelector('[aria-modal="true"], [data-slot$="dialog-content"], [data-mobile="true"]'),
+      modal: !!document.querySelector(MODAL),
       menu: shown && { session: shown.key === 'pick' ? pick.ids[0] : shown.session },
       form: inList && !!el.closest('form'),
       ringed: row ? el.dataset.id : null,
@@ -897,6 +916,38 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     to.scrollIntoView({ block: 'nearest' });
   };
 
+  // Plain arrows only move the focus while rows are picked, which they step between, and below 56rem, where an open chat hides the list.
+  // The row's tooltip, which the focus has just shown, goes with the open session, as a press on the row would close it.
+  latestLand.current = (id, held) => {
+    if (pick.ids.length || !isWide()) return;
+    settle.current(id, held);
+    if (id) dismissTooltip();
+  };
+
+  // Alt with down or up opens the next or previous session in the list, from the walk's target while one settles, else from the session
+  // the address names, which is ahead of the marked row until the page has drawn, else from the marked row, else the first. The focus
+  // follows only when it is in the list, and a dialog, a name box anywhere or a selection is left alone.
+  latestFlip.current = (e, asked) => {
+    const el = document.activeElement;
+    if (document.querySelector(MODAL) || el?.closest('.name-form')) return;
+    const rows = [...box.current.querySelectorAll('a.row[data-id]')];
+    if (!rows.length) return;
+    e.preventDefault();
+    const hashed = rows.find(r => location.hash === sessionHash(r.dataset.id))?.dataset.id;
+    const from = settle.current.pending() ?? hashed ?? box.current.querySelector('a.row[aria-current="page"]')?.dataset.id;
+    const to = nextStop(rows.length, rows.findIndex(r => r.dataset.id === from), asked === 'next' ? 'ArrowDown' : 'ArrowUp');
+    if (to < 0) return;
+    if (box.current.contains(el)) {
+      rows[to].focus({ preventScroll: true });
+      dismissTooltip();
+    }
+    // The first row has its section header above it, which the nearest edge alone would leave hidden. Tall Scheduled and Routines lists
+    // can push the row below the fold even from the top, so the row is brought into view after.
+    if (to === 0) box.current.scrollTop = 0;
+    rows[to].scrollIntoView({ block: 'nearest' });
+    settle.current(rows[to].dataset.id, e.repeat);
+  };
+
   // Esc in the list ends a selection, unless a menu, dialog or tooltip has used it or the focus is in a text field. It is marked used, so
   // the composer's Esc, which hears it next, does not also stop the open chat's turn.
   const escapeList = e => {
@@ -913,7 +964,11 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     if (!row || e.altKey || (onMac() && e.ctrlKey)) return;
     const id = row.dataset.id;
     const range = e.shiftKey;
-    if (!range && !(onMac() ? e.metaKey : e.ctrlKey) && !(pointer.current === 'touch' && e.detail > 0 && pick.ids.length)) return setPick(p => anchorAt(p, id));
+    if (!range && !(onMac() ? e.metaKey : e.ctrlKey) && !(pointer.current === 'touch' && e.detail > 0 && pick.ids.length)) {
+      // WebKit leaves a clicked link unfocused, so the arrows would have nowhere to start.
+      if (pointer.current !== 'touch') row.focus({ preventScroll: true, focusVisible: false });
+      return setPick(p => anchorAt(p, id));
+    }
     e.preventDefault();
     window.getSelection()?.removeAllRanges();
     row.focus({ preventScroll: true });
@@ -1155,7 +1210,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       ${strip.length ? html`<${MoveStrip} targets=${strip} over=${groupDrag.over} />` : null}
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>
-    ${banner}
+    <div class="offers">${banner}</div>
     ${topForm}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt} onClick=${clickRow} onMouseDown=${pressRow} onPointerDown=${e => { pointer.current = e.pointerType; }}>
       ${ix

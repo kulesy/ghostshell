@@ -112,3 +112,4 @@ The Accounts page (`#/accounts`, in the Account menu of the sidebar's footer) ad
 - Builds on [Show plan usage in the context popover from the CLI's own figures](20261031-plan-usage-from-the-cli.md), whose figures are now kept per account
 - Builds on [Drive each chat with a headless Claude Code process](20261006-headless-claude-cli-per-chat.md), whose processes take the active account's folder
 - Builds on [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md), whose runs start on the active account
+- Followed by [Remind the owner to move Chrome's extension after an account switch](20261104-chrome-follows-the-account.md), since Chrome's extension stays on one account when GhostShell switches

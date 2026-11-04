@@ -27,7 +27,7 @@ test('a sign-in with weeks left shows no banner, answers with the date alone, an
   const c = await open({ 'keychain-expiry': String(end) });
   const got = await known(c);
   assert.equal(got.status, 200);
-  assert.deepEqual(got.body(), { login: { visible: false, signedOut: false, endsAt: end, stage: 'idle', problem: '' }, update: { show: false }, accounts: { count: 1, out: null, auto: null } });
+  assert.deepEqual(got.body(), { login: { visible: false, signedOut: false, endsAt: end, stage: 'idle', problem: '' }, update: { show: false }, accounts: { count: 1, out: null, auto: null }, chrome: null });
   assert.doesNotMatch(got.text, /secret/);
   assert.deepEqual(authCalls(c.s), []);
   const index = (await request(c.s, 'GET', '/api/sessions', { headers: as(c.token) })).body();

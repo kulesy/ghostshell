@@ -16,11 +16,14 @@ export const onMac = () => navigator.platform.startsWith('Mac');
 export const modifier = () => (inApp() && onMac() ? 'Cmd' : 'Ctrl');
 
 // What a key press asks for: 'new' to start a session, 'find' to open the search, 'projects' to show or hide the projects sidebar,
-// 'terminal' to show or hide the chat's terminal, 'archive' to archive one, 'quote' to quote the selected text, or null. Chrome
+// 'terminal' to show or hide the chat's terminal, 'archive' to archive one, 'quote' to quote the selected text, 'next' or 'previous' (Alt with
+// the down or up arrow) to open the session below or above in the list, or null. Chrome
 // reserves neither Cmd+K nor Cmd+B, so each works in a tab as well as in the app, as Desktop's Cmd+K and Cmd+B do. A text field keeps
 // Cmd+A for Select All, and Ctrl+A is left to the browser everywhere.
 export function shortcut(e) {
-  if (e.altKey || e.shiftKey || e.isComposing) return null;
+  if (e.isComposing) return null;
+  if (e.altKey) return e.ctrlKey || e.metaKey || e.shiftKey ? null : e.key === 'ArrowDown' ? 'next' : e.key === 'ArrowUp' ? 'previous' : null;
+  if (e.shiftKey) return null;
   // Chrome's autofill sends keydown events with no key.
   const key = e.key?.toLowerCase();
   if (key === 'k' && (e.ctrlKey || e.metaKey)) return 'find';

@@ -1,11 +1,11 @@
 // Run with `npm test`. The rules of the sidebar tree that need no page: where the arrow keys go, where a group or a session can be
 // moved or nested, what the list shows once a session is archived, moved or nested, which row takes the focus, which session Cmd+A
-// archives, and when the turn of each running row began.
-import test from 'node:test';
+// archives, when the turn of each running row began, and which session a walk with the arrows opens.
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { TITLE_SORT, UNTITLED } from '../public/ui/order.js';
 import { withoutFamily } from '../public/ui/sub-rules.js';
-import { archiveTarget, everyRow, findRow, listedIds, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, sortByTitle, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
+import { archiveTarget, everyRow, findRow, listedIds, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, settling, sortByTitle, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
   const from = (at, key) => nextStop(5, at, key);
@@ -22,6 +22,80 @@ test('with no stop focused, down and up land on the start and no other key does 
   assert.equal(nextStop(5, -1, 'ArrowUp', 3), 3);
   assert.equal(nextStop(5, -1, 'ArrowDown'), 0);
   for (const key of ['Home', 'End', 'ArrowLeft', 'ArrowRight', 'Enter', 'a']) assert.equal(nextStop(5, -1, key), -1, key);
+});
+
+// A walk that settles: the first step opens at once, and a quick run of steps opens the one it stops on after the pause.
+const walking = () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  const opened = [];
+  return { opened, step: settling(id => opened.push(id), 150) };
+};
+
+test('one step opens its session at once, and nothing more after the pause', t => {
+  const { opened, step } = walking();
+  t.after(() => mock.timers.reset());
+  step('a');
+  assert.deepEqual(opened, ['a']);
+  mock.timers.tick(150);
+  assert.deepEqual(opened, ['a']);
+});
+
+test('a held key opens the first session at once and the last after the pause, and none between', t => {
+  const { opened, step } = walking();
+  t.after(() => mock.timers.reset());
+  for (const id of ['a', 'b', 'c', 'd']) { step(id); mock.timers.tick(40); }
+  assert.deepEqual(opened, ['a']);
+  mock.timers.tick(150);
+  assert.deepEqual(opened, ['a', 'd']);
+});
+
+test('a real hold opens the first session at once and the last after the pause, because its repeats start after a gap longer than the settle', t => {
+  const { opened, step } = walking();
+  t.after(() => mock.timers.reset());
+  step('a');
+  mock.timers.tick(500);
+  for (const id of ['b', 'c', 'd']) { step(id, true); mock.timers.tick(40); }
+  assert.deepEqual(opened, ['a']);
+  mock.timers.tick(150);
+  assert.deepEqual(opened, ['a', 'd']);
+});
+
+test('a walk that comes back to the session it opened, or ends on a stop that is no session, opens nothing more', t => {
+  const { opened, step } = walking();
+  t.after(() => mock.timers.reset());
+  step('a');
+  step('b');
+  step('a');
+  mock.timers.tick(150);
+  step(null);
+  step('b');
+  step(null);
+  mock.timers.tick(150);
+  assert.deepEqual(opened, ['a']);
+});
+
+test('a first step onto a stop that is no session opens nothing, and the next walk after a pause opens at once', t => {
+  const { opened, step } = walking();
+  t.after(() => mock.timers.reset());
+  step(null);
+  mock.timers.tick(150);
+  assert.deepEqual(opened, []);
+  step('a');
+  assert.deepEqual(opened, ['a']);
+  mock.timers.tick(150);
+  step('a');
+  assert.deepEqual(opened, ['a', 'a'], 'the caller skips a session that is open already');
+});
+
+test('the session a walk wants is known until the pause ends', t => {
+  const { step } = walking();
+  t.after(() => mock.timers.reset());
+  assert.equal(step.pending(), null);
+  step('a');
+  step('b');
+  assert.equal(step.pending(), 'b');
+  mock.timers.tick(150);
+  assert.equal(step.pending(), null);
 });
 
 test('a key that is not for the walk goes nowhere, and neither does any key when the list has no stops', () => {

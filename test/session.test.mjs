@@ -894,3 +894,110 @@ test('the group a new session is placed in is the one at send time, whatever is 
   const none = await startFrom(null, { changeTo: 'cg-b' });
   assert.equal(none.posted.some(([url]) => url === 'api/layout/move'), false, 'a group picked after sending does not attach');
 });
+
+// A new chat whose home-folder defaults are held until `land(body)` is called, or refused when `land` is given nothing. `sent` lists the posts as [url, body].
+async function withHeldDefaults(run) {
+  globalThis.location = {};
+  const real = globalThis.fetch;
+  const sent = [];
+  let land;
+  const defaults = new Promise(resolve => { land = resolve; });
+  const reply = body => ({ status: 200, ok: true, json: async () => body });
+  globalThis.fetch = async (url, init) => {
+    const address = String(url);
+    if (init?.method === 'POST') { sent.push([address, JSON.parse(init.body)]); return reply({ id: 'made' }); }
+    const d = await defaults;
+    if (!d) return { status: 500, ok: false, json: async () => ({ error: 'No defaults.' }) };
+    return reply(d);
+  };
+  try { await run({ sent, land }); } finally {
+    globalThis.fetch = real;
+    delete globalThis.location;
+  }
+}
+const PLAN_DEFAULTS = { mode: 'plan', model: 'claude-opus-5-5', shownModel: 'claude-opus-5-5', effort: 'high' };
+
+test('a message a widget sends before the status has arrived names no mode, so the session keeps the one it runs in', async () => {
+  await withChanges(() => ({ status: 200, ok: true, json: async () => ({ ...SETTINGS, mode: 'plan' }) }), async sent => {
+    const { chat } = await openChat('chat-widget-early');
+    assert.equal(chat.store.get().status, null);
+    await chat.prompt('from a widget');
+    assert.equal('mode' in sent.at(-1)[1], false);
+    chat.close();
+  });
+});
+
+test('a widget message after the status has arrived names the mode the status holds', async () => {
+  await withChanges(() => ({ status: 200, ok: true, json: async () => ({ ...SETTINGS, mode: 'plan' }) }), async sent => {
+    const { chat, stream } = await openChat('chat-widget-late');
+    stream.emit('status', { ...SETTINGS, mode: 'plan' });
+    await chat.prompt('from a widget');
+    assert.equal(sent.at(-1)[1].mode, 'plan');
+    chat.close();
+  });
+});
+
+test('a new chat shows no mode until the defaults land, and a first message sent before then names none', async () => {
+  await withHeldDefaults(async ({ sent, land }) => {
+    const chat = createChat({ draft: true, refreshIndex() {} });
+    await chat.open();
+    assert.equal(chat.store.get().status.mode, null);
+    await chat.startNew('hello', [], () => {});
+    assert.equal(sent[0][0], 'api/new');
+    assert.equal('mode' in sent[0][1], false, 'the server then starts it in the mode a new session in the folder gets');
+    land(PLAN_DEFAULTS);
+    chat.close();
+  });
+});
+
+test('a new chat sends the mode its box shows once the defaults have landed', async () => {
+  await withHeldDefaults(async ({ sent, land }) => {
+    const chat = createChat({ draft: true, refreshIndex() {} });
+    await chat.open();
+    land(PLAN_DEFAULTS);
+    await settled();
+    assert.equal(chat.store.get().status.mode, 'plan');
+    await chat.startNew('hello', [], () => {});
+    assert.equal(sent[0][1].mode, 'plan');
+    chat.close();
+  });
+});
+
+test('a mode picked by hand in a new chat before the defaults land wins over them, Manual included', async () => {
+  for (const picked of ['manual', 'bypassPermissions']) {
+    await withHeldDefaults(async ({ sent, land }) => {
+      const chat = createChat({ draft: true, refreshIndex() {} });
+      await chat.open();
+      await chat.setMode(picked);
+      land(PLAN_DEFAULTS);
+      await settled();
+      assert.equal(chat.store.get().status.mode, picked, 'the box keeps the pick');
+      assert.equal(chat.store.get().status.model, 'claude-opus-5-5', 'and the rest of the defaults still land');
+      await chat.startNew('hello', [], () => {});
+      assert.equal(sent[0][1].mode, picked);
+      chat.close();
+    });
+  }
+});
+
+test('a new chat whose defaults cannot be read keeps no mode and names none, so the server\'s default is used', async () => {
+  await withHeldDefaults(async ({ sent, land }) => {
+    const chat = createChat({ draft: true, refreshIndex() {} });
+    await chat.open();
+    land(null);
+    await settled();
+    assert.equal(chat.store.get().status.mode, null);
+    await chat.startNew('hello', [], () => {});
+    assert.equal('mode' in sent[0][1], false);
+    chat.close();
+  });
+});
+
+test('a message sent from a session with no mode known names none to the server', async () => {
+  await withChanges(() => ({ status: 200, ok: true, json: async () => ({ ...SETTINGS }) }), async sent => {
+    const { chat } = await openChat('chat-send-early');
+    await chat.send('hello', [], undefined);
+    assert.equal('mode' in sent.at(-1)[1], false);
+    chat.close();
+  });
+});

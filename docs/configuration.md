@@ -1,6 +1,6 @@
 # Configuration
 
-The settings in `config.json` and `config.local.json`, and the four environment variables that override them.
+The settings in `config.json` and `config.local.json`, and the ten environment variables that override them.
 
 ## Files
 
@@ -48,14 +48,14 @@ The settings in `config.json` and `config.local.json`, and the four environment 
 
 ## Environment variables
 
-Six environment variables win over both files:
+Ten environment variables win over both files:
 
 - `PORT` sets the port.
 - `CAPCOM_CLAUDE` sets the CLI.
 - `CAPCOM_GH` sets the GitHub CLI.
 - `CAPCOM_STATE` points a test instance at its own login, accounts, registry and routines.
 - `CAPCOM_AUTO_TITLE` set to `0` turns off [`autoTitle`](#autotitle), and any other value turns it on.
-- `CAPCOM_SECURITY`, `CAPCOM_UPDATE_ROOT` and `CAPCOM_UPDATE_DELAY_MS` point a test instance at a stub for the macOS `security` tool and at a scratch folder for the checkout it would update, and set the wait in milliseconds before its first check for updates (60000 by default). Leave them unset in real use.
+- `CAPCOM_SECURITY`, `CAPCOM_OPEN`, `CAPCOM_UPDATE_ROOT` and `CAPCOM_UPDATE_DELAY_MS` point a test instance at stubs for the macOS `security` and `open` tools and at a scratch folder for the checkout it would update, and set the wait in milliseconds before its first check for updates (60000 by default). Leave them unset in real use.
 - `CAPCOM_GROUP_UPDATE_SCALE` divides the waits of the [group updates](#groupupdates) by that number, so a test instance can see one in seconds. Leave it unset in real use.
 
 Two instances that share a state folder both fire its routines, so always give a test instance its own.

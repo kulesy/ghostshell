@@ -18,7 +18,7 @@ The `mark_chapter` tool makes chapters, which show as titled dividers.
 
 ## Sub sessions
 
-Every chat that is not a group's or a section's gets `list_sub_sessions`, `read_sub_session` and `send_session`. The first two reach the sessions below that chat, at any depth, and no others. `list_sub_sessions` lists them as a tree, the ones that need you first, each with its roll-up and the first sentence of its latest reply. `read_sub_session` reads the end of one of them and what it waits on. Those two only read, so they run with no card in every mode. An id outside the chat's family gets the same refusal as an id that is no session.
+Every chat that is not a group's or a section's gets `list_sub_sessions`, `read_sub_session` and `send_session`. The first two reach the sessions below that chat, at any depth, and no others. `list_sub_sessions` lists them as a tree, the ones that need you first, each with its roll-up, a `PR:` line when it has a main pull request (the status its card shows and the address, read from GitHub and up to 2 minutes old) and the first sentence of its latest reply. `read_sub_session` reads the end of one of them and what it waits on. Those two only read, so they run with no card in every mode. An id outside the chat's family gets the same refusal as an id that is no session.
 
 `send_session(session_id, message)` sends a message to any other session on this Mac, so a parent can hand a sub session more work, and a chat can pass a note to a session that is not below it. `find_sessions` looks an id up by part of a title when the id is not at hand ([below](#finding-and-changing-sessions)).
 

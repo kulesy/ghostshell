@@ -1,8 +1,9 @@
 // shadcn's tooltip for every icon-only button. A button opts in with `data-tip` (its words) and `data-tip-key` (its shortcut, drawn
 // as a <kbd>), and the listeners below are on the document, so a button needs nothing else. There is one host, so one tooltip shows
 // at a time. Radix opens on the first pointer move over the trigger, at once on keyboard focus, and never for a touch. It closes
-// on a press, a click, the pointer leaving, the trigger losing focus, a scroll, a resize and another tooltip opening. A tooltip the
-// keyboard opened keeps through a scroll and moves with its trigger until that is out of sight.
+// on a press, a click, the pointer leaving, the trigger losing focus, a scroll, a resize, another tooltip opening and `dismissTooltip`,
+// which a walk down the list calls once it has opened the session. A tooltip the keyboard opened keeps through a scroll and moves with
+// its trigger until that is out of sight.
 // An empty `data-tip` keeps the button a trigger and shows nothing, which is how a button hides its tooltip while its popover is open.
 // `data-tip-side="right"` puts the tooltip beside a wide trigger such as a row, and `data-tip-delay` is the milliseconds from the pointer
 // reaching the trigger to the tooltip opening: none for an icon button, 700 for a row, which is Radix's own delay. A tooltip that closed
@@ -152,6 +153,12 @@ function hide() {
   content.addEventListener('animationend', end);
   content.addEventListener('animationcancel', end);
   leaving = done;
+}
+
+// Closes the tooltip with no fade, for a caller that moved the focus onto a trigger and has already shown what the tooltip says.
+export function dismissTooltip() {
+  hide();
+  leaving?.();
 }
 
 export function installTooltips() {

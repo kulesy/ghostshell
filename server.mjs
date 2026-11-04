@@ -38,9 +38,10 @@ import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
-import { authInfo, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
+import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins } from './lib/account-logins.mjs';
+import { browserSeen, makeChromeCheck, openChromeSettings } from './lib/chrome-check.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
@@ -394,6 +395,7 @@ function subCtx(sessionId) {
     pending: pendingOf,
     pullLinks: pullLinks.get,
     summary: (id, cwd) => summaries.get(id, cwd),
+    pulls: async rows => (await pullsFor(rows)).lists,
     // The same path as a message typed into the session: its chat is resumed if it has no process, and queued behind a running turn. Answers the state it found.
     send(row, text) {
       const chat = getChat(row.id);
@@ -1423,16 +1425,21 @@ function summariesApi(res, u) {
   return send(res, 200, { summaries: Object.fromEntries(found) });
 }
 
+// The pull requests each of `sessions` (rows with an id and a cwd) is working on, as a map of id to the status gh gave, and whether some are still being read.
+async function pullsFor(sessions) {
+  const urls = new Map(sessions.map(({ id, cwd }) => [id, pulls.urlsFor(id, cwd)]));
+  const { found, settling } = await pulls.lookup([...new Set([...urls.values()].flat())]);
+  return { lists: new Map([...urls].map(([id, list]) => [id, list.filter(url => found.has(url)).map(url => found.get(url))])), settling };
+}
+
 // GET api/pulls?ids=a,b,c answers for each id that is a session: the pull requests it is working on, with their status from GitHub, and
 // whether some are still being read. An id that is no session, or is a group's chat, is left out without a word, and a broken or missing gh gives empty lists.
 async function pullsApi(res, u) {
   const ids = askedIds(u);
   if (typeof ids === 'string') return send(res, 400, { error: ids });
   const { rows } = buildIndex({ archived: true });
-  const urls = new Map(ids.filter(id => rows.has(id)).map(id => [id, pulls.urlsFor(id, rows.get(id).cwd)]));
-  const { found, settling } = await pulls.lookup([...new Set([...urls.values()].flat())]);
-  const answer = Object.fromEntries([...urls].map(([id, list]) => [id, list.filter(url => found.has(url)).map(url => found.get(url))]));
-  return send(res, 200, { pulls: answer, settling });
+  const { lists, settling } = await pullsFor(ids.filter(id => rows.has(id)).map(id => rows.get(id)));
+  return send(res, 200, { pulls: Object.fromEntries(lists), settling });
 }
 
 // GET api/sessions/<id>/subagents/<agentId> answers one helper the session started: its state, its last steps and, once it has ended, its reply.
@@ -1521,12 +1528,22 @@ const accountLogins = makeAccountLogins({
   readLoginEnd: opts => readLoginEnd({ security: cfg.security, ...opts }),
   startSignIn: opts => startSignIn({ claude: cfg.claude, ...opts }),
   retireOtherAccounts,
+  afterSwitch: account => chromeCheck.switched(account),
   restarting: () => updates.state().stage === 'restarting',
 });
 onAuthFailure(accountLogins.authFailed);
 onUsage(accountLogins.markUsage);
 
-const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.state(), accounts: accountLogins.banner() });
+// After a switch, whether Chrome's Claude extension is on the new account, and the banner that says to move it when it is not.
+const chromeCheck = makeChromeCheck({
+  accounts,
+  enabled: cfg.chrome,
+  probe: account => browserSeen({ claude: cfg.claude, env: cleanEnv(process.env, accounts.loginEnvOf(account)) }),
+  emailOf: id => accountLogins.view().find(a => a.id === id)?.email ?? '',
+  openSettings: () => openChromeSettings({ open: cfg.open }),
+});
+
+const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.state(), accounts: accountLogins.banner(), chrome: chromeCheck.state() });
 
 const updates = makeUpdate({
   root: cfg.updateRoot,
@@ -1563,6 +1580,7 @@ const accountsNow = () => ({
   })),
   autoSwitch: accounts.autoSwitch,
   auto: accountLogins.banner().auto,
+  chrome: chromeCheck.state(),
   waiting: accountLogins.waiting(),
 });
 
@@ -1576,8 +1594,8 @@ function keptWords(chat) {
 }
 
 // GET api/accounts lists them. POST api/accounts adds one by name and starts its sign-in, and POST api/accounts/<id>/sign-in starts one. The rest are
-// POST api/accounts/<id>/rename, POST api/accounts/<id>/use (with `continue`, a session to send "Continue." to), POST api/accounts/auto, POST api/accounts/seen and
-// POST api/accounts/plan. All of them run something as the owner, so they take the stricter origin check.
+// POST api/accounts/<id>/rename, POST api/accounts/<id>/use (with `continue`, a session to send "Continue." to), POST api/accounts/auto, POST api/accounts/seen,
+// POST api/accounts/plan, POST api/accounts/chrome-open (the extension's settings on the Mac) and POST api/accounts/chrome-seen. All of them run something as the owner, so they take the stricter origin check.
 async function accountsApi(req, res, parts) {
   if (req.method === 'GET' && parts.length === 2) return send(res, 200, accountsNow());
   if (req.method !== 'POST') return send(res, 404, { error: 'Not found' });
@@ -1601,6 +1619,15 @@ async function accountsApi(req, res, parts) {
   }
   if (parts.length === 3 && step === 'seen') {
     accountLogins.seen();
+    return send(res, 200, accountsNow());
+  }
+  if (parts.length === 3 && step === 'chrome-open') {
+    const refused = await chromeCheck.open();
+    if (refused) return refuse(409, refused);
+    return send(res, 200, accountsNow());
+  }
+  if (parts.length === 3 && step === 'chrome-seen') {
+    chromeCheck.dismiss();
     return send(res, 200, accountsNow());
   }
   if (parts.length === 3 && step === 'plan') {
