@@ -30,7 +30,7 @@ function Pull({ link }) {
   const at = link.lastIndexOf('#');
   const repo = link.slice(0, at);
   const number = link.slice(at);
-  return html`<span data-part="hit-pull" data-tip=${`${repo} ${number}`}><span class="sr">Pull request </span><span data-part="hit-pull-repo">${repo}</span> <span data-part="hit-pull-number">${number}</span></span>`;
+  return html`<span data-part="hit-pull" data-tip=${`${repo} ${number}`} data-tip-delay="700"><span class="sr">Pull request </span><span data-part="hit-pull-repo">${repo}</span> <span data-part="hit-pull-number">${number}</span></span>`;
 }
 
 // What an item says about itself. A session shows its title alone, with the time beside it only while the whole title fits. One found by the

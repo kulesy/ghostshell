@@ -3273,6 +3273,7 @@ button.thumb {
 
 [data-slot="command-empty"] {
   padding-block: 1.5rem;
+  padding-inline: 1rem;
   text-align: center;
   font-size: 0.875rem;
   line-height: calc(1.25 / 0.875);
@@ -3425,7 +3426,6 @@ button.thumb {
 
 .slash-menu [data-slot="command-list"] { max-height: min(300px, calc(var(--slash-room, 300px) - 0.5rem)); }
 
-.slash-menu [data-slot="command-empty"] { padding-inline: 1rem; }
 
 .slash-menu [data-slot="command-item"] { padding: 0.375rem 0.5rem; }
 

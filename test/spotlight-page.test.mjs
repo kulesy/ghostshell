@@ -117,6 +117,7 @@ test('a number, #number and pull/number find every session that links that pull 
   assert.deepEqual(await pullsOf(page, 'Document the new flag'), ['acme/docs #7969']);
   assert.deepEqual((await pullsOf(page, 'Release notes')).sort(), ['acme/docs #7969', 'acme/web #7969']);
   assert.equal(await page.evaluate(`(${rowOf('Release notes')}).querySelector('[data-part="hit-pull"] > .sr').textContent`), 'Pull request ', 'a screen reader hears what the repo and number are');
+  assert.equal(await page.evaluate(`(${rowOf('Release notes')}).querySelector('[data-part="hit-pull"]').dataset.tipDelay`), '700', 'a link waits like the title beside it, so a pointer crossing the results opens no tooltips');
   assert.deepEqual(page.problems, []);
 });
 
