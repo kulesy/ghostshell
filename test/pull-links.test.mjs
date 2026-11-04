@@ -57,14 +57,16 @@ test('a bare address that ends a tool result counts and a listing of pull reques
   assert.deepEqual(scan.links(), { made: ['acme/web#40'] });
 });
 
-test('a session with no pull request has no entry, and a line that is not JSON is passed over', () => {
+test('a session with no pull request has no entry, and a line that is not JSON or has an odd shape is passed over', () => {
   const dir = fresh();
   write(dir, 'none', [said('Nothing linked here /pull/ but not an address')]);
   fs.appendFileSync(fileOf(dir, 'none'), `not json /pull/\n`);
   write(dir, 'one', [said(pr(5))]);
+  fs.appendFileSync(fileOf(dir, 'one'), `null /pull/\n${JSON.stringify({ type: 'assistant', message: { content: [null], note: '/pull/' } })}\n`);
+  append(dir, 'one', [said(pr(6))]);
   const scan = makeLinkScan(dir);
   scan.pass();
-  assert.deepEqual(scan.links(), { one: ['acme/web#5'] });
+  assert.deepEqual(scan.links(), { one: ['acme/web#5', 'acme/web#6'] });
 });
 
 test('a second pass over files that did not change reports no change, and one that grew gives the links it gained', () => {

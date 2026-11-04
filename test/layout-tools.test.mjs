@@ -25,7 +25,7 @@ const refused = (run, expected) => assert.throws(run, { refusal: true, message: 
 const status = (code, message) => Object.assign(new Error(message), { status: code });
 
 // The fakes answer as the server's do: an error with a status for a session that cannot change, and for an archive { was: 'done', archivedSubs } or, for 'running' and 'elsewhere', whether the session itself and how many below it stand in the way as { self, subs }.
-function subsFor({ self = 'top', rows = ROWS, pulls } = {}) {
+function subsFor({ self = 'top', rows = ROWS, pulls = { links: {}, reading: false } } = {}) {
   const calls = [];
   const editable = id => {
     const found = rows.find(r => r.id === id);
@@ -35,7 +35,7 @@ function subsFor({ self = 'top', rows = ROWS, pulls } = {}) {
   };
   return {
     calls,
-    pullLinks: pulls && (() => pulls),
+    pullLinks: () => pulls,
     lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived) }),
     archive(id) {
       const root = editable(id);
@@ -304,7 +304,7 @@ test('find_sessions finds the sessions that link a pull request in any repo, kee
   const reading = subsFor({ rows, pulls: { links: {}, reading: true } });
   assert.equal(findSessions({ query: '#555' }, reading, GROUPS, NOW), 'No session has "#555" in its title or links that pull request. Pull request links are still being read, so try again shortly.');
   assert.equal(findSessions({ query: 'zzz' }, reading, GROUPS, NOW), 'No session has "zzz" in its title.');
-  assert.deepEqual(ids(findSessions({ query: '7969' }, subsFor({ rows }), GROUPS, NOW)), ['numbered'], 'a context with no links still finds titles');
+  assert.deepEqual(ids(findSessions({ query: '7969' }, subsFor({ rows }), GROUPS, NOW)), ['numbered'], 'with no links known a number still finds titles');
 });
 
 const CHIPS = [
