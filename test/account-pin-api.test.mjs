@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { serviceFor } from '../lib/accounts.mjs';
 import { localIso } from '../lib/routines.mjs';
-import { as, cliCalls, request, restart, signIn, start, until } from './harness.mjs';
+import { as, cliCalls, listen, request, restart, signIn, start, until } from './harness.mjs';
 
 const DAY = 86_400_000;
 const GROUPS = [{ id: 'cg-a', name: 'Work', project: 'cp-a' }, { id: 'cg-b', name: 'Loose' }];
@@ -297,4 +297,91 @@ test('a scheduled session put in a pinned group starts on that group\'s account,
   assert.equal(refused.status, 400, refused.text);
   assert.match(refused.body().error, /signed out/);
   assert.equal(startsOn(c, c.dir), 1, 'nothing more started');
+});
+
+const MOVE = 'move_session_to_group';
+// What happened to a move a chat asked for: the card's words, or 'allowed' when the CLI was answered with no card.
+async function moveAsk(c, caller, input) {
+  const viewer = listen(c.s, c.token, caller);
+  const answered = () => calls(c).filter(x => x.requestId === `perm-${MOVE}`).length;
+  try {
+    await until(() => viewer.events.length);
+    const had = answered();
+    assert.equal((await say(c, caller, `ask to use ${MOVE} ${JSON.stringify(input)}`)).status, 200);
+    await until(() => viewer.events.some(e => e.type === 'approval') || answered() > had);
+    return viewer.events.find(e => e.type === 'approval')?.data.summary ?? 'allowed';
+  } finally {
+    viewer.close();
+  }
+}
+
+test('a move inside the caller\'s tree that would change the session\'s account asks the owner and names the account, and one that leaves it the same goes with no card', async () => {
+  const c = await open({ sessions: [{ id: 'top', title: 'Top', ago: 5 }, { id: 'kid', title: 'Kid', ago: 6, parent: 'top', group: 'cg-b' }, { id: 'solo', title: 'Solo', ago: 7 }] });
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  assert.equal(await moveAsk(c, 'top', { session_id: 'top', group: 'Work' }), 'allowed', 'main to main');
+  assert.equal(await moveAsk(c, 'top', { session_id: 'kid', group: 'Work' }), 'move "Kid" [kid] to "Work", which runs it on Main', 'out of a pinned group');
+  assert.equal(await moveAsk(c, 'kid', { session_id: 'kid', group: 'Loose' }), 'allowed', 'second to second');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Loose' }), 'move "Solo" [solo] to "Loose", which runs it on Second', 'into a pinned group');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Nowhere' }), 'move "Solo" [solo] to "Nowhere"', 'a group that is not there still asks, with no account to name');
+});
+
+test('a row says the account its process runs on when its parent has dropped out of the list for age', async () => {
+  const c = await open({
+    sessions: [{ id: 'old', title: 'Old parent', source: 'cli', ago: 60 * 1440 }, { id: 'kid', title: 'Kid', ago: 5, parent: 'old' }],
+    layout: { accounts: { old: 'second' } },
+    chips: [{ sessionId: 'old', startedId: 'kid', status: 'started', title: 'Follow up' }],
+  });
+  assert.equal(await rowOf(c, 'old'), undefined, 'the parent is past otherDays and out of the list');
+  const kid = await rowOf(c, 'kid');
+  assert.deepEqual([kid.account, kid.accountFrom], ['second', 'parent']);
+  assert.equal((await say(c, 'kid')).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal(startsOn(c, null), 0, 'the process runs where the row says');
+});
+
+test('a first message worded like a routine\'s does not hand a session Capcom started that routine\'s pin', async () => {
+  const c = await open();
+  const added = await post(c, '/api/routines', { ...NEW_ROUTINE, cwd: c.s.home, account: 'second' });
+  const id = added.body().routine.id;
+  const folder = path.join(c.s.home, '.claude', 'projects', '-test-folder');
+  fs.writeFileSync(path.join(folder, 'trap.jsonl'), `${JSON.stringify({ type: 'user', cwd: c.s.home, message: { role: 'user', content: `<scheduled-task name="${id}">\nDo it.` } })}\n`);
+  await until(async () => !!(await rowOf(c, 'trap')), 8000);
+  fs.writeFileSync(path.join(c.s.state, 'started.json'), JSON.stringify([{ id: 'trap', cwd: c.s.home, at: Date.now(), title: 'Trap' }]));
+  await until(async () => (await rowOf(c, 'trap')).source === 'capcom', 8000);
+  assert.deepEqual([(await rowOf(c, 'trap')).account, (await rowOf(c, 'trap')).accountFrom], ['main', 'active']);
+  assert.equal((await say(c, 'trap')).status, 200);
+  await until(() => startsOn(c, null) === 1);
+  assert.equal(startsOn(c, c.dir), 0);
+});
+
+test('a layout that cannot be read keeps the pins last read, so pinned work stays on its account', async () => {
+  const c = await open();
+  assert.equal((await pin(c, 'session', 'live', 'second')).status, 200);
+  assert.equal((await rowOf(c, 'live')).account, 'second');
+  fs.writeFileSync(c.s.layout, '{ not json');
+  assert.equal((await say(c, 'live')).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal(startsOn(c, null), 0, 'the active account ran nothing');
+});
+
+test('a new session that names an account or a group needs an Origin header', async () => {
+  const c = await open();
+  for (const extra of [{ account: 'second' }, { group: 'cg-b' }]) {
+    const refused = await post(c, '/api/new', { cwd: c.s.home, text: 'begin a session', ...extra }, {});
+    assert.equal(refused.status, 403, refused.text);
+  }
+  assert.equal(calls(c).filter(x => x.started).length, 0, 'nothing started');
+});
+
+test('changing a routine\'s account stops its idle run on the old account', async () => {
+  const c = await open();
+  const added = await post(c, '/api/routines', { ...NEW_ROUTINE, cwd: c.s.home, account: 'second' });
+  const id = added.body().routine.id;
+  assert.equal((await post(c, `/api/routines/${id}/run`)).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  const run = (await routineOf(c, id)).lastSessionId;
+  assert.equal((await say(c, run)).status, 200);
+  const edited = await request(c.s, 'PATCH', `/api/routines/${id}`, { headers: { connection: 'close', ...as(c.token), origin: c.s.origin }, json: { account: null } });
+  assert.equal(edited.status, 200, edited.text);
+  await until(() => calls(c).filter(x => x.closed).length === 1);
 });

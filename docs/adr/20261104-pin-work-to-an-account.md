@@ -44,7 +44,7 @@ GhostShell writes all of them through the layout and routine stores. A pin holds
 
 1. The session's own pin.
 2. The pin of the routine that started it.
-3. The account its parent resolves to, for a sub session. The rule walks up the family with a guard against a loop.
+3. The account its parent resolves to, for a sub session. The rule walks up the family with a guard against a loop. A parent that resolves to the active account counts as no answer, so the session's own group and project still apply.
 4. The pin of its group.
 5. The pin of its project, which is the project its group sits in.
 6. The active account.
@@ -59,7 +59,7 @@ The runner asks for the account each time a process starts, so a new chat, a res
 
 The title namer runs on the account of the chat it names. The folder probe for the / menu runs on the account of the session that asked. Its answer stays cached per folder, so two sessions in one folder on different accounts see one list.
 
-Anyone setting a pin gets the same behaviour as a switch: GhostShell stops an idle process on the old account after 15 quiet seconds, and a process that is mid-turn, waiting on an approval or holding a background job keeps running until it can stop. A message sent to a chat mid-turn joins the running process.
+Anyone setting a pin gets the same behaviour as a switch: GhostShell stops an idle process on the old account after 15 quiet seconds, and a process that is mid-turn, waiting on an approval or holding a background job keeps running until it can stop. A message sent to a chat mid-turn joins the running process. A chat idle on a background job keeps its old account until the job ends.
 
 An added account's links and settings now refresh each time a process starts on that account, because a pinned account may never be switched to.
 
@@ -84,7 +84,7 @@ The extension signs in to one Claude account, so a session reaches Chrome only o
 
 ### Who can do what
 
-The pin routes sit behind the password and the strict origin check, like the other layout writes. They take an id for the target and an id for the account, and GhostShell checks both against its own lists. A pin to a signed-out account is refused, as a switch to one is. An agent in a chat gets no tool to set a pin, so a session cannot move itself onto another subscription. The routes touch no token and return no email.
+The pin routes sit behind the password and the strict origin check, like the other layout writes. So does `POST /api/new` when its body names an account or a group. They take an id for the target and an id for the account, and GhostShell checks both against its own lists. A pin to a signed-out account is refused, as a switch to one is. An agent in a chat gets no tool to set a pin. Its `move_session_to_group` tool can change a session's account by moving it into or out of a pinned group, so a move that changes the account is not card-free: the owner gets an approval card that names the new account. A same-account move, a rename and an archive stay card-free, and a move whose target cannot be worked out asks. The routes touch no token and return no email.
 
 ### Consequences
 
@@ -94,6 +94,7 @@ The pin routes sit behind the password and the strict origin check, like the oth
 - ❌ A blocked session needs a person to act. A scheduled run that hits a blocked account is lost, as any refused run is.
 - ❌ Each process start on an added account copies the user settings, so a local MCP server or trust set only on that account is replaced sooner than it was.
 - ❌ A session's pin outlives an archived session in `layout.json` until the session is gone.
+- ❌ While `layout.json` cannot be read, GhostShell uses the pins from the last good read. A restart in that state has no pins to go on, so pinned work runs on the active account.
 - ❌ The / menu's cache stays per folder, so it can show the other account's list.
 
 ### Out of scope

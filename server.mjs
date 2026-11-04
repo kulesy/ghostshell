@@ -43,6 +43,7 @@ import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins } from './lib/account-logins.mjs';
 import { browserSeen, makeChromeCheck, openChromeSettings } from './lib/chrome-check.mjs';
 import { accountFor, blockedBy, blockedError, blockedMessage } from './lib/account-rule.mjs';
+import { groupNamed } from './lib/layout-tools.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
@@ -141,16 +142,30 @@ const linkNow = id => linksNow()(id);
 
 const accountStates = () => ({ list: accounts.list(), signedOut: a => accountLogins.state(a).signedOut, checked: a => accountLogins.checked(a) });
 
-function accountData() {
-  const own = layout.read();
+// The layout as it was last readable, which stands in for one that cannot be read now so a typo never moves pinned work onto the active account.
+// A restart with an unreadable layout has none, and uses what it reads.
+let lastReadable = null;
+const pinsOf = own => (own.problem ? lastReadable ?? own : (lastReadable = own));
+
+// `index` is the one buildIndex is making, so its rows, layout and links are used as they stand and nothing is read twice.
+function accountData(index) {
+  const own = pinsOf(index?.own ?? layout.read());
   const stored = routineStore.read().routines;
   const once = make => { let made; return () => (made ??= make()); };
   const started = once(() => new Map(readStarted().map(r => [r.id, r])));
-  const links = once(() => { const fromChips = chips.links(); const desk = loadDesktop(cfg.desktopDir); return id => linkOf(own, fromChips, desk, id); });
+  const links = once(() => { const fromChips = index?.fromChips ?? chips.links(); const desk = index?.desk ?? loadDesktop(cfg.desktopDir); return id => linkOf(own, fromChips, desk, id); });
   const byId = list => Object.fromEntries(list.map(item => [item.id, item]));
   const routines = byId(stored);
   const groups = byId(own.groups);
   const projects = byId(own.projects);
+  // A session Capcom started has its routine in started.json alone, since its first message is text anyone can word as a routine's. Any other
+  // takes the one the index shows, or its transcript's head, which can vanish between the lookup and the read.
+  const routineOf = (id, t) => {
+    const mine = started().get(id);
+    if (mine) return mine.routine || null;
+    if (index?.rows.has(id)) return index.rows.get(id).routine;
+    try { return readHead(t, uploads.dir).routine; } catch { return null; }
+  };
   return {
     own,
     active: accounts.active.id,
@@ -163,16 +178,15 @@ function accountData() {
       const group = own.groups.find(g => g.session === id);
       if (group) return { pin: own.accounts[id], group: group.id };
       const t = transcriptFor(id);
-      const mine = started().get(id);
-      if (!t && !mine) return null;
-      return { pin: own.accounts[id], routine: mine?.routine || (t && readHead(t, uploads.dir).routine) || null, group: own.assignments[id], parent: links()(id) };
+      if (!t && !started().has(id)) return null;
+      return { pin: own.accounts[id], routine: routineOf(id, t), group: own.assignments[id], parent: links()(id) };
     },
     // The words for where a pin came from, from names already in the stores.
     nameOf(from, via) {
       if (from === 'group') return groups[via]?.name ?? '';
       if (from === 'project') return projects[via]?.name ?? '';
       if (from === 'routine') return routines[via]?.title ?? '';
-      return ownTitle(own, via) || started().get(via)?.title || '';
+      return index?.rows.get(via)?.title ?? (ownTitle(own, via) || started().get(via)?.title || '');
     },
   };
 }
@@ -228,31 +242,17 @@ const belowNow = (id, { archived }) => descendantsOf([...buildIndex({ archived }
 const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex()) });
 
 // Each row's account, for the page. Only built when more than one account is listed or a pin exists, so a single-account station sends the rows it always did.
-// A row's data comes from the rows already built, so this adds no read. A row a pin blocks carries `blocked` even when one account is listed.
-function accountRows({ rows, groupSessions, own, fromChips, desk }) {
-  const stored = routineStore.read().routines;
-  const byId = list => Object.fromEntries(list.map(item => [item.id, item]));
-  const anyPin = Object.keys(own.accounts).length > 0 || [...own.groups, ...own.projects, ...stored].some(item => item.account);
+// The facts are the ones a process start uses, so a row never says different from the account its process runs on. A row a pin blocks carries `blocked` even when one account is listed.
+function accountRows(index) {
+  const d = accountData(index);
   const many = accounts.list().length > 1;
-  if (!many && !anyPin) return;
-  const groups = byId(own.groups);
-  const routines = byId(stored);
-  const projects = byId(own.projects);
-  const chatOf = new Map(own.groups.filter(g => g.session).map(g => [g.session, g.id]));
-  const d = {
-    active: accounts.active.id,
-    routines,
-    groups,
-    projects,
-    facts: id => (chatOf.has(id) ? { pin: own.accounts[id], group: chatOf.get(id) } : rows.has(id) ? { pin: own.accounts[id], routine: rows.get(id).routine, group: own.assignments[id], parent: linkOf(own, fromChips, desk, id) } : null),
-  };
+  if (!many && !d.anyPin) return;
   const states = accountStates();
-  const nameOf = (from, via) => (from === 'group' ? groups[via]?.name : from === 'project' ? projects[via]?.name : from === 'routine' ? routines[via]?.title : rows.get(via)?.title) ?? '';
-  for (const r of [...rows.values(), ...groupSessions.values()]) {
+  for (const r of [...index.rows.values(), ...index.groupSessions.values()]) {
     const got = accountFor({ id: r.id, ...d.facts(r.id) }, d);
-    const blocked = blockedBy(got, states, nameOf);
+    const blocked = blockedBy(got, states, d.nameOf);
     if (!many && !blocked) continue;
-    Object.assign(r, { account: got.account, accountFrom: got.from }, own.accounts[r.id] && { accountPin: own.accounts[r.id] }, blocked && { blocked });
+    Object.assign(r, { account: got.account, accountFrom: got.from }, d.own.accounts[r.id] && { accountPin: d.own.accounts[r.id] }, blocked && { blocked });
   }
 }
 
@@ -537,6 +537,22 @@ function subCtx(sessionId) {
     unarchive: id => { editableRow(id); return CHANGES.archived(id, false).subs ?? 0; },
     rename: (id, title) => { editableRow(id); return CHANGES.rename(id, title); },
     move: (id, group) => { editableRow(id); CHANGES.move(id, group); },
+    // Whether a move into `group` (a name or an id) would change the account the session runs on, and the account's name if so. A move that
+    // cannot be worked out counts as a change, so the owner is asked. The move also takes the session out from under its parent.
+    moveAccount(id, group) {
+      try {
+        const d = accountData();
+        if (!d.anyPin) return { changes: false };
+        const picked = typeof group === 'string' ? groupNamed(group, groupList(), '').group : null;
+        const facts = typeof id === 'string' && d.facts(id);
+        if (!picked || !facts) return { changes: true };
+        const was = accountFor({ id, ...facts }, d);
+        const now = accountFor({ id, ...facts, group: picked.id, parent: null }, d);
+        return { changes: was.account !== now.account, to: accounts.find(now.account)?.name };
+      } catch {
+        return { changes: true };
+      }
+    },
   };
 }
 
@@ -1378,8 +1394,13 @@ async function routinesApi(req, res, parts) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 400, { error: 'Send a JSON body.' });
     // A new password can land while the body is still arriving, so the session is checked again before anything is written.
     if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
-    if (adding) return send(res, 200, { routine: routines.add(body) });
-    if (req.method === 'PATCH') return send(res, 200, { routine: routines.edit(id, body) });
+    if (adding || req.method === 'PATCH') {
+      const was = adding ? null : routineStore.read().routines.find(r => r.id === id)?.account ?? null;
+      const routine = adding ? routines.add(body) : routines.edit(id, body);
+      // Its runs take the routine's account, so the idle ones on the old account stop as they do for a pin.
+      if ((routine.account ?? null) !== was) retireOtherAccounts();
+      return send(res, 200, { routine });
+    }
     if (action === 'run') return send(res, 200, await routines.runNow(id));
     return send(res, 200, { routine: routines.setEnabled(id, body.enabled) });
   } catch (e) {
@@ -1845,14 +1866,7 @@ async function accountsApi(req, res, parts) {
   // The session's own account, which a pin can keep apart from the one just switched to.
   const wanted = row && accountOfSession(row.id);
   if (kept?.proc?.stdin.writable && kept.account !== wanted.id) return refuse(409, keptWords(kept, wanted.id));
-  if (row) {
-    try {
-      ensureChat(row.id, row).send('Continue.');
-    } catch (e) {
-      if (!e.blocked) throw e;
-      return send(res, 409, { error: e.message, blocked: e.blocked });
-    }
-  }
+  if (row) ensureChat(row.id, row).send('Continue.');
   return send(res, 200, accountsNow());
 }
 
@@ -1920,6 +1934,8 @@ async function api(req, res, u) {
   }
   if (req.method === 'POST' && u.pathname === '/api/new') {
     const { cwd, text, mode, model, effort, fast, group, account, images: sent, files: listed } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
+    // A pin, or a group that picks the account, decides which subscription the session spends.
+    if ((account != null || group != null) && !strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
     const { images, error } = readImages(sent);
     if (error) return send(res, 400, { error });
     const { files, error: fileError } = uploads.readFiles(listed);
@@ -2086,13 +2102,8 @@ async function api(req, res, u) {
     // A slash command has to stay first to run, so the result waits for the message after it.
     const held = !isSlashCommand(body.text || '') && terminal.held(id);
     const text = withMentions(files, body.text || '');
-    try {
-      chat.send(held ? [held, text].filter(t => t.trim()).join('\n\n') : text, images, documents);
-    } catch (e) {
-      // A pinned account that is signed out starts nothing. The held result stays held and the page keeps the text in its composer.
-      if (!e.blocked) throw e;
-      return send(res, 409, { error: e.message, blocked: e.blocked });
-    }
+    // A refused start throws before the held result is released, so it stays held.
+    chat.send(held ? [held, text].filter(t => t.trim()).join('\n\n') : text, images, documents);
     if (row.groupSession) groupUpdates.ownerSpoke(id);
     if (held) terminal.release(id);
     uploads.record(id, files);
