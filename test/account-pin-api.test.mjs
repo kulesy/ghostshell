@@ -1,0 +1,300 @@
+// Run with `npm test`. Pinning work to a Claude account over HTTP against the real server, with the stub keychain tool and the stub CLIs of test/harness.mjs,
+// so nothing here reads the real keychain, signs in for real or runs the real claude. See docs/adr/20261104-pin-work-to-an-account.md.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { serviceFor } from '../lib/accounts.mjs';
+import { localIso } from '../lib/routines.mjs';
+import { as, cliCalls, request, restart, signIn, start, until } from './harness.mjs';
+
+const DAY = 86_400_000;
+const GROUPS = [{ id: 'cg-a', name: 'Work', project: 'cp-a' }, { id: 'cg-b', name: 'Loose' }];
+const SESSIONS = [
+  { id: 'live', title: 'Runs', source: 'cli', ago: 1 },
+  { id: 'other', title: 'Another', source: 'cli', ago: 2 },
+  { id: 'grouped', title: 'In a group', source: 'cli', ago: 3, group: 'cg-a' },
+  { id: 'loosely', title: 'In the loose group', source: 'cli', ago: 4, group: 'cg-b' },
+];
+
+// A server with a second account, "Second" (id `second`), signed in with a folder of its own, a group inside a project, and sessions to pin.
+async function open({ layout = {}, sessions = [], groups = GROUPS, chips } = {}) {
+  const first = await start({ claude: true, sessions: [...SESSIONS, ...sessions], groups, chips, layout: { projects: [{ id: 'cp-a', name: 'Proj' }], ...layout } });
+  const dir = path.join(first.state, 'accounts', 'second');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(first.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: false, accounts: [{ id: 'main', name: 'Main' }, { id: 'second', name: 'Second', dir }] }));
+  signedIn(first, dir);
+  const s = await restart(first);
+  const { token } = await signIn(s);
+  const c = { s, token, dir };
+  await until(async () => (await accountsOf(c)).accounts.every(a => a.signedOut || a.email));
+  return c;
+}
+
+function signedIn(s, dir, on = true) {
+  fs.writeFileSync(path.join(dir, 'auth-state.json'), JSON.stringify(on ? { loggedIn: true, email: 'second@example.com', orgId: 'org-hidden-2', subscriptionType: 'pro' } : { loggedIn: false }));
+  fs.writeFileSync(path.join(s.home, `keychain-expiry-${serviceFor(dir)}`), String(on ? Date.now() + 20 * DAY : Date.now() - DAY));
+}
+
+const get = (c, url) => request(c.s, 'GET', url, { headers: as(c.token) });
+const post = (c, url, json = {}, headers = { origin: c.s.origin }) => request(c.s, 'POST', url, { headers: { connection: 'close', ...as(c.token), ...headers }, json });
+const accountsOf = async c => (await get(c, '/api/accounts')).body();
+const pin = (c, kind, id, account) => post(c, '/api/layout/account', { kind, id, account });
+const say = (c, id, text = 'finish the turn') => post(c, `/api/sessions/${id}/send`, { text });
+const calls = c => cliCalls(c.s);
+const startsOn = (c, dir) => calls(c).filter(x => x.started && x.configDir === dir).length;
+const index = async c => (await get(c, '/api/sessions')).body();
+const rowOf = async (c, id) => {
+  const ix = await index(c);
+  const all = [...ix.pinned, ...ix.groups.flatMap(g => g.sessions), ...ix.started, ...ix.ungrouped, ...ix.other, ...ix.routines.flatMap(r => [r.latest, ...r.earlier])];
+  const find = list => list.flatMap(r => [r, ...(r.children ?? [])]).find(r => r.id === id);
+  return find(all);
+};
+// The second account's sign-in is read when something asks for it, and a pin to it asks.
+const signOutSecond = async c => {
+  signedIn(c.s, c.dir, false);
+  assert.equal((await pin(c, 'session', 'other', 'second')).status, 409);
+};
+
+test('a session, a group and a project each take a pin and lose it on null, and the index and the accounts list show them', async () => {
+  const c = await open();
+  assert.equal((await index(c)).features.accountPins, true);
+  assert.deepEqual((await pin(c, 'session', 'live', 'second')).body(), { kind: 'session', id: 'live', account: 'second' });
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  assert.equal((await pin(c, 'project', 'cp-a', 'second')).status, 200);
+  const ix = await index(c);
+  assert.equal(ix.groups.find(g => g.id === 'cg-b').account, 'second');
+  assert.equal(ix.projects.find(p => p.id === 'cp-a').account, 'second');
+  const live = await rowOf(c, 'live');
+  assert.deepEqual([live.account, live.accountFrom, live.accountPin], ['second', 'session', 'second']);
+  const grouped = await rowOf(c, 'grouped');
+  assert.deepEqual([grouped.account, grouped.accountFrom, grouped.accountPin], ['second', 'project', undefined], 'a group with no pin of its own falls to its project');
+  assert.equal((await rowOf(c, 'other')).account, 'main');
+  const second = (await accountsOf(c)).accounts.find(a => a.id === 'second');
+  assert.deepEqual(second.pinned, { sessions: 1, groups: 1, projects: 1, routines: 0 });
+
+  for (const [kind, id] of [['session', 'live'], ['group', 'cg-b'], ['project', 'cp-a']]) assert.equal((await pin(c, kind, id, null)).status, 200);
+  const cleared = await index(c);
+  assert.equal(cleared.groups.find(g => g.id === 'cg-b').account, undefined);
+  assert.equal(cleared.projects.find(p => p.id === 'cp-a').account, undefined);
+  assert.equal(JSON.parse(fs.readFileSync(c.s.layout, 'utf8')).accounts && Object.keys(JSON.parse(fs.readFileSync(c.s.layout, 'utf8')).accounts).length, 0);
+});
+
+test('the pin route checks the origin, the sign-in, the kind, the id, the account and that the account is signed in, and writes nothing when it refuses', async () => {
+  const c = await open();
+  const body = { kind: 'session', id: 'live', account: 'second' };
+  assert.equal((await post(c, '/api/layout/account', body, {})).status, 403, 'no Origin');
+  assert.equal((await post(c, '/api/layout/account', body, { origin: 'http://elsewhere.test' })).status, 403);
+  assert.equal((await request(c.s, 'POST', '/api/layout/account', { headers: { origin: c.s.origin }, json: body })).status, 401);
+  assert.equal((await pin(c, 'routine', 'live', 'second')).status, 400);
+  assert.equal((await pin(c, 'session', '../x', 'second')).status, 400);
+  assert.equal((await pin(c, 'session', 'live', 7)).status, 400);
+  assert.equal((await pin(c, 'session', 'nope', 'second')).status, 404, 'a session that is not there');
+  assert.equal((await pin(c, 'group', 'cg-none', 'second')).status, 404);
+  assert.equal((await pin(c, 'project', 'cp-none', 'second')).status, 404);
+  assert.equal((await pin(c, 'session', 'live', 'gone')).status, 404, 'an account nobody lists');
+  assert.deepEqual(JSON.parse(fs.readFileSync(c.s.layout, 'utf8')).accounts ?? {}, {});
+
+  await signOutSecond(c);
+  const refused = await pin(c, 'session', 'live', 'second');
+  assert.deepEqual([refused.status, refused.body().error], [409, 'Second is signed out. Sign it in first.']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(c.s.layout, 'utf8')).accounts ?? {}, {});
+});
+
+test('a pinned session starts its process on the pinned account, the active account does not move it, and a clear moves it back', async () => {
+  const c = await open();
+  assert.equal((await pin(c, 'session', 'live', 'second')).status, 200);
+  assert.equal((await say(c, 'live')).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal(startsOn(c, null), 0, 'the active account ran nothing');
+
+  assert.equal((await post(c, '/api/accounts/second/use')).status, 200);
+  assert.equal((await post(c, '/api/accounts/main/use')).status, 200);
+  await new Promise(done => setTimeout(done, 700));
+  assert.equal(calls(c).filter(x => x.closed).length, 0, 'switching accounts left the pinned chat running');
+
+  assert.equal((await pin(c, 'session', 'live', null)).status, 200);
+  await until(() => calls(c).filter(x => x.closed).length === 1);
+  assert.equal((await say(c, 'live')).status, 200);
+  await until(() => startsOn(c, null) === 1);
+});
+
+test('a session in a pinned group, and one in a group of a pinned project, start on that account, and the nearest pin wins', async () => {
+  const c = await open();
+  await pin(c, 'project', 'cp-a', 'second');
+  assert.equal((await say(c, 'grouped')).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal((await rowOf(c, 'grouped')).accountFrom, 'project');
+
+  await pin(c, 'group', 'cg-b', 'main');
+  assert.equal((await say(c, 'loosely')).status, 200);
+  await until(() => startsOn(c, null) === 1);
+  assert.equal((await rowOf(c, 'loosely')).accountFrom, 'group');
+});
+
+// The fake CLI names every new session `begun-by-the-fake`, so a test starts one new session per server.
+test('a new session takes the account it is started with and keeps it as its own pin, and an unknown account is refused', async () => {
+  const c = await open();
+  assert.equal((await post(c, '/api/new', { cwd: c.s.home, text: 'begin a session', account: 'gone' })).status, 400);
+  assert.equal((await post(c, '/api/new', { cwd: c.s.home, text: 'begin a session', group: 'cg-none' })).status, 400);
+  const made = await post(c, '/api/new', { cwd: c.s.home, text: 'begin a session', account: 'second' });
+  assert.equal(made.status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal(startsOn(c, null), 0);
+  assert.equal(JSON.parse(fs.readFileSync(c.s.layout, 'utf8')).accounts[made.body().id], 'second');
+});
+
+test('a session started in a pinned group runs on the group\'s account', async () => {
+  const c = await open();
+  await pin(c, 'group', 'cg-b', 'second');
+  const made = await post(c, '/api/new', { cwd: c.s.home, text: 'begin a session', group: 'cg-b' });
+  assert.equal(made.status, 200, made.text);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal(startsOn(c, null), 0);
+});
+
+test('a pinned account that signs out refuses the message with a 409 and the data, starts nothing, keeps the text out of the chat, and clearing the pin lets it run', async () => {
+  const c = await open();
+  await pin(c, 'session', 'live', 'second');
+  await signOutSecond(c);
+  const before = calls(c).length;
+  const refused = await say(c, 'live', 'finish the turn');
+  assert.equal(refused.status, 409);
+  assert.match(refused.body().error, /is pinned to Second, which is signed out/);
+  assert.deepEqual([refused.body().blocked.reason, refused.body().blocked.account, refused.body().blocked.from], ['signed-out', { id: 'second', name: 'Second' }, 'session']);
+  assert.equal(calls(c).length, before, 'no process started and nothing was sent');
+  const row = await rowOf(c, 'live');
+  assert.equal(row.blocked.reason, 'signed-out');
+
+  assert.equal((await pin(c, 'session', 'live', null)).status, 200, 'a pin clears while the account is signed out');
+  assert.equal((await say(c, 'live')).status, 200);
+  await until(() => calls(c).some(x => x.user === 'finish the turn'));
+});
+
+test('a group pinned to a signed out account refuses a new session started in it with a 409', async () => {
+  const c = await open();
+  await pin(c, 'group', 'cg-b', 'second');
+  await signOutSecond(c);
+  const before = calls(c).length;
+  const refused = await post(c, '/api/new', { cwd: c.s.home, text: 'begin a session', group: 'cg-b' });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.body().blocked.from, 'group');
+  assert.equal(calls(c).length, before);
+});
+
+test('a pin to an account that is removed blocks as removed and a clear still works', async () => {
+  const c = await open({ layout: { accounts: { live: 'vanished' } } });
+  const refused = await say(c, 'live');
+  assert.equal(refused.status, 409);
+  assert.deepEqual([refused.body().blocked.reason, refused.body().blocked.account], ['removed', null]);
+  assert.equal((await pin(c, 'session', 'live', null)).status, 200);
+});
+
+const NEW_ROUTINE = { title: 'Morning check', cron: '30 7 * * 1-5', jitterSeconds: 0, prompt: 'Look at the board.', enabled: false };
+const routineOf = async (c, id) => (await get(c, '/api/routines')).body().routines.find(r => r.id === id);
+
+test('a routine pinned to an account runs on it, its account is checked on add and edit, and it shows in the list', async () => {
+  const c = await open();
+  const cwd = c.s.home;
+  assert.equal((await post(c, '/api/routines', { ...NEW_ROUTINE, cwd, account: 'gone' })).status, 400);
+  const bad = await post(c, '/api/routines', { ...NEW_ROUTINE, cwd, account: 'gone' });
+  assert.deepEqual(Object.keys(bad.body().problems), ['account']);
+  const added = await post(c, '/api/routines', { ...NEW_ROUTINE, cwd, account: 'second' });
+  assert.equal(added.status, 200, added.text);
+  const id = added.body().routine.id;
+  assert.equal(added.body().routine.account, 'second');
+  assert.equal((await post(c, `/api/routines/${id}/run`)).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal(startsOn(c, null), 0, 'the active account ran nothing');
+  assert.equal((await routineOf(c, id)).lastError, null);
+  assert.equal((await accountsOf(c)).accounts.find(a => a.id === 'second').pinned.routines, 1);
+});
+
+test('a routine whose account is signed out records the refusal, starts nothing, is not retried, cannot be switched on, and runs again once the account is back', async () => {
+  const c = await open();
+  const added = await post(c, '/api/routines', { ...NEW_ROUTINE, cwd: c.s.home, account: 'second' });
+  const id = added.body().routine.id;
+  await signOutSecond(c);
+  const before = calls(c).length;
+  const run = await post(c, `/api/routines/${id}/run`);
+  assert.equal(run.status, 400, run.text);
+  assert.match(run.body().error, /pinned to Second, which is signed out/);
+  assert.equal(calls(c).length, before, 'nothing started');
+  const routine = await routineOf(c, id);
+  assert.match(routine.lastError, /pinned to Second, which is signed out/);
+  assert.equal(routine.retry, null);
+  assert.match(routine.problem, /Second/);
+  const on = await post(c, `/api/routines/${id}/enabled`, { enabled: true });
+  assert.equal(on.status, 400);
+  assert.match(on.body().error, /Second/);
+
+  signedIn(c.s, c.dir);
+  assert.equal((await pin(c, 'session', 'other', 'second')).status, 200);
+  assert.equal((await post(c, `/api/routines/${id}/run`)).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+});
+
+const WORK_CHAT = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
+const tool = async (c, id, name, args = {}) => {
+  const before = calls(c).filter(x => x.mcp).length;
+  assert.equal((await say(c, id, `call ${name} ${JSON.stringify(args)}`)).status, 200);
+  await until(() => calls(c).filter(x => x.mcp).length > before);
+  return calls(c).filter(x => x.mcp)[before].mcp.result.content[0].text;
+};
+const resumes = (c, id) => calls(c).filter(x => x.started?.includes('--resume') && x.started[x.started.indexOf('--resume') + 1] === id);
+
+test('a group chat starts on its group\'s account, and a chip made by a pinned session starts its session beside it on that account', async () => {
+  const c = await open({
+    groups: [{ id: 'cg-a', name: 'Work', project: 'cp-a', session: WORK_CHAT }, GROUPS[1]],
+    sessions: [{ id: 'maker', title: 'Maker', source: 'cli', ago: 5 }],
+  });
+  assert.equal((await pin(c, 'group', 'cg-a', 'second')).status, 200);
+  assert.equal((await pin(c, 'session', 'maker', 'second')).status, 200);
+  assert.equal((await say(c, WORK_CHAT, 'hello')).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal(startsOn(c, null), 0, 'nothing on the main account');
+
+  const chip = await post(c, '/api/chips/start', { sessionId: 'maker', toolUseId: 'toolu_pin', title: 'Follow up', prompt: 'begin a session', cwd: c.s.home, confirmCwd: c.s.home });
+  assert.equal(chip.status, 200, chip.text);
+  await until(() => startsOn(c, c.dir) === 2);
+  assert.equal(startsOn(c, null), 0);
+  const made = await rowOf(c, chip.body().id);
+  assert.deepEqual([made.account, made.accountFrom, made.accountPin], ['second', 'parent', undefined], 'it follows its maker and holds no pin of its own');
+});
+
+test('a sub session woken by its parent resumes on its own pinned account, and one pinned to a signed out account is refused in words and not started', async () => {
+  const c = await open({
+    sessions: [{ id: 'top', title: 'Top', source: 'cli', ago: 5 }, { id: 'kid', title: 'Kid', source: 'cli', ago: 6, parent: 'top' }, { id: 'kid2', title: 'Kid two', source: 'cli', ago: 7, parent: 'top' }],
+  });
+  assert.equal((await pin(c, 'session', 'kid', 'second')).status, 200);
+  assert.equal((await pin(c, 'session', 'kid2', 'second')).status, 200);
+  assert.match(await tool(c, 'top', 'send_session', { session_id: 'kid', message: 'Please rebase.' }), /^Delivered to /);
+  await until(() => resumes(c, 'kid').length === 1);
+  assert.equal(resumes(c, 'kid')[0].configDir, c.dir);
+
+  signedIn(c.s, c.dir, false);
+  assert.equal((await pin(c, 'session', 'other', 'second')).status, 409, 'the refused pin refreshes the account\'s sign-in');
+  assert.match(await tool(c, 'top', 'send_session', { session_id: 'kid2', message: 'And you.' }), /^Refused: .*pinned to Second, which is signed out/);
+  assert.equal(resumes(c, 'kid2').length, 0, 'nothing started for it');
+});
+
+const entry = c => ({ title: 'Look at the doc', at: localIso(Date.now() + DAY), cwd: c.s.home, prompt: 'Read the doc.', model: 'haiku', effort: 'high', mode: 'plan', group: 'cg-b' });
+
+test('a scheduled session put in a pinned group starts on that group\'s account, and one whose group is pinned to a signed out account is refused and starts nothing', async () => {
+  const c = await open();
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  const made = await post(c, '/api/scheduled', entry(c));
+  assert.equal(made.status, 200, made.text);
+  assert.equal((await post(c, `/api/scheduled/${made.body().scheduled.id}/start`)).status, 200);
+  await until(() => startsOn(c, c.dir) === 1);
+  assert.equal(startsOn(c, null), 0);
+
+  signedIn(c.s, c.dir, false);
+  assert.equal((await pin(c, 'session', 'other', 'second')).status, 409);
+  const waiting = await post(c, '/api/scheduled', entry(c));
+  assert.match(waiting.body().scheduled.problem, /Its group \(Loose\) is pinned to Second, which is signed out/);
+  const refused = await post(c, `/api/scheduled/${waiting.body().scheduled.id}/start`);
+  assert.equal(refused.status, 400, refused.text);
+  assert.match(refused.body().error, /signed out/);
+  assert.equal(startsOn(c, c.dir), 1, 'nothing more started');
+});

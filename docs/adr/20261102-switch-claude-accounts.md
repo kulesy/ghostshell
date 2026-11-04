@@ -75,8 +75,8 @@ The Accounts page (`#/accounts`, in the Account menu of the sidebar's footer) ad
 - ✅ No switch cuts a turn or kills a background job.
 - ❌ The added account's folder relies on the CLI's private layout and keychain naming, checked on CLI 2.1.316. If either moves, the account shows as signed out, or loses a shared entry, until GhostShell follows.
 - ❌ The CLI refuses to write user settings through a symlink, so a change a chat on an added account makes to `~/.claude/settings.json` (such as a `/config` edit) fails there. Changes to a project's own settings are unaffected.
-- ❌ An added account's `.claude.json` is a copy of the user settings, refreshed only on a switch to it, so a change to an MCP server shows there after the next switch.
-- ❌ Each switch to an added account replaces its `projects` and `mcpServers` with the first account's. An MCP server or a project trust added only on the added account is lost at the next switch to it.
+- ❌ An added account's `.claude.json` is a copy of the user settings, refreshed on a switch to it and, since [pins](20261104-pin-work-to-an-account.md), each time a process starts on it. A change to an MCP server shows there at the next of those.
+- ❌ Each refresh replaces an added account's `projects` and `mcpServers` with the first account's. An MCP server or a project trust added only on the added account is lost at the next refresh.
 - ❌ Each account keeps its own prompt history (`history.jsonl`), so the CLI's up-arrow history in a terminal started with the account's folder differs.
 - ❌ A sign-in still needs the Mac, as with the banner.
 
@@ -113,3 +113,4 @@ The Accounts page (`#/accounts`, in the Account menu of the sidebar's footer) ad
 - Builds on [Drive each chat with a headless Claude Code process](20261006-headless-claude-cli-per-chat.md), whose processes take the active account's folder
 - Builds on [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md), whose runs start on the active account
 - Followed by [Remind the owner to move Chrome's extension after an account switch](20261104-chrome-follows-the-account.md), since Chrome's extension stays on one account when GhostShell switches
+- Amended by [Pin a session, group, project or routine to one Claude account](20261104-pin-work-to-an-account.md), which lets work stay on one account through a switch

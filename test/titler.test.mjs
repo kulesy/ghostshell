@@ -322,6 +322,16 @@ test('a chat with no title is named when its first turn ends, not before, and th
   assert.deepEqual(saved, [['s1', 'Server - Late title']]);
 });
 
+test('the ask names the account of the chat it is for', async () => {
+  const { t, asked } = titler();
+  const chat = chatWith();
+  chat.account = 'second';
+  t.start(chat, { first: 'Add a field' });
+  chat.emit('turn-end', { error: false });
+  await wait(10);
+  assert.equal(asked[0].opts.account, 'second');
+});
+
 test('a first turn that failed still names the session, from the first message alone', async () => {
   const { t, asked } = titler();
   const chat = chatWith();

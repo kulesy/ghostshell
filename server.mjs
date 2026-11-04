@@ -16,7 +16,7 @@ import { chainOf, familiesOf } from './lib/families.mjs';
 import { descendantsOf } from './public/ui/sub-rules.js';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
 import { makeGroupUpdates, makeUpdateStore, pullsOf, scaled } from './lib/group-updates.mjs';
-import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, workFolder } from './lib/groups.mjs';
+import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, refusal, workFolder } from './lib/groups.mjs';
 import { MAX_TITLE, makeLayout, nameOf } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { pendingLines } from './lib/subs.mjs';
@@ -29,7 +29,7 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
-import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, useActiveAccount } from './lib/runner.mjs';
+import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, useAccounts } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
 import { makeTitler } from './lib/titler.mjs';
@@ -42,6 +42,7 @@ import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins } from './lib/account-logins.mjs';
 import { browserSeen, makeChromeCheck, openChromeSettings } from './lib/chrome-check.mjs';
+import { accountFor, blockedBy, blockedError, blockedMessage } from './lib/account-rule.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
@@ -62,8 +63,9 @@ const routineStore = makeRoutines(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
 const uploads = makeUploads(cfg.stateDir);
 const accounts = makeAccounts(cfg.stateDir, { warn: console.error });
-const activeEnv = () => accounts.envFor(accounts.active);
-useActiveAccount(() => ({ id: accounts.active.id, env: activeEnv() }));
+// The environment an account's processes start with. An id nobody lists gets the active account's, which only a probe or a title ask can reach, since no turn runs on it.
+const envOfAccount = id => accounts.envFor(accounts.find(id) ?? accounts.active);
+useAccounts(chat => accountOfChat(chat));
 retireWhenQuietFor(cfg.retireQuietMs);
 const summaries = makeSummaries({ transcriptFor });
 const pulls = makePulls({ transcriptFor, gh: cfg.gh });
@@ -121,7 +123,7 @@ onTurn(({ id, kind, at }) => writeMark(() => {
 const ownTitle = (own, id) => (Object.hasOwn(own.titles, id) && typeof own.titles[id] === 'string' && own.titles[id].trim() ? own.titles[id] : '');
 
 // A session started here is named from its first turn, and a title the owner set is never replaced. See docs/adr/20261027-name-sessions-from-their-first-turn.md.
-const titler = makeTitler({ ask: askClaude(cfg.claude, { env: activeEnv }), own: id => ownTitle(layout.read(), id), record: (id, title) => layout.rename(id, title), enabled: cfg.autoTitle });
+const titler = makeTitler({ ask: askClaude(cfg.claude, { env: envOfAccount }), own: id => ownTitle(layout.read(), id), record: (id, title) => layout.rename(id, title), enabled: cfg.autoTitle });
 
 // What a session is linked to: Capcom's own choice, a null included, wins over the chip it was started from, and that over Desktop's link.
 const linkOf = (own, fromChips, desk, id) => (Object.hasOwn(own.parents, id) ? own.parents[id] : fromChips.get(id) ?? desk.links.get(id) ?? null);
@@ -132,6 +134,80 @@ const linksNow = () => {
   return id => linkOf(own, fromChips, desk, id);
 };
 const linkNow = id => linksNow()(id);
+
+// ---- which account a chat runs on ----------------------------------------------------------------
+// See docs/adr/20261104-pin-work-to-an-account.md. The runner asks on every retire check, so this reads the stores and nothing deeper: no index build and no
+// summary. The links, the started list and the transcript heads are read only once some pin exists, and only as far as the chain of parents goes.
+
+const accountStates = () => ({ list: accounts.list(), signedOut: a => accountLogins.state(a).signedOut, checked: a => accountLogins.checked(a) });
+
+function accountData() {
+  const own = layout.read();
+  const stored = routineStore.read().routines;
+  const once = make => { let made; return () => (made ??= make()); };
+  const started = once(() => new Map(readStarted().map(r => [r.id, r])));
+  const links = once(() => { const fromChips = chips.links(); const desk = loadDesktop(cfg.desktopDir); return id => linkOf(own, fromChips, desk, id); });
+  const byId = list => Object.fromEntries(list.map(item => [item.id, item]));
+  const routines = byId(stored);
+  const groups = byId(own.groups);
+  const projects = byId(own.projects);
+  return {
+    own,
+    active: accounts.active.id,
+    routines,
+    groups,
+    projects,
+    anyPin: Object.keys(own.accounts).length > 0 || [...own.groups, ...own.projects, ...stored].some(item => item.account),
+    // A group's chat takes its group's pin. A session is known when it has a transcript or Capcom started it.
+    facts(id) {
+      const group = own.groups.find(g => g.session === id);
+      if (group) return { pin: own.accounts[id], group: group.id };
+      const t = transcriptFor(id);
+      const mine = started().get(id);
+      if (!t && !mine) return null;
+      return { pin: own.accounts[id], routine: mine?.routine || (t && readHead(t, uploads.dir).routine) || null, group: own.assignments[id], parent: links()(id) };
+    },
+    // The words for where a pin came from, from names already in the stores.
+    nameOf(from, via) {
+      if (from === 'group') return groups[via]?.name ?? '';
+      if (from === 'project') return projects[via]?.name ?? '';
+      if (from === 'routine') return routines[via]?.title ?? '';
+      return ownTitle(own, via) || started().get(via)?.title || '';
+    },
+  };
+}
+
+// What the rule makes of `self`, ready for the runner: the account's id, where it came from, its environment, what stops it and how to prepare it.
+function resolveAccount(self, d = accountData()) {
+  const got = d.anyPin || self.pin ? accountFor(self, d) : { account: d.active, from: 'active', via: null };
+  const account = accounts.find(got.account);
+  return {
+    id: got.account,
+    from: got.from,
+    env: account && accounts.envFor(account),
+    blocked: blockedBy(got, accountStates(), d.nameOf),
+    prepare: () => account && accounts.prepare(account),
+  };
+}
+
+function accountOfChat(chat) {
+  const d = accountData();
+  return resolveAccount({ id: chat.id, ...(d.anyPin && d.facts(chat.id)) }, d);
+}
+
+// The account a session started with these places will run on, worked out before it has an id. A blocked pin throws the 409.
+function accountForNew(where) {
+  const got = resolveAccount(where);
+  if (got.blocked) throw blockedError(got.blocked);
+  return got;
+}
+
+// The account an existing session runs on now, as the page would draw it: `{ id, from, blocked }`.
+function accountOfSession(id) {
+  const d = accountData();
+  const { id: account, from, blocked } = resolveAccount({ id, ...d.facts(id) }, d);
+  return { id: account, from, blocked };
+}
 // What a chip's group name is looked up in when the chip is made. Each call reads the layout again, so a group renamed since is seen as it is now.
 const groupList = () => layout.read().groups.map(({ id, name }) => ({ id, name }));
 
@@ -150,6 +226,35 @@ const belowNow = (id, { archived }) => descendantsOf([...buildIndex({ archived }
 
 // A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone knows a session's link.
 const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex()) });
+
+// Each row's account, for the page. Only built when more than one account is listed or a pin exists, so a single-account station sends the rows it always did.
+// A row's data comes from the rows already built, so this adds no read. A row a pin blocks carries `blocked` even when one account is listed.
+function accountRows({ rows, groupSessions, own, fromChips, desk }) {
+  const stored = routineStore.read().routines;
+  const byId = list => Object.fromEntries(list.map(item => [item.id, item]));
+  const anyPin = Object.keys(own.accounts).length > 0 || [...own.groups, ...own.projects, ...stored].some(item => item.account);
+  const many = accounts.list().length > 1;
+  if (!many && !anyPin) return;
+  const groups = byId(own.groups);
+  const routines = byId(stored);
+  const projects = byId(own.projects);
+  const chatOf = new Map(own.groups.filter(g => g.session).map(g => [g.session, g.id]));
+  const d = {
+    active: accounts.active.id,
+    routines,
+    groups,
+    projects,
+    facts: id => (chatOf.has(id) ? { pin: own.accounts[id], group: chatOf.get(id) } : rows.has(id) ? { pin: own.accounts[id], routine: rows.get(id).routine, group: own.assignments[id], parent: linkOf(own, fromChips, desk, id) } : null),
+  };
+  const states = accountStates();
+  const nameOf = (from, via) => (from === 'group' ? groups[via]?.name : from === 'project' ? projects[via]?.name : from === 'routine' ? routines[via]?.title : rows.get(via)?.title) ?? '';
+  for (const r of [...rows.values(), ...groupSessions.values()]) {
+    const got = accountFor({ id: r.id, ...d.facts(r.id) }, d);
+    const blocked = blockedBy(got, states, nameOf);
+    if (!many && !blocked) continue;
+    Object.assign(r, { account: got.account, accountFrom: got.from }, own.accounts[r.id] && { accountPin: own.accounts[r.id] }, blocked && { blocked });
+  }
+}
 
 function buildIndex({ archived = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
@@ -233,6 +338,7 @@ function buildIndex({ archived = false } = {}) {
     const { holder, parent } = families.get(r.id);
     Object.assign(r, { parent }, places.get(holder));
   }
+  accountRows({ rows, groupSessions, own, fromChips, desk });
   const visible = [...rows.values()].filter(r => archived || !r.archived);
   // Counted by the place a family gives each row, which is what api/archived?group= lists by.
   const archivedIn = new Map();
@@ -268,7 +374,7 @@ function buildIndex({ archived = false } = {}) {
   const groups = own.groups.map(g => {
     const sort = groupSort(g.id);
     const session = g.session ? { id: g.session, state: groupSessions.get(g.session).state } : null;
-    return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, sort, session, archived: archivedIn.get(g.id) ?? 0, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
+    return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, ...(g.account && { account: g.account }), sort, session, archived: archivedIn.get(g.id) ?? 0, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
   });
   // A routine's runs go newest first, and the routines go by their latest run.
   const byLatest = comparator(sorts.routines);
@@ -284,7 +390,7 @@ function buildIndex({ archived = false } = {}) {
   return {
     station: cfg.station,
     problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
-    projects: own.projects.map(({ id, name }) => ({ id, name })),
+    projects: own.projects.map(({ id, name, account }) => ({ id, name, ...(account && { account }) })),
     pinned,
     groups,
     routines: [...routines.values()].sort((a, b) => byLatest(a.latest, b.latest)),
@@ -354,12 +460,16 @@ function settingsFor(id, row) {
   return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), ...(fast && { fast }), chrome: cfg.chrome };
 }
 
-async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, oneOff }) {
+// `group`, `parent`, `routine` and `account` are where the session will land and the pin it is given, which decide its account before it has an id.
+// A pin on a signed-out account throws the 409 and starts nothing.
+async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, oneOff, group = null, parent = null, account = null }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx, groups: groupList });
+  const upfront = accountForNew({ pin: account, routine, group, parent });
+  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx, groups: groupList });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
+    if (account) layout.setAccount('session', chat.id, account);
     // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
     const named = title || titleText(text.trim()) || (files.length ? (files.length > 1 ? 'Files' : files[0].name) : images.length > 1 ? 'Images' : 'Image');
     fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120), ...(routine && { routine }), ...(oneOff && { scheduled: true }) }]));
@@ -401,7 +511,12 @@ function subCtx(sessionId) {
       const chat = getChat(row.id);
       if (!chat?.proc && row.state === 'active') return 'elsewhere';
       const was = chat?.state ?? 'idle';
-      ensureChat(row.id, row).send(text);
+      // A pinned account that is signed out refuses the start. The tool tells the model in words, and nothing is queued.
+      try {
+        ensureChat(row.id, row).send(text);
+      } catch (e) {
+        throw e.blocked ? refusal(`Refused: ${e.message}`) : e;
+      }
       return was;
     },
     // The same changes the layout routes make, so a tool's and the owner's cannot differ. A session another app runs is left alone, and a running chat of Capcom's is not stopped.
@@ -492,7 +607,7 @@ function groupCtx(groupId) {
     pending: pendingOf,
     links: urls => pulls.lookup(urls),
     async start({ cwd, prompt, title }) {
-      const id = await newSession({ cwd, text: prompt, title });
+      const id = await newSession({ cwd, text: prompt, title, group: groupId });
       return { id, placed: placeStarted(id, groupId) };
     },
   };
@@ -537,9 +652,29 @@ function startProblems(r, noun) {
   return found;
 }
 
-const routineProblems = r => startProblems(r, 'routine');
+// Why the pin a run would start under cannot run, as a sentence, or null. A start refused here is not retried and never moves to another account.
+const accountProblem = (got, nameOf) => {
+  const blocked = got && blockedBy(got, accountStates(), nameOf);
+  return blocked ? blockedMessage(blocked) : null;
+};
+
+// A routine's own pin must be an account GhostShell lists and can run on. A run in a group or project is placed after it starts, so only its pin counts.
+function routineProblems(r) {
+  const found = startProblems(r, 'routine');
+  const problem = accountProblem(typeof r.account === 'string' && r.account ? { account: r.account, from: 'routine', via: r.id } : null, () => r.title ?? '');
+  if (problem) found.account = problem;
+  return found;
+}
 const routineProblem = r => Object.values(routineProblems(r))[0] ?? null;
-const scheduledProblems = s => startProblems(s, 'scheduled session');
+
+// A scheduled session takes the account of the group it will be put in, or of that group's project.
+function scheduledProblems(s) {
+  const found = startProblems(s, 'scheduled session');
+  const d = accountData();
+  const problem = d.anyPin && s.group ? accountProblem(accountFor({ group: s.group }, d), d.nameOf) : null;
+  if (problem) found.account = problem;
+  return found;
+}
 const scheduledProblem = s => Object.values(scheduledProblems(s))[0] ?? null;
 
 // Routines and scheduled sessions together run at most this many sessions at once, which keeps fewer of them fighting over one Chrome.
@@ -572,7 +707,7 @@ const scheduled = makeScheduledSessions({
   groups: groupList,
   place: placeStarted,
   restarting: () => lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
-  start: (s, text) => newSession({ cwd: s.cwd, text, mode: s.mode, model: s.model, effort: s.effort, title: s.title, oneOff: true }),
+  start: (s, text) => newSession({ cwd: s.cwd, text, mode: s.mode, model: s.model, effort: s.effort, title: s.title, oneOff: true, group: s.group }),
   working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
   waiting: id => getChat(id)?.state === 'waiting',
   limit: AUTOMATED_AT_ONCE,
@@ -795,7 +930,7 @@ async function askPlan(account, first) {
 
 async function planFor(id) {
   const own = getChat(id);
-  return { limits: await askPlan(own?.proc ? own.account : accounts.active.id, own) };
+  return { limits: await askPlan(own?.proc ? own.account : accountOfSession(id).id, own) };
 }
 
 // What the page redraws from. The clock is left out because it moves on every read.
@@ -825,7 +960,7 @@ function events(req, res, id) {
     write(ev.type, ev.data);
   };
   const row = findRow(id);
-  write('status', { ...(chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, row), live: '', pending: [] }), outside: first });
+  write('status', { ...(chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, row), live: '', pending: [] }), ...(row?.blocked && { blocked: row.blocked }), outside: first });
   write('subagents', { agents: helpers });
   if (!row?.groupSession) write('terminal', { type: 'state', ...terminal.snapshot(id, row?.cwd || '') });
   if (!viewers.has(id)) viewers.set(id, new Set());
@@ -1168,6 +1303,34 @@ async function editStructure(req, res, change) {
   }
 }
 
+// POST api/layout/account pins a session, group or project to an account with { kind, id, account }, and clears the pin when account is null.
+// A pin to an account that is signed out is refused, as a switch to one is. It runs work as the owner, so it takes the stricter origin check.
+// The chats of other accounts that are idle stop at once, and the rest as they go idle.
+async function pinAccount(req, res) {
+  if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+  const body = await readJson(req, 10_000);
+  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+  if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
+  const { kind, id, account } = body;
+  if (!['session', 'group', 'project'].includes(kind)) return send(res, 400, { error: 'Pin a session, a group or a project.' });
+  if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Which one?' });
+  if (account !== null && typeof account !== 'string') return send(res, 400, { error: 'Name an account, or null to clear the pin.' });
+  try {
+    if (kind === 'session') editableRow(id);
+    if (account !== null) {
+      const found = accounts.find(account);
+      if (!found) return send(res, 404, { error: 'Unknown account.' });
+      await accountLogins.refresh(found);
+      if (accountLogins.state(found).signedOut) return send(res, 409, { error: `${found.name} is signed out. Sign it in first.` });
+    }
+    layout.setAccount(kind, id, account);
+  } catch (e) {
+    return send(res, e.status || 500, { error: e.message });
+  }
+  retireOtherAccounts();
+  return send(res, 200, { kind, id, account });
+}
+
 // What the CLI lists under `key` for a session or a folder, named in the body as `id` or `cwd`. A chat with a process answers from its own
 // reply, and anything else from a probe of its folder.
 async function askLists(req, res, key, list) {
@@ -1175,6 +1338,8 @@ async function askLists(req, res, key, list) {
   if (!body) return send(res, 400, { error: 'Send a JSON body.' });
   const { id, cwd } = body;
   let folder = cwd;
+  // The probe runs on the account of the session that asked, and on the active one when only a folder is named.
+  let env = envOfAccount(accounts.active.id);
   if (typeof id === 'string') {
     if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad session id' });
     const known = getChat(id)?.[key];
@@ -1182,13 +1347,14 @@ async function askLists(req, res, key, list) {
     const row = findRow(id);
     if (!row) return send(res, 404, { error: NO_SESSION });
     folder = row.cwd && fs.existsSync(row.cwd) ? row.cwd : os.homedir();
+    env = envOfAccount(accountOfSession(id).id);
   } else if (cwd === undefined) {
     return send(res, 400, { error: 'Which session or folder?' });
   } else if (typeof cwd !== 'string' || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
     return send(res, 400, { error: 'That folder does not exist on this Mac.' });
   }
   try {
-    return send(res, 200, { [key]: await list(folder, cfg.claude, { env: activeEnv }) });
+    return send(res, 200, { [key]: await list(folder, cfg.claude, { env: () => env }) });
   } catch (e) {
     return send(res, 502, { error: e.message });
   }
@@ -1356,7 +1522,14 @@ function handBashToClaude(id, { run, stdout, stderr }) {
     terminal.hold(id, text);
     return 'held';
   }
-  ensureChat(id, row).send(text);
+  try {
+    ensureChat(id, row).send(text);
+  } catch (e) {
+    // A pinned account that is signed out cannot take it, so it waits with the next message, as it does when the settings say not to reply.
+    if (!e.blocked) throw e;
+    terminal.hold(id, text);
+    return 'held';
+  }
   if (row.archived) unarchive(id);
   return 'sent';
 }
@@ -1578,24 +1751,33 @@ async function bannersApi(req, res, parts) {
 }
 
 // What the Accounts page shows, from what was last worked out. No token, orgId or setting is in it.
-const accountsNow = () => ({
-  accounts: accountLogins.view().map(a => ({
-    ...a, active: a.id === accounts.active.id, first: a.id === accounts.list()[0].id,
-    chats: runningChats().filter(c => c.account === a.id).map(c => ({ id: c.id, title: findRow(c.id)?.title || UNTITLED, state: c.state })),
-  })),
-  autoSwitch: accounts.autoSwitch,
-  auto: accountLogins.banner().auto,
-  chrome: chromeCheck.state(),
-  waiting: accountLogins.waiting(),
-});
+const accountsNow = () => {
+  const own = layout.read();
+  const pinsTo = id => ({
+    sessions: Object.values(own.accounts).filter(v => v === id).length,
+    groups: own.groups.filter(g => g.account === id).length,
+    projects: own.projects.filter(p => p.account === id).length,
+    routines: routineStore.read().routines.filter(r => r.account === id).length,
+  });
+  return {
+    accounts: accountLogins.view().map(a => ({
+      ...a, active: a.id === accounts.active.id, first: a.id === accounts.list()[0].id, pinned: pinsTo(a.id),
+      chats: runningChats().filter(c => c.account === a.id).map(c => ({ id: c.id, title: findRow(c.id)?.title || UNTITLED, state: c.state })),
+    })),
+    autoSwitch: accounts.autoSwitch,
+    auto: accountLogins.banner().auto,
+    chrome: chromeCheck.state(),
+    waiting: accountLogins.waiting(),
+  };
+};
 
 // Asks up to two running chats of each account for its plan usage, so the page can show every account's last answer. No chat is started.
 const askPlans = () => Promise.all(accounts.list().map(a => askPlan(a.id, null)));
 
 // Why a chat stays on the account it started under after a switch, and that it moves once that ends.
-function keptWords(chat) {
+function keptWords(chat, wanted) {
   const [what, ends] = chat.pending.size ? ['waiting on an approval', 'it is answered'] : chat.state !== 'idle' ? ['still in a turn', 'the turn ends'] : ['still running a job', 'the job ends'];
-  return `That chat is ${what} on ${accounts.find(chat.account)?.name ?? 'the other account'}. It moves to ${accounts.active.name} once ${ends}.`;
+  return `That chat is ${what} on ${accounts.find(chat.account)?.name ?? 'the other account'}. It moves to ${accounts.find(wanted)?.name ?? accounts.active.name} once ${ends}.`;
 }
 
 // GET api/accounts lists them. POST api/accounts adds one by name and starts its sign-in, and POST api/accounts/<id>/sign-in starts one. The rest are
@@ -1660,8 +1842,17 @@ async function accountsApi(req, res, parts) {
   // A chat that is busy keeps its process on the old account, so "Continue." would go to the account that is out.
   const kept = row && getChat(row.id);
   kept?.retire(true);
-  if (kept?.proc?.stdin.writable && kept.account !== accounts.active.id) return refuse(409, keptWords(kept));
-  if (row) ensureChat(row.id, row).send('Continue.');
+  // The session's own account, which a pin can keep apart from the one just switched to.
+  const wanted = row && accountOfSession(row.id);
+  if (kept?.proc?.stdin.writable && kept.account !== wanted.id) return refuse(409, keptWords(kept, wanted.id));
+  if (row) {
+    try {
+      ensureChat(row.id, row).send('Continue.');
+    } catch (e) {
+      if (!e.blocked) throw e;
+      return send(res, 409, { error: e.message, blocked: e.blocked });
+    }
+  }
   return send(res, 200, accountsNow());
 }
 
@@ -1698,7 +1889,7 @@ async function api(req, res, u) {
       delete r.sortKey;
     }
     // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, many: true } });
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -1728,7 +1919,7 @@ async function api(req, res, u) {
     return send(res, 200, { folders: [home, ...[...seen.keys()].filter(f => f !== home)].slice(0, 25) });
   }
   if (req.method === 'POST' && u.pathname === '/api/new') {
-    const { cwd, text, mode, model, effort, fast, images: sent, files: listed } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
+    const { cwd, text, mode, model, effort, fast, group, account, images: sent, files: listed } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
     const { images, error } = readImages(sent);
     if (error) return send(res, 400, { error });
     const { files, error: fileError } = uploads.readFiles(listed);
@@ -1741,8 +1932,11 @@ async function api(req, res, u) {
     if (model && !MODEL.test(model)) return send(res, 400, { error: 'Unknown model.' });
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
     if (fast !== undefined && typeof fast !== 'boolean') return send(res, 400, { error: 'Unknown fast mode.' });
+    if (group != null && !groupList().some(g => g.id === group)) return send(res, 400, { error: 'Unknown group.' });
+    if (account != null && (typeof account !== 'string' || !accounts.find(account))) return send(res, 400, { error: 'Unknown account.' });
     const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
-    const id = await newSession({ cwd, text: text || '', images, documents, files, mode: chosen, model, effort, fast });
+    const id = await newSession({ cwd, text: text || '', images, documents, files, mode: chosen, model, effort, fast, group: group ?? null, account: account ?? null });
+    if (group) placeStarted(id, group);
     uploads.record(id, files);
     return send(res, 200, { id });
   }
@@ -1755,6 +1949,7 @@ async function api(req, res, u) {
   if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
   if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: CHANGES.rename(id, body.title) }));
   if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => CHANGES.archived(id, body.archived, body.stop));
+  if (req.method === 'POST' && u.pathname === '/api/layout/account') return pinAccount(req, res);
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
     const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, model: postedModel, effort: postedEffort } = JSON.parse(await readBody(req) || '{}');
@@ -1794,7 +1989,8 @@ async function api(req, res, u) {
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
     // A chip from a sub session starts its session beside it, under the sub session's parent. A chip naming a group is unlinked anyway.
     const nestUnder = named ? null : liveHeadOf(findRow(known?.sessionId || sessionId));
-    const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort });
+    const makerId = known?.sessionId || sessionId;
+    const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort, group: named || groupId || null, parent: named || groupId ? null : nestUnder || makerId });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a
     // section's chip pins it or leaves it loose, as that section's own chat would. A group the chip names wins over both, and the session is
     // unlinked so it stands in that group on its own. See docs/adr/20261027-chips-name-their-group.md.
@@ -1886,12 +2082,18 @@ async function api(req, res, u) {
     const row = findRow(id);
     if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
     const chat = ensureChat(id, row, { mode: body.mode });
-    if (row.groupSession) groupUpdates.ownerSpoke(id);
     // The result of a command run with ! that Claude was not to reply to goes in front of the next message, as its own paragraph.
     // A slash command has to stay first to run, so the result waits for the message after it.
     const held = !isSlashCommand(body.text || '') && terminal.held(id);
     const text = withMentions(files, body.text || '');
-    chat.send(held ? [held, text].filter(t => t.trim()).join('\n\n') : text, images, documents);
+    try {
+      chat.send(held ? [held, text].filter(t => t.trim()).join('\n\n') : text, images, documents);
+    } catch (e) {
+      // A pinned account that is signed out starts nothing. The held result stays held and the page keeps the text in its composer.
+      if (!e.blocked) throw e;
+      return send(res, 409, { error: e.message, blocked: e.blocked });
+    }
+    if (row.groupSession) groupUpdates.ownerSpoke(id);
     if (held) terminal.release(id);
     uploads.record(id, files);
     const unarchived = row.archived && unarchive(id);
@@ -1987,6 +2189,8 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === '/' || u.pathname === '/index.html') return send(res, 200, indexPage(), 'text/html; charset=utf-8');
     send(res, 404, 'Not found', 'text/plain');
   } catch (e) {
+    // A start refused for a pinned account that is signed out is the caller's to fix, so it is told with the data and not logged as a fault.
+    if (e.blocked && !res.headersSent) return send(res, 409, { error: e.message, blocked: e.blocked });
     console.error(e);
     if (!res.headersSent) send(res, 500, { error: e.message });
   }
