@@ -90,7 +90,7 @@ function rig({ uses = true, enabled } = {}) {
       return r.seen[a.id] ?? null;
     },
     emailOf: id => (id === 'second' ? 'second@example.com' : ''),
-    openSettings: async () => { r.opens++; if (r.openFails) throw new Error('secret reason'); },
+    openSettings: async () => { r.opens++; await r.openGate; if (r.openFails) throw new Error('secret reason'); },
     now: () => r.at,
     wait: (run, ms) => {
       const t = { run, ms, live: true };
@@ -165,7 +165,7 @@ test('with the chrome setting off a switch probes nothing and shows no banner, b
 test('a rename while the banner stands shows the new names', async () => {
   const r = rig();
   r.seen.main = true;
-  r.to('second');
+  r.check.switched({ ...r.list[1] });
   await settle();
   r.list[0].name = 'Home';
   r.list[1].name = 'Work';
@@ -274,6 +274,22 @@ test('a failed open answers with plain words and does not mark the banner opened
   await settle();
   r.openFails = true;
   assert.equal(await r.check.open(), OPEN_FAILED);
+  assert.equal(r.check.state().opened, false);
+});
+
+test('an Open press still running when another switch lands does not mark the new banner opened', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.to('second');
+  await settle();
+  let release;
+  r.openGate = new Promise(resolve => { release = resolve; });
+  const press = r.check.open();
+  r.seen = { second: true };
+  r.to('main');
+  await settle();
+  release();
+  await press;
   assert.equal(r.check.state().opened, false);
 });
 

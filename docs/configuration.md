@@ -48,7 +48,7 @@ The settings in `config.json` and `config.local.json`, and the four environment 
 
 ## Environment variables
 
-Six environment variables win over both files:
+Ten environment variables win over both files:
 
 - `PORT` sets the port.
 - `CAPCOM_CLAUDE` sets the CLI.

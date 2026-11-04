@@ -302,17 +302,22 @@ test('a switch on the Accounts pane shows the Chrome banner in the pane and not 
   assert.equal((await accounts(c)).chrome, null);
 });
 
-test('on a short phone the Chrome banner leaves the session list on screen, and a long email stays inside its card', { skip, timeout }, async t => {
+test('the banners take only what the session list leaves: a card that fits shows whole, a short phone scrolls it, and a long email stays inside', { skip, timeout }, async t => {
   const c = await open({ chrome: true, email: `${'long'.repeat(20)}@example.com` });
   await post(c, '/api/accounts/second/use');
   await until(async () => (await accounts(c)).chrome?.state === 'elsewhere');
   const page = await openPage(t, c, '', { phone: true });
-  await page.resize(390, 400);
+  const fit = `(o => ({ list: document.querySelector('#sections').clientHeight, cut: o.scrollHeight > o.clientHeight, wide: o.scrollWidth > o.clientWidth || document.documentElement.scrollWidth > window.innerWidth }))(document.querySelector('.offers'))`;
+  await page.resize(390, 664);
   await page.until(`!!document.querySelector('${chromeSel}')`, 15_000);
-  const fit = await page.evaluate(`({ list: document.querySelector('#sections').clientHeight, stack: document.querySelector('.offers').clientHeight, wide: document.querySelector('.offers').scrollWidth > document.querySelector('.offers').clientWidth || document.documentElement.scrollWidth > window.innerWidth })`);
-  assert.ok(fit.list >= 100, `the list keeps ${fit.list} px`);
-  assert.ok(fit.stack <= 180, `the banners take ${fit.stack} px`);
-  assert.equal(fit.wide, false);
+  const tall = await page.evaluate(fit);
+  assert.equal(tall.cut, false, 'a card with room shows whole');
+  assert.equal(tall.wide, false);
+  await page.resize(390, 400);
+  const short = await page.evaluate(fit);
+  assert.ok(short.list >= 100, `the list keeps ${short.list} px`);
+  assert.equal(short.cut, true, 'the card scrolls instead of pushing the list out');
+  assert.equal(short.wide, false);
 });
 
 test('on another route the sidebar shows the Chrome banner, and the pane takes it over when the Accounts page opens', { skip, timeout }, async t => {

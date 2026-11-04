@@ -764,6 +764,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 
 .group { position: relative; padding: 0.5rem; }
 
+.list:has(.offer) > .sections { min-height: min(12.5rem, 35dvh); }
+
 .sections > .group { margin-inline: 0.25rem; padding-inline: 0.25rem; }
 
 .sections > .group ~ .group::before {
@@ -3241,6 +3243,15 @@ button.thumb {
 }
 
 @supports (animation-timeline: scroll()) {
+  .offers {
+    -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--scroll-fade-b)), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--scroll-fade-b)), transparent 100%);
+    animation: 1ms ease-in-out scroll-fade-reveal-b;
+    animation-timeline: scroll(self y);
+    animation-range: calc(100% - 4rem) 100%;
+    animation-fill-mode: both;
+  }
+
   [data-slot="command-list"] {
     -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--scroll-fade-b)), transparent 100%);
     mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--scroll-fade-b)), transparent 100%);
@@ -4206,8 +4217,8 @@ html.viewing, html.viewing body { overflow: hidden; }
 .list-foot .btn { --btn-fg: var(--muted-foreground); }
 
 .offers {
-  flex: none;
-  max-height: 45dvh;
+  flex: 0 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -4230,6 +4241,8 @@ html.viewing, html.viewing body { overflow: hidden; }
 .offer .notice { margin: 0.5rem 0 0; }
 
 .offer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.65rem; }
+
+.offer-actions .btn { max-width: 100%; height: auto; min-height: 2.25rem; padding-block: 0.4rem; white-space: normal; }
 
 .offer[data-tone="warning"] { border-color: var(--warning); background: var(--warning-muted); }
 
