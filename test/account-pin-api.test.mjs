@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { serviceFor } from '../lib/accounts.mjs';
 import { localIso } from '../lib/routines.mjs';
-import { as, cliCalls, listen, request, restart, signIn, start, until } from './harness.mjs';
+import { as, cliCalls, listen, request, restart, signIn, start, until as waitFor } from './harness.mjs';
 
 const DAY = 86_400_000;
 const GROUPS = [{ id: 'cg-a', name: 'Work', project: 'cp-a' }, { id: 'cg-b', name: 'Loose' }];
@@ -40,6 +40,7 @@ const get = (c, url) => request(c.s, 'GET', url, { headers: as(c.token) });
 const post = (c, url, json = {}, headers = { origin: c.s.origin }) => request(c.s, 'POST', url, { headers: { connection: 'close', ...as(c.token), ...headers }, json });
 const accountsOf = async c => (await get(c, '/api/accounts')).body();
 const pin = (c, kind, id, account) => post(c, '/api/layout/account', { kind, id, account });
+const until = (check, ms = 20_000) => waitFor(check, ms);
 const say = (c, id, text = 'finish the turn') => post(c, `/api/sessions/${id}/send`, { text });
 const calls = c => cliCalls(c.s);
 const startsOn = (c, dir) => calls(c).filter(x => x.started && x.configDir === dir).length;
@@ -332,6 +333,12 @@ test('a move that drops a pin on the active account\'s own id asks the owner, si
   assert.equal(await moveAsk(c, 'held', { session_id: 'held', group: 'Work' }), 'move "Held" [held] to "Work", which runs it on the active account, now Main');
 });
 
+test('a move of a nested session asks the owner when it relinks a session off that session\'s pin', async () => {
+  const c = await open({ sessions: [{ id: 'head', title: 'Head', ago: 5 }, { id: 'mid', title: 'Mid', ago: 6, parent: 'head' }, { id: 'low', title: 'Low', ago: 7, parent: 'mid' }] });
+  assert.equal((await pin(c, 'session', 'mid', 'second')).status, 200);
+  assert.equal(await moveAsk(c, 'head', { session_id: 'mid', group: 'Work' }), 'move "Mid" [mid] to "Work", which runs it on Second, and the 1 session under it can change account too');
+});
+
 test('a row says the account its process runs on when its parent has dropped out of the list for age', async () => {
   const c = await open({
     sessions: [{ id: 'old', title: 'Old parent', source: 'cli', ago: 60 * 1440 }, { id: 'kid', title: 'Kid', ago: 5, parent: 'old' }],
@@ -352,9 +359,9 @@ test('a first message worded like a routine\'s does not hand a session Capcom st
   const id = added.body().routine.id;
   const folder = path.join(c.s.home, '.claude', 'projects', '-test-folder');
   fs.writeFileSync(path.join(folder, 'trap.jsonl'), `${JSON.stringify({ type: 'user', cwd: c.s.home, message: { role: 'user', content: `<scheduled-task name="${id}">\nDo it.` } })}\n`);
-  await until(async () => !!(await rowOf(c, 'trap')), 8000);
+  await until(async () => !!(await rowOf(c, 'trap')));
   fs.writeFileSync(path.join(c.s.state, 'started.json'), JSON.stringify([{ id: 'trap', cwd: c.s.home, at: Date.now(), title: 'Trap' }]));
-  await until(async () => (await rowOf(c, 'trap')).source === 'capcom', 8000);
+  await until(async () => (await rowOf(c, 'trap')).source === 'capcom');
   assert.deepEqual([(await rowOf(c, 'trap')).account, (await rowOf(c, 'trap')).accountFrom], ['main', 'active']);
   assert.equal((await say(c, 'trap')).status, 200);
   await until(() => startsOn(c, null) === 1);

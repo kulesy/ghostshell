@@ -548,8 +548,8 @@ function subCtx(sessionId) {
         if (!picked || !facts) return { changes: true };
         const was = accountFor({ id, ...facts }, d);
         const now = accountFor({ id, ...facts, group: picked.id, parent: null }, d);
-        // A pin on the active account's own id still holds through a switch, and the sessions below can follow the move or be relinked off a pin, so both ask.
-        const below = belowNow(id, { archived: false }).length;
+        // A pin on the active account's own id still holds through a switch, and the sessions below can follow a head or be relinked off a nested session's pin, so both ask.
+        const below = belowNow(id, { archived: false }).length + Object.keys(leaving(id).relink ?? {}).length;
         return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || below > 0, to: accounts.find(now.account)?.name, active: now.from === 'active', below };
       } catch {
         return { changes: true };
