@@ -62,13 +62,13 @@ const Square = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-h
 
 // A mode the list does not hold, such as one Desktop recorded, gets an option of its own so the box shows the truth.
 // The choice shows as plain text, as in Desktop, with the native picker laid invisibly over it so a tap still opens it.
-// `empty` is what shows until a value is known, and it is the picker's resting option then, so choosing the first real one still fires a change.
+// `empty` is what shows until a value is known. The select rests on nothing then, so choosing the first real option still fires a change.
+// It gets no option of its own, because iOS ignores `hidden` and would list it as a ticked row.
 function Pick({ id, label, empty, value, options, disabled, onChange }) {
   const all = value && !options.some(([v]) => v === value) ? [...options, [value, value]] : options;
   const shown = all.find(([v]) => v === value)?.[1] ?? empty;
   return html`<label class="btn pick" data-variant="ghost" data-size="sm" data-disabled=${disabled || null}><span class="sr">${label}</span><span aria-hidden="true">${shown}</span>
     <select id=${id} disabled=${disabled} value=${value || ''} onChange=${e => onChange(e.target.value)}>
-      ${value ? null : html`<option value="" disabled hidden>${empty}</option>`}
       ${all.map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}
     </select></label>`;
 }

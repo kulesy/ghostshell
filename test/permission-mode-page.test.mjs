@@ -126,8 +126,7 @@ test('a mode picked in a new session before the defaults land wins over them, Ma
     const s = await start({ claude: true });
     userSettings(s, { permissions: { defaultMode: 'acceptEdits' }, model: 'claude-opus-5-5' });
     const page = await held(t, s, '#/new');
-    assert.equal(await page.evaluate(`(el => el.selectedIndex < 0 || el.options[el.selectedIndex].disabled)(document.querySelector('#mode'))`), true,
-      'the box rests on no real choice, so choosing the first one is a change');
+    assert.equal(await page.evaluate(`document.querySelector('#mode').selectedIndex`), -1, 'the box rests on nothing, so choosing the first option is a change');
     await page.evaluate(`(el => { el.value = ${JSON.stringify(picked[0])}; el.dispatchEvent(new Event('change', { bubbles: true })); })(document.querySelector('#mode'))`);
     assert.equal(await page.evaluate(SHOWN), picked[1]);
     await page.evaluate('window.__release()');
