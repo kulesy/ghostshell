@@ -13,8 +13,9 @@ import { chatsOf, guard, isChat, isIdle, labelOf, lastTurnEntry, lockHolder, par
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 test('arguments default to waiting 30 minutes for the standard label, and each flag is read', () => {
-  assert.deepEqual(parseArgs([]), { now: false, foreground: false, wait: 30, label: null });
-  assert.deepEqual(parseArgs(['--now', '--foreground', '--wait', '0.05', '--label=com.example.x']), { now: true, foreground: true, wait: 0.05, label: 'com.example.x' });
+  assert.deepEqual(parseArgs([]), { now: false, takeOver: false, foreground: false, wait: 30, label: null });
+  assert.deepEqual(parseArgs(['--now', '--foreground', '--wait', '0.05', '--label=com.example.x']), { now: true, takeOver: false, foreground: true, wait: 0.05, label: 'com.example.x' });
+  assert.equal(parseArgs(['--now', '--take-over']).takeOver, true);
   assert.equal(parseArgs(['--wait=2']).wait, 2);
 });
 
@@ -35,7 +36,7 @@ test('the lock is held by a live pid other than the caller, and by no one when t
 });
 
 test('bad arguments come back as an error', () => {
-  for (const bad of [['--wait'], ['--wait', '0'], ['--wait', 'soon'], ['--wait', '-1'], ['--label'], ['--label', '../x'], ['--now=1'], ['--nope'], ['stray']]) {
+  for (const bad of [['--wait'], ['--wait', '0'], ['--wait', 'soon'], ['--wait', '-1'], ['--label'], ['--label', '../x'], ['--now=1'], ['--take-over'], ['--take-over=1', '--now'], ['--nope'], ['stray']]) {
     assert.ok(parseArgs(bad).error, bad.join(' '));
   }
 });
@@ -261,13 +262,13 @@ test('without --foreground the command returns at once and one detached worker d
   assert.deepEqual(s.calls(), [kickstart]);
 });
 
-test('--now beside a waiting worker tells it to go now, and the one restart is the waiter\'s', async () => {
+test('--now --take-over beside a waiting worker tells it to go now, and the one restart is the waiter\'s', async () => {
   const s = await scenario('takeover');
   const waiter = s.restart('--wait', '5');
   assert.ok(await until(() => fs.existsSync(path.join(s.state, 'restart.lock'))), 'the worker holds the lock');
   await sleep(500);
   assert.deepEqual(s.calls(), [], 'the worker waits while the chat is mid-turn');
-  const forced = await s.restart('--now');
+  const forced = await s.restart('--now', '--take-over');
   assert.equal(forced.code, 0, forced.out);
   assert.match(forced.out, /Told the waiting restart worker \(pid \d+\) to restart now/);
   const done = await waiter;
@@ -276,6 +277,23 @@ test('--now beside a waiting worker tells it to go now, and the one restart is t
   assert.match(done.out, /Told to stop waiting, so restarting now/);
   assert.deepEqual(s.calls(), [kickstart]);
   assert.equal(fs.existsSync(path.join(s.state, 'restart.lock')), false, 'the lock is removed');
+});
+
+test('plain --now beside a waiting worker refuses and leaves it waiting', async () => {
+  const s = await scenario('now-refused');
+  const waiter = s.restart('--wait', '5');
+  assert.ok(await until(() => fs.existsSync(path.join(s.state, 'restart.lock'))));
+  const second = await s.restart('--now');
+  assert.equal(second.code, 1);
+  assert.match(second.out, /already under way/);
+  await sleep(500);
+  assert.deepEqual(s.calls(), [], 'the worker is still waiting');
+  s.write('end_turn');
+  const done = await waiter;
+  s.track();
+  assert.equal(done.code, 0, done.out);
+  assert.doesNotMatch(done.out, /Told to stop waiting/);
+  assert.deepEqual(s.calls(), [kickstart]);
 });
 
 test('a --wait run beside a waiting worker still refuses and signals nothing', async () => {
@@ -293,13 +311,13 @@ test('a --wait run beside a waiting worker still refuses and signals nothing', a
   assert.deepEqual(s.calls(), [kickstart]);
 });
 
-test('--now with a lock that names a live process that is not a restart worker does not signal it', async () => {
+test('--now --take-over with a lock that names a live process that is not a restart worker does not signal it', async () => {
   const s = await scenario('stale-lock', { transcript: 'end_turn' });
   const other = spawn('sleep', ['60'], { stdio: 'ignore' });
   live.add(other.pid);
   try {
     fs.writeFileSync(path.join(s.state, 'restart.lock'), String(other.pid));
-    const { code, out } = await s.restart('--now');
+    const { code, out } = await s.restart('--now', '--take-over');
     s.track();
     assert.equal(code, 1);
     assert.match(out, /already under way/);

@@ -20,10 +20,10 @@ const pollMs = Number(process.env.CAPCOM_RESTART_POLL_MS || POLL_MS);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = text => console.log(`${new Date().toISOString()} ${text}`);
 
-// A --now run does not queue behind a waiting worker: it tells that worker to stop waiting and exits. Only a live restart worker is signalled,
+// Only --now --take-over (the banner's Force restart) tells a waiting worker to stop waiting and exits; plain --now refuses, so a chat cannot cut other chats. Only a live restart worker is signalled,
 // because a stale lock's pid can belong to another process by now, and an unhandled SIGUSR2 would kill it.
 async function takeOver(pid) {
-  if (!opts.now) return false;
+  if (!opts.takeOver) return false;
   const row = (await psRows()).find(r => r.pid === pid);
   const words = row?.command.split(/\s+/) ?? [];
   if (!words.includes('--foreground') || !words.some(w => w.endsWith('/restart.mjs'))) return false;
