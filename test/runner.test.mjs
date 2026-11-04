@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
-import { activeStates, chatFor, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useActiveAccount } from '../lib/runner.mjs';
+import { activeStates, chatFor, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useAccounts } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -1406,13 +1406,13 @@ function accountCli(dir) {
 }
 const startedDirs = dir => fs.readFileSync(path.join(dir, 'started.log'), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l).dir);
 const asAccount = (id, folder) => ({ id, env: { ...process.env, ...(folder ? { CLAUDE_CONFIG_DIR: folder } : { CLAUDE_CONFIG_DIR: undefined }) } });
-const resetAccount = () => { useActiveAccount(() => ({ id: 'main', env: process.env })); onUsage(null); retireWhenQuietFor(15_000); };
+const resetAccount = () => { useAccounts(() => ({ id: 'main', env: process.env })); onUsage(null); retireWhenQuietFor(15_000); };
 
 test('a process starts with the active account\'s environment and its chat records that account, so a later start uses the account then active', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
   const cli = accountCli(dir);
   let now = asAccount('second', '/accounts/second');
-  useActiveAccount(() => now);
+  useAccounts(() => now);
   t.after(resetAccount);
   const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
   t.after(() => chat.stop());
@@ -1430,7 +1430,7 @@ test('a switch stops the idle chats of the other account at once, lets a chat mi
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
   const cli = accountCli(dir);
   let now = asAccount('main', null);
-  useActiveAccount(() => now);
+  useAccounts(() => now);
   retireWhenQuietFor(200);
   t.after(resetAccount);
   const open = async id => {
@@ -1470,11 +1470,59 @@ test('a switch stops the idle chats of the other account at once, lets a chat mi
   assert.equal(idle.status().running, true, 'a chat on the active account stays');
 });
 
+test('a pinned chat stays on its account through a switch, moves once its pin changes without cutting a running turn, and a blocked pin refuses a start with a 409', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = accountCli(dir);
+  let now = asAccount('main', null);
+  let pin = asAccount('second', '/accounts/second');
+  useAccounts(chat => (chat.id === 'pinned-one' ? pin : now));
+  retireWhenQuietFor(200);
+  t.after(resetAccount);
+  const open = async id => {
+    const chat = chatFor(id, { cwd: dir, mode: 'manual', claude: cli, chrome: false, chips: null });
+    t.after(() => chat.stop());
+    chat.send('start');
+    chat.send('ok');
+    await until(() => chat.state === 'idle');
+    return chat;
+  };
+  const pinned = await open('pinned-one');
+  const loose = await open('loose-one');
+  assert.deepEqual([pinned.account, loose.account], ['second', 'main']);
+  assert.deepEqual(startedDirs(dir), ['/accounts/second', null]);
+
+  now = asAccount('third', '/accounts/third');
+  retireOtherAccounts();
+  await until(() => !loose.status().running);
+  assert.equal(pinned.status().running, true, 'a switch leaves pinned work where it is');
+
+  pinned.send('hold');
+  await until(() => pinned.state !== 'idle');
+  pin = asAccount('main', null);
+  retireOtherAccounts();
+  assert.equal(pinned.status().running, true, 'the running turn is not cut');
+  pinned.proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: 'ok' } }) + '\n');
+  await until(() => !pinned.status().running);
+
+  pinned.send('again');
+  await until(() => pinned.state === 'idle');
+  assert.equal(pinned.account, 'main', 'the next message starts on the changed pin');
+  assert.equal(startedDirs(dir).at(-1), null);
+
+  const blocked = { account: { id: 'second', name: 'Second' }, reason: 'signed-out', from: 'session', fromName: '' };
+  pin = { id: 'second', env: process.env, blocked };
+  retireOtherAccounts();
+  await until(() => !pinned.status().running);
+  const before = startedDirs(dir).length;
+  assert.throws(() => pinned.send('refused'), e => e.status === 409 && e.blocked === blocked);
+  assert.equal(startedDirs(dir).length, before, 'no process started');
+});
+
 test('a switched chat runs the turn the CLI starts for a job that ended before it stops', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
   const cli = accountCli(dir);
   let now = asAccount('main', null);
-  useActiveAccount(() => now);
+  useAccounts(() => now);
   retireWhenQuietFor(200);
   t.after(resetAccount);
   const chat = chatFor('notice-one', { cwd: dir, mode: 'manual', claude: cli, chrome: false, chips: null });
@@ -1495,7 +1543,7 @@ test('a switched chat runs the turn the CLI starts for a job that ended before i
 test('only the CLI\'s own limit words mark an account out, the turn-end says so, and a turn that ends well clears the mark', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
   const cli = accountCli(dir);
-  useActiveAccount(() => asAccount('second', '/accounts/second'));
+  useAccounts(() => asAccount('second', '/accounts/second'));
   t.after(resetAccount);
   const heard = [];
   onUsage((account, text) => heard.push([account, text]));
@@ -1546,6 +1594,9 @@ test('the title namer and the folder probe start with the environment they are g
   const { askClaude } = await import('../lib/title-ask.mjs');
   const env = () => ({ ...process.env, CLAUDE_CONFIG_DIR: '/accounts/second' });
   assert.equal(await askClaude(cli, { env })('name this'), 'A title');
+  const named = [];
+  await askClaude(cli, { env: account => { named.push(account); return env(); } })('name this', { account: 'second' });
+  assert.deepEqual(named, ['second']);
   await listCommands(fs.mkdtempSync(path.join(dir, 'f-')), cli, { env });
-  assert.deepEqual(fs.readFileSync(seen, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)), ['/accounts/second', '/accounts/second']);
+  assert.deepEqual(fs.readFileSync(seen, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)), ['/accounts/second', '/accounts/second', '/accounts/second']);
 });

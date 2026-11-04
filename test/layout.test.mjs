@@ -8,8 +8,8 @@ import { makeLayout } from '../lib/layout.mjs';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-layout-test-'));
 
-// An empty archivedWith is written to every file, so the tests that compare a whole file leave it out and the batch tests look at it themselves.
-const omitEmptyBatches = ({ archivedWith, ...rest }) => (Object.keys(archivedWith ?? {}).length ? { ...rest, archivedWith } : rest);
+// An empty archivedWith and an empty accounts are written to every file, so the tests that compare a whole file leave them out and the batch and pin tests look at them themselves.
+const omitEmptyBatches = ({ archivedWith, accounts, ...rest }) => ({ ...rest, ...(Object.keys(archivedWith ?? {}).length && { archivedWith }), ...(Object.keys(accounts ?? {}).length && { accounts }) });
 
 function folder(contents) {
   const dir = fs.mkdtempSync(path.join(base, 'state-'));
@@ -28,8 +28,8 @@ const rewritten = f => fs.statSync(f.file).mtimeMs !== 1000;
 
 test('a layout file from before projects, unarchiving and archiving loads as it was, and a missing file is an empty layout', () => {
   const { layout } = folder(OLD);
-  assert.deepEqual(layout.read(), { ...OLD, projects: [], retired: [], sections: {}, unarchived: [], archived: {}, archivedWith: {}, titles: {}, parents: {} });
-  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], retired: [], sections: {}, pinned: [], assignments: {}, unarchived: [], archived: {}, archivedWith: {}, titles: {}, parents: {} });
+  assert.deepEqual(layout.read(), { ...OLD, projects: [], retired: [], sections: {}, unarchived: [], archived: {}, archivedWith: {}, titles: {}, parents: {}, accounts: {} });
+  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], retired: [], sections: {}, pinned: [], assignments: {}, unarchived: [], archived: {}, archivedWith: {}, titles: {}, parents: {}, accounts: {} });
 });
 
 test('archiving records when, takes the session out of the unarchived list, and keeps everything else in the file, including keys this version does not know', () => {
@@ -875,4 +875,40 @@ test('restore drops the group of a session whose group has gone, and ignores an 
   assert.equal('s1' in now.assignments, false);
   assert.equal('s1' in now.parents, false);
   assert.equal('not a/session' in now.assignments, false);
+});
+
+test('a session, a group and a project each keep a pin to an account, clear it with null, and the rest of the file stays', () => {
+  const f = folder({ ...WITH_PROJECTS, later: { kept: true } });
+  const group = WITH_PROJECTS.groups[0].id;
+  const project = WITH_PROJECTS.projects[0].id;
+  assert.equal(f.layout.setAccount('session', 's1', 'second'), 'second');
+  f.layout.setAccount('group', group, 'second');
+  f.layout.setAccount('project', project, 'third');
+  assert.deepEqual(f.onDisk().accounts, { s1: 'second' });
+  assert.equal(f.onDisk().groups.find(g => g.id === group).account, 'second');
+  assert.equal(f.onDisk().projects.find(p => p.id === project).account, 'third');
+  assert.deepEqual(f.onDisk().later, { kept: true });
+  assert.equal(f.layout.read().projects.find(p => p.id === project).account, 'third');
+
+  f.layout.setAccount('session', 's1', null);
+  f.layout.setAccount('group', group, null);
+  f.layout.setAccount('project', project, null);
+  assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, later: { kept: true } });
+});
+
+test('a pin is refused for an unknown group or project, a bad kind and a bad account, and nothing is written', () => {
+  const f = folder(WITH_PROJECTS);
+  backdate(f);
+  assert.throws(() => f.layout.setAccount('group', 'cg-none', 'second'), { status: 404 });
+  assert.throws(() => f.layout.setAccount('project', 'cp-none', 'second'), { status: 404 });
+  assert.throws(() => f.layout.setAccount('routine', 'r1', 'second'), { status: 400 });
+  assert.throws(() => f.layout.setAccount('session', '', 'second'), { status: 400 });
+  for (const account of ['', 7, undefined, {}]) assert.throws(() => f.layout.setAccount('session', 's1', account), { status: 400 }, JSON.stringify(account));
+  assert.equal(rewritten(f), false);
+});
+
+test('a layout file with a pin that is not an account id loads without it, and one with accounts as a list is refused', () => {
+  const f = folder({ ...OLD, accounts: { s1: 'second', s2: '', s3: 7 } });
+  assert.deepEqual(f.layout.read().accounts, { s1: 'second' });
+  assert.match(folder({ ...OLD, accounts: [] }).layout.read().problem ?? '', /accounts/);
 });

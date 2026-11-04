@@ -50,11 +50,12 @@ function rig({ cron, jitter, armed = T0, enabled = true, patch = {}, body = 'Che
       working: id => r.working.has(id),
       waiting: id => r.waiting.has(id),
       stop: id => { r.stops.push(id); r.working.delete(id); r.waiting.delete(id); },
-      check: routine => (routine.cwd === '/no/such/folder' ? 'The folder does not exist.' : null),
+      check: routine => (routine.cwd === '/no/such/folder' ? 'The folder does not exist.' : routine.account === 'out' ? 'Its account is signed out.' : null),
       idTaken: id => r.taken.has(id),
       fieldProblems: routine => ({
         ...(routine.cwd === '/no/such/folder' || !fs.existsSync(routine.cwd) ? { cwd: 'The folder does not exist.' } : {}),
         ...(/\s/.test(routine.model ?? '') ? { model: 'Unknown model.' } : {}),
+        ...(routine.account && !['second', 'out'].includes(routine.account) ? { account: 'Unknown account.' } : {}),
       }),
     });
     return r.sched;
@@ -294,6 +295,14 @@ test('switching on and off is checked, repeated safely, and refused when the rou
   r.store.update('demo', { cron: '30 7 * * 1-5', file: path.join(r.state, 'gone.md') });
   assert.throws(() => r.sched.setEnabled('demo', true), e => e.status === 400 && /Cannot read .*gone\.md/.test(e.message));
   assert.equal(r.demo().enabled, false);
+});
+
+test('a routine pinned to an account whose sign-in is out cannot be switched on', () => {
+  const r = rig({ enabled: false });
+  r.store.update('demo', { account: 'out' });
+  assert.throws(() => r.sched.setEnabled('demo', true), e => e.status === 400 && /cannot be switched on\. Its account is signed out\./.test(e.message));
+  r.store.update('demo', { account: 'second' });
+  assert.equal(r.sched.setEnabled('demo', true).enabled, true);
 });
 
 test('a fire missed while the Mac slept runs once on waking, however many were missed', async () => {
@@ -541,7 +550,7 @@ test('a routines.json that cannot be read stops the check without throwing, and 
 test('the list shows each routine with its next fire in local time, whether it is running, and what is wrong with it', () => {
   const r = rig({ enabled: false });
   const [item] = r.sched.list().routines;
-  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'enabled', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'retry', 'running', 'next', 'problem']);
+  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'account', 'enabled', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'retry', 'running', 'next', 'problem']);
   assert.deepEqual([item.id, item.title, item.enabled, item.running, item.problem], ['demo', 'Demo routine', false, false, null]);
   assert.equal(item.next, '2026-10-16T07:42:17+11:00');
   r.store.update('demo', { cron: 'nonsense' });
@@ -898,6 +907,20 @@ test('adding is refused with every bad field named, and nothing is written', () 
   assert.equal(fs.existsSync(promptsOf(r)), false);
   const long = r.sched.add({ ...MORNING, cwd: r.state, title: '🚀'.repeat(120), jitterSeconds: 86399 });
   assert.deepEqual([[...long.title].length, long.jitterSeconds], [120, 86399]);
+});
+
+test('a routine\'s account is a listed account or empty, empty is none, and anything else is refused with the field named', () => {
+  const r = rig({ enabled: false });
+  const added = r.sched.add({ ...MORNING, cwd: r.state, account: ' second ' });
+  assert.equal(added.account, 'second');
+  assert.equal(r.sched.add({ ...MORNING, cwd: r.state, title: 'B' }).account, null);
+  assert.equal(r.sched.add({ ...MORNING, cwd: r.state, title: 'C', account: '' }).account, null);
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, title: 'D', account: 'gone' }), refused(400, ['account']));
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, title: 'E', account: 7 }), refused(400, ['account']));
+  assert.equal(r.sched.edit(added.id, { account: null }).account, null);
+  assert.equal(r.sched.edit(added.id, { account: 'second' }).account, 'second');
+  assert.throws(() => r.sched.edit(added.id, { account: 'gone' }), refused(400, ['account']));
+  assert.equal(r.sched.edit(added.id, { title: 'Renamed' }).account, 'second', 'an edit that does not send it keeps it');
 });
 
 test('a title is read as a group\'s name is: one that draws nothing is refused, a bidi control is dropped, and an emoji keeps its joiners', () => {
@@ -1383,7 +1406,7 @@ test('the store adds and removes routines, and refuses an id that is there, one 
   const dir = fs.mkdtempSync(path.join(base, 'store-'));
   const store = makeRoutines(dir);
   const routine = { id: 'a', title: 'A', cron: '0 0 * * *', jitterSeconds: 0, file: store.promptFile('a'), cwd: dir, model: null, effort: null, mode: null, enabled: true, armedAt: localIso(T0) };
-  assert.deepEqual(store.add(routine), { ...routine, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null, retry: null });
+  assert.deepEqual(store.add(routine), { ...routine, account: null, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null, retry: null });
   assert.throws(() => store.add(routine), refused(409));
   assert.deepEqual(store.read().routines.map(x => x.id), ['a']);
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'routines.json'), 'utf8')).routines[0]).slice(0, 4), ['id', 'title', 'cron', 'jitterSeconds']);
@@ -1432,6 +1455,16 @@ test('an edit never stops or changes a run that is working, and the next run use
 
 const failing = (r, message = 'spawn claude ENOENT') => { r.onStart = async () => { throw new Error(message); }; };
 const MINUTE = 60_000;
+
+test('a start refused because its pinned account is signed out is recorded and never queued for a retry', async () => {
+  const r = rig();
+  r.onStart = async () => { throw Object.assign(new Error('Its routine (Demo) is pinned to Second, which is signed out. Sign it in first.'), { status: 409, blocked: { reason: 'signed-out' } }); };
+  await r.tickAt(FRIDAY);
+  assert.match(r.demo().lastError, /pinned to Second, which is signed out/);
+  assert.equal(r.demo().retry, null);
+  await r.tickAt(FRIDAY + 10 * MINUTE);
+  assert.equal(r.calls.length, 1, 'nothing runs it again until the next fire');
+});
 
 test('a failed scheduled start queues the fire, with the tries so far and when the next one is', async () => {
   const r = rig();
