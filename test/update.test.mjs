@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { importedAt, inQuietWindow, makeUpdate, needsRestart, parseSubject, QUIET_REASON, repoUrl, restartRefused, waitMinutes } from '../lib/update.mjs';
+import { CHANGED_REASON, importedAt, inQuietWindow, makeUpdate, needsRestart, parseSubject, QUIET_REASON, repoUrl, REREAD_EVERY_MS, restartRefused, waitMinutes } from '../lib/update.mjs';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-update-test-'));
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' } });
@@ -231,6 +231,148 @@ test('an update is refused when the checkout has a commit that is not on main', 
   assert.deepEqual([head(r), r.restarts.length], [before, 0]);
 });
 
+// Real git, with every call recorded so a test can say what did and did not run.
+const recorded = calls => root => args => {
+  calls.push(args);
+  return new Promise((resolve, reject) => { try { resolve(git(root, ...args)); } catch (e) { reject(e); } });
+};
+const ran = (calls, command) => calls.filter(args => args[0] === command).length;
+
+test('a checkout pulled past the last check is not called diverged, and the press restarts without a merge', async () => {
+  const calls = [];
+  const r = rig({ git: recorded(calls) });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  r.merge('Move the button (#3)', { 'public/app.js': 'export const app = 2;\n' });
+  git(r.live, 'pull', '-q', '--ff-only');
+  const pulled = head(r);
+  assert.deepEqual(await r.update.update(), {});
+  assert.deepEqual([head(r), r.restarts, ran(calls, 'merge')], [pulled, [[r.live, 30]], 0]);
+  assert.deepEqual([r.update.state().kind, r.update.state().count], ['pulled', 2]);
+});
+
+test('an update merges what its own check found, so changes merged since the banner was drawn are counted', async () => {
+  const r = rig();
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  r.merge('Move the button (#3)', { 'public/app.js': 'export const app = 2;\n' });
+  assert.deepEqual(await r.update.update(), {});
+  assert.equal(head(r), originHead(r));
+  assert.deepEqual(r.restarts, [[r.live, 30]]);
+  assert.equal(r.update.state().count, 2);
+});
+
+test('a restart the banner did not offer stops the press with nothing changed, and the next press goes ahead', async () => {
+  const r = rig();
+  r.merge('Move the button (#2)', { 'public/app.js': 'export const app = 2;\n' });
+  await r.update.check();
+  assert.equal(r.update.state().restart, false);
+  r.merge('Change the server (#3)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  const before = head(r);
+  assert.deepEqual(await r.update.update(), { problem: CHANGED_REASON });
+  assert.deepEqual([head(r), r.restarts.length], [before, 0]);
+  assert.deepEqual([r.update.state().kind, r.update.state().restart, r.update.state().count], ['update', true, 2]);
+  assert.deepEqual(await r.update.update(), {});
+  assert.equal(head(r), originHead(r));
+  assert.deepEqual(r.restarts, [[r.live, 30]]);
+});
+
+test('a merge the banner did not offer stops a press of Restart with nothing changed', async () => {
+  const r = rig();
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  git(r.live, 'pull', '-q', '--ff-only');
+  await r.update.check();
+  assert.equal(r.update.state().kind, 'pulled');
+  r.merge('Move the button (#3)', { 'public/app.js': 'export const app = 2;\n' });
+  const before = head(r);
+  assert.deepEqual(await r.update.update(), { problem: CHANGED_REASON });
+  assert.deepEqual([head(r), r.restarts.length, r.update.state().kind], [before, 0, 'update']);
+});
+
+test('a restart found by the press is refused in the quiet window before anything merges', async () => {
+  const r = rig({ at: MONDAY_EARLY });
+  r.merge('Move the button (#2)', { 'public/app.js': 'export const app = 2;\n' });
+  await r.update.check();
+  r.merge('Change the server (#3)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  const before = head(r);
+  assert.deepEqual(await r.update.update(), { problem: QUIET_REASON });
+  assert.deepEqual([head(r), r.restarts.length], [before, 0]);
+});
+
+test('page-only changes pulled by hand since the last check leave nothing to do, and the banner goes', async () => {
+  const r = rig();
+  r.merge('Move the button (#2)', { 'public/app.js': 'export const app = 2;\n' });
+  await r.update.check();
+  git(r.live, 'pull', '-q', '--ff-only');
+  assert.deepEqual(await r.update.update(), {});
+  assert.deepEqual(r.restarts, []);
+  assert.deepEqual(r.update.state(), { show: false });
+});
+
+test('a checkout ahead of main with nothing to merge offers the restart and is not called diverged', async () => {
+  const r = rig();
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  git(r.live, 'pull', '-q', '--ff-only');
+  put(r.live, 'public/mine.js', 'mine\n');
+  git(r.live, 'add', '-A');
+  git(r.live, 'commit', '-q', '-m', 'Local work');
+  await r.update.check();
+  assert.equal(r.update.state().kind, 'pulled');
+  assert.deepEqual(await r.update.update(), {});
+  assert.deepEqual(r.restarts, [[r.live, 30]]);
+});
+
+test('with the fetch down, a press still works from the checkout as it stands', async () => {
+  let down = false;
+  const r = rig({
+    git: root => args => {
+      if (down && args[0] === 'fetch') return Promise.reject(new Error('offline'));
+      return recorded([])(root)(args);
+    },
+  });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  git(r.live, 'pull', '-q', '--ff-only');
+  down = true;
+  assert.deepEqual(await r.update.update(), {});
+  assert.deepEqual(r.restarts, [[r.live, 30]]);
+});
+
+test('a git failure during the press is reported as that, and nothing runs on the old result', async () => {
+  let failing = false;
+  const r = rig({
+    git: root => args => {
+      if (failing && args[0] === 'rev-list') return Promise.reject(Object.assign(new Error('bad object'), { code: 128 }));
+      return recorded([])(root)(args);
+    },
+  });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  failing = true;
+  const before = head(r);
+  assert.deepEqual(await r.update.update(), { problem: 'Could not read this checkout.' });
+  assert.deepEqual([head(r), r.restarts.length], [before, 0]);
+});
+
+test('the page asking for state rereads the checkout at most once a minute and never fetches', async () => {
+  const calls = [];
+  const r = rig({ git: recorded(calls) });
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  assert.equal(r.update.state().kind, 'update');
+  r.merge('Move the button (#3)', { 'public/app.js': 'export const app = 2;\n' });
+  git(r.live, 'pull', '-q', '--ff-only');
+  calls.length = 0;
+  await r.update.refresh();
+  assert.deepEqual([r.update.state().kind, r.update.state().count, ran(calls, 'fetch')], ['pulled', 2, 0]);
+  calls.length = 0;
+  await r.update.refresh();
+  assert.equal(calls.length, 0, 'inside the minute nothing runs');
+  r.at = new Date(r.at.getTime() + REREAD_EVERY_MS);
+  await r.update.refresh();
+  assert.deepEqual([calls.length > 0, ran(calls, 'fetch')], [true, 0]);
+});
+
 test('an update is refused while a restart is under way, and when there is nothing to update', async () => {
   const r = rig();
   assert.deepEqual(await r.update.update(), { problem: 'There is nothing to update.' });
@@ -291,7 +433,7 @@ test('when the helper gives up, the banner offers Restart again and shows the la
   assert.equal(r.restarts.length, 2);
 });
 
-test('a failed fetch keeps the last result', async () => {
+test('a failed fetch keeps what the local refs say', async () => {
   let down = false;
   const r = rig({
     git: root => (args, timeout) => {
@@ -421,6 +563,18 @@ test('a force merges the unmerged changes first, also when a fetch since found m
   assert.notEqual(head(r), checked, 'it merged the commit the latest check looked at');
   assert.equal(head(r), originHead(r));
   assert.deepEqual(r.restarts, [[r.live, null]]);
+});
+
+test('a merge the banner did not offer stops a force with nothing changed, so it never cuts a chat for it', async () => {
+  const r = rig();
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  git(r.live, 'pull', '-q', '--ff-only');
+  await r.update.check();
+  assert.deepEqual([r.update.state().kind, r.update.state().force], ['pulled', true]);
+  r.merge('Move the button (#3)', { 'public/app.js': 'export const app = 2;\n' });
+  const before = head(r);
+  assert.deepEqual(await r.update.update({ force: true }), { problem: CHANGED_REASON });
+  assert.deepEqual([head(r), r.restarts.length], [before, 0]);
 });
 
 test('a force whose merge fails restarts nothing', async () => {

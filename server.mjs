@@ -1519,8 +1519,8 @@ const groupUpdates = makeGroupUpdates({
   store: makeUpdateStore(cfg.stateDir),
 });
 
-// The sidebar banners: when Claude's sign-in ends, and merged changes waiting on main. Both answer from what was last worked out, so a request runs
-// no git, keychain or CLI work. See docs/adr/20261102-banners-for-sign-in-and-updates.md.
+// The sidebar banners: when Claude's sign-in ends, and merged changes waiting on main. Both answer from what was last worked out, so a request waits
+// on no git, keychain or CLI work. See docs/adr/20261102-banners-for-sign-in-and-updates.md.
 // Each account has a sign-in of its own, a mark when it is out of usage, and its last plan usage. See docs/adr/20261102-switch-claude-accounts.md.
 const accountLogins = makeAccountLogins({
   accounts,
@@ -1529,7 +1529,8 @@ const accountLogins = makeAccountLogins({
   startSignIn: opts => startSignIn({ claude: cfg.claude, ...opts }),
   retireOtherAccounts,
   afterSwitch: account => chromeCheck.switched(account),
-  restarting: () => updates.state().stage === 'restarting',
+  // An update can end in a restart, and its fetch outlasts the sign-in guard in bannersApi.
+  restarting: () => ['updating', 'restarting'].includes(updates.state().stage),
 });
 onAuthFailure(accountLogins.authFailed);
 onUsage(accountLogins.markUsage);
@@ -1558,7 +1559,10 @@ const updates = makeUpdate({
 // something as the owner, so they take the stricter origin check, and the page is the only way to reach the force.
 async function bannersApi(req, res, parts) {
   const step = parts[2];
-  if (req.method === 'GET' && parts.length === 2) return send(res, 200, bannersNow());
+  if (req.method === 'GET' && parts.length === 2) {
+    updates.refresh();
+    return send(res, 200, bannersNow());
+  }
   if (req.method !== 'POST' || parts.length !== 3 || !['sign-in', 'update', 'force-restart'].includes(step)) return send(res, 404, { error: 'Not found' });
   if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
   // `claude auth login` is not a chat, so the restart helper would not wait for it.
