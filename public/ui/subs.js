@@ -25,7 +25,8 @@ export const LIST_TREE = ['M21 12h-8', 'M21 6H8', 'M21 18h-8', 'M3 6v4c0 1.1.9 2
 export const sessionIndex = createStore({ ix: null });
 
 // The page's `archive(id, archived, { stop })`, which app.js keeps here for the same reason. A card shows no Archive button without it.
-export const sessionActions = createStore({ archive: null });
+// `close` is the sidebar's archive flow for the open chat, which the list sets.
+export const sessionActions = createStore({ archive: null, close: null });
 
 // Where the focus goes once an archive has moved a card: `to()` finds the element, and `root` is the tab it was asked in, so another tab ignores it.
 const landing = createStore({ root: null, to: null });

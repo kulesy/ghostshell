@@ -332,6 +332,7 @@ After an archive the focus stays at the same level of the tree.
 - A routine's next run takes the place of its latest.
 - When you archive several together, the topmost of them decides where the focus goes.
 - Only a section left empty sends the focus to the next row in the list.
+- When the session on screen is among those archived, the focus follows the window to the row that opens (see [Archiving the session on screen](#archiving-the-session-on-screen)) and not to the row above.
 
 After the key archives a session the ring moves there too, so pressing the key again archives that one. When no row is left, the ring moves to the first header, or to the Projects button when there is no header.
 
@@ -339,12 +340,12 @@ After the key archives a session the ring moves there too, so pressing the key a
 
 When the session on screen is archived, the window opens the next session in the list. This holds for every way it can happen: the menu, Cmd+A, the header's button, the pick bar, and an archive made from another tab, another device or a tool, which the page notices the next time it refreshes. It does not depend on where the focus went. The next session is the first of these that exists:
 
-1. The row below it in the same section, as the list draws it.
+1. The row below it in the same section, as the list draws it. A routine's latest run gives way to its next run, which takes the same row.
 2. The row above it in the section, when it was the last.
 3. The nearest session in another section, those below first, then those above.
 4. The list, when none is left.
 
-The archived session's own sub sessions are skipped, as is anything hidden or folded away. Archiving several together counts from the last of them in the list. Opening the next session is a change of address that replaces the archived chat in the browser's history, so Back does not return to it, and it writes nothing. Archiving a session that is not on screen leaves the window where it is, and so does an archive the server refuses. Undo opens the archived session again if the page is still where the archive left it. A swipe on a phone starts from the list, where no session is on screen, so it opens nothing.
+The archived session's own sub sessions are skipped, as is anything hidden or folded away. Archiving several together counts from the last of them in the list. Opening the next session is a change of address that replaces the archived chat in the browser's history, so Back skips that entry (an older entry for the same session can still be reached), and it writes nothing. Archiving a session that is not on screen leaves the window where it is, and so does an archive the server refuses. Undo opens the archived session again if the page is still where the archive left it. Pressing Cmd+A again before the first archive is answered counts from the session the window is heading to, so the window ends on the one after both. A session an arrow walk is about to open is not opened if that archive takes it. A swipe on a phone starts from the list, where no session is on screen, so it opens nothing.
 
 ### Unarchiving
 

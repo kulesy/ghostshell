@@ -247,12 +247,13 @@ export function nextOpen(ix, sections, gone) {
   const rowsOf = list => list.flatMap(s => s.rows);
   const spots = new Set(gone.flatMap(id => [id, findRow(ix, id)?.parent].filter(Boolean)));
   const held = sections.findLastIndex(s => s.rows.some(id => spots.has(id)));
-  const own = id => { const r = findRow(ix, id); return r?.pinned ? 'pinned' : r?.group ?? (r && (looseHome(r) ?? 'routines')); };
+  // A nested row sits in its holder's section, as `sectionOf` in sections.js has it.
+  const own = id => { const h = rootOf(ix, id); return h?.pinned ? 'pinned' : h?.group ?? (h?.routine ? 'routines' : h && looseHome(h)); };
   const home = held >= 0 ? held : Math.max(...gone.map(id => sections.findIndex(s => s.id === own(id))), -1);
   const rows = sections[home]?.rows ?? [];
   const at = rows.findLastIndex(id => spots.has(id));
   return (leaving.has(rows[at]) && nextRun(ix, rows[at], leaving))
-    || rows.slice(at + 1).find(stays) || rows.slice(0, Math.max(at, 0)).findLast(stays)
+    || rows.slice(at + 1).find(stays) || rows.slice(0, at + 1).findLast(stays)
     || rowsOf(sections.slice(home + 1)).find(stays) || rowsOf(sections.slice(0, Math.max(home, 0))).findLast(stays) || null;
 }
 

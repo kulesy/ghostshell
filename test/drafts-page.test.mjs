@@ -86,7 +86,7 @@ test('a message stays in the session it was typed in, each session and the new s
   assert.deepEqual(page.problems, []);
 });
 
-test('an archived session\'s message stays while its chat is open and is gone after the next page load', { skip, timeout }, async t => {
+test('an archived session\'s message stays until the next page load and is gone after it', { skip, timeout }, async t => {
   const page = await browser.open(`${app.origin}/`, {});
   t.after(() => page.close());
   await login(page);

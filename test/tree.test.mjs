@@ -942,3 +942,16 @@ test('the latest run of a routine gives way to its next run, which takes the sam
   assert.equal(open(DRAWN, 'r3', 'r2'), 'r1');
   assert.equal(open(DRAWN, 'r3', 'r2', 'r1'), 'w1');
 });
+
+test('a folded family\'s head that stays is the session to open when nothing is drawn below it', () => {
+  assert.equal(open([{ id: 'cg-a', rows: ['a1'] }], 'c2'), 'a1');
+  assert.equal(open([{ id: 'cg-a', rows: ['a1'] }], 'c1', 'c2', 'c3'), 'a1');
+});
+
+test('a nested session in a collapsed section goes by its holder\'s section, and a collapsed routine by Routines', () => {
+  const loose = kid('x1', 'a2', { group: null });
+  const nested = { ...ABOVE, groups: ABOVE.groups.map(g => ({ ...g, sessions: g.sessions.map(r => (r.id === 'a2' ? { ...r, children: [loose] } : r)) })) };
+  const shut = (...ids) => DRAWN.map(s => (ids.includes(s.id) ? { ...s, rows: [] } : s));
+  assert.equal(nextOpen(nested, shut('cg-a'), ['x1']), 'b1');
+  assert.equal(nextOpen(ABOVE, shut('routines'), ['w1']), 'p1');
+});

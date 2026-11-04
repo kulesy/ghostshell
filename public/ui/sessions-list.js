@@ -397,6 +397,8 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   const familyOf = id => [id, ...descendantsOf(everyRow(latestIx.current), id).map(r => r.id)];
   // The ids an archive is out for. The list lacks them from the optimistic removal until the reply, which the watcher below must not take for an archive from elsewhere.
   const flying = useRef(new Set());
+  // { from, to }: the window is on `from` and the newest archive of the session on screen is sending it to `to`. A second archive counts from `to`.
+  const heading = useRef(null);
   const seen = useRef(null);
 
   // The family of the chat on screen opens once for each chat, as its row arrives, so a session started into a folded family is in
@@ -540,12 +542,12 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     const next = nextOpen(before.ix, before.sections, gone);
     const row = findRow(before.ix, current);
     const head = gone.includes(row.parent) ? rootOf(before.ix, current) : row;
-    const title = row.title || UNTITLED;
     api('api/archived').then(({ archived }) => {
       if (!archived?.some(r => r.id === current) || location.hash !== sessionHash(current)) return;
       const landed = next ? sessionHash(next) : '#/';
       location.replace(landed);
-      say(`Archived “${title}”.`, { action: undoAction({ id: head.id, title, landed, open: current }) });
+      if (next) box.current.querySelector(rowOf(next))?.scrollIntoView({ block: 'nearest' });
+      say(`Archived “${head.title || UNTITLED}”.`, { action: undoAction({ id: head.id, title: head.title || UNTITLED, landed, open: current }) });
     }, () => {});
   });
 
@@ -583,30 +585,47 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     return { ...result, to };
   }
 
+  // Sends an archive of `gone`, the sessions in `ids` and everything below them, and resolves with what `send(to)` does, `to` being the row that
+  // takes the focus. `land(at = open)` moves the window off the archived session `at` if it is still there, and returns the address it went to.
+  async function archiving(ids, gone, send) {
+    if (gone.includes(settle.current.pending())) settle.current(null);
+    const here = heading.current?.from === location.hash ? heading.current.to : location.hash;
+    const open = gone.find(g => here === sessionHash(g));
+    const to = open ? nextOpen(latestIx.current, drawnSections(), gone) : focusAfter(ids);
+    if (open) heading.current = { from: location.hash, to: to ? sessionHash(to) : '#/' };
+    gone.forEach(g => flying.current.add(g));
+    let reply;
+    let going;
+    try {
+      reply = await send(to);
+      going = heading.current;
+    } finally {
+      gone.forEach(g => flying.current.delete(g));
+      if (!flying.current.size) heading.current = null;
+    }
+    // A newer archive's address wins over this one's. Replacing the place keeps Back from returning to the archived chat.
+    const land = (at = open) => {
+      if (!at || location.hash !== sessionHash(at)) return null;
+      const landed = going?.from === location.hash ? going.to : reply.to ? sessionHash(reply.to) : '#/';
+      heading.current = null;
+      location.replace(landed);
+      return landed;
+    };
+    return { ...reply, open, land };
+  }
+
   // Archives a session and the sessions below it, and says so with a way to undo it, or says why it could not. When the session on screen
   // is among them, the window opens the next session in the list, and Undo reopens it while the page is still there. `ask` asks first
   // about a chat in the family that turns out to be running, and `back` is where the focus returns if it is declined or refused.
   async function archiveRow(id, title, { ask: askFirst = false, ring = false, back } = {}) {
-    const gone = familyOf(id);
-    const open = gone.find(g => location.hash === sessionHash(g));
-    const next = open ? nextOpen(latestIx.current, drawnSections(), gone) : undefined;
-    gone.forEach(g => flying.current.add(g));
-    let reply;
-    try {
-      reply = await leaving(id, () => archive(id, true, { stop: !askFirst }), ring, next, back);
-    } finally {
-      gone.forEach(g => flying.current.delete(g));
-    }
-    const { problem, stopped, running, subs, to } = reply;
+    const { problem, stopped, running, subs, open, land } = await archiving([id], familyOf(id), to => leaving(id, () => archive(id, true, { stop: !askFirst }), ring, to, back));
     if (running) {
       // A focus still waiting for a hidden list would move later. Cancel finds the row, a new element, by its id.
       setAfter(null);
       return confirmStop(id, title, { back: back ?? (() => box.current.querySelector(rowOf(id))), ring, busy: running });
     }
     if (problem) return problemNote(problem);
-    // The window moves only if it is still on the archived session. Replacing its place keeps Back from returning to an archived chat.
-    const landed = open && location.hash === sessionHash(open) ? (to ? sessionHash(to) : '#/') : null;
-    if (landed) location.replace(landed);
+    const landed = land();
     say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”${withSubs(subs)}.`, { action: undoAction({ id, title, landed, open }) });
   }
 
@@ -618,17 +637,15 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   }
 
   // The header's Archive button, which runs the row's flow. A running chat, or one with a running chat below it, is asked about first.
-  latestClose.current = ({ id, title, running, below, ring, back }) => (running || below
-    ? confirmStop(id, title, { back, ring, busy: { self: running, subs: below } })
-    : archiveRow(id, title, { ask: true, ring, back }));
+  latestClose.current = ({ id, title, running, below, ring, back }) => archiveOrAsk({ id, title }, { ring, back, busy: running || below ? { self: running, subs: below } : undefined });
 
   // A session with a chat running in it or below it is asked about first, since archiving it stops them.
   const stopsFirst = r => isRunning(r) || subsRunning(everyRow(ix), r.id);
 
-  function archiveOrAsk(r, { ring = false, back } = {}) {
+  function archiveOrAsk(r, { ring = false, back, busy } = {}) {
     const title = r.title || UNTITLED;
-    if (stopsFirst(r)) confirmStop(r.id, title, { ring, back });
-    else archiveRow(r.id, title, { ask: true, ring });
+    if (busy || stopsFirst(r)) confirmStop(r.id, title, { ring, back, busy });
+    else archiveRow(r.id, title, { ask: true, ring, back });
   }
 
   // The same for several rows leaving together. The focus goes to the row above the topmost of them, or back to them if none went.
@@ -672,26 +689,14 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   async function archiveBatch(ids, { stop = false, ring = false, tally = { count: ids.length, done: [], stopped: 0, subs: 0, refused: [], reopen: null, kin: {} } } = {}) {
     setPick(NO_PICK);
     const kin = { ...tally.kin, ...Object.fromEntries(ids.map(id => [id, familyOf(id)])) };
-    const gone = ids.flatMap(id => kin[id]);
-    const open = gone.find(g => location.hash === sessionHash(g));
-    const next = open ? nextOpen(latestIx.current, drawnSections(), gone) : undefined;
-    gone.forEach(g => flying.current.add(g));
-    let reply;
-    try {
-      reply = await leavingAll(ids, () => archiveAll(ids, true, { stop }), ring, next);
-    } finally {
-      gone.forEach(g => flying.current.delete(g));
-    }
-    const { done, stopped, subs, failed, to } = reply;
+    const { done, stopped, subs, failed, land } = await archiving(ids, ids.flatMap(id => kin[id]), to => leavingAll(ids, () => archiveAll(ids, true, { stop }), ring, to));
     const busy = failed.filter(f => f.running);
     const running = busy.map(f => f.id);
     const all = { ...tally, kin, done: [...tally.done, ...done], stopped: tally.stopped + stopped, subs: tally.subs + subs, refused: [...tally.refused, ...failed.filter(f => !f.running)] };
     // The session on screen, or one below a session that went, is left for the next one in the list, and Undo reopens it while the page is there.
     const shown = all.reopen?.open ?? all.done.flatMap(id => kin[id]).find(g => location.hash === sessionHash(g));
-    if (shown && location.hash === sessionHash(shown)) {
-      all.reopen = { id: all.done.find(id => kin[id].includes(shown)), open: shown, landed: to ? sessionHash(to) : '#/' };
-      location.replace(all.reopen.landed);
-    }
+    const landed = shown && land(shown);
+    if (landed) all.reopen = { id: all.done.find(id => kin[id].includes(shown)), open: shown, landed };
     const settled = all.count - running.length;
     if (settled) {
       const note = archiveNote({ archived: all.done.length, total: settled, stopped: all.stopped, subs: all.subs, reason: all.refused[0]?.message });

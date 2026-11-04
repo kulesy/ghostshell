@@ -117,6 +117,23 @@ const refuseArchive = page => page.evaluate(`(() => {
     ? Promise.resolve(new Response(JSON.stringify({ error: 'Could not archive that.' }), { status: 500, headers: { 'content-type': 'application/json' } }))
     : real(url, init));
 })()`);
+// Holds each archive request until `answer` lets it go, in the order the page sent them, so the replies can land late and in either order.
+const holdArchives = page => page.evaluate(`(() => {
+  const real = window.fetch;
+  window.__held = [];
+  window.fetch = (url, init) => (String(url).includes('api/layout/archive')
+    ? new Promise(resolve => window.__held.push(refuse => resolve(refuse
+      ? new Response(JSON.stringify({ error: 'Could not archive that.' }), { status: 500, headers: { 'content-type': 'application/json' } })
+      : real(url, init))))
+    : real(url, init));
+})()`);
+const answer = async (page, i, refuse = false) => {
+  await page.until(`window.__held.length > ${i}`);
+  await page.evaluate(`window.__held[${i}](${refuse})`);
+};
+const pause = (page, ms) => page.evaluate(`new Promise(done => setTimeout(done, ${ms}))`);
+const cmdA = page => page.evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', metaKey: true, bubbles: true, cancelable: true }))`);
+const FOCUSED = `(a => a?.matches?.('a.row[data-id]') && a.matches(':focus-visible') ? a.dataset.id : null)(document.activeElement)`;
 // The sessions of the Reviewing group in the order the sidebar draws them, with the one on screen's neighbours.
 async function neighbours(page, id) {
   const group = (await inOrder(page)).filter(r => MEMBERS.includes(r));
@@ -159,6 +176,7 @@ test('the opening is a plain hash change: the archive is the only write, and Bac
   await page.click(BUTTON);
   await noteIs(page, 'Archived “Billing copy update”.');
   await page.until(`location.hash === '#/s/${below}'`);
+  await page.until(`!!document.querySelector('.chat-head') && ${LABEL} === 'Archive'`);
   assert.equal(await page.evaluate('history.length'), length, 'the archived chat\'s entry was replaced, not added to');
   // The context meter reads over a POST, and the open chat asks for it by itself.
   assert.deepEqual((await page.evaluate('window.__posts')).filter(url => !url.includes('api/layout/archive') && !url.endsWith('/context')), []);
@@ -185,9 +203,10 @@ test('Cmd+A archives the session on screen and opens the one below', { skip, tim
   const page = await appPage(t, s, '#/s/s2');
   const { below } = await neighbours(page, 's2');
   await page.evaluate(`Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }); document.activeElement?.blur?.()`);
-  await page.evaluate(`document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', metaKey: true, bubbles: true, cancelable: true }))`);
+  await cmdA(page);
   await noteIs(page, 'Archived “Billing copy update”.');
   assert.equal(await hashOf(page), `#/s/${below}`);
+  await page.until(`${FOCUSED} === '${below}'`);
   assert.deepEqual(page.problems, []);
 });
 
@@ -277,6 +296,89 @@ test('a session whose parent is archived from the sidebar while the session is o
   await pressNoteButton(page);
   await noteIs(page, 'Unarchived “Boss” and 2 sub sessions.');
   assert.equal(await hashOf(page), '#/s/kid');
+  assert.deepEqual(page.problems, []);
+});
+
+// s2 is on screen and Cmd+A is pressed on it and then on s3, where the ring went, before either archive is answered.
+async function pressTwice(t) {
+  const s = await start({ sessions: SESSIONS, groups: GROUPS, claude: true });
+  const page = await appPage(t, s, '#/s/s2');
+  await page.evaluate(`Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }); document.activeElement?.blur?.()`);
+  await holdArchives(page);
+  await cmdA(page);
+  await page.until(`!document.querySelector('a.row[data-id="s2"]') && ${FOCUSED} === 's3'`);
+  await cmdA(page);
+  await page.until(`!document.querySelector('a.row[data-id="s3"]')`);
+  assert.equal(await hashOf(page), '#/s/s2');
+  return { s, page };
+}
+
+for (const [first, second] of [[0, 1], [1, 0]]) {
+  test(`Cmd+A twice before the first reply ends on the session after both, with reply ${first + 1} landing first`, { skip, timeout }, async t => {
+    const { s, page } = await pressTwice(t);
+    await answer(page, first);
+    const notes = ['Archived “Billing copy update”.', 'Archived “Changelog tidy”.'];
+    await noteIs(page, notes[first]);
+    if (first === 1) assert.equal(await hashOf(page), '#/s/s2', 'archive 2 took s3, which is not on screen');
+    await answer(page, second);
+    await noteIs(page, notes[second]);
+    await page.until(`location.hash === '#/s/s4'`);
+    assert.deepEqual(Object.keys(onDisk(s).archived).filter(id => id !== 'old').sort(), ['s2', 's3']);
+    await pause(page, 300);
+    assert.equal(await hashOf(page), '#/s/s4');
+    assert.deepEqual(page.problems, []);
+  });
+}
+
+test('Cmd+A twice with the first archive refused leaves the window on the session and archives the second', { skip, timeout }, async t => {
+  const { s, page } = await pressTwice(t);
+  await answer(page, 0, true);
+  await page.until(`/Could not archive that/.test(${NOTE})`, 10_000);
+  await answer(page, 1);
+  await noteIs(page, 'Archived “Changelog tidy”.');
+  await pause(page, 300);
+  assert.equal(await hashOf(page), '#/s/s2');
+  assert.deepEqual(Object.keys(onDisk(s).archived).filter(id => id !== 'old'), ['s3']);
+});
+
+test('archiving the session an arrow walk is about to open leaves the window where it is', { skip, timeout }, async t => {
+  const s = await start({ sessions: SESSIONS, groups: GROUPS, claude: true });
+  const page = await appPage(t, s, '#/s/s2');
+  await page.evaluate(`Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' })`);
+  await holdArchives(page);
+  // A held Down only marks s3 as the one to open after the settle, and Cmd+A archives the row with the ring before that.
+  await page.evaluate(`(() => {
+    const row = document.querySelector('a.row[data-id="s2"]');
+    row.focus({ focusVisible: true });
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', repeat: true, bubbles: true, cancelable: true }));
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', metaKey: true, bubbles: true, cancelable: true }));
+  })()`);
+  await pause(page, 400);
+  assert.equal(await hashOf(page), '#/s/s2', 'the walk did not open the archived session');
+  await answer(page, 0);
+  await noteIs(page, 'Archived “Changelog tidy”.');
+  assert.equal(await hashOf(page), '#/s/s2');
+  assert.ok(onDisk(s).archived?.s3);
+  assert.deepEqual(page.problems, []);
+});
+
+test('archiving the family while its sub session is the walk\'s pending open opens the session after the family', { skip, timeout }, async t => {
+  const s = await start({ sessions: FAMILY, groups: GROUPS, claude: true });
+  const page = await appPage(t, s, '#/s/boss', { rows: FAMILY.length });
+  const order = await inOrder(page);
+  const after = order.slice(order.indexOf('boss') + 1).find(id => !['kid', 'grand'].includes(id));
+  assert.ok(after);
+  await page.evaluate(`Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }); document.activeElement?.blur?.()`);
+  await holdArchives(page);
+  await page.evaluate(`(() => {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, repeat: true, bubbles: true, cancelable: true }));
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', metaKey: true, bubbles: true, cancelable: true }));
+  })()`);
+  await pause(page, 400);
+  assert.equal(await hashOf(page), '#/s/boss', 'the walk did not open the archived kid');
+  await answer(page, 0);
+  await noteIs(page, 'Archived “Boss” and 2 sub sessions.');
+  assert.equal(await hashOf(page), `#/s/${after}`);
   assert.deepEqual(page.problems, []);
 });
 
