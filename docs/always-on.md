@@ -60,10 +60,10 @@ Do not schedule restarts any other way. `launchctl submit` keeps its program ali
 
 Every 30 minutes the server fetches `origin/main` and compares it with the commit it started from. When there are merged changes, the sidebar lists up to five of them, as links to their pull requests, and offers Update.
 
-1. A change to `public/` files the server does not import, to docs or to tests only needs the checkout pulled, so Update runs `git merge --ff-only origin/main` and nothing restarts.
+1. A change to `public/` files the server does not import, to docs or to tests only needs the checkout pulled, so Update fetches again, runs `git merge --ff-only` to the `origin/main` commit it found, and nothing restarts.
 2. A change to `server.mjs`, `lib/`, `package.json`, `config.json` or a `public/` file the server imports also needs a restart. Update pulls, then runs `npm run restart -- --wait <minutes>`, so the restart waits until no chat or routine is running.
 3. Restarts are refused on weekdays from 07:00 to 09:45, and the button says so. A pull with no restart is allowed then.
-4. Update refuses, and changes nothing, when the checkout is not on `main`, has uncommitted changes to tracked files, has commits that are not on `origin/main`, or a restart is already under way.
+4. Update refuses, and changes nothing, when the checkout is not on `main`, has uncommitted changes to tracked files, has commits that are not on `origin/main` while it needs a merge, or a restart is already under way. It also stops when its fresh check needs a merge or a restart the banner did not offer, so the banner can show the new offer.
 
 If the helper gives up because a chat kept running, the banner stays and offers Restart.
 
