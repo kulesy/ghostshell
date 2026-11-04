@@ -50,6 +50,7 @@ In the search, `7969`, `#7969` and `pull/7969` find every session that links tha
 - ❌ A pull request a session never wrote out is not found: one that only exists in a screenshot, in a file the session edited, or only in a subagent's own transcript.
 - ❌ A session changes at most every 15 seconds in search, so a link written a moment ago may not be found yet.
 - ❌ The Move to and Nest under menus still find titles only, as they did.
+- ❌ `find_sessions` runs with no card and now gives one thing from inside a session: the links that match the query, as `owner/repo#7969`. This narrows [ADR 20261028](20261028-layout-tools-for-sessions.md), which says finding a session gives nothing from inside it. A chat steered by text it read could walk numbers to collect repo names, one number per call. Nothing else from a transcript reaches the tool, and a link can hold only the characters of a repo name and a number.
 
 ## Pros and Cons of the Options
 
