@@ -1155,7 +1155,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       ${strip.length ? html`<${MoveStrip} targets=${strip} over=${groupDrag.over} />` : null}
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>
-    ${banner}
+    <div class="offers">${banner}</div>
     ${topForm}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt} onClick=${clickRow} onMouseDown=${pressRow} onPointerDown=${e => { pointer.current = e.pointerType; }}>
       ${ix

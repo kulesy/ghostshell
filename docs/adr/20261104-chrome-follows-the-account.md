@@ -42,7 +42,7 @@ An empty list alone means little, because Chrome may be closed or its extension 
 
 The check says which GhostShell account reaches the browser. It does not read which account the extension holds. A browser counts when `onThisComputer` is true, or `isLocal` when that field is missing, and `isLocal` only says the operating system matches.
 
-While a banner stands, the server checks the new account again every 15 seconds, for 10 minutes from the switch or the last press of the Open button, and clears the banner once it sees a browser. After that the banner stays until it is dismissed or the next switch. All of this is in memory, so a restart forgets it. An owner whose shared `.claude.json` shows no sign of Claude in Chrome gets no check and no banner.
+While a banner stands, the server checks the new account again every 15 seconds, for 10 minutes from the switch or the last press of the Open button, and clears the banner once it sees a browser. After that the banner stays until it is dismissed or the next switch. All of this is in memory, so a restart forgets it. An owner who set `chrome` to false, or whose shared `.claude.json` shows no sign of Claude in Chrome, gets no check and no banner.
 
 ### Opening the settings
 
@@ -59,7 +59,7 @@ The named form sends the owner to Log out. The unsure form asks them to open the
 ### Consequences
 
 - ✅ Most switches take one press, a logout and a login, and the banner clears by itself.
-- ✅ No token, email or device name passes through the check.
+- ✅ GhostShell gives the CLI probe no token or email, and keeps only a yes or no from it. The email on the banner comes from the account list.
 - ❌ `--claude-in-chrome-mcp` and the link are both private to the CLI and the extension. If the flag moves, every check gives no answer and the softer reminder shows on every switch.
 - ❌ Two organizations under one user have not been tried. The extension's connection is keyed by user, so a mismatch of organization alone may read as fine.
 - ❌ Each check while the banner stands starts a CLI process.

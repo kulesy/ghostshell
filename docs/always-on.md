@@ -69,4 +69,4 @@ If the helper gives up because a chat kept running, the banner stays and offers 
 
 The same place warns when Claude's sign-in is five days from its end or already over, and signs in again on the Mac. [The decision record](adr/20261102-banners-for-sign-in-and-updates.md) has the reasons.
 
-With a second Claude account added on the Accounts page, the banner follows the active account, and a banner offers to switch when that account runs out of usage. GhostShell keeps the accounts in `accounts.json` and an `accounts` folder in its state folder. [The decision record](adr/20261102-switch-claude-accounts.md) has the reasons.
+With a second Claude account added on the Accounts page, the banner follows the active account, and a banner offers to switch when that account runs out of usage. GhostShell keeps the accounts in `accounts.json` and an `accounts` folder in its state folder. [The decision record](adr/20261102-switch-claude-accounts.md) has the reasons. After a switch, a banner reminds you to move Chrome's Claude extension when the new account reaches no browser, and opens its settings ([the decision record](adr/20261104-chrome-follows-the-account.md)).

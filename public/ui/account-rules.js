@@ -46,7 +46,7 @@ export function autoBanner(accounts) {
 // The banner that Chrome's Claude extension is not on the account just switched to, or null while the check runs or when there is nothing to say.
 // `on` is the account Chrome is on, when it is known.
 export function chromeBanner(chrome) {
-  if (!chrome?.state || chrome.checking) return null;
+  if (!chrome?.state) return null;
   const { to, on, email, opened } = chrome;
   const elsewhere = chrome.state === 'elsewhere';
   const who = email || `the ${to.name} account`;

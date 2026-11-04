@@ -25,13 +25,13 @@ after(async () => {
 const row = (over = {}) => ({ kind: 'weekly_all', group: 'weekly', percent: 71, severity: 'normal', resets_at: new Date(Date.now() + 3 * DAY).toISOString(), scope: null, is_active: true, ...over });
 
 // With `chrome`, Chrome is set up and the first account's folder sees a browser on this Mac, so a switch to the second finds Chrome still on the first.
-async function open({ second = true, same = false, chrome = false } = {}) {
+async function open({ second = true, same = false, chrome = false, email = 'second@example.com' } = {}) {
   const first = await start({ claude: true, sessions: [{ id: 'live', title: 'Runs', source: 'cli', ago: 1 }, { id: 'other', title: 'Fix the build', source: 'cli', ago: 2 }] });
   const dir = path.join(first.state, 'accounts', 'second');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(first.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: false, accounts: [{ id: 'main', name: 'Main' }, ...(second ? [{ id: 'second', name: 'Second', dir }] : [])] }));
   fs.writeFileSync(path.join(first.home, 'auth-state.json'), JSON.stringify(same ? { email: 'same@example.com', orgId: 'org-same' } : { email: 'main@example.com' }));
-  fs.writeFileSync(path.join(dir, 'auth-state.json'), JSON.stringify(same ? { loggedIn: true, email: 'same@example.com', orgId: 'org-same' } : { loggedIn: true, email: 'second@example.com', orgId: 'org-2', subscriptionType: 'pro' }));
+  fs.writeFileSync(path.join(dir, 'auth-state.json'), JSON.stringify(same ? { loggedIn: true, email: 'same@example.com', orgId: 'org-same' } : { loggedIn: true, email, orgId: 'org-2', subscriptionType: 'pro' }));
   fs.writeFileSync(path.join(first.home, `keychain-expiry-${serviceFor(dir)}`), String(Date.now() + 20 * DAY));
   if (chrome) {
     fs.writeFileSync(path.join(first.home, '.claude.json'), JSON.stringify({ cachedChromeExtensionInstalled: true }));
@@ -300,6 +300,19 @@ test('a switch on the Accounts pane shows the Chrome banner in the pane and not 
   await page.click(`${chromeSel} .offer-actions button:last-child`);
   await page.until(`!document.querySelector('${chromeSel}')`, 10_000);
   assert.equal((await accounts(c)).chrome, null);
+});
+
+test('on a short phone the Chrome banner leaves the session list on screen, and a long email stays inside its card', { skip, timeout }, async t => {
+  const c = await open({ chrome: true, email: `${'long'.repeat(20)}@example.com` });
+  await post(c, '/api/accounts/second/use');
+  await until(async () => (await accounts(c)).chrome?.state === 'elsewhere');
+  const page = await openPage(t, c, '', { phone: true });
+  await page.resize(390, 400);
+  await page.until(`!!document.querySelector('${chromeSel}')`, 15_000);
+  const fit = await page.evaluate(`({ list: document.querySelector('#sections').clientHeight, stack: document.querySelector('.offers').clientHeight, wide: document.querySelector('.offers').scrollWidth > document.querySelector('.offers').clientWidth || document.documentElement.scrollWidth > window.innerWidth })`);
+  assert.ok(fit.list >= 100, `the list keeps ${fit.list} px`);
+  assert.ok(fit.stack <= 180, `the banners take ${fit.stack} px`);
+  assert.equal(fit.wide, false);
 });
 
 test('on another route the sidebar shows the Chrome banner, and the pane takes it over when the Accounts page opens', { skip, timeout }, async t => {

@@ -75,12 +75,14 @@ const START = Date.parse('2026-11-04T00:00:00Z');
 const MIN = 60_000;
 
 // Accounts main and second. `seen` says what the probe answers for each id, and a `gate` holds the probes until the test lets them go.
-function rig({ uses = true } = {}) {
+function rig({ uses = true, enabled } = {}) {
   const r = { at: START, uses, seen: {}, probes: [], opens: 0, openFails: false, timers: [], gate: null, active: 'main' };
   const list = [{ id: 'main', name: 'Main', dir: '/secret/main' }, { id: 'second', name: 'Second', dir: '/secret/second' }];
-  const accounts = { get usesChrome() { return r.uses; }, list: () => list.map(a => ({ ...a })), find: id => list.find(a => a.id === id) ?? null };
+  const accounts = { usesChrome: () => r.uses, list: () => list.map(a => ({ ...a })), find: id => list.find(a => a.id === id) ?? null };
+  r.list = list;
   r.check = makeChromeCheck({
     accounts,
+    enabled,
     probe: async a => {
       r.probes.push(a.id);
       if (r.gate) await r.gate;
@@ -149,6 +151,26 @@ test('with no Chrome set up a switch probes nothing and clears a banner that sto
   r.to('main');
   assert.equal(r.check.state(), null);
   assert.deepEqual([r.probes.length, r.live().length], [0, 0]);
+});
+
+test('with the chrome setting off a switch probes nothing and shows no banner, because chats start without Chrome', async () => {
+  const r = rig({ enabled: false });
+  r.seen.main = true;
+  r.to('second');
+  await settle();
+  assert.equal(r.check.state(), null);
+  assert.deepEqual([r.probes.length, r.live().length], [0, 0]);
+});
+
+test('a rename while the banner stands shows the new names', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.to('second');
+  await settle();
+  r.list[0].name = 'Home';
+  r.list[1].name = 'Work';
+  const { to, on } = r.check.state();
+  assert.deepEqual([to.name, on.name], ['Work', 'Home']);
 });
 
 test('an answer from before a later switch is dropped', async () => {
@@ -245,13 +267,13 @@ test('Open in the middle of the window moves its end and keeps one timer', async
   assert.equal(r.check.state().opened, true);
 });
 
-test('a failed open rejects with plain words and does not mark the banner opened', async () => {
+test('a failed open answers with plain words and does not mark the banner opened', async () => {
   const r = rig();
   r.seen.main = true;
   r.to('second');
   await settle();
   r.openFails = true;
-  await assert.rejects(() => r.check.open(), { message: OPEN_FAILED });
+  assert.equal(await r.check.open(), OPEN_FAILED);
   assert.equal(r.check.state().opened, false);
 });
 

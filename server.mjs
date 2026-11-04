@@ -40,7 +40,7 @@ import { lockHolder } from './lib/restart.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins } from './lib/account-logins.mjs';
-import { browserSeen, CHROME_SETTINGS_URL, makeChromeCheck } from './lib/chrome-check.mjs';
+import { browserSeen, makeChromeCheck, openChromeSettings } from './lib/chrome-check.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
@@ -1528,9 +1528,10 @@ onUsage(accountLogins.markUsage);
 // After a switch, whether Chrome's Claude extension is on the new account, and the banner that says to move it when it is not.
 const chromeCheck = makeChromeCheck({
   accounts,
+  enabled: cfg.chrome,
   probe: account => browserSeen({ claude: cfg.claude, env: cleanEnv(process.env, accounts.loginEnvOf(account)) }),
   emailOf: id => accountLogins.view().find(a => a.id === id)?.email ?? '',
-  openSettings: () => new Promise((resolve, reject) => execFile(cfg.open, ['-a', 'Google Chrome', CHROME_SETTINGS_URL], { timeout: 10_000 }, err => (err ? reject(err) : resolve()))),
+  openSettings: () => openChromeSettings({ open: cfg.open }),
 });
 
 const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.state(), accounts: accountLogins.banner(), chrome: chromeCheck.state() });
@@ -1612,7 +1613,8 @@ async function accountsApi(req, res, parts) {
     return send(res, 200, accountsNow());
   }
   if (parts.length === 3 && step === 'chrome-open') {
-    try { await chromeCheck.open(); } catch (e) { return refuse(409, e.message); }
+    const refused = await chromeCheck.open();
+    if (refused) return refuse(409, refused);
     return send(res, 200, accountsNow());
   }
   if (parts.length === 3 && step === 'chrome-seen') {
