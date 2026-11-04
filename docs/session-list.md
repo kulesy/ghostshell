@@ -273,6 +273,8 @@ With nothing typed, All shows recent sessions, then Home and each project, then 
 
 Typing filters by title, folder, branch or routine, and Home, the projects and the groups by their name. The up and down arrows and Enter open a result, and Esc closes the search.
 
+A pull request number finds the sessions that link that pull request. `7969`, `#7969`, `pull/7969` and a pasted pull request address all work. A bare number still matches titles too. Any pull request a session names counts, not only its main one, so a result shows each matched pull request under the title as its repo and number, such as `acme/web #7969`. A pasted address finds only that repo's pull request. GhostShell reads the links from the transcripts in the background, so after it starts a search for a number can miss older sessions for a while, and says so when it finds nothing. See [the decision](adr/20261104-search-sessions-by-pull-request.md).
+
 A session's result shows its state mark and its title, so the title gets the row's width. The time it last ran, or was archived, shows at the right end only while the whole title fits beside it. Hovering a result shows its full title in a tooltip. A routine's result also counts its runs.
 
 ### The order of results

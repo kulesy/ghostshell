@@ -19,11 +19,22 @@ import { keyHint } from './shortcuts.js';
 import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
 
+const READ_AGAIN_MS = 3000;
+
 const CHIPS = [['all', 'All'], ['projects', 'Projects'], ['groups', 'Groups'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['scheduled', 'Scheduled'], ['archived', 'Archived']];
 
 const Search = () => html`<svg data-part="command-input-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>`;
 
-// What an item says about itself. A session shows its title alone, with the time beside it only while the whole title fits.
+// A link as owner/repo#7969 drawn as the repo and the number. The repo gives way to a narrow row, and the number never does.
+function Pull({ link }) {
+  const at = link.lastIndexOf('#');
+  const repo = link.slice(0, at);
+  const number = link.slice(at);
+  return html`<span data-part="hit-pull" data-tip=${`${repo} ${number}`} data-tip-delay="700"><span class="sr">Pull request </span><span data-part="hit-pull-repo">${repo}</span> <span data-part="hit-pull-number">${number}</span></span>`;
+}
+
+// What an item says about itself. A session shows its title alone, with the time beside it only while the whole title fits. One found by the
+// pull requests it links lists them under that line.
 function Words({ it }) {
   if (it.action) {
     return html`<span data-part="hit-icon" aria-hidden="true">${draw(icons[it.icon] ?? icons.messageSquarePlus)}</span><span data-part="hit-title">${it.action}</span>${it.hint ? html`<span data-slot="command-shortcut">${it.hint}</span>` : null}`;
@@ -43,9 +54,12 @@ function Words({ it }) {
   const { r } = it;
   const title = r.title || UNTITLED;
   const state = !r.archived && STATE_LABEL[r.state];
-  return html`<span class="lamp" data-state=${r.state} aria-hidden="true"></span><span data-part="hit-line" data-tip=${title} data-tip-delay="700">
+  const line = html`<span data-part="hit-line" data-tip=${title} data-tip-delay="700">
     <span data-part="hit-title">${title}</span>${state ? html`<span class="sr">${`, ${state}`}</span>` : null}${r.runs ? html`<span data-part="hit-meta">${`${r.runs} run${r.runs > 1 ? 's' : ''}`}</span>` : null}
     <time data-part="hit-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time></span>`;
+  return html`<span class="lamp" data-state=${r.state} aria-hidden="true"></span>${it.pulls
+    ? html`<span data-part="hit-body">${line}<span data-part="hit-pulls">${it.pulls.map(link => html`<${Pull} key=${link} link=${link} />`)}</span></span>`
+    : line}`;
 }
 
 // The wrapper carries the backdrop of a swipe on an archived hit, which would be hidden behind the hit's own background.
@@ -67,6 +81,7 @@ function Palette({ ix, scheduled, archive, onShow, onClose }) {
   const [held, setHeld] = useState(FIRST);
   const [archived, setArchived] = useState([]);
   const [gone, setGone] = useState([]);
+  const [pulls, setPulls] = useState({ links: {}, reading: false });
   const input = useRef(null);
   const list = useRef(null);
   const scroll = useRef(false);
@@ -80,13 +95,26 @@ function Palette({ ix, scheduled, archive, onShow, onClose }) {
     return () => { live = false; };
   }, []);
 
+  // The pull request links are read by the server in the background, so they are fetched again while it says it is still reading, or after a read fails.
+  useEffect(() => {
+    let live = true;
+    let timer;
+    const read = () => api('api/pull-links').then(d => {
+      if (!live) return;
+      setPulls({ links: d.links || {}, reading: !!d.reading });
+      if (d.reading) timer = setTimeout(read, READ_AGAIN_MS);
+    }).catch(() => { if (live) timer = setTimeout(read, READ_AGAIN_MS); });
+    read();
+    return () => { live = false; clearTimeout(timer); };
+  }, []);
+
   useEffect(() => swipeRows(list.current, { row: '[cmdk-item][data-archived]', onSwipe: row => latestSwipe.current(row.dataset.value) }), []);
 
   const sections = useMemo(() => {
     if (!ix) return [];
     const kept = archived.filter(r => !gone.includes(r.id));
-    return sectionsFor(chip, ix, kept, query, keyHint(mod, 'N'), scheduled?.scheduled).filter(s => s.items.length);
-  }, [ix, scheduled, archived, gone, chip, query, mod]);
+    return sectionsFor(chip, ix, kept, query, keyHint(mod, 'N'), scheduled?.scheduled, pulls.links).filter(s => s.items.length);
+  }, [ix, scheduled, archived, gone, pulls, chip, query, mod]);
   const flat = sections.flatMap(s => s.items);
   const keys = flat.map(it => it.key);
   let counted = 0;
@@ -217,7 +245,7 @@ function Palette({ ix, scheduled, archive, onShow, onClose }) {
                 ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} id=${`result-${index.get(it)}`} selected=${index.get(it) === pick} onPick=${open} onMove=${moved(index.get(it))} />`)}
               </div>
             </div>`)
-          : html`<div data-slot="command-empty" cmdk-empty="" role="presentation">${ix ? emptyText(chip, query) : 'Loading sessions'}</div>`}
+          : html`<div data-slot="command-empty" cmdk-empty="" role="presentation">${ix ? emptyText(chip, query, pulls.reading) : 'Loading sessions'}</div>`}
       </div>
       <footer data-part="command-footer">
         <span>Close <kbd>Esc</kbd></span><span>Change type <kbd>←</kbd><kbd>→</kbd></span><span>Open <kbd>↵</kbd></span>

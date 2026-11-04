@@ -29,3 +29,23 @@ export function pullUrlsIn(text) {
   }
   return urls;
 }
+
+const REFERENCE = new RegExp(`^(?:#|pull/)?(${NUMBER})$`, 'i');
+const ADDRESS = new RegExp(`^(?:https?://)?(?:www\\.)?github\\.com/(${OWNER})/(${REPO})/pull/(${NUMBER})(?:/[^?#]*)?(?:[?#].*)?$`, 'i');
+
+// A search word read as a pull request: 7969, #7969 and pull/7969 give a number alone, and an address in any of the forms people paste gives its
+// repo too. Anything else is null, and so is a number that is not the shape of one (0, 007, 12abc).
+export function pullReference(word) {
+  if (typeof word !== 'string') return null;
+  const bare = REFERENCE.exec(word);
+  if (bare) return { number: Number(bare[1]), repo: null };
+  const address = ADDRESS.exec(word);
+  return address ? { number: Number(address[3]), repo: `${address[1]}/${address[2]}` } : null;
+}
+
+// Whether a link in the form owner/repo#7969 is the pull request the reference names. The number must be the same and not a part of it, and an address
+// also needs the same repo, without regard to case.
+export function linkMatches(link, { number, repo }) {
+  const at = link.lastIndexOf('#');
+  return link.slice(at + 1) === String(number) && (repo === null || link.slice(0, at).toLowerCase() === repo.toLowerCase());
+}

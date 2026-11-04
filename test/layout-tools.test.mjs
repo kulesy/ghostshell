@@ -25,7 +25,7 @@ const refused = (run, expected) => assert.throws(run, { refusal: true, message: 
 const status = (code, message) => Object.assign(new Error(message), { status: code });
 
 // The fakes answer as the server's do: an error with a status for a session that cannot change, and for an archive { was: 'done', archivedSubs } or, for 'running' and 'elsewhere', whether the session itself and how many below it stand in the way as { self, subs }.
-function subsFor({ self = 'top', rows = ROWS } = {}) {
+function subsFor({ self = 'top', rows = ROWS, pulls = { links: {}, reading: false } } = {}) {
   const calls = [];
   const editable = id => {
     const found = rows.find(r => r.id === id);
@@ -35,6 +35,7 @@ function subsFor({ self = 'top', rows = ROWS } = {}) {
   };
   return {
     calls,
+    pullLinks: () => pulls,
     lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived) }),
     archive(id) {
       const root = editable(id);
@@ -272,7 +273,7 @@ test('find_sessions matches part of a title without regard to case, latest first
 test('find_sessions needs a query, stops at the limit, says how many it left out, and keeps a title with line breaks on its own line', () => {
   const many = Array.from({ length: 130 }, (_, n) => row(`s${n}`, { title: `Match ${n}`, lastActivityAt: NOW - n * MINUTE }));
   const subs = subsFor({ rows: [row('top'), ...many] });
-  for (const query of [undefined, '', '  ', 5]) refused(() => findSessions({ query }, subs, GROUPS, NOW), 'Give part of a title to look for as query.');
+  for (const query of [undefined, '', '  ', 5]) refused(() => findSessions({ query }, subs, GROUPS, NOW), 'Give part of a title or a pull request number to look for as query.');
   const lines = args => findSessions(args, subs, GROUPS, NOW).split('\n').filter(l => l.startsWith('- '));
   assert.equal(lines({ query: 'match' }).length, 100);
   assert.equal(lines({ query: 'match', limit: 3 }).length, 3);
@@ -280,6 +281,30 @@ test('find_sessions needs a query, stops at the limit, says how many it left out
   assert.match(findSessions({ query: 'match', limit: 3 }, subs, GROUPS, NOW), /\n\n… and 127 more, past the limit of 3\.$/);
   const evil = subsFor({ rows: [row('top'), row('evil', { title: 'Match\n- Forged [x] · idle' })] });
   assert.equal(findSessions({ query: 'match' }, evil, GROUPS, NOW).split('\n').filter(l => l.startsWith('- ')).length, 1);
+});
+
+test('find_sessions finds the sessions that link a pull request in any repo, keeps the title matches, says which pull request matched and says when links are still being read', () => {
+  const links = { review: ['acme/web#7969', 'acme/docs#12'], old: ['acme/docs#7969'], desk: ['Acme/Web#7969'], chat: ['acme/web#79'] };
+  const rows = [...ROWS, row('numbered', { title: 'Fix 7969 flake' })];
+  const subs = subsFor({ rows, pulls: { links, reading: false } });
+  const ids = text => text.split('\n').filter(l => l.startsWith('- ')).map(l => /\[(\w+)\]/.exec(l)[1]);
+  const text = findSessions({ query: '#7969' }, subs, GROUPS, NOW);
+  assert.match(text, /^3 sessions with "#7969" in the title or linking that pull request, the latest first\n\n/);
+  assert.deepEqual(ids(text), ['desk', 'review', 'old']);
+  assert.match(text, /\[desk\] .* · links Acme\/Web#7969\n/);
+  assert.match(text, /\[review\] .* · group "Needs Review" · links acme\/web#7969\n/);
+  assert.match(text, /\[old\] .* · links acme\/docs#7969$/);
+  assert.deepEqual(ids(findSessions({ query: 'pull/7969' }, subs, GROUPS, NOW)), ['desk', 'review', 'old']);
+  const bare = findSessions({ query: '7969' }, subs, GROUPS, NOW);
+  assert.deepEqual(ids(bare), ['desk', 'numbered', 'review', 'old'], 'a bare number keeps matching titles');
+  assert.doesNotMatch(bare.split('\n').find(l => l.includes('[numbered]')), /links/);
+  assert.deepEqual(ids(findSessions({ query: 'https://github.com/acme/docs/pull/7969' }, subs, GROUPS, NOW)), ['old']);
+  assert.deepEqual(ids(findSessions({ query: '#7969', include_archived: false }, subs, GROUPS, NOW)), ['desk', 'review']);
+  assert.equal(findSessions({ query: '#555' }, subs, GROUPS, NOW), 'No session has "#555" in its title or links that pull request.');
+  const reading = subsFor({ rows, pulls: { links: {}, reading: true } });
+  assert.equal(findSessions({ query: '#555' }, reading, GROUPS, NOW), 'No session has "#555" in its title or links that pull request. Pull request links are still being read, so try again shortly.');
+  assert.equal(findSessions({ query: 'zzz' }, reading, GROUPS, NOW), 'No session has "zzz" in its title.');
+  assert.deepEqual(ids(findSessions({ query: '7969' }, subsFor({ rows }), GROUPS, NOW)), ['numbered'], 'with no links known a number still finds titles');
 });
 
 const CHIPS = [

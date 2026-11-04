@@ -1,6 +1,7 @@
 // What every search shares, as rules that need no page, so node can test them: the order a search lists what it finds in, how the words
 // typed match, what Ctrl+K shows for a chip, and what the Move to and Nest under menus find. See docs/adr/20261016-projects-above-groups.md.
 import { UNTITLED } from './order.js';
+import { linkMatches, pullReference } from './pull-url.js';
 import { inSidebar, noteOf, ordered, scheduledHash, SCHEDULED_HASH } from './scheduled-rules.js';
 import { groupLamp, groupsIn, HOME_VIEW, viewIn, viewsNamed } from './scopes.js';
 import { everyRow, withKids } from './tree.js';
@@ -28,8 +29,24 @@ export const hasWords = (text, words) => {
   return words.every(w => lower.includes(w));
 };
 
-// A session matches on its title, folder, branch or routine.
-const sessionMatcher = words => r => hasWords(`${r.title} ${r.cwd} ${r.branch} ${r.routine || ''}`, words);
+// The links of a session that a word naming a pull request finds, from `links`, which maps a session's id to its links as api/pull-links lists them.
+const linksFound = (links, r, ref) => (ref ? (links[r.id] ?? []).filter(link => linkMatches(link, ref)) : []);
+
+// A session matches when each word is in its title, folder, branch or routine, or names one of the pull requests it links.
+const sessionMatcher = (words, links) => {
+  const refs = words.map(pullReference);
+  return r => {
+    const text = `${r.title} ${r.cwd} ${r.branch} ${r.routine || ''}`;
+    return words.every((w, i) => hasWords(text, [w]) || linksFound(links, r, refs[i]).length > 0);
+  };
+};
+
+// The item with the links of its session that the words naming a pull request find, or as it was when they find none.
+const withPulls = (item, links, words) => {
+  const found = new Set(words.flatMap(w => linksFound(links, item.r, pullReference(w))));
+  const pulls = (links[item.r.id] ?? []).filter(link => found.has(link));
+  return pulls.length ? { ...item, pulls } : item;
+};
 
 export const rankOfRow = r => (r.parent ? 'sub' : 'session');
 
@@ -68,18 +85,18 @@ const byRank = hits => RANKS.map(rank => {
   return section(rank, TITLES[rank], rank === 'session' || rank === 'sub' ? items.slice(0, SHOWN) : items);
 });
 
-// The sections the spotlight shows for a chip and a query. `scheduled` is what api/scheduled listed. With words typed they follow RANKS and Archived comes last, because those
+// The sections the spotlight shows for a chip and a query. `scheduled` is what api/scheduled listed, and `links` what api/pull-links listed. With words typed they follow RANKS and Archived comes last, because those
 // sessions are out of the list. With none it is browsing: All is recents, projects and actions, and Sessions is newest first.
-export function sectionsFor(chip, ix, archived, query, newHint, scheduled = []) {
+export function sectionsFor(chip, ix, archived, query, newHint, scheduled = [], links = {}) {
   const words = wordsOf(query);
-  const keep = words.length ? sessionMatcher(words) : () => true;
+  const keep = words.length ? sessionMatcher(words, links) : () => true;
   const live = newestFirst(ix);
   const asked = words.length > 0;
-  const old = list => list.filter(keep).map(sessionItem);
+  const old = list => list.filter(keep).map(r => withPulls(sessionItem(r), links, words));
   if (chip === 'archived') return [section('archived', 'Archived', asked ? ranked(old(archived)) : old(archived))];
   if (chip === 'routines') {
     const manage = hasWords(MANAGE_ROUTINES.action, words) ? [section('actions', 'Actions', [MANAGE_ROUTINES])] : [];
-    return [...manage, section('routines', 'Routines', ix.routines.map(g => ({ ...g.latest, runs: g.earlier.length + 1 })).filter(keep).map(r => ({ key: r.id, r })))];
+    return [...manage, section('routines', 'Routines', ix.routines.map(g => ({ ...g.latest, runs: g.earlier.length + 1 })).filter(keep).map(r => withPulls({ key: r.id, r }, links, words)))];
   }
   if (chip === 'scheduled') {
     // The ones Home shows, each opening its form, or the page for one that did not start.
@@ -141,5 +158,9 @@ export const findSessions = (rows, query) => {
   return ranked(rows.filter(r => hasWords(r.title || UNTITLED, words)).map(row => ({ row, rank: 'session' })));
 };
 
-// What a search with no result says. The Groups chip with nothing typed is empty only when there is no group.
-export const emptyText = (chip, query) => (chip === 'groups' && !query.trim() ? 'No groups yet.' : 'Nothing matches.');
+// What a search with no result says. The Groups chip with nothing typed is empty only when there is no group. While the pull requests are
+// still being read, a search that names one cannot say it found nothing.
+export function emptyText(chip, query, reading = false) {
+  if (reading && wordsOf(query).some(pullReference)) return 'Nothing matches yet. Still reading the pull requests in your sessions.';
+  return chip === 'groups' && !query.trim() ? 'No groups yet.' : 'Nothing matches.';
+}

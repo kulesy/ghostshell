@@ -22,6 +22,7 @@ import { makeMarks } from './lib/marks.mjs';
 import { pendingLines } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
 import { makePulls } from './lib/pulls.mjs';
+import { startPullLinks } from './lib/pull-links.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } from './lib/uploads.mjs';
@@ -66,6 +67,7 @@ useActiveAccount(() => ({ id: accounts.active.id, env: activeEnv() }));
 retireWhenQuietFor(cfg.retireQuietMs);
 const summaries = makeSummaries({ transcriptFor });
 const pulls = makePulls({ transcriptFor, gh: cfg.gh });
+const pullLinks = startPullLinks({ projectsDir: cfg.projectsDir });
 // A mention of a file in front of /name stops the CLI reading the message as a command.
 const SLASH_WITH_FILES = 'Send a slash command on its own, without files.';
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -391,6 +393,7 @@ function subCtx(sessionId) {
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
+    pullLinks: pullLinks.get,
     summary: (id, cwd) => summaries.get(id, cwd),
     pulls: async rows => (await pullsFor(rows)).lists,
     // The same path as a message typed into the session: its chat is resumed if it has no process, and queued behind a running turn. Answers the state it found.
@@ -1695,6 +1698,8 @@ async function api(req, res, u) {
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/links') return linksApi(res, u);
+  // Every pull request each session names, for Ctrl+K. It is answered from memory, filled by a worker thread, and `reading` is true until its first pass ends.
+  if (req.method === 'GET' && u.pathname === '/api/pull-links') return send(res, 200, pullLinks.get());
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
   // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's or built-in section's.
   if (req.method === 'GET' && u.pathname === '/api/archived') {
