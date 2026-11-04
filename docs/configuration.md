@@ -1,6 +1,6 @@
 # Configuration
 
-The settings in `config.json` and `config.local.json`, and the four environment variables that override them.
+The settings in `config.json` and `config.local.json`, and the ten environment variables that override them.
 
 ## Files
 

@@ -4220,6 +4220,7 @@ html.viewing, html.viewing body { overflow: hidden; }
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
+  scroll-padding-block-end: 2.5rem;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--sidebar-border) transparent;
