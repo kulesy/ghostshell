@@ -59,7 +59,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   const touched = draft ? new Set() : null;
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
-    status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
+    status: draft ? { state: 'idle', pending: [], mode: null, model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, agents: null, holdsEnded: endedByChat.get(id) || [],
     group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', usageOut: false, starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
@@ -313,7 +313,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   }
 
   // A widget's button sends its text as the owner's message, in the mode the prompt box would use for a plain message.
-  const prompt = text => send(text, [], (state().status || { mode: 'manual' }).mode, [], { stay: true });
+  const prompt = text => send(text, [], state().status?.mode, [], { stay: true });
 
   async function stop() {
     try { await api(`api/sessions/${enc(id)}/stop`, {}); } catch (e) { notice(e.message); }
@@ -410,7 +410,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     store.set({ starting: true, notice: '' });
     try {
       const { id: created } = await api('api/new', {
-        cwd: HOME, text, mode: s.mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
+        cwd: HOME, text, ...(s.mode && { mode: s.mode }), ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
         ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('fast') && { fast: s.fast }),
       });
       onCreated();

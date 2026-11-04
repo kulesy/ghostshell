@@ -62,9 +62,11 @@ const Square = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-h
 
 // A mode the list does not hold, such as one Desktop recorded, gets an option of its own so the box shows the truth.
 // The choice shows as plain text, as in Desktop, with the native picker laid invisibly over it so a tap still opens it.
-function Pick({ id, label, value, options, disabled, onChange }) {
+// `empty` is what shows until a value is known. The select rests on nothing then, so choosing the first real option still fires a change.
+// It gets no option of its own, because iOS ignores `hidden` and would list it as a ticked row.
+function Pick({ id, label, empty, value, options, disabled, onChange }) {
   const all = value && !options.some(([v]) => v === value) ? [...options, [value, value]] : options;
-  const shown = all.find(([v]) => v === value)?.[1];
+  const shown = all.find(([v]) => v === value)?.[1] ?? empty;
   return html`<label class="btn pick" data-variant="ghost" data-size="sm" data-disabled=${disabled || null}><span class="sr">${label}</span><span aria-hidden="true">${shown}</span>
     <select id=${id} disabled=${disabled} value=${value || ''} onChange=${e => onChange(e.target.value)}>
       ${all.map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}
@@ -108,7 +110,7 @@ export function Composer({ ctrl }) {
   const [choice, setChoice] = useState({ query: null, at: 0 });
   const [shown, setShown] = useState(null);
   const opened = useRef(0);
-  const s = status || { state: 'idle', pending: [], mode: 'manual' };
+  const s = status || { state: 'idle', pending: [] };
   // A text that starts with ! is a command to run in the session's folder, where the session has a terminal.
   const bang = bangMode({ text, terminal, draft });
   // Quotes, images or files alone are a message too.
@@ -327,7 +329,7 @@ export function Composer({ ctrl }) {
     </div>
     <div class="composer-bar">
       <div class="composer-left">
-        <${Pick} id="mode" label="Permission mode" value=${s.mode || 'manual'} options=${MODES} disabled=${!status} onChange=${ctrl.setMode} />
+        <${Pick} id="mode" label="Permission mode" empty="Mode" value=${s.mode} options=${MODES} disabled=${!status} onChange=${ctrl.setMode} />
       </div>
       <div class="composer-right">
         <button class="btn pick" id="model" type="button" data-variant="ghost" data-size="sm" disabled=${!status} aria-label=${buttonLabel(look)} aria-haspopup="menu" aria-expanded=${!!shown}
