@@ -1,9 +1,11 @@
 // The file viewer: a file that a reply links to, read in the panel beside the chat. A picture opens in the image viewer instead.
 import { md } from '../md.mjs';
 import { api } from './api.js';
+import { draftKey, readDraft, route } from './file-edit-rules.js';
+import { cancelEdit, Editor, EditNotes, leaveEdit, saveEdit, startEdit, useEdit } from './file-edit.js';
 import { fileSize, grouped, lf } from './format.js';
 import { useStore } from './hooks.js';
-import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
 import { panelNow, restorePanel, showPanel } from './panel-state.js';
 import { createStore } from './store.js';
@@ -16,12 +18,11 @@ const WAIT_MS = 300;
 
 let count = 0;
 
-const route = (chat, what, path) => `api/sessions/${encodeURIComponent(chat)}/${what}?path=${encodeURIComponent(path)}`;
-
 // Opens the file at `path` that chat `id` links to, at `line` if given. `from` is the link, which gets the focus back. The panel shows
 // the file once it has answered or been waited for, and the waiting shows as "Loading".
 export function openFile({ id, path, line, from }) {
   const n = ++count;
+  leaveEdit(draftKey(id, path));
   const mine = () => shown.get().open?.n === n;
   const patch = change => { if (mine()) shown.set(s => ({ open: { ...s.open, ...change } })); };
   let before = null;
@@ -50,7 +51,16 @@ export function openFile({ id, path, line, from }) {
   });
 }
 
-export const closeFile = () => shown.set({ open: null });
+export const closeFile = () => {
+  leaveEdit();
+  shown.set({ open: null });
+};
+
+// The file as the server has it after a save, or after the edit was thrown away for what is on disk.
+const refreshPreview = (n, preview) => shown.set(s => (s.open?.n === n ? { open: { ...s.open, preview, error: '' } } : s));
+
+// The file could not be read again, so the view says why and shows no earlier copy of it.
+const failPreview = (n, error) => shown.set(s => (s.open?.n === n ? { open: { ...s.open, preview: null, error } } : s));
 
 // The file this chat has open, once it is ready to show, else null. The panel offers its File tab while there is one.
 export const useFile = chat => useStore(shown, s => (s.open?.chat === chat && (s.open.late || s.open.preview || s.open.error) ? s.open : null));
@@ -87,7 +97,7 @@ function Document({ text }) {
 export const backTo = (from, path) => (from?.isConnected ? from : [...document.querySelectorAll('a[data-file]')].find(a => a.dataset.file === path));
 
 // The file's head and body, which the panel shows in its File tab. `onClose` closes the file.
-export function FileTab({ file: { chat, path, line, preview, error }, onClose }) {
+export function FileTab({ file: { n, chat, path, line, preview, error }, onClose }) {
   const body = useRef(null);
   const [source, setSource] = useState(line != null);
   const name = preview?.name ?? path.split('/').pop();
@@ -98,6 +108,18 @@ export function FileTab({ file: { chat, path, line, preview, error }, onClose })
   const reads = !error && (!preview || (text && !preview.tooLarge));
   const openable = !!preview && !preview.tooLarge && kind !== 'binary' && kind !== 'image';
   const lines = preview?.truncated ? linesOf(preview.text).length : 0;
+  const editing = useEdit(chat, path);
+  const focusBody = () => body.current?.focus();
+  const view = {
+    done: next => { refreshPreview(n, next); focusBody(); },
+    fail: message => failPreview(n, message),
+    back: () => body.current?.querySelector('.file-editor') ?? body.current,
+  };
+
+  // A file left half edited comes back in the editor, with its text.
+  useEffect(() => {
+    if (preview?.editable && readDraft(draftKey(chat, path))) startEdit(chat, path, preview);
+  }, [preview]);
 
   // The line asked for goes to the middle of the body, and anything else starts at the top.
   useLayoutEffect(() => {
@@ -110,6 +132,7 @@ export function FileTab({ file: { chat, path, line, preview, error }, onClose })
   let content;
   if (error) content = html`<p class="file-note" role="alert">${error}</p>`;
   else if (!preview) content = html`<p class="file-note" role="status">Loading</p>`;
+  else if (editing) content = html`<${EditNotes} /><${Editor} name=${name} focus=${editing.focus} saving=${editing.saving} view=${view} />`;
   else if (preview.tooLarge || !(text || kind === 'pdf')) {
     content = html`<div class="file-meta">
       <p class="file-kind">${kindName(name)}</p>
@@ -129,12 +152,16 @@ export function FileTab({ file: { chat, path, line, preview, error }, onClose })
         <div class="file-where"><span class="file-path" title=${path}><bdi>${path}</bdi></span>${preview ? html`<span class="file-size">${fileSize(preview.size)}</span>` : null}</div>
       </div>
       <div class="file-actions">
-        ${openable && kind === 'markdown' ? html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label=${source ? 'Show rendered' : 'Show source'} data-tip=${source ? 'Show rendered' : 'Show source'} onClick=${() => setSource(s => !s)}>${source ? html`<${Page} />` : html`<${Code} />`}</button>` : null}
-        ${openable ? html`<a class="btn" data-variant="outline" data-size="icon-sm" href=${url} target="_blank" rel="noopener" aria-label="Open in new tab" data-tip="Open in new tab"><${NewTab} /></a>
+        ${editing ? html`<button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => cancelEdit(view)}>Cancel</button>
+        <button class="btn" data-size="sm" type="button" disabled=${editing.saving || (!editing.changed && !editing.conflict)} onClick=${() => saveEdit(view)}>${editing.saving ? 'Saving' : 'Save'}</button>` : null}
+        ${!editing && preview?.editable ? html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label="Edit file" data-tip="Edit file" onClick=${() => startEdit(chat, path, preview, { focus: true })}>${draw(icons.pencil, 'icon')}</button>` : null}
+        ${!editing && openable && kind === 'markdown' ? html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label=${source ? 'Show rendered' : 'Show source'} data-tip=${source ? 'Show rendered' : 'Show source'} onClick=${() => setSource(s => !s)}>${source ? html`<${Page} />` : html`<${Code} />`}</button>` : null}
+        ${!editing && openable ? html`<a class="btn" data-variant="outline" data-size="icon-sm" href=${url} target="_blank" rel="noopener" aria-label="Open in new tab" data-tip="Open in new tab"><${NewTab} /></a>
         <a class="btn" data-variant="outline" data-size="icon-sm" href=${`${url}&download=1`} download=${name} aria-label="Download" data-tip="Download"><${Download} /></a>` : null}
-        <button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label="Close file" data-tip="Close file" onClick=${onClose}>${draw(icons.x, 'icon')}</button>
+        ${editing ? null : html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label="Close file" data-tip="Close file" onClick=${onClose}>${draw(icons.x, 'icon')}</button>`}
       </div>
     </div>
-    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-kind=${kind} tabindex=${reads ? 0 : -1} role=${reads ? 'region' : undefined} aria-label=${reads ? `Contents of ${name}` : undefined}>${content}</div>
+    ${preview?.readOnly && !editing ? html`<p class="file-readonly">${preview.readOnly}</p>` : null}
+    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-editing=${editing ? '' : undefined} data-kind=${kind} tabindex=${reads && !editing ? 0 : -1} role=${reads && !editing ? 'region' : undefined} aria-label=${reads && !editing ? `Contents of ${name}` : undefined}>${content}</div>
   </div>`;
 }

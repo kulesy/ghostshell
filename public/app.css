@@ -4118,6 +4118,70 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .file-body[data-kind="pdf"] { overflow: hidden; }
 
+.file-body[data-editing] { display: flex; flex-direction: column; overflow: hidden; }
+
+.file-readonly {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+
+.file-alert {
+  flex: none;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--destructive);
+  background: color-mix(in oklab, var(--destructive) 8%, var(--background));
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.file-alert p { margin: 0; }
+
+.file-alert-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+
+.file-hint {
+  flex: none;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+
+.file-editor {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: 0.8125rem/1.5 var(--font-mono);
+  tab-size: 4;
+  resize: none;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.file-editor:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+@media (pointer: coarse) {
+  .file-editor { font-size: 1rem; }
+}
+
 .file-body:focus-visible {
   outline-offset: -3px;
   box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);

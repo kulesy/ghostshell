@@ -14,7 +14,7 @@ import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { descendantsOf } from './public/ui/sub-rules.js';
-import { linksOf, previewFile, serveFile } from './lib/files.mjs';
+import { frozenFolders, linksOf, MAX_TEXT_BYTES, previewFile, saveFile, serveFile } from './lib/files.mjs';
 import { makeGroupUpdates, makeUpdateStore, pullsOf, scaled } from './lib/group-updates.mjs';
 import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, refusal, workFolder } from './lib/groups.mjs';
 import { MAX_TITLE, makeLayout, nameOf } from './lib/layout.mjs';
@@ -55,6 +55,8 @@ import { titleText } from './public/ui/quote-rules.js';
 import { SECTION_IDS, SECTIONS, sectionById, sectionOf, sectionSessions } from './public/ui/sections.js';
 import { withKids } from './public/ui/tree.js';
 
+// The folders a save from the file viewer never reaches, as real paths.
+const frozen = frozenFolders([cfg.stateDir, cfg.projectsDir, cfg.desktopDir, ROOT]);
 const auth = makeAuth(cfg.stateDir);
 const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passkeyOrigins, warn: console.error });
 const chips = makeChips(cfg.stateDir);
@@ -2084,23 +2086,45 @@ async function api(req, res, u) {
     // Clear-Site-Data deletes the copy in Chrome and Firefox, but Safari 27 ignores it, and no browser acts on it at a plain http address.
     return send(res, 200, image.bytes, image.type, { 'cache-control': 'private, max-age=31536000, immutable', vary: 'Cookie', 'x-content-type-options': 'nosniff' });
   }
-  // A file a reply or a thought in the chat links to, as its text or its bytes. lib/files.mjs holds the gate, and `about` keeps a
-  // browser from reading the JSON about a file as anything else.
+  // A file a reply or a thought in the chat links to, as its text or its bytes, and a save of its text. lib/files.mjs holds the gate, and
+  // `about` keeps a browser from reading the JSON about a file as anything else.
+  const about = { 'x-content-type-options': 'nosniff', 'cross-origin-resource-policy': 'same-origin' };
   if (req.method === 'GET' && (action === 'preview' || action === 'file') && !parts[4]) {
-    const about = { 'x-content-type-options': 'nosniff', 'cross-origin-resource-policy': 'same-origin' };
     const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
     const chat = getChat(id);
     if (!t && !chat) return send(res, 404, { error: NO_SESSION }, 'application/json', about);
     const linked = linksOf(t, chat?.live, cfg.outputChars);
     const wanted = u.searchParams.get('path');
     try {
-      if (action === 'preview') return send(res, 200, await previewFile(wanted, linked), 'application/json', about);
+      if (action === 'preview') return send(res, 200, await previewFile(wanted, linked, frozen), 'application/json', about);
       const file = await serveFile(wanted, linked, u.searchParams.get('download') === '1');
       res.writeHead(200, file.headers);
       if (!file.stream) return res.end();
       return pipeline(file.stream, res, () => {});
     } catch (e) {
       return send(res, e.status || 500, { error: e.message }, 'application/json', about);
+    }
+  }
+  // Writes the owner's text over a linked file, so it takes the terminal's rules: this host's Origin, a JSON body and a second look at the sign-in.
+  if (action === 'save' && !parts[4]) {
+    const reply = (status, body) => send(res, status, body, 'application/json', about);
+    if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' }, 'application/json', { ...about, allow: 'POST' });
+    if (!strictOrigin(req)) return reply(403, { error: 'Cross-site request refused.' });
+    if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] || '')) return reply(415, { error: 'Send JSON.' });
+    // A JSON string can grow six times over as escapes, so the limit allows for that.
+    const limit = MAX_TEXT_BYTES * 6 + 64_000;
+    if (Number(req.headers['content-length']) > limit) return reply(413, { error: 'That text is more than GhostShell saves.' });
+    const body = await readJson(req, limit);
+    if (!body || [body.path, body.text, body.base].some(v => typeof v !== 'string')) return reply(400, { error: 'Send the path, the text and the version of the file.' });
+    // A new password can land while the body is still arriving, so the session is checked again before anything is written.
+    if (!auth.check(req)) return reply(401, { error: 'Signed out.' });
+    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+    const chat = getChat(id);
+    if (!t && !chat) return reply(404, { error: NO_SESSION });
+    try {
+      return reply(200, await saveFile(body.path, linksOf(t, chat?.live, cfg.outputChars), { text: body.text, base: body.base }, frozen));
+    } catch (e) {
+      return reply(e.status || 500, { error: e.message });
     }
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });

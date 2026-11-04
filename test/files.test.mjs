@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import http from 'node:http';
@@ -13,6 +14,8 @@ import { Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { linksOf, MAX_FILE_BYTES, MAX_TEXT_BYTES, previewFile, serveFile } from '../lib/files.mjs';
 import { as, request, ROOT, signIn, start } from './harness.mjs';
+
+const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 const TEXT_TYPE = 'text/plain; charset=utf-8';
@@ -188,7 +191,7 @@ test('a linked text file is read as text, and the preview names it, sizes it and
   assert.equal(res.headers['cache-control'], 'no-store');
   guarded(res);
   const preview = res.body();
-  assert.deepEqual({ ...preview, real: undefined }, { name: 'note.txt', path: at('note.txt'), real: undefined, size: 29, kind: 'text', type: TEXT_TYPE, text: 'line one\nline two\nline three\n' });
+  assert.deepEqual({ ...preview, real: undefined }, { name: 'note.txt', path: at('note.txt'), real: undefined, size: 29, kind: 'text', type: TEXT_TYPE, text: 'line one\nline two\nline three\n', version: sha256('line one\nline two\nline three\n'), editable: true });
   assert.equal(preview.real, fs.realpathSync(at('note.txt')));
   assert.equal(preview.truncated, undefined);
 });
