@@ -146,8 +146,8 @@ test('a family is one level deep in the list\'s sort, however deep its links go'
   const newest = await ready({ sessions });
   const recent = await index(newest.s, newest.token);
   assert.deepEqual(shape(recent.ungrouped), ['Head [Delta, Charlie, Bravo, Alpha]']);
-  assert.deepEqual(recent.ungrouped[0].children.map(r => [r.id, r.via, r.parent]), [['d', 'head', 'head'], ['c', 'head', 'head'], ['b', 'head', 'head'], ['a', 'head', 'head']]);
-  assert.equal(rowOf(recent, 'head').via, null);
+  assert.deepEqual(recent.ungrouped[0].children.map(r => [r.id, r.parent]), [['d', 'head'], ['c', 'head'], ['b', 'head'], ['a', 'head']]);
+  assert.equal(rowOf(recent, 'head').parent, null);
 
   const byTitle = await ready({ sessions, sections: [section('loose', 'sessions', 'alpha', false)] });
   assert.deepEqual(shape((await index(byTitle.s, byTitle.token)).ungrouped), ['Head [Alpha, Bravo, Charlie, Delta]']);
@@ -164,12 +164,47 @@ test('a session linked to an archived one shows under the next one up, and besid
   });
   const listed = await index(s, token);
   assert.deepEqual(shape(listed.ungrouped), ['Head [Direct, Under the archived one]']);
-  assert.deepEqual(['y', 'z'].map(id => [rowOf(listed, id).via, rowOf(listed, id).parent]), [['head', 'head'], ['head', 'head']]);
+  assert.deepEqual(['y', 'z'].map(id => rowOf(listed, id).parent), ['head', 'head']);
 
   const archive = await index(s, token, '?archived=1');
   assert.deepEqual(shape(archive.ungrouped), ['Head [Direct, Under the archived one, Archived middle]']);
-  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).via), ['head', 'head', 'head']);
-  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).near), ['head', 'x', 'head']);
+  assert.deepEqual(['x', 'y', 'z'].map(id => rowOf(archive, id).parent), ['head', 'head', 'head']);
+});
+
+// R is an archived root, M an archived session under it, Y a live one under M with X under Y and an archived A under X, and Z is under R.
+test('the archive lists an archived root with every session under it, each live head followed at once by its own members', async () => {
+  const { s, token } = await ready({
+    sessions: [
+      { id: 'r', title: 'R', archived: true, ago: 100 },
+      { id: 'm', title: 'M', parent: 'r', archived: true, ago: 90 },
+      { id: 'y', title: 'Y', parent: 'm', ago: 80 },
+      { id: 'z', title: 'Z', parent: 'r', ago: 5 },
+      { id: 'x', title: 'X', parent: 'y', ago: 70 },
+      { id: 'a', title: 'A', parent: 'x', archived: true, ago: 60 },
+    ],
+  });
+  const archive = await index(s, token, '?archived=1');
+  assert.deepEqual(shape(archive.ungrouped), ['R [Z, Y, A, X, M]']);
+  assert.deepEqual(['r', 'm', 'y', 'z', 'x', 'a'].map(id => rowOf(archive, id).parent), [null, 'r', 'r', 'r', 'y', 'y']);
+  const listed = await index(s, token);
+  assert.deepEqual(shape(listed.ungrouped), ['Z', 'Y [X]']);
+  assert.deepEqual(['y', 'z', 'x'].map(id => rowOf(listed, id).parent), [null, null, 'y']);
+});
+
+test('the nearest session a row shows under stays in the server, with the archived rows listed or not', async () => {
+  const { s, token } = await ready({
+    sessions: [
+      { id: 'head', title: 'Head', ago: 10 },
+      { id: 'x', title: 'Archived middle', parent: 'head', archived: true, ago: 20 },
+      { id: 'y', title: 'Under the archived one', parent: 'x', ago: 5 },
+    ],
+  });
+  for (const query of ['', '?archived=1']) {
+    const ix = await index(s, token, query);
+    assert.equal(everyRow(ix).length, query ? 3 : 2);
+    assert.ok(everyRow(ix).every(r => !('near' in r)), `no near on a row ${query}`);
+    assert.equal('families' in ix, false, `nor on the index ${query}`);
+  }
 });
 
 // Desktop's own rule for a link: a side session, a fork or a suggested task nests under the session it came from, unless it is detached.
@@ -186,7 +221,7 @@ test('a session detached from its parent keeps the sessions that came from it, w
   });
   const ix = await index(s, token);
   assert.deepEqual(shape(ix.ungrouped), ['C [E, D]', 'A [B]']);
-  assert.deepEqual(['a', 'b', 'c', 'd', 'e'].map(id => [rowOf(ix, id).parent, rowOf(ix, id).via]), [[null, null], ['a', 'a'], [null, null], ['c', 'c'], ['c', 'c']]);
+  assert.deepEqual(['a', 'b', 'c', 'd', 'e'].map(id => rowOf(ix, id).parent), [null, 'a', null, 'c', 'c']);
 });
 
 test('a list is cut at its first 60 as it is sorted, so a list that goes by title keeps the first names and not the newest', async () => {

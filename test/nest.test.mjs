@@ -359,7 +359,7 @@ test('a session that leaves its family hands the ones linked straight to it to t
     assert.equal((await call(s, token, route, json)).status, 200, route);
     const ix = await index(s, token);
     assert.deepEqual(titles(rowOf(ix, 'head').children), ['Charlie', 'Delta', 'Bravo'], route);
-    assert.deepEqual([rowOf(ix, 'd').via, rowOf(ix, 'd').near], ['head', 'b'], route);
+    assert.equal(rowOf(ix, 'd').parent, 'head', route);
     assert.deepEqual(onDisk(s).parents, { ...own, b: 'head' }, route);
   }
 });
@@ -377,7 +377,7 @@ for (const [way, mine] of Object.entries(INCIDENT)) {
       assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['H [G, T]'], `${way} ${route}`);
       assert.equal((await call(s, token, route, json)).status, 200, route);
       const ix = await index(s, token);
-      assert.deepEqual([rowOf(ix, 'g').parent, rowOf(ix, 'g').via], ['h', 'h'], route);
+      assert.equal(rowOf(ix, 'g').parent, 'h', route);
       assert.deepEqual(titles(rowOf(ix, 'h').children), ['G'], route);
       assert.equal(onDisk(s).parents.g, route === 'archive' ? (way === 'Capcom' ? 't' : undefined) : 'h', route);
     }
@@ -627,7 +627,7 @@ test('a session started from a chip by a session that is nested itself shows und
   });
   const ix = await index(s, token);
   assert.deepEqual(places(ix).groups['cg-work'], ['Top [Made, Maker]']);
-  assert.deepEqual([rowOf(ix, 'made').parent, rowOf(ix, 'made').via, rowOf(ix, 'made').near], ['top', 'top', 'maker']);
+  assert.equal(rowOf(ix, 'made').parent, 'top');
   assert.equal(Object.hasOwn(onDisk(s), 'parents'), false);
 });
 
@@ -735,10 +735,10 @@ test('a chip made by a sub session starts its session beside it under the sub se
   assert.equal(Object.hasOwn(top.body().chip, 'nestUnder'), false, 'a top level maker is the parent already');
   const ix = await index(s, token);
   const [next, sub] = [beside.body().id, 'sub'].map(id => rowOf(ix, id));
-  assert.deepEqual([next.parent, next.via, sub.parent, sub.via], ['maker', 'maker', 'maker', 'maker'], 'the new session is a sibling of its maker');
-  assert.deepEqual([rowOf(ix, top.body().id).parent, rowOf(ix, top.body().id).via], ['maker', 'maker']);
+  assert.deepEqual([next.parent, sub.parent], ['maker', 'maker'], 'the new session is a sibling of its maker');
+  assert.equal(rowOf(ix, top.body().id).parent, 'maker');
   const again = await restart(s);
-  assert.equal(rowOf(await index(again, (await signIn(again)).token), beside.body().id).via, 'maker', 'a restart reads it from chips.json');
+  assert.equal(rowOf(await index(again, (await signIn(again)).token), beside.body().id).parent, 'maker', 'a restart reads it from chips.json');
 });
 
 test('a chip from a session that shows as a head because its parent is archived nests its session under that session', async () => {

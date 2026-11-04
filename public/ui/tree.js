@@ -83,7 +83,7 @@ const mapLists = (ix, edit) => ({
 const setChildren = ({ children, ...bare }, list) => (list.length ? { ...bare, children: list } : bare);
 
 // A row's children go in the order of the list the row is in.
-const reorder = (row, sort) => (row.children ? { ...row, children: sortFamily(row, row.children, sort) } : row);
+const reorder = (row, sort) => (row.children ? { ...row, children: sortFamily(row.children, sort) } : row);
 
 const byTitle = list => sortRows(list.map(r => reorder(r, TITLE_SORT)), TITLE_SORT);
 
@@ -108,18 +108,11 @@ export const sortByTitle = ix => ({
 export function withoutRow(ix, id, { withChildren = false } = {}) {
   const gone = findRow(ix, id);
   const kids = withChildren ? [] : gone?.children ?? [];
-  // A freed session keeps the sessions under it, so each that showed straight under the one that went heads a family, as the server
-  // lists them.
-  const kin = new Map(kids.map(c => [c.id, c]));
-  const headOf = c => {
-    for (let n = kids.length; n > 0 && kin.has(c.via); n--) c = kin.get(c.via);
-    return c;
-  };
-  const freed = kids.filter(c => headOf(c) === c).map(h => setChildren({ ...h, parent: null, via: null }, kids.filter(c => c !== h && headOf(c) === h).map(c => ({ ...c, parent: h.id }))));
+  // A child of the family is under the head alone, so each one freed is a head with nobody under it.
+  const freed = kids.map(c => ({ ...c, parent: null }));
   const homeOf = c => (gone.pinned ? 'pinned' : gone.group ?? looseHome(c));
-  // The sessions straight under a member that leaves show under the one it showed under, as the server links them. A family is placed
-  // by its best member, so a list with a family that lost one is placed again.
-  const leaves = (r, sort) => ((r.children ?? []).some(c => c.id === id) ? setChildren(r, sortFamily(r, r.children.filter(c => c.id !== id).map(c => (c.via === id ? { ...c, via: gone.via } : c)), sort)) : r);
+  // A family is placed by its best member, so a list with a family that lost one is placed again.
+  const leaves = (r, sort) => ((r.children ?? []).some(c => c.id === id) ? setChildren(r, sortFamily(r.children.filter(c => c.id !== id), sort)) : r);
   const leave = (list, sort, name) => {
     const kept = list.filter(r => r.id !== id);
     const rest = kept.map(r => leaves(r, sort));
@@ -145,7 +138,7 @@ export function placeRow(ix, id, section) {
   const inPlace = !row.parent && (section === 'pinned' ? row.pinned : group ? row.group === group && !row.pinned : !row.group && !row.pinned);
   if (inPlace) return ix;
   const at = { pinned: section === 'pinned', group };
-  const moved = { ...row, ...at, parent: null, via: null, ...(row.children && { children: row.children.map(c => ({ ...c, ...at })) }) };
+  const moved = { ...row, ...at, parent: null, ...(row.children && { children: row.children.map(c => ({ ...c, ...at })) }) };
   const lands = LOOSE.includes(section) ? looseHome(row) : section;
   return mapLists(withoutRow(ix, id, { withChildren: true }), (list, sort, name) => (name === lands ? sortRows([...list, reorder(moved, sort)], sort) : list));
 }
@@ -158,7 +151,7 @@ export function nestRow(ix, id, parent) {
   const root = rootOf(ix, parent);
   if (!row || !root || root.id === id || row.parent === root.id) return ix;
   const at = { group: root.group, pinned: root.pinned };
-  const family = [row, ...(row.children ?? [])].map(({ children, ...r }) => ({ ...r, ...at, parent: root.id, via: root.id }));
+  const family = [row, ...(row.children ?? [])].map(({ children, ...r }) => ({ ...r, ...at, parent: root.id }));
   const adopt = (list, sort) => (list.some(r => r.id === root.id)
     ? sortRows(list.map(r => (r.id === root.id ? reorder({ ...r, children: [...(r.children ?? []), ...family] }, sort) : r)), sort)
     : list);

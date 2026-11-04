@@ -17,7 +17,7 @@ export const subStatusOn = ix => !!ix?.features?.subStatus;
 // Whether the chat `id` has a Sub sessions tab: a group's chat always has one, and any other chat once a session shows under it.
 export function subsOffered(ix, id) {
   if (!id || !subStatusOn(ix)) return false;
-  return !!groupOfSession(ix, id) || everyRow(ix).some(row => row.via === id);
+  return !!groupOfSession(ix, id) || everyRow(ix).some(row => row.parent === id);
 }
 
 // A session whose pull request waits on the owner counts as waiting on them, which is how a mark that says so reads everywhere. `needs` is a

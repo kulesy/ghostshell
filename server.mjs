@@ -134,10 +134,10 @@ const groupList = () => layout.read().groups.map(({ id, name }) => ({ id, name }
 
 // A nested session that leaves its place would take the sessions linked straight to it along, though they show beside it, so each is
 // linked to the parent instead, and those further down keep their links. A head takes its whole family along.
-function keepFamily(id, rows) {
-  const { via } = rows.get(id);
+function keepFamily(id, { rows, families }) {
+  const { parent } = rows.get(id);
   const links = {};
-  if (via) for (const r of rows.values()) if (!r.archived && r.near === id) links[r.id] = via;
+  if (parent) for (const r of rows.values()) if (!r.archived && families.get(r.id).near === id) links[r.id] = parent;
   return links;
 }
 
@@ -146,7 +146,7 @@ function keepFamily(id, rows) {
 const belowNow = (id, { archived }) => descendantsOf([...buildIndex({ archived }).rows.values()], id);
 
 // A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone knows a session's link.
-const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex().rows) });
+const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex()) });
 
 function buildIndex({ archived = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
@@ -219,7 +219,7 @@ function buildIndex({ archived = false } = {}) {
   for (const g of ownedChats) {
     const row = rows.get(g.session) ?? { lastActivityAt: 0, sortAt: 0, createdAt: 0, state: stateOf(g.session, 0) };
     rows.delete(g.session);
-    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, via: null, groupSession: g.id, ...(retired.has(g.session) && { retired: true }) });
+    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, groupSession: g.id, ...(retired.has(g.session) && { retired: true }) });
   }
 
   // A family shows in the place of its holder, the topmost session its links reach, so a child takes the place its holder has now.
@@ -227,8 +227,8 @@ function buildIndex({ archived = false } = {}) {
   const families = familiesOf(rows, id => linkOf(own, fromChips, desk, id), { archived });
   const places = new Map([...rows.values()].map(r => [r.id, { group: r.group, pinned: r.pinned }]));
   for (const r of rows.values()) {
-    const { holder, parent, via, near } = families.get(r.id);
-    Object.assign(r, { parent, via, near }, places.get(holder));
+    const { holder, parent } = families.get(r.id);
+    Object.assign(r, { parent }, places.get(holder));
   }
   const visible = [...rows.values()].filter(r => archived || !r.archived);
   // Counted by the place a family gives each row, which is what api/archived?group= lists by.
@@ -251,14 +251,16 @@ function buildIndex({ archived = false } = {}) {
   const groupSort = id => desk.sorts.groups.get(id) ?? DEFAULT_SORT;
   const sortOf = r => (r.pinned ? sorts.pinned : r.group ? groupSort(r.group) : r.routine ? sorts.routines : sorts.sessions);
   const kids = new Map();
-  for (const r of visible.filter(r => r.parent)) kids.set(r.parent, [...(kids.get(r.parent) ?? []), r]);
+  // A family is listed under its topmost shown session: its holder in the archived rows, else the head its rows show under.
+  const placedUnder = r => (archived ? (families.get(r.id).holder === r.id ? null : families.get(r.id).holder) : r.parent);
+  for (const r of visible.filter(placedUnder)) kids.set(placedUnder(r), [...(kids.get(placedUnder(r)) ?? []), r]);
   for (const [id, list] of kids) {
     const parent = rows.get(id);
-    parent.children = sortFamily(parent, list, sortOf(parent));
+    parent.children = sortFamily(list, sortOf(parent));
   }
 
   // A child is listed under its parent only.
-  const top = visible.filter(r => !r.parent);
+  const top = visible.filter(r => !placedUnder(r));
   const pinned = sortRows(top.filter(r => r.pinned), sorts.pinned);
   const groups = own.groups.map(g => {
     const sort = groupSort(g.id);
@@ -292,6 +294,8 @@ function buildIndex({ archived = false } = {}) {
     rows,
     groupSessions,
     archivedSection,
+    // Only keepFamily reads `near`, so it stays off the rows that the list and the tools send.
+    families,
   };
 }
 
@@ -372,7 +376,7 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
 // What a chat reaches the sessions under it through, and what every chat sends to, archives, unarchives, renames and moves any session with. Each call looks the index up again, so a session archived or nested since is seen
-// as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for. The sessions of groups and sections
+// as it is now. Every row is in the index whether archived or not, and `parent` skips the archived ones unless they are asked for. The sessions of groups and sections
 // are listed too, so one can send and be sent to, and none is ever below another. A deleted group's chat is left out, as nothing would answer its tools.
 function subCtx(sessionId) {
   return {
@@ -433,7 +437,7 @@ function placeStarted(id, home, { unlink = false } = {}) {
 }
 
 // The head a session shows under in the live list. One under an archived root shows as a head itself, so it has none.
-const liveHeadOf = (row, rowOf = findRow) => (row?.via && !rowOf(row.via)?.archived ? row.via : null);
+const liveHeadOf = (row, rowOf = findRow) => (row?.parent && !rowOf(row.parent)?.archived ? row.parent : null);
 
 // Where a chip's session opens, worded for its card from the group's name now. `row` is the session that made the chip. A section's chat
 // and a routine run, which never holds sessions, have nothing to say. A list of chips passes `rowOf` over one index.
@@ -923,10 +927,11 @@ const CHANGES = {
 // child's parent. The answer carries the parent the list now shows.
 function nest(id, parent) {
   if (parent !== null && typeof parent !== 'string') throw refuse(400, 'Nest it under which session?');
-  const { rows, groupSessions } = buildIndex();
+  const index = buildIndex();
+  const { rows, groupSessions } = index;
   if (parent === null) {
     // A null written with no link to override would hide one that Desktop makes later.
-    if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, rows) });
+    if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, index) });
     return { parent: null };
   }
   if (groupSessions.has(parent)) throw refuse(400, `A ${kindOf(groupSessions.get(parent))}'s session cannot hold sessions.`);
@@ -939,7 +944,7 @@ function nest(id, parent) {
   const root = target.parent ?? target.id;
   // A session that shows under that parent already keeps its own group and its link.
   if (rows.get(id).parent === root) return { parent: root };
-  layout.nest(id, root, { relink: keepFamily(id, rows) });
+  layout.nest(id, root, { relink: keepFamily(id, index) });
   return { parent: buildIndex().rows.get(id).parent };
 }
 
@@ -978,7 +983,8 @@ const UNDO_WINDOW_MS = 10 * 60_000;
 function newParent({ ids, title, place }) {
   if (Array.isArray(ids) && ids.length > MAX_PICKED) throw refuse(400, `Pick at most ${MAX_PICKED} sessions.`);
   if (!Array.isArray(ids) || ids.length < 2) throw refuse(400, 'Pick at least two sessions.');
-  const { rows } = listedRows(ids, 'An archived session cannot be nested.');
+  const index = listedRows(ids, 'An archived session cannot be nested.');
+  const { rows } = index;
   const picked = ids.map(id => rows.get(id));
   const shared = picked.every(r => placeKey(r) === placeKey(picked[0])) ? picked[0] : null;
   if (place == null && !shared) throw refuse(400, 'The sessions are in different places. Choose where it goes.');
@@ -990,10 +996,10 @@ function newParent({ ids, title, place }) {
   if (!home.pinned && home.group !== null && !now.groups.some(g => g.id === home.group)) throw refuse(400, 'Unknown group.');
 
   const chosen = new Set(ids);
-  const direct = ids.filter(id => !chosen.has(rows.get(id).via));
+  const direct = ids.filter(id => !chosen.has(rows.get(id).parent));
   const parent = crypto.randomUUID();
   const relinks = {};
-  for (const id of direct) for (const [kid, to] of Object.entries(keepFamily(id, rows))) if (!chosen.has(kid)) relinks[kid] = to;
+  for (const id of direct) for (const [kid, to] of Object.entries(keepFamily(id, index))) if (!chosen.has(kid)) relinks[kid] = to;
   const links = { ...relinks, ...Object.fromEntries(direct.map(id => [id, parent])) };
   const own = linksNow();
   const final = id => (Object.hasOwn(links, id) ? links[id] : own(id));
@@ -1055,18 +1061,19 @@ function manyChange({ ids, to }) {
   if (ids.length > MAX_PICKED) throw refuse(400, `Pick at most ${MAX_PICKED} sessions.`);
   const aim = aimOf(to);
   if (!aim) throw refuse(400, 'Where should they go?');
-  const { rows, groupSessions } = listedRows(ids, `An archived session cannot be ${aim === 'parent' ? 'nested' : 'moved'}.`);
+  const index = listedRows(ids, `An archived session cannot be ${aim === 'parent' ? 'nested' : 'moved'}.`);
+  const { rows, groupSessions } = index;
   const now = layout.read();
   if (now.problem) throw refuse(500, now.problem);
   if (aim === 'group' && to.group !== null && !now.groups.some(g => g.id === to.group)) throw refuse(400, 'Unknown group.');
 
   const chosen = new Set(ids);
-  const direct = ids.filter(id => !chosen.has(rows.get(id).via));
+  const direct = ids.filter(id => !chosen.has(rows.get(id).parent));
   const own = linksNow();
   // A nested session that leaves its place keeps the picked sessions under it and leaves the others under the one it showed under.
   const leave = id => {
     if (own(id) === null) return {};
-    return { unlink: true, relink: Object.fromEntries(Object.entries(keepFamily(id, rows)).filter(([kid]) => !chosen.has(kid))) };
+    return { unlink: true, relink: Object.fromEntries(Object.entries(keepFamily(id, index)).filter(([kid]) => !chosen.has(kid))) };
   };
   const stays = (id, group, pinned) => own(id) === null && (pinned ? rows.get(id).pinned : !rows.get(id).pinned && rows.get(id).group === group);
   let steps;
@@ -1101,7 +1108,7 @@ function manyChange({ ids, to }) {
   const undo = crypto.randomUUID();
   const changed = new Set(steps.map(step => step.id));
   // A picked session that rides along counts when the one it rides with was changed.
-  const headOf = id => (chosen.has(rows.get(id).via) ? headOf(rows.get(id).via) : id);
+  const headOf = id => (chosen.has(rows.get(id).parent) ? headOf(rows.get(id).parent) : id);
   const count = ids.filter(id => changed.has(headOf(id))).length;
   manyUndos.set(undo, { before, at, count });
   return { undo, count };
@@ -1633,7 +1640,7 @@ async function api(req, res, u) {
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const withArchived = u.searchParams.get('archived') === '1';
-    const { rows, groupSessions, archivedSection, ...index } = buildIndex({ archived: withArchived });
+    const { rows, groupSessions, archivedSection, families, ...index } = buildIndex({ archived: withArchived });
     // The turns and the marks go onto the rows here and not in buildIndex, which findRow runs for every request.
     const now = Date.now();
     const shared = { desk: loadDesktop(cfg.desktopDir), mine: marks.read(), now };

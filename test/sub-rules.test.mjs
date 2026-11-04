@@ -7,7 +7,7 @@ import { withKids } from '../public/ui/tree.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
 const MINUTE = 60_000;
-const row = (id, via, state, ago, extra) => ({ id, via, state, dot: null, archived: false, lastActivityAt: NOW - ago, ...extra });
+const row = (id, parent, state, ago, extra) => ({ id, parent, state, dot: null, archived: false, lastActivityAt: NOW - ago, ...extra });
 const ids = list => list.map(r => r.id);
 const shape = nodes => nodes.map(n => (n.subs.length ? [n.row.id, shape(n.subs)] : n.row.id));
 
@@ -25,7 +25,7 @@ const ROWS = [
   row('elsewhere', 'other', 'waiting', MINUTE),
 ];
 
-test('the sessions straight under a session are the rows whose via names it', () => {
+test('the sessions straight under a session are the rows whose parent names it', () => {
   assert.deepEqual(ids(subsOf(ROWS, 'top')), ['a', 'b']);
   assert.deepEqual(ids(subsOf(ROWS, 'a2')), ['a2x']);
   assert.deepEqual(subsOf(ROWS, 'b'), []);

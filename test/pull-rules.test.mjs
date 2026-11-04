@@ -189,8 +189,8 @@ test('pullsToAsk lists each stale id once, in the order of the rows', () => {
 const index = (extra = []) => ({
   features: { subStatus: true, pullStatus: true },
   pinned: [], routines: [], started: [], other: [],
-  groups: [{ id: 'cg-work', name: 'Work', session: { id: 'chat-of-work' }, sessions: [{ id: 'w1', via: null, ...row('w1', 10), children: [{ ...row('w1a', 20), via: 'w1' }] }, { ...row('w2', 5), archived: true }] }],
-  ungrouped: [{ ...row('top', 0), via: null, children: [{ ...row('kid', 30), via: 'top' }, { ...row('grand', 10), via: 'kid' }, { ...row('gone', 1), via: 'top', archived: true }, ...extra] }, { ...row('loner', 2), via: null }],
+  groups: [{ id: 'cg-work', name: 'Work', session: { id: 'chat-of-work' }, sessions: [{ id: 'w1', parent: null, ...row('w1', 10), children: [{ ...row('w1a', 20), parent: 'w1' }] }, { ...row('w2', 5), archived: true }] }],
+  ungrouped: [{ ...row('top', 0), parent: null, children: [{ ...row('kid', 30), parent: 'top' }, { ...row('grand', 10), parent: 'top' }, { ...row('gone', 1), parent: 'top', archived: true }, ...extra] }, { ...row('loner', 2), parent: null }],
 });
 
 test('the sessions to ask about are every live one below the chat at any depth or in the group, the most recently active first', () => {
@@ -200,7 +200,7 @@ test('the sessions to ask about are every live one below the chat at any depth o
 });
 
 test('no more than the 120 most recently active sessions are asked about', () => {
-  const many = Array.from({ length: 150 }, (_, n) => ({ ...row(`s${n}`, 100 + n), via: 'top' }));
+  const many = Array.from({ length: 150 }, (_, n) => ({ ...row(`s${n}`, 100 + n), parent: 'top' }));
   const found = scopeOf(index(many), 'top');
   assert.equal(found.length, 120);
   assert.equal(found.some(r => r.id === 's0'), true);

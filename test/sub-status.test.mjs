@@ -139,7 +139,7 @@ test('the index tells the page this server knows sub session status, and puts th
   const { s, token } = await ready();
   const ix = (await get(s, token, '/api/sessions?archived=1')).body();
   assert.equal(ix.features.subStatus, true);
-  assert.deepEqual(findRow(ix, 'top').children.map(r => [r.id, r.via]).sort(), [['gone', 'top'], ['grand', 'top'], ['kid', 'top'], ['under-gone', 'top']]);
+  assert.deepEqual(findRow(ix, 'top').children.map(r => [r.id, r.parent]).sort(), [['gone', 'top'], ['grand', 'top'], ['kid', 'top'], ['under-gone', 'top']]);
 });
 
 test('an ordinary chat is offered the sub session tools after the ones every chat has, and a group\'s chat is not', async () => {
