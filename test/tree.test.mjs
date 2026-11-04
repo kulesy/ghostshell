@@ -5,7 +5,7 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { TITLE_SORT, UNTITLED } from '../public/ui/order.js';
 import { withoutFamily } from '../public/ui/sub-rules.js';
-import { archiveTarget, everyRow, findRow, listedIds, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, settling, sortByTitle, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
+import { archiveTarget, everyRow, findRow, listedIds, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextOpen, nextStop, placeRow, rootOf, sessionTargets, settling, sortByTitle, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
   const from = (at, key) => nextStop(5, at, key);
@@ -880,4 +880,78 @@ test('a form or anything modal keeps the key even with rows picked', () => {
   assert.equal(target({ form: true, picked: ['a', 'b'] }), null);
   assert.equal(target({ modal: true, picked: ['a', 'b'] }), null);
   assert.equal(target({ modal: true, menu: { session: 'a' }, picked: ['a', 'b'] }), null);
+});
+
+// The sections as ABOVE draws them: the routines' earlier runs are folded away and the family a1 is open.
+const DRAWN = [
+  { id: 'routines', rows: ['r3', 'w1'] },
+  { id: 'pinned', rows: ['p1', 'pk'] },
+  { id: 'cg-a', rows: ['a1', 'c1', 'c2', 'c3', 'a2', 'a3'] },
+  { id: 'cg-b', rows: ['b1'] },
+  { id: 'ungrouped', rows: ['u1', 'u2'] },
+];
+const without = (...ids) => DRAWN.map(s => ({ ...s, rows: s.rows.filter(id => !ids.includes(id)) }));
+const open = (sections, ...gone) => nextOpen(ABOVE, sections, gone);
+
+test('the session to open is the row below the archived one, else the row above it in its section', () => {
+  assert.equal(open(DRAWN, 'a2'), 'a3');
+  assert.equal(open(DRAWN, 'a3'), 'a2');
+  assert.equal(open(DRAWN, 'u1'), 'u2');
+});
+
+test('a section left empty opens the first session of the sections below, else the nearest above', () => {
+  assert.equal(open(DRAWN, 'b1'), 'u1');
+  assert.equal(open(without('u1', 'u2'), 'u1', 'u2'), 'b1');
+  assert.equal(open(without('u2'), 'u2'), 'u1');
+});
+
+test('the archived session\'s own family is passed over, drawn or not', () => {
+  assert.equal(open(DRAWN, 'a1', 'c1', 'c2', 'c3'), 'a2');
+  assert.equal(open(DRAWN, 'p1', 'pk'), 'a1');
+  assert.equal(open(DRAWN, 'a2', 'a3', 'b1', 'u1', 'u2'), 'c3');
+});
+
+test('a nested session opens the sibling below it, then the one above it, and a folded family anchors on its parent', () => {
+  assert.equal(open(DRAWN, 'c1'), 'c2');
+  assert.equal(open(DRAWN, 'c3'), 'a2');
+  const folded = DRAWN.map(s => (s.id === 'cg-a' ? { ...s, rows: ['a1', 'a2', 'a3'] } : s));
+  assert.equal(open(folded, 'c2'), 'a2');
+  assert.equal(open(folded, 'c1', 'c2', 'c3'), 'a2');
+});
+
+test('a session in a collapsed section opens the first session below its section, else the last above', () => {
+  const shut = DRAWN.map(s => (s.id === 'cg-a' ? { ...s, rows: [] } : s));
+  assert.equal(open(shut, 'a2'), 'b1');
+  assert.equal(open(shut.map(s => (s.id === 'cg-b' || s.id === 'ungrouped' ? { ...s, rows: [] } : s)), 'a2'), 'pk');
+});
+
+test('a session that is not in the view opens the first session in it, and none left is null', () => {
+  assert.equal(open(DRAWN, 'elsewhere'), 'r3');
+  assert.equal(open(DRAWN.map(s => ({ ...s, rows: [] })), 'a2'), null);
+  assert.equal(open(without('u1', 'u2'), 'u1', 'u2', 'r3', 'w1', 'p1', 'pk', 'a1', 'c1', 'c2', 'c3', 'a2', 'a3', 'b1'), null);
+});
+
+test('several leaving together open the first session after the last of them, across sections', () => {
+  assert.equal(open(DRAWN, 'a2', 'b1'), 'u1');
+  assert.equal(open(DRAWN, 'a3', 'u1'), 'u2');
+  assert.equal(open(DRAWN, 'a3', 'u1', 'u2'), 'b1');
+});
+
+test('the latest run of a routine gives way to its next run, which takes the same row', () => {
+  assert.equal(open(DRAWN, 'r3'), 'r2');
+  assert.equal(open(DRAWN, 'r3', 'r2'), 'r1');
+  assert.equal(open(DRAWN, 'r3', 'r2', 'r1'), 'w1');
+});
+
+test('a folded family\'s head that stays is the session to open when nothing is drawn below it', () => {
+  assert.equal(open([{ id: 'cg-a', rows: ['a1'] }], 'c2'), 'a1');
+  assert.equal(open([{ id: 'cg-a', rows: ['a1'] }], 'c1', 'c2', 'c3'), 'a1');
+});
+
+test('a nested session in a collapsed section goes by its holder\'s section, and a collapsed routine by Routines', () => {
+  const loose = kid('x1', 'a2', { group: null });
+  const nested = { ...ABOVE, groups: ABOVE.groups.map(g => ({ ...g, sessions: g.sessions.map(r => (r.id === 'a2' ? { ...r, children: [loose] } : r)) })) };
+  const shut = (...ids) => DRAWN.map(s => (ids.includes(s.id) ? { ...s, rows: [] } : s));
+  assert.equal(nextOpen(nested, shut('cg-a'), ['x1']), 'b1');
+  assert.equal(nextOpen(ABOVE, shut('routines'), ['w1']), 'p1');
 });

@@ -215,6 +215,9 @@ function levelOf(ix, row) {
   return { siblings: [ix.routines.map(g => g.latest), ...topLists(ix)].find(list => list.some(r => r.id === row.id)) ?? [], parent: null };
 }
 
+// The next run of the routine whose latest run is `id`, which takes that run's row once it leaves, or undefined.
+const nextRun = (ix, id, leaving) => ix.routines.find(g => g.latest.id === id)?.earlier.find(r => !leaving.has(r.id))?.id;
+
 // The row that takes the focus once `ids` leave the list, at the level of the tree of the topmost of them in `order`, the drawn rows in
 // screen order: the nearest row above it that stays, else the nearest row below it, else the row it is nested under. A routine's latest
 // run gives way to its next run, drawn or not, as that run takes its place. Any other row has to be drawn, so the focus never lands out
@@ -226,13 +229,32 @@ export function stayAbove(ix, order, ids) {
   const top = order.find(id => leaving.has(id));
   const row = top && findRow(ix, top);
   if (!row) return null;
-  const next = ix.routines.find(g => g.latest.id === top)?.earlier.find(r => !leaving.has(r.id));
-  if (next) return next.id;
+  const next = nextRun(ix, top, leaving);
+  if (next) return next;
   const { siblings, parent } = levelOf(ix, row);
   const at = siblings.findIndex(r => r.id === top);
   if (at < 0) return null;
   const to = siblings.slice(0, at).findLast(stays) ?? siblings.slice(at + 1).find(stays) ?? (parent && stays(parent) ? parent : null);
   return to?.id ?? null;
+}
+
+// The session to open once `gone` leave the screen, in the order the sidebar draws: `sections` is [{ id, rows }] as drawn, a collapsed section with
+// no rows. It is the row below the last of them, else the row above in that section, else the nearest session in the sections below, then
+// above. A row not in any section (another view, a collapsed one) goes by the section it belongs to, or by the first session in the view.
+export function nextOpen(ix, sections, gone) {
+  const leaving = new Set(gone);
+  const stays = id => !leaving.has(id);
+  const rowsOf = list => list.flatMap(s => s.rows);
+  const spots = new Set(gone.flatMap(id => [id, findRow(ix, id)?.parent].filter(Boolean)));
+  const held = sections.findLastIndex(s => s.rows.some(id => spots.has(id)));
+  // A nested row sits in its holder's section, as `sectionOf` in sections.js has it.
+  const own = id => { const h = rootOf(ix, id); return h?.pinned ? 'pinned' : h?.group ?? (h?.routine ? 'routines' : h && looseHome(h)); };
+  const home = held >= 0 ? held : Math.max(...gone.map(id => sections.findIndex(s => s.id === own(id))), -1);
+  const rows = sections[home]?.rows ?? [];
+  const at = rows.findLastIndex(id => spots.has(id));
+  return (leaving.has(rows[at]) && nextRun(ix, rows[at], leaving))
+    || rows.slice(at + 1).find(stays) || rows.slice(0, at + 1).findLast(stays)
+    || rowsOf(sections.slice(home + 1)).find(stays) || rowsOf(sections.slice(0, Math.max(home, 0))).findLast(stays) || null;
 }
 
 // The session Cmd+A archives: null leaves the key to the browser, { id: null } takes it and archives nothing, { id } archives that one

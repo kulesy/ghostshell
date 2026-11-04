@@ -21,8 +21,8 @@ export async function unarchiveSession({ archive, id, title, retry = 'Undo' }) {
 }
 
 // `archive(id, archived, { stop })` is the page's, and resolves with { problem, stopped, running, subs }, where `running` is { self, subs } when the server refused to stop a chat unasked. `subsRunning` is how many sessions below it
-// the list shows running or waiting. `leaving` runs as the card is about to go, `settled` once the request has answered, `done` once the session is archived, `stayed` if it is not going after all, and `back` says where the focus goes if the owner declines.
-export async function closeSession({ archive, id, title, running, subsRunning: below = 0, leaving, settled, done, stayed, back }) {
+// the list shows running or waiting. `leaving` runs as the card is about to go, `settled` once the request has answered, `stayed` if it is not going after all, and `back` says where the focus goes if the owner declines.
+export async function closeSession({ archive, id, title, running, subsRunning: below = 0, leaving, settled, stayed, back }) {
   const stop = (subs, self) => ask({ action: 'Stop and archive', title, detail: stopQuestion(subs, self), back, run: () => go(true) });
   async function go(stopping) {
     leaving?.();
@@ -37,7 +37,6 @@ export async function closeSession({ archive, id, title, running, subsRunning: b
       stayed?.();
       return say(problem, { problem: true });
     }
-    done?.();
     return say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”${withSubs(subs)}.`, { action: { label: 'Undo', onClick: () => unarchiveSession({ archive, id, title }) } });
   }
   return running || below ? stop(below, running) : go(false);
