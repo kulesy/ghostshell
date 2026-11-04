@@ -105,10 +105,10 @@ for (const stored of [null, '"ghost"', '"standard"', '"neon"', '{']) {
   });
 }
 
-test('the boot list holds the brand mark first in the brand and only Routines, Passkeys and Sign out in the footer', { skip, timeout }, async t => {
+test('the boot list holds the brand mark first in the brand and only Routines and a held Account button in the footer', { skip, timeout }, async t => {
   const page = await lookPage(t, null);
   assert.deepEqual(await page.evaluate(`[...document.querySelector('#boot .brand').children].map(el => el.className || el.tagName)`), ['brand-mark', 'H1']);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('#boot .list-foot .btn')].map(el => [el.textContent, !!el.disabled])`), [['Routines', false], ['Passkeys', false], ['Sign out', false]]);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('#boot .list-foot .btn')].map(el => [el.getAttribute('aria-label') ?? el.textContent, !!el.disabled])`), [['Routines', false], ['Account', true]]);
   assert.deepEqual(page.problems, []);
 });
 
@@ -126,10 +126,10 @@ for (const stored of [null, '"standard"']) {
   });
 }
 
-test('the real list draws the shell as the brand mark first in the brand and only Routines, Passkeys and Sign out in the footer', { skip, timeout }, async t => {
+test('the real list draws the shell as the brand mark first in the brand and only Routines and the Account menu in the footer', { skip, timeout }, async t => {
   const page = await appPage(t);
   assert.deepEqual(await page.evaluate(`[...document.querySelector('.brand').children].map(el => el.getAttribute('class') ?? el.localName)`), ['shell brand-mark', 'h1']);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .btn')].map(el => [el.textContent, !!el.disabled])`), [['Routines', false], ['Passkeys', false], ['Sign out', false]]);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .btn')].map(el => [el.getAttribute('aria-label') ?? el.textContent, !!el.disabled])`), [['Routines', false], ['Account', false]]);
   assert.deepEqual(page.problems, []);
 });
 

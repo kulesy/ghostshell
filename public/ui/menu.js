@@ -11,9 +11,9 @@ import { shortcut } from './shortcuts.js';
 // { label, icon, items } for an item that opens a sub-menu. `hint` names the key that does the same. A group with `heading: false` keeps
 // its name for assistive technology and draws none. An item can also have:
 // `checked` (true or false) to be a radio item, which draws a check in place of its hint when true; `switch` (true or false) to be a switch;
-// `value` for muted text at the right; `warn` for a warning icon there; `key`, one character that picks the item while this menu has the
-// focus, ahead of typing to find an item; `tip`, the words of a tooltip; and `id`, which keeps the focus on the item when the items
-// before it change, as they do when the CLI's models arrive.
+// `current` for the item of the page on screen, which draws the check too; `value` for muted text at the right; `warn` for a warning icon
+// there; `key`, one character that picks the item while this menu has the focus, ahead of typing to find an item; `tip`, the words of a
+// tooltip; and `id`, which keeps the focus on the item when the items before it change, as they do when the CLI's models arrive.
 // A sub-menu can also have `find(query)`, which returns the items it lists for the words typed, and `findLabel`, what its search box is
 // called. The box sits at the top of the sub-menu and keeps the focus, and the arrows light an item in the list with Enter picking it.
 // The list is a listbox of options, so assistive technology reads the lit item as the selected one.
@@ -56,6 +56,10 @@ export const icons = {
   circlePlay: ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0', 'm10 8 6 4-6 4Z'],
   pause: ['M15 4h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M7 4h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z'],
   calendarClock: ['M16 14v2.2l1.6 1', 'M16 2v4', 'M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5', 'M3 10h5', 'M8 2v4', 'M10 16a6 6 0 1 0 12 0 6 6 0 1 0-12 0'],
+  circleUser: ['M2 12a10 10 0 1 0 20 0 10 10 0 1 0-20 0', 'M18 20a6 6 0 0 0-12 0', 'M8 10a4 4 0 1 0 8 0 4 4 0 1 0-8 0'],
+  users: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M5 7a4 4 0 1 0 8 0 4 4 0 1 0-8 0', 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
+  keyRound: ['M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z', 'M16.5 7.5h.01'],
+  logOut: ['m16 17 5-5-5-5', 'M21 12H9', 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'],
   calendarPlus: ['M8 2v4', 'M16 2v4', 'M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8', 'M3 10h18', 'M16 19h6', 'M19 16v6'],
 };
 
@@ -386,13 +390,13 @@ function Panel({ root, box, items: listed, path, open, label, labelledBy, trigge
     const opens = !!def.items;
     const shown = opens && open && sub?.at === n;
     const { role, checked } = finding ? { role: 'option', checked: null } : roleOf(def);
-    return html`<div key=${def.id ?? n} class="menu-item" role=${role} aria-checked=${checked} aria-selected=${finding ? marked === n : null} tabindex="-1" id=${`${id}-item-${n}`} data-at=${n} data-tip=${def.tip || null}
+    return html`<div key=${def.id ?? n} class="menu-item" role=${role} aria-checked=${checked} aria-current=${def.current ? 'page' : null} aria-selected=${finding ? marked === n : null} tabindex="-1" id=${`${id}-item-${n}`} data-at=${n} data-tip=${def.tip || null}
       data-variant=${def.danger ? 'destructive' : null} data-disabled=${def.disabled ? '' : null} aria-disabled=${def.disabled ? 'true' : null}
       data-state=${opens ? (shown ? 'open' : 'closed') : null} data-highlighted=${marked === n ? '' : null} aria-haspopup=${opens ? (def.find ? 'listbox' : 'menu') : null} aria-expanded=${opens ? shown : null}
       aria-controls=${opens ? (def.find ? listIdOf(layerId(root.id, subPath(n))) : layerId(root.id, subPath(n))) : null} ref=${el => { rows.current[n] = el; }}
       onClick=${e => pick(def, e.currentTarget, n)} onPointerDown=${e => { pressed.current = e.currentTarget; }} onPointerUp=${e => release(e, def)}
       onPointerMove=${e => hover(e, def, e.currentTarget, n)} onPointerLeave=${e => leave(e, e.currentTarget, n)}>
-      ${def.icon ? draw(def.icon) : null}<span class="menu-text">${def.label}</span>${def.value ? html`<span class="menu-value">${def.value}</span>` : null}${def.warn ? draw(icons.triangleAlert, 'menu-warning') : null}${role === 'menuitemradio' && checked ? draw(icons.check, 'menu-check') : def.hint ? html`<span class="menu-shortcut">${def.hint}</span>` : null}${role === 'menuitemcheckbox' ? html`<span class="menu-switch" data-state=${checked ? 'checked' : 'unchecked'} aria-hidden="true"><span class="menu-switch-thumb"></span></span>` : null}${opens ? draw(['m9 18 6-6-6-6'], 'menu-chevron') : null}
+      ${def.icon ? draw(def.icon) : null}<span class="menu-text">${def.label}</span>${def.value ? html`<span class="menu-value">${def.value}</span>` : null}${def.warn ? draw(icons.triangleAlert, 'menu-warning') : null}${(role === 'menuitemradio' && checked) || def.current ? draw(icons.check, 'menu-check') : def.hint ? html`<span class="menu-shortcut">${def.hint}</span>` : null}${role === 'menuitemcheckbox' ? html`<span class="menu-switch" data-state=${checked ? 'checked' : 'unchecked'} aria-hidden="true"><span class="menu-switch-thumb"></span></span>` : null}${opens ? draw(['m9 18 6-6-6-6'], 'menu-chevron') : null}
     </div>`;
   };
 

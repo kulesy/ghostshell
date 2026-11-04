@@ -308,7 +308,7 @@ button.thumb:focus-visible, .option:focus-visible {
   --btn-fg: var(--primary);
 }
 
-.btn[data-variant="ghost"]:is([aria-expanded="true"], [aria-current="page"]) {
+.btn[data-variant="ghost"]:is([aria-expanded="true"], [aria-current="page"], [data-current]) {
   --btn-bg: var(--accent);
   --btn-bg-hover: var(--accent);
   --btn-fg: var(--accent-foreground);

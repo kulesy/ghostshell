@@ -347,6 +347,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   const [making, setMaking] = useState(null);
   const nav = useRef(null);
   const box = useRef(null);
+  const signOut = useRef(null);
   const opened = useRef(0);
   const latestPlace = useRef(place);
   latestPlace.current = place;
@@ -954,6 +955,18 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
 
   const moveTrigger = opener((button, entry) => pop('pick', { label: 'Move the selection', items: selectionItems(inOrder(pick, drawnIds())) }, button, { entry }));
 
+  // The pages a person opens now and then sit in one menu, so the footer keeps to one line at any width. Sign out submits the footer's form.
+  const accountMenu = {
+    label: 'Account',
+    items: [
+      ...(supportsAccounts(ix) ? [{ label: 'Accounts', icon: icons.users, current: accountsOpen, run: () => { location.hash = '#/accounts'; } }] : []),
+      { label: 'Passkeys', icon: icons.keyRound, current: passkeys, run: () => { location.hash = '#/passkeys'; } },
+      { separator: true },
+      { label: 'Sign out', icon: icons.logOut, run: () => signOut.current.requestSubmit() },
+    ],
+  };
+  const accountTrigger = opener((button, entry) => pop('account', accountMenu, button, { entry }));
+
   // A moved group leaves the view on screen, so the note says where it went and the focus goes to the group beside it.
   async function moveGroup(g, project) {
     const beside = neighbour(groupsIn(ix, view).map(x => x.id), g.id);
@@ -1166,10 +1179,9 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       <div class="foot-links">
         <a class="btn" data-variant="ghost" data-size="sm" href="#/routines" aria-current=${routinesOpen ? 'page' : null}>Routines</a>
         ${supportsScheduled(ix) ? html`<a class="btn" data-variant="ghost" data-size="sm" href=${SCHEDULED_HASH} aria-current=${scheduledOpen ? 'page' : null}>Scheduled</a>` : null}
-        ${supportsAccounts(ix) ? html`<a class="btn" data-variant="ghost" data-size="sm" href="#/accounts" aria-current=${accountsOpen ? 'page' : null}>Accounts</a>` : null}
-        <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       </div>
-      <form method="post" action="logout" onSubmit=${forgetDrafts}><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
+      <button class="btn foot-account" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Account" data-tip="Account" data-current=${accountsOpen || passkeys ? '' : null} aria-haspopup="menu" aria-expanded=${shown?.key === 'account'} aria-controls=${shown?.key === 'account' ? layerId(shown.id) : null} data-state=${shown?.key === 'account' ? 'open' : 'closed'} ...${accountTrigger}>${draw(icons.circleUser)}</button>
+      <form method="post" action="logout" hidden ref=${signOut} onSubmit=${forgetDrafts}></form>
     </footer>
     <${Menu} menu=${shown && !shown.rail ? (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown) : null} onClose=${() => setShown(null)} />
   </nav>

@@ -96,8 +96,8 @@ test('the Accounts pane lists each account with its email, plan, sign-in end, pl
   assert.deepEqual(second.plan, ['Current session 34%', 'Weekly · All models 71%']);
   assert.deepEqual([second.chats, second.links], [['Fix the buildWaiting for approval'], ['#/s/other']]);
   assert.equal(await page.evaluate(`document.title`).then(x => x.includes('Accounts')), true);
-  const roles = await page.evaluate(`({ alerts: document.querySelectorAll('#accounts [role=alert]').length, status: document.querySelectorAll('#accounts [role=status]').length, link: document.querySelector('.list-foot a[href="#/accounts"]')?.getAttribute('aria-current') })`);
-  assert.deepEqual([roles.alerts > 0, roles.status > 0, roles.link], [true, true, 'page']);
+  const roles = await page.evaluate(`({ alerts: document.querySelectorAll('#accounts [role=alert]').length, status: document.querySelectorAll('#accounts [role=status]').length, marked: document.querySelector('.list-foot .foot-account')?.hasAttribute('data-current') })`);
+  assert.deepEqual([roles.alerts > 0, roles.status > 0, roles.marked], [true, true, true]);
   await shot(page, 'a-accounts-pane');
 
   await page.click('#accounts .account:nth-child(2) .account-actions button');
@@ -222,9 +222,35 @@ test('in front of a server that has no accounts, the page shows no link, no pane
   await until(async () => (await accounts(c)).accounts[0].out);
   const old = `const real = window.fetch; window.fetch = async (...a) => { const r = await real(...a); if (String(a[0]) !== 'api/sessions') return r; const j = await r.json(); delete j.features.accounts; return new Response(JSON.stringify(j), { status: r.status }); };`;
   const page = await openPage(t, c, '#/accounts', { before: old });
-  await page.until(`!!document.querySelector('.list-foot') && !!document.querySelector('.list-foot a[href="#/passkeys"]')`, 15_000);
+  await page.until(`!!document.querySelector('.list-foot .foot-account')`, 15_000);
   await new Promise(done => setTimeout(done, 500));
-  assert.deepEqual(await page.evaluate(`({ link: !!document.querySelector('.list-foot a[href="#/accounts"]'), pane: !!document.querySelector('#accounts'), banner: !!document.querySelector('aside.offer[aria-labelledby=banner-out-title]') })`), { link: false, pane: false, banner: false });
+  await page.click('.list-foot .foot-account');
+  await page.until(`!!document.querySelector('.menu [role=menuitem]')`);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.menu [role=menuitem]')].map(el => el.textContent)`), ['Passkeys', 'Sign out']);
+  assert.deepEqual(await page.evaluate(`({ pane: !!document.querySelector('#accounts'), banner: !!document.querySelector('aside.offer[aria-labelledby=banner-out-title]') })`), { pane: false, banner: false });
+});
+
+test('the footer has Routines, Scheduled and an Account menu that a key opens, and the menu marks the page on screen', { skip, timeout }, async t => {
+  const c = await open();
+  const page = await openPage(t, c, '#/accounts');
+  await page.until(`document.querySelector('.list-foot .foot-account')?.hasAttribute('data-current')`, 15_000);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .foot-links a')].map(a => a.textContent)`), ['Routines', 'Scheduled']);
+  await page.evaluate(`document.querySelector('.list-foot .foot-account').focus()`);
+  await page.press('ArrowDown');
+  await page.until(`document.activeElement?.closest('.menu') && document.activeElement.textContent === 'Accounts'`);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.menu [role=menuitem]')].map(el => [el.textContent, el.getAttribute('aria-current')])`), [['Accounts', 'page'], ['Passkeys', null], ['Sign out', null]]);
+  await page.press('ArrowDown');
+  await page.press('Enter');
+  await page.until(`location.hash === '#/passkeys' && !document.querySelector('.menu')`);
+  assert.equal(await page.evaluate(`document.querySelector('.list-foot .foot-account').hasAttribute('data-current')`), true);
+});
+
+test('the footer keeps to one line on a phone 320px wide', { skip, timeout }, async t => {
+  const c = await open();
+  const page = await openPage(t, c, '', { phone: true });
+  await page.resize(320, 568);
+  await page.until(`document.querySelectorAll('.list-foot .foot-links a').length === 2`, 15_000);
+  assert.equal(await page.evaluate(`new Set([...document.querySelectorAll('.list-foot a, .list-foot button')].map(el => Math.round(el.getBoundingClientRect().top))).size`), 1);
 });
 
 test('the pane fits a phone and has no sideways scroll', { skip, timeout }, async t => {

@@ -40,7 +40,7 @@ A browser that signs in stays signed in while it is used at least every 90 days,
 
 ## Passkeys
 
-Passkeys are the second way in. A passkey signs you in with a fingerprint, face or screen lock, and the password keeps working beside it. After a password sign-in the page offers once to add one, and Passkeys in the footer of the session list adds, lists and removes them.
+Passkeys are the second way in. A passkey signs you in with a fingerprint, face or screen lock, and the password keeps working beside it. After a password sign-in the page offers once to add one, and Passkeys, in the Account menu at the foot of the session list, adds, lists and removes them.
 
 Browsers offer passkeys only on an https address or on localhost, so http://localhost:4310 works as it is. A remote address needs more (see [passkeys over https](remote-access.md#passkeys-over-https)).
 

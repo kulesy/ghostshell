@@ -112,7 +112,10 @@ test('signing out forgets every draft', { skip, timeout }, async t => {
   await openChat(page, '#/s/s1');
   await type(page, 'not for the next person');
   await page.until(`${SAVED}.s1 === 'not for the next person'`);
-  await page.evaluate(`setTimeout(() => document.querySelector('form[action=logout] button').click(), 50), true`);
+  await page.click('.list-foot .foot-account');
+  await page.until(`!!document.querySelector('.menu [role=menuitem]')`);
+  await page.evaluate(`[...document.querySelectorAll('.menu [role=menuitem]')].find(el => el.textContent === 'Sign out').setAttribute('data-picked', '')`);
+  await page.click('.menu [data-picked]');
   await new Promise(resolve => setTimeout(resolve, 800));
   await page.until(LOGIN, 10_000);
   assert.deepEqual(await page.evaluate(SAVED), {});
