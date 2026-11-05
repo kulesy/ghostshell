@@ -76,13 +76,22 @@ export const CHROME_NOTE = 'Chrome works only on the account its extension is si
 
 export const accountName = (accounts, id) => accounts?.find(a => a.id === id)?.name ?? '';
 
+// The name of the account Chrome is on, when the survey proved it for `a` and that account is still listed, else an empty string.
+const chromeOnName = (accounts, a) => (a.chromeOn ? accountName(accounts, a.chromeOn) : '');
+
+// The line under the pick: definite when the survey found Chrome on another account, else the static limit.
+export function chromeNote(accounts) {
+  const name = (accounts ?? []).map(a => chromeOnName(accounts, a)).find(Boolean);
+  return name ? `Chrome is on ${name}, so work on another account can't reach it.` : CHROME_NOTE;
+}
+
 // The Account menu's items for something pinned to `pin` (an id, or none). `follows` says whom "Active account" runs as. `pick(id)` takes an id or null.
 // A signed out account cannot be picked, but stays marked when it is the pin, and a pin to an account no longer listed shows as removed.
 export function accountItems({ accounts, pin, follows, pick }) {
   const row = a => ({
     id: `account:${a.id}`,
     label: a.name,
-    value: a.signedOut ? 'Signed out' : null,
+    value: a.signedOut ? 'Signed out' : chromeOnName(accounts, a) ? 'No Chrome' : null,
     checked: a.id === pin,
     disabled: a.signedOut && a.id !== pin,
     run: a.id === pin ? undefined : () => pick(a.id),
@@ -93,7 +102,7 @@ export function accountItems({ accounts, pin, follows, pick }) {
     ...(pin && !accountName(accounts, pin) ? [{ id: `account:${pin}`, label: 'Removed account', checked: true }] : []),
     { separator: true },
     { note: PICK_NOTE },
-    { note: CHROME_NOTE },
+    { note: chromeNote(accounts) },
   ];
 }
 
@@ -170,7 +179,8 @@ export function blockedPlan(blocked) {
 // The options of the routine form's account select: Active account first, then each account. A signed out one cannot be picked unless it is the current
 // value, and a value no account holds is kept as Removed account. Each is [value, text, disabled].
 export function accountChoices(accounts, current) {
-  const list = (accounts ?? []).map(a => [a.id, a.signedOut ? `${a.name} (signed out)` : a.name, !!a.signedOut && a.id !== current]);
+  const label = a => (a.signedOut ? `${a.name} (signed out)` : chromeOnName(accounts, a) ? `${a.name} (no Chrome)` : a.name);
+  const list = (accounts ?? []).map(a => [a.id, label(a), !!a.signedOut && a.id !== current]);
   return [['', 'Active account', false], ...list, ...(current && !accountName(accounts, current) ? [[current, 'Removed account', false]] : [])];
 }
 
@@ -187,6 +197,12 @@ const COUNTS = [['sessions', 'session', 'sessions'], ['groups', 'group', 'groups
 export function pinnedWords(pinned) {
   const parts = COUNTS.filter(([key]) => pinned?.[key] > 0).map(([key, one, many]) => `${pinned[key]} ${pinned[key] === 1 ? one : many}`);
   return parts.length ? `Pinned: ${parts.join(', ')}` : '';
+}
+
+// The line under "Pinned: ..." when the work pinned to this account cannot reach Chrome, or an empty string.
+export function pinnedChromeWords(a, accounts) {
+  const name = chromeOnName(accounts, a);
+  return name && pinnedWords(a.pinned) ? `Chrome is on ${name}, so these can't reach it.` : '';
 }
 
 export const SWITCH_LEAVES_PINS = 'A switch leaves pinned work on its account.';

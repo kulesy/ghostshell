@@ -44,6 +44,10 @@ The check says which GhostShell account reaches the browser. It does not read wh
 
 While a banner stands, the server checks the new account again every 15 seconds, for 10 minutes from the switch or the last press of the Open button, and clears the banner once it sees a browser. After that the banner stays until it is dismissed or the next switch. All of this is in memory, so a restart forgets it. An owner who set `chrome` to false, or whose shared `.claude.json` shows no sign of Claude in Chrome, gets no check and no banner.
 
+### The survey
+
+The pick in the Account menu wants the same answer without a switch, so the server also asks every account at once when it starts and every 10 minutes after, and again when the banner clears because Chrome was seen, since the extension has moved. It runs only when `chrome` is on, the owner has set up Claude in Chrome and more than one account is listed. The last answers replace the earlier ones and live in memory. The menu, the routine form and the Accounts page say so only when one account answered a browser and another answered none (a null answer claims nothing, and nobody seeing a browser claims nothing), and that account's row in `GET api/accounts` carries `chromeOn`, the id of the account that sees one. Otherwise they keep the static line. A page read never probes, and the page picks a new answer up on its next banners poll.
+
 ### Opening the settings
 
 The extension catches `https://clau.de/chrome/permissions`, opens its own options page and closes the tab. The CLI's `/chrome` uses the same link. A web page cannot link to a `chrome-extension://` address, so this link is the only route. POST `api/accounts/chrome-open` runs `open -a "Google Chrome"` with it on the Mac, so a press from the phone or Safari still lands in Chrome. Log out sits in that page's left column. The login page after a logout offers an account picker, and the banner names the account to pick by its email.
@@ -63,6 +67,8 @@ The named form sends the owner to Log out. The unsure form asks them to open the
 - ❌ `--claude-in-chrome-mcp` and the link are both private to the CLI and the extension. If the flag moves, every check gives no answer and the softer reminder shows on every switch.
 - ❌ Two organizations under one user have not been tried. The extension's connection is keyed by user, so a mismatch of organization alone may read as fine.
 - ❌ Each check while the banner stands starts a CLI process.
+- ❌ The survey starts one short CLI process per account every 10 minutes: two for an owner with two accounts and Chrome set up, none otherwise.
+- ❌ After the extension moves, the menu can read wrong for up to 10 minutes, until the next survey.
 
 ## Pros and Cons of the Options
 
