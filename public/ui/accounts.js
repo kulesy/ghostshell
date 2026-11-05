@@ -2,14 +2,18 @@
 // usage and for a switch GhostShell made by itself, the reminder that Chrome is on another account, and the button in a chat that switches and carries on. See docs/adr/20261102-switch-claude-accounts.md.
 import { api } from './api.js';
 import { Banner } from './banner.js';
-import { autoBanner, chromeBanner, needsSignIn, outBanner, planAsOf, sameAccountWords, signInLine, waitingWords } from './account-rules.js';
+import { loadAccounts, useAccounts } from './account-list.js';
+import { accountItems, autoBanner, blockedPlan, chromeBanner, needsSignIn, outBanner, planAsOf, rowIn, sameAccountWords, signInLine, waitingWords } from './account-rules.js';
 import { Button, useRefusal } from './banners.js';
 import { Plan } from './context.js';
 import { planRows } from './context-rules.js';
 import { clean, NameForm } from './forms.js';
 import { Alert, chevron } from './form-parts.js';
-import { useDocumentTitle } from './hooks.js';
+import { useDocumentTitle, useFields, useStore } from './hooks.js';
 import { html, useCallback, useEffect, useRef, useState } from './html.js';
+import { layerId, Menu, opener } from './menu.js';
+import { routineHash } from './routine-rules.js';
+import { sessionIndex } from './subs.js';
 
 const enc = encodeURIComponent;
 const STATES = { idle: 'Idle', working: 'Working', waiting: 'Waiting for approval' };
@@ -223,4 +227,41 @@ export function SwitchAndContinue({ ctrl, on }) {
     try { await api(`api/accounts/${enc(target.id)}/use`, { continue: ctrl.id }); ctrl.notice(''); } catch (e) { ctrl.notice(e.message); }
   };
   return html`<div class="notice-action"><${Button} action=${{ label: `Switch to ${target.name} and continue`, variant: 'outline' }} onClick=${go} /></div>`;
+}
+
+// Above the prompt box when the chat's pin blocks it: the server's words, and the buttons that fix it at the level that holds the pin.
+// A send the server refused (409) shows it too, with the text still in the box.
+export function BlockedNotice({ ctrl }) {
+  const ix = useStore(sessionIndex, s => s.ix);
+  const { status, refused } = useFields(ctrl.store, 'status', 'refused');
+  const accounts = useAccounts(ix);
+  const [shown, setShown] = useState(null);
+  const [problem, setProblem] = useState('');
+  const opened = useRef(0);
+  const row = rowIn(ix, ctrl.id);
+  const blocked = refused ?? (row ? row.blocked : status?.blocked);
+  const group = row?.group ?? ix?.groups?.find(g => g.session?.id === ctrl.id)?.id ?? null;
+  const project = ix?.groups?.find(g => g.id === group)?.project ?? null;
+  const routine = ix?.routines?.find(g => g.latest?.id === ctrl.id || g.earlier?.some(r => r.id === ctrl.id))?.name ?? null;
+  const plan = blockedPlan(blocked, { id: ctrl.id, group, project, routine });
+  useEffect(() => { setProblem(''); setShown(null); }, [blocked?.message]);
+  if (!plan) return null;
+
+  const run = async step => {
+    setProblem('');
+    try { await step(); } catch (e) { setProblem(e.message); }
+  };
+  const repin = account => run(() => ctrl.repin(plan.change ?? plan.clear, account));
+  const signIn = () => run(async () => { await api(`api/accounts/${enc(plan.signIn)}/sign-in`, {}); await loadAccounts(true); });
+  const pop = button => setShown(open => (open ? null : { id: `blocked-${++opened.current}`, anchor: button }));
+  const items = shown && accountItems({ accounts, pin: blocked.account?.id, pick: account => { shown.anchor.focus({ preventScroll: true }); repin(account); } });
+  return html`<p class="notice" id="blocked" role="alert">${plan.message}</p>
+    <div class="notice-action">
+      ${plan.signIn ? html`<${Button} action=${{ label: `Sign in to ${blocked.account.name}`, variant: 'outline' }} onClick=${signIn} />` : null}
+      ${plan.change && accounts ? html`<button class="btn" id="blockedChange" type="button" data-variant="outline" aria-haspopup="menu" aria-expanded=${!!shown} aria-controls=${shown ? layerId(shown.id) : null} ...${opener(pop)}>Change the pin</button>` : null}
+      ${plan.clear ? html`<${Button} action=${{ label: 'Clear the pin', variant: 'outline' }} onClick=${() => repin(null)} />` : null}
+      ${plan.routine ? html`<a class="btn" data-variant="outline" href=${routineHash(plan.routine)}>Open the routine</a>` : null}
+    </div>
+    <p class="notice" role="alert">${problem}</p>
+    <${Menu} menu=${shown && { ...shown, label: 'Account', items }} onClose=${() => setShown(null)} />`;
 }

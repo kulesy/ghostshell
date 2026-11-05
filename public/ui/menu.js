@@ -7,7 +7,7 @@ import { usePresence } from './presence.js';
 import { shortcut } from './shortcuts.js';
 
 // shadcn's dropdown and context menus, which are Radix's, and modal as they are: the page under an open menu takes no press.
-// `items` are { label, run, icon, hint, danger, disabled }, { separator: true }, { group, items } for items under a heading, or
+// `items` are { label, run, icon, hint, danger, disabled }, { separator: true }, { note } for a line of muted words, { group, items } for items under a heading, or
 // { label, icon, items } for an item that opens a sub-menu. `hint` names the key that does the same. A group with `heading: false` keeps
 // its name for assistive technology and draws none. An item can also have:
 // `checked` (true or false) to be a radio item, which draws a check in place of its hint when true; `switch` (true or false) to be a switch;
@@ -90,7 +90,7 @@ const LIVE = '[role^="menuitem"]:not([data-disabled]), [role="option"]:not([data
 
 const listIdOf = id => `${id}-list`;
 
-const flatOf = items => items.flatMap(it => (it.group ? it.items : it.separator ? [] : [it]));
+const flatOf = items => items.flatMap(it => (it.group ? it.items : it.separator || it.note ? [] : [it]));
 
 function Layer({ open, onGone, ...rest }) {
   const box = useRef(null);
@@ -402,7 +402,9 @@ function Panel({ root, box, items: listed, path, open, label, labelledBy, trigge
 
   const body = items.map(it => (it.separator
     ? html`<div class="menu-separator" role="separator"></div>`
-    : it.group
+    : it.note
+      ? html`<p class="menu-note">${it.note}</p>`
+      : it.group
       ? html`<div role="group" aria-label=${it.group}>${it.heading === false ? null : html`<div class="menu-label" aria-hidden="true">${it.group}</div>`}${it.items.map(row)}</div>`
       : row(it)));
 

@@ -1,4 +1,6 @@
 // The prompt box: the text, the quotes, images and files attached to it, and the settings under it.
+import { useAccounts } from './account-list.js';
+import { accountItems, accountLabel, accountName, offersPick, rowIn } from './account-rules.js';
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
@@ -14,6 +16,7 @@ import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { buttonLabel, buttonOf, modelMenu } from './model-rules.js';
 import { messageFor } from './quote-rules.js';
 import { bangMode, leaveBang } from './terminal-rules.js';
+import { sessionIndex } from './subs.js';
 import { useTypingPing } from './typing.js';
 import { openViewer } from './viewer.js';
 
@@ -137,7 +140,17 @@ export function Composer({ ctrl }) {
   const popModel = (button, entry) => setShown(open => (open && !entry ? null : { id: `composer-${++opened.current}`, anchor: button, entry }));
   // A pick hands the focus back to the button, as Radix's menus do, so a keyboard is not left on a menu that has gone.
   const pickSetting = (kind, value) => { shown.anchor.focus({ preventScroll: true }); ctrl.pick(kind, value); };
-  const modelItems = shown ? modelMenu({ model, effort: s.effort, fast: s.fast, listed: models, error: modelsError, pick: pickSetting }) : null;
+  // The account a chat runs on is picked here too, for a new session or one the list holds. A group's own chat takes its group's pin instead.
+  const ix = useStore(sessionIndex, st => st.ix);
+  const accounts = useAccounts(ix);
+  const row = draft ? null : rowIn(ix, ctrl.id);
+  const pin = draft ? s.account ?? null : row?.accountPin ?? null;
+  const offered = !!accounts && (draft || !!row) && offersPick(ix, accounts, !!pin);
+  const shownAccount = draft ? pin ?? accounts?.find(a => a.active)?.id : row?.account;
+  const accountPart = offered
+    ? [{ separator: true }, { label: 'Account', value: pin ? accountName(accounts, pin) || 'Removed' : null, items: accountItems({ accounts, pin, follows: draft ? accountName(accounts, accounts.find(a => a.active)?.id) : row.accountFrom === 'session' ? '' : accountName(accounts, row.account), pick: value => pickSetting('account', value) }) }]
+    : [];
+  const modelItems = shown ? [...modelMenu({ model, effort: s.effort, fast: s.fast, listed: models, error: modelsError, pick: pickSetting }), ...accountPart] : null;
 
   // Sizing an untouched empty box would round its natural height down, so it waits for the first text.
   const typedOnce = useRef(false);
@@ -332,6 +345,7 @@ export function Composer({ ctrl }) {
         <${Pick} id="mode" label="Permission mode" empty="Mode" value=${s.mode} options=${MODES} disabled=${!status} onChange=${ctrl.setMode} />
       </div>
       <div class="composer-right">
+        ${accountLabel(accounts, shownAccount) ? html`<span class="quiet account-label" id="accountLabel">${accountLabel(accounts, shownAccount)}</span>` : null}
         <button class="btn pick" id="model" type="button" data-variant="ghost" data-size="sm" disabled=${!status} aria-label=${buttonLabel(look)} aria-haspopup="menu" aria-expanded=${!!shown}
           aria-controls=${shown ? layerId(shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${opener(popModel)}>
           <span class="pick-line"><span>${look.model || 'Model'}</span>${look.fast ? html`<span>Fast</span>` : null}${look.effort ? html`<span class="quiet">${look.effort}</span>` : null}${look.max ? draw(icons.triangleAlert, 'pick-warning') : null}</span>

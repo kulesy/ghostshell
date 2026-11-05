@@ -1,6 +1,6 @@
 // The chat pane: header, transcript and the dock under it. It owns one chat controller for as long as it is on screen.
 import { supportsAccounts } from './account-rules.js';
-import { SwitchAndContinue } from './accounts.js';
+import { BlockedNotice, SwitchAndContinue } from './accounts.js';
 import { Approvals } from './approvals.js';
 import { ArchiveButton } from './chat-archive.js';
 import { copyText } from './clipboard.js';
@@ -188,6 +188,7 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
       <${QuoteDock} ctrl=${ctrl} quoting=${quoting} />
       <${Approvals} ctrl=${ctrl} place=${meta?.startsWith('Section') ? 'section' : 'group'} />
       <${Holds} ctrl=${ctrl} />
+      <${BlockedNotice} ctrl=${ctrl} />
       <${Notice} ctrl=${ctrl} />
       <${Composer} ctrl=${ctrl} />
     </div>
