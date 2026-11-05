@@ -198,7 +198,7 @@ test('a chat pinned to its account shows why a switch will not move it, where th
   await send(c, 'live', 'hit the usage limit');
   await page.until(`/hit your limit/.test(document.querySelector('#notice').textContent)`, 15_000);
   await page.until(`!!document.querySelector('.notice-action')`, 15_000);
-  assert.equal(await page.evaluate(`document.querySelector('.notice-action').textContent`), "This session stays on Main because of its pin, so a switch won't move it. Change the pin to move it.");
+  assert.equal(await page.evaluate(`document.querySelector('.notice-action').textContent`), "This session stays on Main because of a pin, so a switch won't move it. Change the pin to move it.");
   assert.equal(await page.evaluate(`!!document.querySelector('.notice-action button')`), false);
   await shot(page, 'chat-pinned-line');
 
@@ -207,6 +207,19 @@ test('a chat pinned to its account shows why a switch will not move it, where th
   await page.until(`document.querySelector('.notice-action button')?.textContent === 'Switch to Second and continue'`, 15_000);
   assert.equal(await page.evaluate(`document.querySelectorAll('.notice-action .account-hint').length`), 0);
   await shot(page, 'chat-switch-button');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a chat pinned to Second while Main stays active and has room shows the stays line naming Second, with no button', { skip, timeout }, async t => {
+  const c = await open();
+  assert.equal((await pin(c, 'session', 'live', 'second')).status, 200);
+  const page = await openPage(t, c, '#/s/live');
+  await page.until(`!!document.querySelector('#notice') && !!document.querySelector('.btn.context, textarea, .composer')`, 15_000);
+  await send(c, 'live', 'hit the usage limit');
+  await page.until(`/hit your limit/.test(document.querySelector('#notice').textContent)`, 15_000);
+  await page.until(`!!document.querySelector('.notice-action')`, 15_000);
+  assert.equal(await page.evaluate(`document.querySelector('.notice-action').textContent`), "This session stays on Second because of a pin, so a switch won't move it. Change the pin to move it.");
+  assert.equal(await page.evaluate(`!!document.querySelector('.notice-action button')`), false);
   assert.deepEqual(page.problems, []);
 });
 

@@ -9,6 +9,7 @@ import { serviceFor } from '../lib/accounts.mjs';
 import { as, authCalls, cliCalls, request, restart, signIn, start, until as waitFor } from './harness.mjs';
 
 const DAY = 86_400_000;
+const LEAKS = /second@example\.com|fake-access-secret|fake-refresh-secret|org-hidden|mcp-api-key/;
 const GROUPS = [{ id: 'cg-a', name: 'Work', project: 'cp-a' }, { id: 'cg-b', name: 'Loose' }];
 const SESSIONS = [
   { id: 'live', title: 'Runs', source: 'cli', ago: 1 },
@@ -65,6 +66,7 @@ test('the sign-in banner covers an account in use through a pin on a session, a 
     assert.deepEqual(shown(await login(c)), ['main', 'Main', false, false], `${kind}: signed in, nothing to show yet`);
     await secondOut(c);
     assert.deepEqual(shown(await login(c)), ['second', 'Second', true, true], `${kind}: in use only through its pin`);
+    assert.doesNotMatch((await get(c, '/api/banners')).text, LEAKS, `${kind}: the banner reply`);
     assert.equal((await pin(c, kind, id, null)).status, 200);
     assert.deepEqual(shown(await login(c)), ['main', 'Main', false, false], `${kind}: no pin, no banner`);
   }
@@ -123,6 +125,7 @@ test('the sign-in route checks the origin first, takes no body or no field as th
   await until(() => logins(c.dir) === 1);
   await until(async () => (await accountsOf(c)).accounts.find(a => a.id === 'second').stage === 'done');
   assert.equal((await accountsOf(c)).accounts.find(a => a.id === 'second').signedOut, false, 'the account it named is the one signed in');
+  assert.doesNotMatch(named.text, LEAKS, 'the named sign-in reply');
 });
 
 test('the plan reply names the session\'s own account when more than one is listed, and not with one', async () => {
@@ -148,12 +151,13 @@ test('the plan reply names the session\'s own account when more than one is list
 
 test('a switch and continue for a pinned session is refused with a 409 before anything moves, unless the switch is to the pinned account itself', async () => {
   const c = await open();
-  const refused = words => assert.match(words, /^This session stays on Main because of its pin, so a switch won't move it\. Change the pin to move it\.$/);
+  const refused = words => assert.match(words, /^This session stays on Main because of a pin, so a switch won't move it\. Change the pin to move it\.$/);
 
   assert.equal((await pin(c, 'session', 'live', 'main')).status, 200);
   const bySession = await post(c, '/api/accounts/second/use', { continue: 'live' });
   assert.equal(bySession.status, 409);
   refused(bySession.body().error);
+  assert.doesNotMatch(bySession.text, LEAKS, 'the 409 reply');
   assert.equal(await activeOf(c), 'main', 'the active account did not move');
   assert.equal(JSON.parse(fs.readFileSync(path.join(c.s.state, 'accounts.json'), 'utf8')).active, 'main');
 

@@ -178,7 +178,7 @@ export function accountChoices(accounts, current) {
 // `from` is where the row's account came from, and 'active' means nothing pins it.
 export function pinnedStay(row, accounts) {
   if (!row?.accountFrom || row.accountFrom === 'active') return '';
-  return `This session stays on ${accountName(accounts, row.account) || 'its account'} because of its pin, so a switch won't move it. Change the pin to move it.`;
+  return `This session stays on ${accountName(accounts, row.account) || 'its account'} because of a pin, so a switch won't move it. Change the pin to move it.`;
 }
 
 const COUNTS = [['sessions', 'session', 'sessions'], ['groups', 'group', 'groups'], ['projects', 'project', 'projects'], ['routines', 'routine', 'routines']];

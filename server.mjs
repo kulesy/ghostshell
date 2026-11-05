@@ -1883,7 +1883,7 @@ async function accountsApi(req, res, parts) {
   if (body.continue !== undefined && !row) return refuse(404, NO_SESSION);
   // A pinned session stays where its pin puts it, so a switch cannot carry it on, and the active account is left alone.
   const pinned = row && accountOfSession(row.id);
-  if (pinned && pinned.from !== 'active' && pinned.id !== account.id) return refuse(409, `This session stays on ${accounts.find(pinned.id)?.name ?? 'its account'} because of its pin, so a switch won't move it. Change the pin to move it.`);
+  if (pinned && pinned.from !== 'active' && pinned.id !== account.id) return refuse(409, `This session stays on ${accounts.find(pinned.id)?.name ?? 'its account'} because of a pin, so a switch won't move it. Change the pin to move it.`);
   await accountLogins.refresh(account);
   if (accountLogins.state(account).signedOut) return refuse(409, `${account.name} is signed out. Sign it in first.`);
   if (account.id !== accounts.active.id) accountLogins.switchTo(account);

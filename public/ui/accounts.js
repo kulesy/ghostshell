@@ -226,9 +226,10 @@ export function SwitchAndContinue({ ctrl, on }) {
     api('api/banners').then(banners => { if (live) setTarget(banners?.accounts?.out?.to ?? null); }).catch(() => {});
     return () => { live = false; };
   }, [on]);
-  if (!on || !target) return null;
+  if (!on) return null;
   const stays = pinnedStay(rowFor(ix, ctrl.id), accounts);
   if (stays) return html`<div class="notice-action"><p class="quiet account-hint">${stays}</p></div>`;
+  if (!target) return null;
   const go = async () => {
     try { await api(`api/accounts/${enc(target.id)}/use`, { continue: ctrl.id }); ctrl.notice(''); } catch (e) { ctrl.notice(e.message); }
   };

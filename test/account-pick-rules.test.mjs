@@ -163,7 +163,7 @@ test('a group\'s own chat reads its block from the row the index sends for it', 
 });
 
 test('a switch that cannot move a session is replaced by a line naming the account its pin keeps it on', () => {
-  const words = "This session stays on Second because of its pin, so a switch won't move it. Change the pin to move it.";
+  const words = "This session stays on Second because of a pin, so a switch won't move it. Change the pin to move it.";
   for (const accountFrom of ['session', 'group', 'project', 'routine', 'parent']) assert.equal(pinnedStay({ account: 'second', accountFrom }, [MAIN, SECOND]), words, accountFrom);
   assert.equal(pinnedStay({ account: 'second', accountFrom: 'active' }, [MAIN, SECOND]), '', 'a session nothing pins is moved by a switch');
   assert.equal(pinnedStay({ account: 'main' }, [MAIN, SECOND]), '', 'a row with no account facts is moved by a switch');
