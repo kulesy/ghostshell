@@ -48,6 +48,8 @@ const replyButton = id => document.querySelector(`[data-reply-card="${CSS.escape
 const replyText = id => document.querySelector(`[data-reply-text="${CSS.escape(id)}"]`);
 const sameInNewCard = el => (el.dataset.replyText ? replyText(el.dataset.replyText) : el.dataset.replyCard ? replyButton(el.dataset.replyCard) : null);
 
+const hasKeyboard = () => matchMedia('(pointer: fine)').matches;
+
 function flipBox(id) {
   const open = !boxes.get()[id]?.open;
   opening = open ? id : null;
@@ -66,8 +68,9 @@ async function sendReply(id, name) {
     setBox(id, { open: false, text: '', sending: false });
     say(`Sent to ${name}`);
   } catch (e) {
+    // Only for someone who has left the box, which says why itself. Near the foot of the list a toast would sit on top of Send.
+    if (!replyText(id)) say(`Not sent to ${name}: ${e.message}`);
     setBox(id, { open: true, sending: false, problem: e.message });
-    say(`Not sent to ${name}: ${e.message}`);
   }
   sessionActions.get().refresh?.();
 }
@@ -193,15 +196,15 @@ function ReplyBox({ row, name, box, id }) {
       e.preventDefault();
       flipBox(row.id);
       replyButton(row.id)?.focus();
-    } else if (e.target === area.current && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
+    } else if (e.target === area.current && e.key === 'Enter' && !e.shiftKey && !e.isComposing && hasKeyboard()) {
       e.preventDefault();
       if (!e.repeat) form.current.requestSubmit();
     }
   };
-  // Send is disabled while it sends, which would drop the focus to the page, where Esc stops the open chat.
+  // Send is disabled while it sends, which would drop the focus to the page, where Esc stops the open chat. A touch screen has no Esc, and the focus would raise its keyboard.
   const submit = e => {
     e.preventDefault();
-    area.current.focus({ preventScroll: true });
+    if (hasKeyboard()) area.current.focus({ preventScroll: true });
     sendReply(row.id, name);
   };
   const notes = [row.state === 'waiting' && `${id}-wait`, box.problem && `${id}-problem`].filter(Boolean).join(' ');

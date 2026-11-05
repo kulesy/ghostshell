@@ -84,7 +84,7 @@ const notInterrupted = async message => {
   await new Promise(done => setTimeout(done, 500));
   assert.equal(fs.existsSync(path.join(app.home, 'layout-at-interrupt.json')), false, message);
 };
-const failNextSend = (page, body) => page.evaluate(`(() => { const real = window.fetch; window.fetch = (url, init) => (String(url).endsWith('/send') ? (window.fetch = real, Promise.resolve(new Response(${JSON.stringify(JSON.stringify(body))}, { status: 409 }))) : real(url, init)); })()`);
+const failNextSend = (page, body, wait = 0) => page.evaluate(`(() => { const real = window.fetch; window.fetch = (url, init) => (String(url).endsWith('/send') ? (window.fetch = real, new Promise(done => setTimeout(done, ${wait})).then(() => new Response(${JSON.stringify(JSON.stringify(body))}, { status: 409 }))) : real(url, init)); })()`);
 const rowOf = async id => {
   const { ungrouped } = (await request(app, 'GET', '/api/sessions', { headers: as(token) })).body();
   return ungrouped.flatMap(r => [r, ...(r.children ?? [])]).find(r => r.id === id);
@@ -147,8 +147,12 @@ test('a held Enter sends once, on the press and not on the repeats, and a held S
   const page = await hubPage(t);
   await openBox(page, 'third');
   await page.insert('kept draft');
+  await page.press('Escape');
+  await page.until(`document.activeElement === document.querySelector(${JSON.stringify(button('third'))})`);
+  await page.press('Enter');
+  await page.until(`document.activeElement === document.querySelector(${JSON.stringify(box('third'))})`);
   await page.press('Enter', 0, { repeat: true });
-  assert.equal(await value(page, 'third'), 'kept draft', 'a repeat from the Reply button neither sends nor adds a line');
+  assert.equal(await value(page, 'third'), 'kept draft', 'the Enter that opened the box, held, neither sends nor adds a line');
   await page.press('Enter', 8, { repeat: true });
   assert.equal(await value(page, 'third'), 'kept draft\n');
   await new Promise(done => setTimeout(done, 300));
@@ -179,13 +183,26 @@ test('a send that fails keeps the text in the box and says why, and the same tex
   assert.equal(await value(page, 'sixth'), 'Please rebase');
   assert.equal(await page.evaluate(`document.querySelector(${JSON.stringify(box('sixth'))}).getAttribute('aria-invalid')`), 'true');
   assert.equal(told('Please rebase'), false);
-  await toastSays(page, 'Not sent to Sixth: The account is out of usage.');
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('[data-sonner-toast]')].some(el => el.textContent.includes('Not sent'))`), false, 'a toast would sit on top of Send at the foot of the list');
 
   await page.press('Enter');
   await toastSays(page, 'Sent to Sixth');
   await until(() => told('Please rebase'));
   assert.equal(cliCalls(app).filter(call => call.user === 'Please rebase').length, 1);
   assert.deepEqual(page.problems.filter(p => !p.includes('409')), []);
+});
+
+test('a send that fails after I left the list says so in a toast, and the text waits in the box', { skip, timeout }, async t => {
+  const page = await hubPage(t);
+  await failNextSend(page, { error: 'Not now.' }, 500);
+  await openBox(page, 'ninth');
+  await page.insert('While I look elsewhere');
+  await page.press('Enter');
+  await page.evaluate(`location.hash = '#/s/first'`);
+  await toastSays(page, 'Not sent to Ninth: Not now.');
+  await page.evaluate(`location.hash = '#/s/hub'`);
+  await page.until(`document.querySelector(${JSON.stringify(box('ninth'))})?.value === 'While I look elsewhere'`, 10_000);
+  await page.until(`document.querySelector('.sub-send-note[role=alert]')?.textContent === 'Not sent: Not now.'`);
 });
 
 test('Esc closes the box from anywhere in it and keeps its text, even after a click on Send failed, the panel stays and the chat on screen is not stopped, and Shift+Enter is a new line', { skip, timeout }, async t => {
