@@ -11,6 +11,17 @@ export function folderName(cwd, home) {
   return tilde(cwd, home).split('/').filter(Boolean).slice(-2).join('/');
 }
 
+const clock = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+// A day before today in words: Yesterday, a weekday within the last six days, else the date.
+function pastDay(d, today, date = { day: 'numeric', month: 'short' }) {
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (today - d < 6 * 86400_000) return d.toLocaleDateString([], { weekday: 'short' });
+  return d.toLocaleDateString([], date);
+}
+
 export function when(ms) {
   const t = typeof ms === 'number' ? ms : Date.parse(ms);
   if (!t) return '';
@@ -19,12 +30,25 @@ export function when(ms) {
   if (diff < 3600_000) return `${Math.round(diff / 60_000)} min`;
   const d = new Date(t);
   const today = new Date();
-  if (d.toDateString() === today.toDateString()) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  if (diff < 6 * 86400_000) return d.toLocaleDateString([], { weekday: 'short' });
-  return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  return d.toDateString() === today.toDateString() ? clock(d) : pastDay(d, today);
+}
+
+// When a message was sent, as a clock time with the day added once it is not today. A message stays on screen, so unlike `when` this
+// holds no "5 min" that goes stale. It reads the page's own clock and only the day can change, which `useToday` draws again for.
+export function sentAt(at, now = Date.now()) {
+  const t = Date.parse(at);
+  if (Number.isNaN(t)) return '';
+  const d = new Date(t);
+  const today = new Date(now);
+  if (d.toDateString() === today.toDateString()) return clock(d);
+  const date = d.getFullYear() === today.getFullYear() ? undefined : { day: 'numeric', month: 'short', year: 'numeric' };
+  return `${pastDay(d, today, date)}, ${clock(d)}`;
+}
+
+// How long until the next local midnight, from the calendar rather than 24 hours, because a day that changes the clocks is not 24 hours long.
+export function untilMidnight(now) {
+  const d = new Date(now);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1) - d;
 }
 
 export const STATE_LABEL = { working: 'working', waiting: 'needs you', active: 'active', idle: '' };

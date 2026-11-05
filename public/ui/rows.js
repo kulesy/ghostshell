@@ -2,7 +2,7 @@
 import { md } from '../md.mjs';
 import { BashItem } from './bash.js';
 import { HOME } from './env.js';
-import { clip, duration, lf, modelLabel, pre, preview, serverLabel, tilde, toolLabel } from './format.js';
+import { clip, duration, lf, modelLabel, pre, preview, sentAt, serverLabel, tilde, toolLabel } from './format.js';
 import { FileCard } from './file-card.js';
 import { fromTool, imageKey, overflow, TILES, tileLabel, toolShots } from './gallery.js';
 import { Fragment, html, memo, useLayoutEffect, useReducer, useRef, useState } from './html.js';
@@ -156,17 +156,20 @@ function Quoted({ quote }) {
 }
 
 const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
-  && a.term === b.term && a.terminal === b.terminal
+  && a.term === b.term && a.terminal === b.terminal && a.today === b.today
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
+
+// The value of a message's data-time. CSS draws the time from it, so it is never part of a selection and a copy or a quote leaves it out.
+const timeOf = i => sentAt(i.at) || undefined;
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
 export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl, term, terminal }) {
   if (i.kind === 'user') {
     const { quotes, text } = splitQuotes(i.text);
-    return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length || i.files?.length ? html`<${Thumbs} images=${i.images} files=${i.files} url=${imageUrl} onOpen=${onImage} />` : null}${quotes.map((q, n) => html`<${Quoted} key=${n} quote=${q} />`)}${text ? html`<div class="bubble">${lf(text)}</div>` : null}</li>`;
+    return html`<li class=${`msg user${i.sending ? ' sending' : ''}`} data-time=${timeOf(i)}>${i.images?.length || i.files?.length ? html`<${Thumbs} images=${i.images} files=${i.files} url=${imageUrl} onOpen=${onImage} />` : null}${quotes.map((q, n) => html`<${Quoted} key=${n} quote=${q} />`)}${text ? html`<div class="bubble">${lf(text)}</div>` : null}</li>`;
   }
-  if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text, fileUrl) }}></li>`;
+  if (i.kind === 'assistant') return html`<li class="msg claude" data-time=${timeOf(i)} dangerouslySetInnerHTML=${{ __html: md(i.text, fileUrl) }}></li>`;
   if (i.kind === 'tool') {
     if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} onChip=${onChip} />`;
     if (/__mark_chapter$/.test(i.name)) return html`<li class="chapter"><span>${i.input?.title || 'Chapter'}</span></li>`;

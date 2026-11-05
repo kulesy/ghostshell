@@ -1,4 +1,4 @@
-import { tickIn } from './format.js';
+import { tickIn, untilMidnight } from './format.js';
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from './html.js';
 import { modifier, onAppChange } from './shortcuts.js';
 import { local } from './storage.js';
@@ -65,6 +65,26 @@ export function useDocumentTitle(title) {
     sync();
     return () => installed.removeEventListener('change', sync);
   }, [title]);
+}
+
+// The local date, which changes at midnight. A phone can sleep through the timer, so coming back to the page checks it too.
+export function useToday() {
+  const [today, setToday] = useState(() => new Date().toDateString());
+  useEffect(() => {
+    let timer;
+    const check = () => {
+      clearTimeout(timer);
+      setToday(new Date().toDateString());
+      timer = setTimeout(check, untilMidnight(Date.now()));
+    };
+    check();
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, []);
+  return today;
 }
 
 // Draws the component again every second while `on`, so a timer on screen keeps counting between events. Given the time it counts
