@@ -1,8 +1,9 @@
 // The side panel of a chat: the sub sessions under it, the subagents it started, its terminal and the file it has open, as tabs. It sits on the right of the chat when
 // there is room for both, and covers the chat when there is not. Its look is in app.css, which reads the mode and width this file puts on the session.
+import { edit, leaveEdit } from './file-edit.js';
 import { backTo, closeFile, FileTab, useFile } from './file-view.js';
 import { useStore } from './hooks.js';
-import { html, memo, useCallback, useLayoutEffect, useRef, useState } from './html.js';
+import { html, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
 import { closeQuietly, hidePanel, openQuietly, panelOf, panels, selectTab, setPanelWidth, takeOrigin, takeWant } from './panel-state.js';
 import { keyHint } from './shortcuts.js';
@@ -118,6 +119,9 @@ function Shown({ ctrl, tabs, tab, file }) {
       for (const el of section.children) el.inert = false;
     };
   }, [over]);
+
+  // However the panel closes, an edit of this chat's file stops with the same note, and its draft is kept.
+  useEffect(() => () => { if (edit.get().chat === id) leaveEdit(); }, [id]);
 
   // Focus goes back to whatever opened the panel, but only when it was inside the panel as it closed.
   useLayoutEffect(() => {

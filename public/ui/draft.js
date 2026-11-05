@@ -3,6 +3,7 @@
 // The text lives outside every component, so typing redraws only the prompt box. See docs/adr/20261102-a-draft-for-each-session.md.
 import { api, postFile } from './api.js';
 import { MAX_IMAGES, prepare, TYPES } from './images.js';
+import { forgetFileDrafts } from './file-edit-rules.js';
 import { local } from './storage.js';
 import { createStore } from './store.js';
 
@@ -25,6 +26,7 @@ export function setDraftText(key, value) {
 export function forgetDrafts() {
   texts.clear();
   saveTexts();
+  forgetFileDrafts();
 }
 
 const EMPTY = Object.freeze({ images: [], files: [], preparing: 0 });

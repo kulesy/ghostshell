@@ -57,3 +57,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-11-04 | [Find a session by the pull requests it links, from a list a worker thread keeps](20261104-search-sessions-by-pull-request.md) | Accepted |
 | 2026-11-04 | [Remind the owner to move Chrome's extension after an account switch](20261104-chrome-follows-the-account.md) | Accepted |
 | 2026-11-04 | [Pin a session, group, project or routine to one Claude account](20261104-pin-work-to-an-account.md) | Accepted |
+| 2026-11-05 | [Edit a linked text file in the viewer, and keep the places that run code or hold secrets read only](20261105-edit-linked-text-files.md) | Accepted |
