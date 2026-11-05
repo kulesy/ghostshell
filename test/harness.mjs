@@ -379,7 +379,7 @@ async function launch(home, state, made) {
   const banners = furnishBanners(home);
   const env = {
     ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, CAPCOM_AUTO_TITLE: made.autoTitle ? '1' : '0', CAPCOM_CLAUDE: made.cli ?? banners.auth,
-    CAPCOM_SECURITY: banners.security, CAPCOM_OPEN: banners.open, CAPCOM_UPDATE_ROOT: banners.updateRoot, CAPCOM_RETIRE_QUIET_MS: '300', ...(made.gh && { CAPCOM_GH: made.gh }), ...made.env,
+    CAPCOM_SECURITY: banners.security, CAPCOM_OPEN: banners.open, CAPCOM_UPDATE_ROOT: banners.updateRoot, CAPCOM_RETIRE_QUIET_MS: '300', CAPCOM_SURVEY_DELAY_MS: '2000000000', ...(made.gh && { CAPCOM_GH: made.gh }), ...made.env,
   };
   // The first account is the CLI's own sign-in, so a folder from the machine running the tests would point it away from the home.
   if (!made.env?.CLAUDE_CONFIG_DIR) delete env.CLAUDE_CONFIG_DIR;

@@ -248,7 +248,7 @@ test('Open opens the settings, marks the banner opened, and starts watching agai
   r.probes.length = 0;
   r.seen.second = true;
   await r.fire();
-  assert.deepEqual(r.probes, ['second']);
+  assert.equal(r.probes[0], 'second', 'the tick asks the new account first, and the survey it starts asks the rest');
   assert.equal(r.check.state(), null);
 });
 
@@ -317,4 +317,120 @@ test('reading the state never probes or starts a timer', async () => {
   const before = [r.probes.length, r.timers.length];
   for (let i = 0; i < 5; i++) r.check.state();
   assert.deepEqual([r.probes.length, r.timers.length], before);
+});
+
+test('a survey asks every account once, and claims Chrome is elsewhere for an account that answered false when another answered true', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.seen.second = false;
+  await r.check.survey();
+  assert.deepEqual(r.probes.sort(), ['main', 'second']);
+  assert.equal(r.check.elsewhere('second'), 'main');
+  assert.equal(r.check.elsewhere('main'), null, 'the account with the browser has nothing to claim');
+  assert.equal(r.check.state(), null, 'a survey shows no banner');
+});
+
+test('a null answer makes no claim about that account, and nobody seeing a browser claims nothing about anyone', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.seen.second = null;
+  await r.check.survey();
+  assert.equal(r.check.elsewhere('second'), null, 'no answer is not a no');
+  r.seen.main = false;
+  r.seen.second = false;
+  await r.check.survey();
+  assert.deepEqual([r.check.elsewhere('main'), r.check.elsewhere('second')], [null, null], 'Chrome may only be closed');
+  r.seen.main = null;
+  r.seen.second = null;
+  await r.check.survey();
+  assert.deepEqual([r.check.elsewhere('main'), r.check.elsewhere('second')], [null, null]);
+});
+
+test('a probe that fails counts as no answer in a survey', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.seen.second = new Error('boom');
+  await r.check.survey();
+  assert.equal(r.check.elsewhere('second'), null);
+});
+
+test('a survey with one account, the chrome setting off or Chrome not set up asks nothing and claims nothing', async () => {
+  const one = rig();
+  one.seen.main = true;
+  one.list.pop();
+  await one.check.survey();
+  assert.deepEqual(one.probes, []);
+
+  const off = rig({ enabled: false });
+  await off.check.survey();
+  assert.deepEqual(off.probes, []);
+
+  const none = rig({ uses: false });
+  await none.check.survey();
+  assert.deepEqual(none.probes, []);
+  assert.equal(none.check.elsewhere('second'), null);
+});
+
+test('a later survey replaces the earlier answer, and one that no longer applies clears it', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.seen.second = false;
+  await r.check.survey();
+  assert.equal(r.check.elsewhere('second'), 'main');
+  r.seen.main = false;
+  r.seen.second = true;
+  await r.check.survey();
+  assert.deepEqual([r.check.elsewhere('second'), r.check.elsewhere('main')], [null, 'second'], 'the extension moved');
+  r.list.pop();
+  await r.check.survey();
+  assert.equal(r.check.elsewhere('main'), null, 'with one account left the old answer is gone');
+});
+
+test('a claim about an account that has been removed since is dropped', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.seen.second = false;
+  await r.check.survey();
+  r.list.splice(0, 1);
+  assert.equal(r.check.elsewhere('second'), null, 'the account with the browser is no longer listed');
+});
+
+test('a survey called while one runs starts no probes, and runs again once it has ended', async () => {
+  const r = rig();
+  let release;
+  r.gate = new Promise(resolve => { release = resolve; });
+  const first = r.check.survey();
+  await settle();
+  await r.check.survey();
+  assert.equal(r.probes.length, 2, 'the second call asked nobody');
+  release();
+  await first;
+  await r.check.survey();
+  assert.equal(r.probes.length, 4);
+});
+
+test('a banner tick that sees a browser clears the banner and starts a survey, because the extension has moved', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.seen.second = false;
+  r.to('second');
+  await settle();
+  r.probes.length = 0;
+  r.seen.main = false;
+  r.seen.second = true;
+  await r.fire();
+  await settle();
+  assert.equal(r.check.state(), null);
+  assert.deepEqual(r.probes.sort(), ['main', 'second', 'second'], 'the tick asked second, then the survey asked both');
+  assert.equal(r.check.elsewhere('main'), 'second');
+});
+
+test('a banner tick that sees nothing starts no survey', async () => {
+  const r = rig();
+  r.seen.main = true;
+  r.to('second');
+  await settle();
+  r.probes.length = 0;
+  await r.fire();
+  assert.deepEqual(r.probes, ['second']);
 });

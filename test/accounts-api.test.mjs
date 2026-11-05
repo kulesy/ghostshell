@@ -14,13 +14,14 @@ const texts = [];
 const row = (over = {}) => ({ kind: 'weekly_all', group: 'weekly', percent: 71, severity: 'normal', resets_at: new Date(Date.now() + 3 * DAY).toISOString(), scope: null, is_active: true, ...over });
 
 // A server with a second account, "Second" (id `second`), set up in its state before the server starts: signed in with its own email and plan unless `signedOut`.
-async function open({ signedOut = false, main = null, second = {}, auto = false, claude = true, chrome = false, sessions = [{ id: 'live', title: 'Runs', source: 'cli', ago: 1 }, { id: 'other', title: 'Another', source: 'cli', ago: 2 }, { id: 'cold', title: 'Cold', source: 'cli', ago: 3 }] } = {}) {
-  const first = await start({ claude, sessions });
+async function open({ signedOut = false, main = null, second = {}, auto = false, claude = true, chrome = false, surveyed = false, setUp = true, sessions = [{ id: 'live', title: 'Runs', source: 'cli', ago: 1 }, { id: 'other', title: 'Another', source: 'cli', ago: 2 }, { id: 'cold', title: 'Cold', source: 'cli', ago: 3 }] } = {}) {
+  const first = await start({ claude, sessions, ...(surveyed && { env: { CAPCOM_SURVEY_DELAY_MS: '100' } }) });
   const dir = path.join(first.state, 'accounts', 'second');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(first.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: auto, accounts: [{ id: 'main', name: 'Main' }, { id: 'second', name: 'Second', dir }] }));
   if (main) fs.writeFileSync(path.join(first.home, 'auth-state.json'), JSON.stringify(main));
-  if (chrome) fs.writeFileSync(path.join(first.home, '.claude.json'), JSON.stringify({ cachedChromeExtensionInstalled: true }));
+  if (surveyed) fs.writeFileSync(path.join(first.home, 'chrome-state.json'), JSON.stringify({ browsers: [{ deviceId: 'd1', name: 'Secret Device', osPlatform: 'darwin', connectedAt: 1, isLocal: true, inUse: false }] }));
+  if (chrome || (surveyed && setUp)) fs.writeFileSync(path.join(first.home, '.claude.json'), JSON.stringify({ cachedChromeExtensionInstalled: true }));
   if (!signedOut) {
     fs.writeFileSync(path.join(dir, 'auth-state.json'), JSON.stringify({ loggedIn: true, email: 'second@example.com', orgId: 'org-hidden-2', subscriptionType: 'pro', ...second }));
     fs.writeFileSync(path.join(first.home, `keychain-expiry-${serviceFor(dir)}`), String(Date.now() + 20 * DAY));
@@ -339,6 +340,24 @@ test('a switch with Chrome set up reports it checking at once, then names the ac
   assert.deepEqual(chromeCalls(c.s).map(x => x.dir).sort(), [c.dir, null]);
   for (let i = 0; i < 3; i++) { await accountsOf(c); await get(c, '/api/banners'); }
   assert.equal(chromeCalls(c.s).length, 2);
+});
+
+test('the account list says which account Chrome is on once the start-up survey has proved it, holds no device name, and a read never asks again', async () => {
+  const c = await open({ surveyed: true });
+  await until(async () => by(await accountsOf(c), 'second').chromeOn === 'main');
+  const list = await accountsOf(c);
+  assert.equal(by(list, 'main').chromeOn, undefined, 'the account with the browser has no such key');
+  assert.deepEqual(chromeCalls(c.s).map(x => x.dir).sort(), [c.dir, null], 'one probe for each account');
+  assert.doesNotMatch(JSON.stringify(list), /Secret Device|d1/);
+  assert.equal(list.chrome, null, 'a survey shows no banner');
+  for (let i = 0; i < 3; i++) { await accountsOf(c); await get(c, '/api/banners'); }
+  assert.equal(chromeCalls(c.s).length, 2);
+});
+
+test('a start-up survey with Chrome not set up probes nothing and adds no chromeOn', async () => {
+  const none = await open({ surveyed: true, setUp: false });
+  await new Promise(done => setTimeout(done, 500));
+  assert.deepEqual([chromeCalls(none.s).length, (await accountsOf(none)).accounts.some(a => a.chromeOn)], [0, false]);
 });
 
 test('a switch where Chrome is on the new account, or where Chrome is not set up, shows no banner', async () => {

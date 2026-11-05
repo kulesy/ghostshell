@@ -1,7 +1,7 @@
 // The Routines page: every routine with its schedule, next and last run, and the form that adds or edits one. The prompt text and a
 // prompt file's path go to the server, so nothing here touches a file. The actions are shared with the menu of a routine's row in Home.
 import { useAccounts } from './account-list.js';
-import { accountChoices, CHROME_NOTE, offersPick, PICK_NOTE } from './account-rules.js';
+import { accountChoices, chromeNote, offersPick, PICK_NOTE } from './account-rules.js';
 import { api } from './api.js';
 import { ask } from './ask.js';
 import { MODES } from './composer.js';
@@ -389,7 +389,7 @@ function RoutineForm({ id, ix, routines, error, refresh }) {
     </div>
     <p class="routine-hint routine-default">Default follows Claude Desktop's settings for the folder.</p>
     ${accounts && offersPick(ix, accounts, !!routine?.account)
-      ? html`<${Field} id=${FIELD_IDS.account} label="Account" hint=${`${PICK_NOTE} ${CHROME_NOTE}`} error=${refused('account')}>
+      ? html`<${Field} id=${FIELD_IDS.account} label="Account" hint=${`${PICK_NOTE} ${chromeNote(accounts)}`} error=${refused('account')}>
           <select class="input" id=${FIELD_IDS.account} value=${form.account} onChange=${set('account')} ...${aria(FIELD_IDS.account, false, refused('account'))}>
             ${accountChoices(accounts, form.account).map(([value, text, disabled]) => html`<option value=${value} disabled=${disabled}>${text}</option>`)}
           </select>

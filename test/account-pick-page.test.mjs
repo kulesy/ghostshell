@@ -31,9 +31,14 @@ const SESSIONS = [
   { id: 'grouped', title: 'In a group', source: 'cli', ago: 3, group: 'cg-a' },
 ];
 
-// A server with accounts Main and Second (just Main with `one`), Second signed out with `out`, and `accounts` as the layout's session pins.
-async function open({ one = false, out = false, accounts = {}, groups = GROUPS, routines, chips, sessions = [] } = {}) {
-  const first = await start({ claude: true, sessions: [...SESSIONS, ...sessions], groups, chips, layout: { projects: [{ id: 'cp-a', name: 'Proj' }], accounts } });
+// A server with accounts Main and Second (just Main with `one`), Second signed out with `out`, and `accounts` as the layout's session pins. With `chrome`, Chrome is
+// set up and only Main's folder sees a browser, and the server surveys at once, so Second is proved to have no Chrome.
+async function open({ one = false, out = false, accounts = {}, groups = GROUPS, routines, chips, sessions = [], chrome = false } = {}) {
+  const first = await start({ claude: true, sessions: [...SESSIONS, ...sessions], groups, chips, layout: { projects: [{ id: 'cp-a', name: 'Proj' }], accounts }, ...(chrome && { env: { CAPCOM_SURVEY_DELAY_MS: '100' } }) });
+  if (chrome) {
+    fs.writeFileSync(path.join(first.home, '.claude.json'), JSON.stringify({ cachedChromeExtensionInstalled: true }));
+    fs.writeFileSync(path.join(first.home, 'chrome-state.json'), JSON.stringify({ browsers: [{ deviceId: 'd1', name: 'Fake', osPlatform: 'darwin', connectedAt: 1, isLocal: true, inUse: false }] }));
+  }
   const dir = path.join(first.state, 'accounts', 'second');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(first.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: false, accounts: [{ id: 'main', name: 'Main' }, ...(one ? [] : [{ id: 'second', name: 'Second', dir }])] }));
@@ -372,4 +377,36 @@ test('the routine form shows an Account pick with two accounts, none with one, a
   const kept = await openPage(t, pinned, '#/routines/r1');
   await kept.until(`!!document.querySelector('#routine-account')`, 15_000);
   assert.equal(await kept.evaluate(`document.querySelector('#routine-account').value`), 'main');
+});
+
+test('when the survey proves Chrome is on Main, the Account menu, the routine form and the Accounts page say so, and with one account none of it shows', { skip, timeout }, async t => {
+  const c = await open({ chrome: true, accounts: { live: 'second' }, routines: [ROUTINE] });
+  await until(async () => (await accountsOf(c)).accounts.find(a => a.id === 'second').chromeOn === 'main');
+  const page = await openPage(t, c, '#/');
+  await rowMenu(page, 'other');
+  await openSub(page, 'Account');
+  assert.deepEqual(await itemsOf(page, SUB), ['Active account (checked)', 'Main', 'Second']);
+  assert.match(await page.evaluate(`[...document.querySelectorAll('${SUB} [role^=menuitem]')][2].textContent`), /No Chrome/);
+  assert.doesNotMatch(await page.evaluate(`[...document.querySelectorAll('${SUB} [role^=menuitem]')][1].textContent`), /No Chrome/);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('${SUB} .menu-note')].map(n => n.textContent)[1]`), "Chrome is on Main, so work on another account can't reach it.");
+  await page.press('Escape');
+
+  await page.evaluate(`location.hash = '#/routines/r1'`);
+  await page.until(`!!document.querySelector('#routine-account')`, 15_000);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('#routine-account option')].map(o => [o.textContent, o.disabled])`), [['Active account', false], ['Main', false], ['Second (no Chrome)', false]]);
+  assert.match(await page.evaluate(`document.querySelector('#routine-account').closest('.routine-field').textContent`), /Chrome is on Main, so work on another account can't reach it\./);
+
+  await page.evaluate(`location.hash = '#/accounts'`);
+  await page.until(`document.querySelectorAll('#accounts .account').length === 2`, 15_000);
+  const lines = await page.evaluate(`[...document.querySelectorAll('#accounts .account')].map(li => [...li.querySelectorAll('.account-line')].map(x => x.textContent))`);
+  assert.deepEqual(lines[1].slice(1), ['Pinned: 1 session', "Chrome is on Main, so these can't reach it."]);
+  assert.equal(lines[0].some(x => /Chrome/.test(x)), false, 'the account that has Chrome gets no line');
+
+  const lone = await open({ one: true, chrome: true, accounts: { live: 'main' }, routines: [ROUTINE] });
+  await new Promise(done => setTimeout(done, 500));
+  assert.equal((await accountsOf(lone)).accounts.some(a => a.chromeOn), false);
+  const plain = await openPage(t, lone, '#/accounts');
+  await plain.until(`document.querySelectorAll('#accounts .account').length === 1`, 15_000);
+  assert.equal(await plain.evaluate(`/Chrome/.test(document.querySelector('#accounts').textContent)`), false);
+  assert.deepEqual(page.problems, []);
 });

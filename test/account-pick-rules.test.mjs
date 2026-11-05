@@ -1,7 +1,7 @@
 // Run with `npm test`. What the account picks and notices show, as rules that need no page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountChoices, accountItems, accountLabel, accountMenu, blockedNow, blockedPlan, chatAccount, draftAccount, offersPick, pinnedStay, pinnedWords, rowAccountMenu, rowFor, SWITCH_LEAVES_PINS } from '../public/ui/account-rules.js';
+import { accountChoices, accountItems, accountLabel, accountMenu, blockedNow, blockedPlan, CHROME_NOTE, chatAccount, chromeNote, draftAccount, offersPick, pinnedChromeWords, pinnedStay, pinnedWords, rowAccountMenu, rowFor, SWITCH_LEAVES_PINS } from '../public/ui/account-rules.js';
 
 const ON = { features: { accountPins: true } };
 const MAIN = { id: 'main', name: 'Main' };
@@ -178,4 +178,53 @@ test('what an account has pinned is counted with the right singular and plural, 
   assert.equal(pinnedWords({ sessions: 0, groups: 0, projects: 0, routines: 0 }), '');
   assert.equal(pinnedWords(undefined), '', 'a server that sends no counts');
   assert.equal(SWITCH_LEAVES_PINS, 'A switch leaves pinned work on its account.');
+});
+
+// The survey proved Chrome is on Main, so Second carries `chromeOn: 'main'`.
+const NO_CHROME = { ...SECOND, chromeOn: 'main' };
+
+test('an account the survey proved cannot reach Chrome reads No Chrome in the menu, and stays selectable', () => {
+  const items = accountItems({ accounts: [MAIN, NO_CHROME], pin: null, pick: () => {} });
+  const second = items.find(i => i.label === 'Second');
+  assert.equal(second.value, 'No Chrome');
+  assert.ok(!second.disabled);
+  assert.equal(items.find(i => i.label === 'Main').value, null);
+});
+
+test('Signed out wins over No Chrome in the menu and the routine form', () => {
+  const list = [MAIN, { ...NO_CHROME, signedOut: true }];
+  assert.equal(accountItems({ accounts: list, pin: null, pick: () => {} }).find(i => i.label === 'Second').value, 'Signed out');
+  assert.equal(accountChoices(list, '')[2][1], 'Second (signed out)');
+});
+
+test('the note under the pick says where Chrome is when the survey proved it, and is the static limit otherwise', () => {
+  assert.equal(chromeNote([MAIN, NO_CHROME]), "Chrome is on Main, so work on another account can't reach it.");
+  assert.equal(chromeNote([MAIN, SECOND]), CHROME_NOTE);
+  assert.equal(chromeNote([MAIN]), CHROME_NOTE);
+  assert.equal(chromeNote(null), CHROME_NOTE);
+  const notes = accountItems({ accounts: [MAIN, NO_CHROME], pin: null, pick: () => {} }).filter(i => i.note).map(i => i.note);
+  assert.equal(notes.at(-1), chromeNote([MAIN, NO_CHROME]));
+});
+
+test('the routine form marks an account with no Chrome and keeps it selectable', () => {
+  const choices = accountChoices([MAIN, NO_CHROME], '');
+  assert.deepEqual(choices[2], ['second', 'Second (no Chrome)', false]);
+  assert.equal(choices[1][1], 'Main');
+});
+
+test('a chromeOn that points at an account no longer listed counts as absent everywhere', () => {
+  const stale = [MAIN, { ...SECOND, chromeOn: 'gone' }];
+  assert.equal(accountItems({ accounts: stale, pin: null, pick: () => {} }).find(i => i.label === 'Second').value, null);
+  assert.equal(chromeNote(stale), CHROME_NOTE);
+  assert.equal(accountChoices(stale, '')[2][1], 'Second');
+  assert.equal(pinnedChromeWords({ ...stale[1], pinned: { sessions: 1 } }, stale), '');
+});
+
+test('the Accounts page line appears only for an account with a pin and a proven lack of Chrome', () => {
+  const list = [MAIN, NO_CHROME];
+  const pinned = { sessions: 1, groups: 0, projects: 0, routines: 0 };
+  assert.equal(pinnedChromeWords({ ...NO_CHROME, pinned }, list), "Chrome is on Main, so these can't reach it.");
+  assert.equal(pinnedChromeWords({ ...NO_CHROME, pinned: { sessions: 0, groups: 0, projects: 0, routines: 0 } }, list), '', 'nothing pinned, nothing to reach Chrome');
+  assert.equal(pinnedChromeWords({ ...MAIN, pinned }, list), '', 'the account Chrome is on');
+  assert.equal(pinnedChromeWords({ ...SECOND, pinned }, [MAIN, SECOND]), '', 'no proof');
 });

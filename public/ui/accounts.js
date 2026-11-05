@@ -3,7 +3,7 @@
 import { api } from './api.js';
 import { Banner } from './banner.js';
 import { accountList, loadAccounts, useAccounts } from './account-list.js';
-import { accountItems, autoBanner, blockedNow, blockedPlan, chromeBanner, needsSignIn, outBanner, pinnedStay, pinnedWords, planAsOf, rowFor, sameAccountWords, signInLine, SWITCH_LEAVES_PINS, waitingWords } from './account-rules.js';
+import { accountItems, autoBanner, blockedNow, blockedPlan, chromeBanner, needsSignIn, outBanner, pinnedChromeWords, pinnedStay, pinnedWords, planAsOf, rowFor, sameAccountWords, signInLine, SWITCH_LEAVES_PINS, waitingWords } from './account-rules.js';
 import { Button, useRefusal } from './banners.js';
 import { Plan } from './context.js';
 import { planRows } from './context-rules.js';
@@ -84,6 +84,7 @@ function AccountRow({ a, list, act }) {
   const rows = a.plan ? planRows(a.plan.limits) : [];
   const same = a.sameAs ? sameAccountWords(a, list) : '';
   const pins = pinnedWords(a.pinned);
+  const noChrome = pinnedChromeWords(a, list.accounts);
 
   return html`<li class="account" aria-labelledby=${`account-${a.id}`}>
     <div class="account-head">
@@ -100,6 +101,7 @@ function AccountRow({ a, list, act }) {
         <p class="account-meta">${a.email ? html`<span>${a.email}</span>` : null}${a.planType ? html`<span>${a.planType}</span>` : null}</p>
         <p class="account-line">${signInLine(a)}</p>
         ${pins ? html`<p class="account-line">${pins}</p>` : null}
+        ${noChrome ? html`<p class="account-line">${noChrome}</p>` : null}
       </div>
       <div class="account-actions">
         ${!a.active && !a.signedOut ? html`<button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => run(`api/accounts/${enc(a.id)}/use`)}>Switch to this</button>` : null}

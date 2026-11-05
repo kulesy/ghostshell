@@ -41,7 +41,7 @@ import { lockHolder } from './lib/restart.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins } from './lib/account-logins.mjs';
-import { browserSeen, makeChromeCheck, openChromeSettings } from './lib/chrome-check.mjs';
+import { browserSeen, makeChromeCheck, openChromeSettings, SURVEY_MS } from './lib/chrome-check.mjs';
 import { accountFor, blockedBy, blockedError, blockedMessage } from './lib/account-rule.mjs';
 import { groupNamed } from './lib/layout-tools.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
@@ -1805,10 +1805,13 @@ const accountsNow = () => {
     routines: routineStore.read().routines.filter(r => r.account === id).length,
   });
   return {
-    accounts: accountLogins.view().map(a => ({
-      ...a, active: a.id === accounts.active.id, first: a.id === accounts.list()[0].id, pinned: pinsTo(a.id),
-      chats: runningChats().filter(c => c.account === a.id).map(c => ({ id: c.id, title: findRow(c.id)?.title || UNTITLED, state: c.state })),
-    })),
+    accounts: accountLogins.view().map(a => {
+      const chromeOn = chromeCheck.elsewhere(a.id);
+      return {
+        ...a, ...(chromeOn && { chromeOn }), active: a.id === accounts.active.id, first: a.id === accounts.list()[0].id, pinned: pinsTo(a.id),
+        chats: runningChats().filter(c => c.account === a.id).map(c => ({ id: c.id, title: findRow(c.id)?.title || UNTITLED, state: c.state })),
+      };
+    }),
     autoSwitch: accounts.autoSwitch,
     auto: accountLogins.banner().auto,
     chrome: chromeCheck.state(),
@@ -2310,6 +2313,8 @@ server.listen(cfg.port, '127.0.0.1', () => {
   setInterval(accountLogins.refreshAll, REFRESH_MS).unref();
   setTimeout(updates.check, cfg.updateDelayMs).unref();
   setInterval(updates.check, CHECK_EVERY_MS).unref();
+  setTimeout(chromeCheck.survey, cfg.surveyDelayMs).unref();
+  setInterval(chromeCheck.survey, SURVEY_MS).unref();
 });
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
 setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates failed: ${e.message}`)), scaled(cfg.groupUpdateScale).tick).unref();
