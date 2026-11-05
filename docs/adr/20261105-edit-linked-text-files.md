@@ -51,7 +51,7 @@ Scope is the files a chat links to, which is all the viewer opens. Browsing to a
 
 Chosen option: "Allow the home folder, except dot names, `Library`, GhostShell's folders and files that can run", because it covers the files the owner edits. A new dot folder is read only with no change to GhostShell, and a new place with a plain name is editable.
 
-**What the owner can edit.** A file can be saved only when all of these hold. `lib/files.mjs` checks them on the real path, after it resolves symlinks and `..`. It also checks the location rules on the path as linked, so `~/.zshrc` stays read only when it is a symlink into a dotfiles folder.
+**What the owner can edit.** A file can be saved only when all of these hold. `lib/files.mjs` checks them on the real path, after it resolves symlinks and `..`. It also checks the location rules on the path as linked when that path starts with the home folder, in either spelling, so `~/.zshrc` stays read only when it is a symlink into a dotfiles folder. A path that reaches the same file another way, such as a macOS alias of the home folder or a chain of symlinks, gets only the check on the real path. That path reaches nothing a link to the target's plain path could not, and this ADR accepts those.
 
 1. A reply or a thought in the chat links it, as for a read.
 2. It sits inside the owner's home folder.
@@ -80,7 +80,7 @@ One exception: the `.claude/worktrees/<name>` folders inside a repo count as ord
 **The write.**
 
 - `base` is the SHA-256 of the bytes the viewer loaded, sent in the preview as `version`. A save reads the file again, and a different hash answers 409 and writes nothing.
-- GhostShell copies the file to a temporary name beside it, which keeps its permissions, and on macOS its attributes. It writes and syncs that copy, compares the hash once more, then renames it over the real path. A failed write leaves the original as it was and removes the temporary file. A hard link never receives the write, because the rename replaces the name and not the file behind it.
+- GhostShell copies the file to a temporary name beside it, which keeps its read and write permissions, and on macOS its attributes. The rename drops setuid and setgid, so 4644 becomes 644, and a file with those bits and no execute bit does nothing with them. It writes and syncs that copy, compares the hash once more, then renames it over the real path. A failed write leaves the original as it was and removes the temporary file. A hard link never receives the write, because the rename replaces the name and not the file behind it.
 - A second save of a file while one runs gets a 409.
 - A browser's text box turns every line ending into `\n`. The server puts each unchanged line's own ending back and gives new lines the file's most common ending. It keeps a byte order mark and adds no final newline.
 

@@ -26,7 +26,7 @@ const says = (id, text) => {
 };
 
 // A file in the test home that the chat links to.
-const NAMES = ['saves', 'races', 'draft', 'phone', 'locked', 'gone'];
+const NAMES = ['saves', 'races', 'draft', 'phone', 'long', 'locked', 'gone'];
 const files = {};
 
 before(async () => {
@@ -36,7 +36,7 @@ before(async () => {
   fs.mkdirSync(dir, { recursive: true });
   for (const name of NAMES) {
     files[name] = path.join(dir, `${name}.txt`);
-    fs.writeFileSync(files[name], `first line of ${name}\nsecond line\n`);
+    fs.writeFileSync(files[name], name === 'long' ? Array.from({ length: 300 }, (_, i) => `line ${i + 1}\n`).join('') : `first line of ${name}\nsecond line\n`);
   }
   files.locked = path.join(app.home, '.zshrc');
   fs.writeFileSync(files.locked, 'export A=1\n');
@@ -282,6 +282,36 @@ test('on a phone with the keyboard up, the panel is pinned to what the visual vi
   await page.evaluate(`keyboard.offsetTop = 0; keyboard.height = innerHeight; keyboard.dispatchEvent(new Event('resize'))`);
   await page.until(`!document.querySelector('.panel').hasAttribute('data-keyboard')`);
   assert.equal(await page.evaluate(`document.querySelector('.panel').style.cssText`), '');
+  assert.deepEqual(page.problems, []);
+});
+
+test('on a phone, the pan iOS makes to reach the caret scrolls the text box by the same amount once, and a rotation neither repeats it nor leaves the panel wider than the screen', { skip, timeout }, async t => {
+  const page = await appPage(t, { phone: true });
+  await open(page, 'long', { phone: true });
+  await page.evaluate(`(() => {
+    const view = Object.assign(new EventTarget(), { height: 300, width: innerWidth, offsetTop: 40, offsetLeft: 0, scale: 1 });
+    Object.defineProperty(window, 'visualViewport', { value: view, configurable: true });
+    window.keyboard = view;
+  })()`);
+  await page.tap(button('Edit file'));
+  await page.until(`document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  await new Promise(resolve => setTimeout(resolve, 150));
+  const scrolled = () => page.evaluate(`document.querySelector('.file-editor').scrollTop`);
+  const wide = () => page.evaluate(`document.querySelector('.panel').getBoundingClientRect().width`);
+  const screen = await page.evaluate(`innerWidth`);
+  assert.equal(await wide(), screen);
+  await page.evaluate(`document.querySelector('.file-editor').scrollTop = 0`);
+  await page.evaluate(`keyboard.offsetTop = 140; keyboard.dispatchEvent(new Event('scroll'))`);
+  assert.equal(await scrolled(), 100, 'a pan of 100 moves the box by 100');
+  await page.evaluate(`keyboard.dispatchEvent(new Event('scroll'))`);
+  assert.equal(await scrolled(), 100, 'another scroll event at the same offset adds nothing');
+  await page.evaluate(`window.dispatchEvent(new Event('resize'))`);
+  assert.equal(await scrolled(), 100, 'a rotation adds nothing');
+  await page.evaluate(`keyboard.width = 200; window.dispatchEvent(new Event('resize'))`);
+  assert.equal(await wide(), 200, 'the panel is no wider than the viewport');
+  await page.evaluate(`keyboard.width = innerWidth; window.dispatchEvent(new Event('resize'))`);
+  assert.equal(await wide(), screen);
+  assert.equal(await scrolled(), 100);
   assert.deepEqual(page.problems, []);
 });
 

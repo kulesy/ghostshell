@@ -3774,6 +3774,21 @@ html.viewing, html.viewing body { overflow: hidden; }
   padding-bottom: 0;
 }
 
+.session[data-panel] > .panel[data-keyboard]::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: 100vh;
+  background: var(--background);
+  pointer-events: none;
+}
+
+.session[data-panel] > .panel[data-keyboard] .panel-head {
+  touch-action: none;
+}
+
 .panel-resize {
   position: absolute;
   inset-block: 0;

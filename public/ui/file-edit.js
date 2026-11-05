@@ -139,7 +139,8 @@ export function EditNotes() {
 }
 
 // iOS covers the layout viewport with the keyboard and pans the page to the caret, which carries Save and Cancel off the screen. While the
-// box is focused and the keyboard is up, the panel is pinned to the area the visual viewport shows. It lets go once the keyboard is gone.
+// box is focused and the keyboard is up, the panel is pinned to the area the visual viewport shows, and the pan iOS makes to reach the caret
+// scrolls the box instead. It lets go once the keyboard is gone.
 function useKeyboardFit(box) {
   useLayoutEffect(() => {
     const el = box.current;
@@ -147,16 +148,20 @@ function useKeyboardFit(box) {
     const view = window.visualViewport;
     if (!panel || !view) return undefined;
     let width = 0;
+    let panned = 0;
     const covered = () => view.scale <= 1 && (window.innerHeight - view.height > 1 || view.offsetTop > 0);
     const unpin = () => {
       panel.removeAttribute('data-keyboard');
       for (const name of ['--vv-top', '--vv-right', '--vv-width', '--vv-height']) panel.style.removeProperty(name);
       width = 0;
+      panned = 0;
     };
     const fit = () => {
       const focused = document.activeElement === el;
       if (!covered() || (!focused && !panel.hasAttribute('data-keyboard'))) { unpin(); if (!focused) stop(); return; }
-      if (!width) width = panel.offsetWidth;
+      if (!width) width = Math.min(panel.offsetWidth, view.width);
+      el.scrollTop += view.offsetTop - panned;
+      panned = view.offsetTop;
       panel.style.setProperty('--vv-top', `${view.offsetTop}px`);
       panel.style.setProperty('--vv-right', `${Math.max(0, window.innerWidth - view.offsetLeft - view.width)}px`);
       panel.style.setProperty('--vv-width', `${width}px`);
@@ -165,7 +170,7 @@ function useKeyboardFit(box) {
     };
     const watch = () => { view.addEventListener('resize', fit); view.addEventListener('scroll', fit); addEventListener('resize', refit); };
     const stop = () => { view.removeEventListener('resize', fit); view.removeEventListener('scroll', fit); removeEventListener('resize', refit); };
-    const refit = () => { unpin(); fit(); };
+    const refit = () => { const kept = panned; unpin(); panned = kept; fit(); };
     // The keyboard can still be on its way out when the box loses focus, so the pin goes when the viewport says it is gone, not before.
     const onFocus = () => { watch(); fit(); };
     el.addEventListener('focus', onFocus);

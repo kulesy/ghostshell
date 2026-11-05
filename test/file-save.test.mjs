@@ -136,8 +136,8 @@ test('a link written as ~/ is judged where it ends, so a dot file or a Library f
 
   const elsewhere = path.join(s.home, 'tilde-places');
   fs.mkdirSync(elsewhere, { recursive: true });
-  for (const [linkedAs, inHome] of [['~/.tilde-rc', '.tilde-rc'], ['~/Library/tilde-prefs.txt', 'Library/tilde-prefs.txt']]) {
-    const real = path.join(elsewhere, path.basename(inHome));
+  for (const [linkedAs, inHome, realName] of [['~/.tilde-rc', '.tilde-rc', 'tilde-rc'], ['~/Library/tilde-prefs.txt', 'Library/tilde-prefs.txt', 'tilde-prefs.txt']]) {
+    const real = path.join(elsewhere, realName);
     fs.writeFileSync(real, 'export A=1\n');
     const at = path.join(s.home, inHome);
     fs.mkdirSync(path.dirname(at), { recursive: true });
