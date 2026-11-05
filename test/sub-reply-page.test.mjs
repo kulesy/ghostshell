@@ -203,6 +203,13 @@ test('a send that fails after I left the list says so in a toast, and the text w
   await page.evaluate(`location.hash = '#/s/hub'`);
   await page.until(`document.querySelector(${JSON.stringify(box('ninth'))})?.value === 'While I look elsewhere'`, 10_000);
   await page.until(`document.querySelector('.sub-send-note[role=alert]')?.textContent === 'Not sent: Not now.'`);
+
+  await failNextSend(page, { error: 'Still not now.' }, 500);
+  await page.evaluate(`document.querySelector(${JSON.stringify(box('ninth'))}).focus()`);
+  await page.press('Enter');
+  await page.click('#tab-terminal');
+  await toastSays(page, 'Not sent to Ninth: Still not now.');
+  assert.equal(await page.evaluate(`document.querySelector('#pane-subs').hidden`), true, 'the box is drawn in a tab that is not showing');
 });
 
 test('Esc closes the box from anywhere in it and keeps its text, even after a click on Send failed, the panel stays and the chat on screen is not stopped, and Shift+Enter is a new line', { skip, timeout }, async t => {

@@ -68,8 +68,8 @@ async function sendReply(id, name) {
     setBox(id, { open: false, text: '', sending: false });
     say(`Sent to ${name}`);
   } catch (e) {
-    // Only for someone who has left the box, which says why itself. Near the foot of the list a toast would sit on top of Send.
-    if (!replyText(id)) say(`Not sent to ${name}: ${e.message}`);
+    // Only for someone who has left the box, which says why itself. Near the foot of the list a toast would sit on top of Send. A hidden panel tab keeps its box, with no offsetParent.
+    if (!replyText(id)?.offsetParent) say(`Not sent to ${name}: ${e.message}`);
     setBox(id, { open: true, sending: false, problem: e.message });
   }
   sessionActions.get().refresh?.();
