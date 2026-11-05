@@ -241,10 +241,10 @@ const belowNow = (id, { archived }) => descendantsOf([...buildIndex({ archived }
 // A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone knows a session's link.
 const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex()) });
 
-// Each row's account, for the page. Only built when more than one account is listed or a pin exists, so a single-account station sends the rows it always did.
-// The facts are the ones a process start uses, so a row never says different from the account its process runs on. A row a pin blocks carries `blocked` even when one account is listed.
 const withWords = b => b && { ...b, message: blockedMessage(b) };
 
+// Each row's account, for the page. Only built when more than one account is listed or a pin exists, so a single-account station sends the rows it always did.
+// The facts are the ones a process start uses, so a row never says different from the account its process runs on. A row a pin blocks carries `blocked` even when one account is listed.
 function accountRows(index) {
   const d = accountData(index);
   const many = accounts.list().length > 1;
