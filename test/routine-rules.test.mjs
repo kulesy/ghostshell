@@ -118,7 +118,7 @@ test('a delete says the runs stay and where the prompt file is, and a server wit
 });
 
 test('a new form starts in the home folder, switched on, with the defaults and no jitter', () => {
-  assert.deepEqual(newForm('/Users/me'), { title: '', cron: '', jitterSeconds: '0', cwd: '/Users/me', model: '', effort: '', mode: '', promptKind: 'text', file: '', prompt: '', enabled: true });
+  assert.deepEqual(newForm('/Users/me'), { title: '', cron: '', jitterSeconds: '0', cwd: '/Users/me', model: '', effort: '', mode: '', account: '', promptKind: 'text', file: '', prompt: '', enabled: true });
 });
 
 const ROUTINE = { id: 'morning', title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: 737, cwd: '/work', model: 'claude-opus-5-5', effort: null, mode: 'plan', enabled: false, file: '/state/routines/morning.md' };
@@ -128,7 +128,7 @@ const ELSEWHERE = { file: '/Users/you/prompts/daily-scrum.md', text: 'Run the sc
 
 test('an edit form is filled from the routine with null as Default, on the kind of prompt the routine uses', () => {
   assert.deepEqual(formOf(ROUTINE, OWN), {
-    title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: '737', cwd: '/work', model: 'claude-opus-5-5', effort: '', mode: 'plan', promptKind: 'text', file: '', prompt: 'Do it.', enabled: false,
+    title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: '737', cwd: '/work', model: 'claude-opus-5-5', effort: '', mode: 'plan', account: '', promptKind: 'text', file: '', prompt: 'Do it.', enabled: false,
   });
   assert.equal(formOf({ ...ROUTINE, jitterSeconds: undefined }, { text: '', ours: true }).jitterSeconds, '0');
 });
@@ -403,4 +403,15 @@ test('a routine with no run that is switched on and queued to retry says so in p
   assert.equal(idleWords({ ...queued, retry: null }, SUNDAY), "Couldn't start 12 min ago", 'a server that sends no retry reads as before');
   assert.equal(idleWords({ ...queued, retry: undefined }, SUNDAY), "Couldn't start 12 min ago");
   assert.equal(retryTip({ ...queued, retry: undefined }), null);
+});
+
+test('a routine\'s account is sent on a new routine only when picked, and on an edit only when it changed', () => {
+  const form = { ...newForm('/work'), title: 'Morning', cron: '30 7 * * 1-5', prompt: 'Do it.' };
+  assert.equal('account' in requestOf(form, null), false);
+  assert.equal(requestOf({ ...form, account: 'second' }, null).account, 'second');
+  const was = wasOf({ ...ROUTINE, account: 'second' }, OWN);
+  const loaded = formOf({ ...ROUTINE, account: 'second' }, OWN);
+  assert.equal(loaded.account, 'second');
+  assert.deepEqual(requestOf(loaded, was), {});
+  assert.deepEqual(requestOf({ ...loaded, account: '' }, was), { account: null });
 });

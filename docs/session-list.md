@@ -56,7 +56,7 @@ New sessions start from any of these:
 - Ctrl+N.
 - Cmd+N in the installed app.
 
-Each opens an empty chat, and the first message starts the session in the home folder. The + and the keys work while the list is still loading. The search shows its action once the list has arrived.
+Each opens an empty chat, and the first message starts the session in the home folder. A session started from a group's header joins that group when it starts, so the group's account pin applies to its first turn. The + and the keys work while the list is still loading. The search shows its action once the list has arrived.
 
 ### Cmd+N in a tab and in the app
 
@@ -264,6 +264,17 @@ A lamp beside Home and each project is green when a chat in it is working and am
 ### New project
 
 New project is the button at the bottom of the sidebar. It asks for a name, shows the reason in the sidebar if GhostShell refuses one, and shows the new project when it takes it.
+
+## Pinning to an account
+
+With more than one account, a session, a group and a project each have an Account item in their menus, and a new chat has the same pick in its model menu. The choices are Active account and each account, with the current one ticked. An account that is signed out shows as signed out and cannot be picked. Two lines under the choices say that a pin takes effect at the next start and that Chrome works only on the account its extension is signed into.
+
+- With one account and nothing pinned, no pick shows. Anything already pinned keeps its pick, so it can be cleared.
+- A chat shows the account it runs on as a quiet label in the composer row when there is more than one account. Rows in the list carry no label.
+- A pinned account that is signed out or removed puts a notice above the composer in the server's words. Signed out offers Sign in and Change the pin, and removed offers Clear the pin, even with one account. The server names where the pin lives (`blocked.pin`), and the notice names that holder, also for a session that reaches it through a parent. The pin is changed there: the session, its group or its project, and the buttons say "the group's pin" when it is not this session's. For a routine, the notice sends you to the routine's form.
+- A send the server refuses for this keeps the text in the box and shows the same notice.
+
+See [Pin work to an account](adr/20261104-pin-work-to-an-account.md).
 
 ## Finding a session
 

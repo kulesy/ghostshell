@@ -23,7 +23,7 @@ Each row has a switch, Run now, and a menu with Edit and Delete. A routine's row
 
 ### Adding and editing
 
-New routine and Edit open the same form: title, schedule, jitter, folder, model, effort, permission mode, prompt and the switch. The folder is a typed absolute path, and a new routine starts in your home folder. As you type a schedule, the form shows it in words with its next three fire times. If GhostShell refuses a save, it saves nothing and shows each problem beside its field.
+New routine and Edit open the same form: title, schedule, jitter, folder, model, effort, permission mode, account, prompt and the switch. The Account pick is on the form only when GhostShell lists more than one account, or the routine already has one. The folder is a typed absolute path, and a new routine starts in your home folder. As you type a schedule, the form shows it in words with its next three fire times. If GhostShell refuses a save, it saves nothing and shows each problem beside its field.
 
 The Prompt field is a choice between GhostShell's own text and a prompt file.
 
@@ -60,6 +60,7 @@ You can add a routine by editing `routines.json`. The file is an object with a `
 | `model` | No | A model name such as `claude-opus-5-5`, or `null`. | `null`, the model a new session in that folder gets |
 | `effort` | No | `low`, `medium`, `high`, `xhigh` or `max`, or `null`. | `null`, the effort a new session in that folder gets |
 | `mode` | No | `manual`, `acceptEdits`, `plan`, `auto` or `bypassPermissions`, or `null`. | `null`, the mode a new session in that folder gets |
+| `account` | No | The id of an account GhostShell lists, or `null`. | `null`, the account the folder's group or project pins, else the active one |
 | `enabled` | No | `true` or `false`. Anything else counts as off, and the Routines page says so. | `false` |
 | `armedAt` | Filled in | When the schedule counts from: the moment the routine was switched on, then each run or skipped fire. Empty while it is off. | `null` |
 | `lastRunAt` | Filled in | When the last run started or was tried. | `null` |

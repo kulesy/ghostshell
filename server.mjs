@@ -241,6 +241,8 @@ const belowNow = (id, { archived }) => descendantsOf([...buildIndex({ archived }
 // A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone knows a session's link.
 const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex()) });
 
+const withWords = b => b && { ...b, message: blockedMessage(b) };
+
 // Each row's account, for the page. Only built when more than one account is listed or a pin exists, so a single-account station sends the rows it always did.
 // The facts are the ones a process start uses, so a row never says different from the account its process runs on. A row a pin blocks carries `blocked` even when one account is listed.
 function accountRows(index) {
@@ -250,8 +252,8 @@ function accountRows(index) {
   const states = accountStates();
   for (const r of [...index.rows.values(), ...index.groupSessions.values()]) {
     const got = accountFor({ id: r.id, ...d.facts(r.id) }, d);
-    const blocked = blockedBy(got, states, d.nameOf);
-    if (!many && !blocked) continue;
+    const blocked = withWords(blockedBy(got, states, d.nameOf));
+    if (!many && !blocked && !d.own.accounts[r.id]) continue;
     Object.assign(r, { account: got.account, accountFrom: got.from }, d.own.accounts[r.id] && { accountPin: d.own.accounts[r.id] }, blocked && { blocked });
   }
 }
@@ -373,7 +375,9 @@ function buildIndex({ archived = false } = {}) {
   const pinned = sortRows(top.filter(r => r.pinned), sorts.pinned);
   const groups = own.groups.map(g => {
     const sort = groupSort(g.id);
-    const session = g.session ? { id: g.session, state: groupSessions.get(g.session).state } : null;
+    // A group's own chat carries what accountRows worked out for it, so its notice reads the same as a session's.
+    const chat = g.session && groupSessions.get(g.session);
+    const session = chat ? { id: g.session, state: chat.state, ...(chat.account && { account: chat.account, accountFrom: chat.accountFrom }), ...(chat.accountPin && { accountPin: chat.accountPin }), ...(chat.blocked && { blocked: chat.blocked }) } : null;
     return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, ...(g.account && { account: g.account }), sort, session, archived: archivedIn.get(g.id) ?? 0, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
   });
   // A routine's runs go newest first, and the routines go by their latest run.
@@ -679,7 +683,7 @@ const accountProblem = (got, nameOf) => {
 // A routine's own pin must be an account GhostShell lists and can run on. A run in a group or project is placed after it starts, so only its pin counts.
 function routineProblems(r) {
   const found = startProblems(r, 'routine');
-  const problem = accountProblem(typeof r.account === 'string' && r.account ? { account: r.account, from: 'routine', via: r.id } : null, () => r.title ?? '');
+  const problem = accountProblem(typeof r.account === 'string' && r.account ? { account: r.account, from: 'routine', via: r.id, pin: { kind: 'routine', id: r.id } } : null, () => r.title ?? '');
   if (problem) found.account = problem;
   return found;
 }
@@ -2203,7 +2207,7 @@ const server = http.createServer(async (req, res) => {
     send(res, 404, 'Not found', 'text/plain');
   } catch (e) {
     // A start refused for a pinned account that is signed out is the caller's to fix, so it is told with the data and not logged as a fault.
-    if (e.blocked && !res.headersSent) return send(res, 409, { error: e.message, blocked: e.blocked });
+    if (e.blocked && !res.headersSent) return send(res, 409, { error: e.message, blocked: withWords(e.blocked) });
     console.error(e);
     if (!res.headersSent) send(res, 500, { error: e.message });
   }

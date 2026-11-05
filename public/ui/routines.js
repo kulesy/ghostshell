@@ -1,5 +1,7 @@
 // The Routines page: every routine with its schedule, next and last run, and the form that adds or edits one. The prompt text and a
 // prompt file's path go to the server, so nothing here touches a file. The actions are shared with the menu of a routine's row in Home.
+import { useAccounts } from './account-list.js';
+import { accountChoices, CHROME_NOTE, offersPick, PICK_NOTE } from './account-rules.js';
 import { api } from './api.js';
 import { ask } from './ask.js';
 import { MODES } from './composer.js';
@@ -222,7 +224,7 @@ function RoutineList({ ix, routines, error, reload, refresh }) {
 
 // ---- the form ------------------------------------------------------------------------------------
 
-const FIELD_IDS = { title: 'routine-title', cron: 'routine-cron', jitterSeconds: 'routine-jitter', cwd: 'routine-cwd', model: 'routine-model', effort: 'routine-effort', mode: 'routine-mode', file: 'routine-file', prompt: 'routine-prompt' };
+const FIELD_IDS = { title: 'routine-title', cron: 'routine-cron', jitterSeconds: 'routine-jitter', cwd: 'routine-cwd', model: 'routine-model', effort: 'routine-effort', mode: 'routine-mode', account: 'routine-account', file: 'routine-file', prompt: 'routine-prompt' };
 
 function SchedulePreview({ cron, jitter, preview, now }) {
   const words = cron.trim() ? scheduleWords(cron, jitter ?? 0) : null;
@@ -238,6 +240,7 @@ function RoutineForm({ id, ix, routines, error, refresh }) {
   const adding = id === null;
   const files = supportsRoutineFiles(ix);
   const routine = adding ? null : routines?.routines.find(r => r.id === id);
+  const accounts = useAccounts(ix);
   const [prompt, setPrompt] = useState(adding ? { text: '' } : null);
   const [loadError, setLoadError] = useState('');
   const [form, setForm] = useState(adding ? newForm(HOME) : null);
@@ -385,6 +388,13 @@ function RoutineForm({ id, ix, routines, error, refresh }) {
         <//>`)}
     </div>
     <p class="routine-hint routine-default">Default follows Claude Desktop's settings for the folder.</p>
+    ${accounts && offersPick(ix, accounts, !!routine?.account)
+      ? html`<${Field} id=${FIELD_IDS.account} label="Account" hint=${`${PICK_NOTE} ${CHROME_NOTE}`} error=${refused('account')}>
+          <select class="input" id=${FIELD_IDS.account} value=${form.account} onChange=${set('account')} ...${aria(FIELD_IDS.account, false, refused('account'))}>
+            ${accountChoices(accounts, form.account).map(([value, text, disabled]) => html`<option value=${value} disabled=${disabled}>${text}</option>`)}
+          </select>
+        <//>`
+      : null}
     ${files
       ? html`<fieldset class="routine-field routine-kind">
           <legend>Prompt</legend>

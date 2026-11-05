@@ -143,11 +143,11 @@ export const promptSource = p => (p.ours
 // ---- the form ------------------------------------------------------------------------------------
 
 // The order the form shows its fields, so the first refused one is the one to focus.
-export const FIELDS = ['title', 'cron', 'jitterSeconds', 'cwd', 'model', 'effort', 'mode', 'file', 'prompt'];
+export const FIELDS = ['title', 'cron', 'jitterSeconds', 'cwd', 'model', 'effort', 'mode', 'account', 'file', 'prompt'];
 
 export const JITTER_PROBLEM = 'Use a whole number of seconds from 0 to 86399.';
 
-export const newForm = home => ({ title: '', cron: '', jitterSeconds: '0', cwd: home, model: '', effort: '', mode: '', promptKind: 'text', file: '', prompt: '', enabled: true });
+export const newForm = home => ({ title: '', cron: '', jitterSeconds: '0', cwd: home, model: '', effort: '', mode: '', account: '', promptKind: 'text', file: '', prompt: '', enabled: true });
 
 // A prompt on a file elsewhere is one the server says is not its own. A server that copies it on save says where to, and has no file choice.
 const kindOf = prompt => (prompt.ours === false && !prompt.copyTo ? 'file' : 'text');
@@ -155,7 +155,7 @@ const kindOf = prompt => (prompt.ours === false && !prompt.copyTo ? 'file' : 'te
 // `prompt` is what api/routines/<id>/prompt answered. The text of a file elsewhere fills the box too, for a routine switched to GhostShell's own text.
 export const formOf = (r, prompt) => ({
   title: r.title ?? '', cron: r.cron ?? '', jitterSeconds: String(r.jitterSeconds ?? 0), cwd: r.cwd ?? '',
-  model: r.model ?? '', effort: r.effort ?? '', mode: r.mode ?? '', promptKind: kindOf(prompt), file: kindOf(prompt) === 'file' ? prompt.file : '',
+  model: r.model ?? '', effort: r.effort ?? '', mode: r.mode ?? '', account: r.account ?? '', promptKind: kindOf(prompt), file: kindOf(prompt) === 'file' ? prompt.file : '',
   prompt: prompt.text, enabled: r.enabled === true,
 });
 
@@ -193,7 +193,7 @@ export function requestOf(form, was) {
   };
   const text = form.promptKind !== 'file';
   const path = form.file.trim();
-  if (!was) return { ...all, ...(text ? { prompt: form.prompt } : { file: path }) };
+  if (!was) return { ...all, ...(form.account && { account: form.account }), ...(text ? { prompt: form.prompt } : { file: path }) };
   const r = was.routine;
   const changed = {
     ...(all.title !== r.title && { title: all.title }),
@@ -203,6 +203,7 @@ export function requestOf(form, was) {
     ...(!same(all.model, r.model) && { model: all.model }),
     ...(!same(all.effort, r.effort) && { effort: all.effort }),
     ...(!same(all.mode, r.mode) && { mode: all.mode }),
+    ...(!same(form.account, r.account) && { account: form.account || null }),
     ...(all.enabled !== (r.enabled === true) && { enabled: all.enabled }),
     ...(text && (was.kind === 'file' || form.prompt !== was.prompt) && { prompt: form.prompt }),
     ...(!text && (was.kind === 'text' || path !== was.file) && { file: path }),

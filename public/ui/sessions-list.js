@@ -2,7 +2,8 @@
 // sessions started here or in a terminal, and a project has its groups. Pinned sessions show in every view. A row can be dragged
 // onto a section to move it there, or onto another row to nest it under that one, and a group's header can be dragged among the groups
 // or onto a project. Everything else is done from menus, so a phone can do it all.
-import { supportsAccounts } from './account-rules.js';
+import { useAccounts } from './account-list.js';
+import { accountMenu as pinItems, rowAccountMenu, supportsAccounts } from './account-rules.js';
 import { api } from './api.js';
 import { ask } from './ask.js';
 import { isRunning, stopQuestion, subsRunning } from './close.js';
@@ -350,6 +351,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [folded, setFolded] = useLocal('folded', {});
   const { view } = projects;
+  const accounts = useAccounts(ix);
   const mod = useModifier();
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const [drag, setDrag] = useState(null);
@@ -563,6 +565,12 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     problemNote(problem);
     return problem ? null : made;
   }
+
+  // The Account submenu of a session, group or project, from the one rule the composer uses too.
+  const pinMenu = (kind, id, pin, row = null) => {
+    const pick = account => change('api/layout/account', { kind, id, account });
+    return row ? rowAccountMenu({ ix, accounts, row, pick, icon: icons.circleUser }) : pinItems({ ix, accounts, pin, pick, icon: icons.circleUser });
+  };
 
   // The row that takes the focus once `ids` leave: the one above them at their level of the tree, or else the next one in the list.
   const focusAfter = ids => {
@@ -922,6 +930,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
         ...(parent ? [{ label: `Move out of “${parent.title || UNTITLED}”`, icon: icons.indentDecrease, run: () => nestSession(id, title, null, parent.title || UNTITLED) }] : []),
         ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(nestItem), find: q => findSessions(under, q).map(f => nestItem(f.row)), findLabel: 'Search sessions' }] : []),
         ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places, find: q => findPlaces(targets, q).map(p => ({ ...choice(p.label, p.section, p.where), value: p.value })), findLabel: 'Search places' }] : []),
+        ...pinMenu('session', id, r.accountPin, r),
         { label: picked ? 'Deselect' : 'Select', icon: icons.squareCheck, run: () => setPick(p => toggleRow(p, id)) },
         { separator: true },
         { label: running ? 'Stop and archive' : 'Archive', icon: icons.archive, danger: running, hint: archiveHint(), run: () => (below ? confirmStop(id, title) : archiveRow(id, title, { ask: !running })) },
@@ -1189,6 +1198,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
           ...(at >= 0 && at < ids.length - 1 ? [{ label: 'Move down', icon: icons.arrowDown, run: () => orderGroup(g, ids[at + 1], 'after') }] : []),
         ],
         moves.map(m => ({ ...m, icon: icons.folderInput })),
+        pinMenu('group', g.id, g.account),
         [{ label: 'Delete group', icon: icons.trash, danger: true, run: () => deleteGroup(g) }],
       ].filter(part => part.length);
       return { label: `Actions for ${g.name}`, items: parts.flatMap((part, n) => (n ? [{ separator: true }, ...part] : part)) };
@@ -1204,6 +1214,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       items: [
         { label: 'New group here', icon: icons.folderPlus, run: () => tree.newGroup(p, [scopeOf(p.id), '.add']) },
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'rename', project: p.id }) },
+        ...pinMenu('project', p.id, p.account),
         { separator: true },
         { label: 'Delete project', icon: icons.trash, danger: true, run: () => deleteProject(p) },
       ],

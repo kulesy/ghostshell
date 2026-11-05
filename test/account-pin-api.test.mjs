@@ -399,3 +399,53 @@ test('changing a routine\'s account stops its idle run on the old account', asyn
   assert.equal(edited.status, 200, edited.text);
   await until(() => calls(c).filter(x => x.closed).length === 1);
 });
+
+test('a blocked row and a refused send carry the words the page shows', async () => {
+  const c = await open();
+  await pin(c, 'session', 'live', 'second');
+  await signOutSecond(c);
+  const refused = await say(c, 'live');
+  assert.equal(refused.status, 409);
+  const { blocked } = refused.body();
+  assert.match(blocked.message, /Second/);
+  assert.match((await rowOf(c, 'live')).blocked.message, /pinned to Second, which is signed out/);
+});
+
+test('a session the pin names keeps its accountPin when only one account is listed', async () => {
+  const c = await open();
+  assert.equal((await pin(c, 'session', 'other', 'second')).status, 200);
+  fs.writeFileSync(path.join(c.s.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: false, accounts: [{ id: 'main', name: 'Main' }] }));
+  const lone = { ...c, s: await restart(c.s) };
+  lone.token = (await signIn(lone.s)).token;
+  assert.equal((await accountsOf(lone)).accounts.length, 1);
+  assert.equal((await rowOf(lone, 'other')).accountPin, 'second');
+});
+
+test('a blocked row names the session, group or project that holds the pin, also for a session nested under it', async () => {
+  const c = await open({ sessions: [{ id: 'top', title: 'Top', source: 'cli', ago: 5 }, { id: 'kid', title: 'Kid', source: 'cli', ago: 6 }], chips: [{ sessionId: 'top', startedId: 'kid', status: 'started', title: 'Follow up' }] });
+  await pin(c, 'session', 'top', 'second');
+  await pin(c, 'project', 'cp-a', 'second');
+  await signOutSecond(c);
+  assert.deepEqual((await rowOf(c, 'top')).blocked.pin, { kind: 'session', id: 'top' });
+  const kid = (await rowOf(c, 'kid')).blocked;
+  assert.deepEqual([kid.from, kid.pin], ['parent', { kind: 'session', id: 'top' }]);
+  assert.deepEqual((await rowOf(c, 'grouped')).blocked.pin, { kind: 'project', id: 'cp-a' });
+  const refused = await say(c, 'kid');
+  assert.deepEqual(refused.body().blocked.pin, { kind: 'session', id: 'top' });
+});
+
+test('a group\'s own chat carries its account and block on the index, and a session nested under a group pin names the group', async () => {
+  const c = await open({
+    groups: [{ id: 'cg-a', name: 'Work', project: 'cp-a', session: WORK_CHAT }, GROUPS[1]],
+    chips: [{ sessionId: 'grouped', startedId: 'nested', status: 'started', title: 'Follow up' }],
+    sessions: [{ id: 'nested', title: 'Nested', source: 'cli', ago: 5 }],
+  });
+  await pin(c, 'group', 'cg-a', 'second');
+  await signOutSecond(c);
+  const chat = (await index(c)).groups.find(g => g.id === 'cg-a').session;
+  assert.deepEqual([chat.account, chat.accountFrom, chat.blocked.reason, chat.blocked.pin], ['second', 'group', 'signed-out', { kind: 'group', id: 'cg-a' }]);
+  assert.match(chat.blocked.message, /^Its group \(Work\) is pinned to Second/);
+  const nested = (await rowOf(c, 'nested')).blocked;
+  assert.deepEqual([nested.from, nested.pin, nested.fromName], ['parent', { kind: 'group', id: 'cg-a' }, 'Work']);
+  assert.match(nested.message, /^The group of the session it sits under \(Work\) is pinned to Second/);
+});

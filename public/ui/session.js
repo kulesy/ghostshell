@@ -52,7 +52,7 @@ const endedByChat = new Map();
 const OPEN_FAILED = 'Could not open this session: ';
 
 // `toast` shows a note on the screen. The page passes it in so this file loads without the page's components.
-export function createChat({ id = null, draft = false, row = null, refreshIndex, toast = () => {} }) {
+export function createChat({ id = null, draft = false, row = null, refreshIndex, pins = () => false, toast = () => {} }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
   if (first) startedHere = null;
   // Until a new session starts, the box holds its settings here; the ones left alone follow the home folder's defaults.
@@ -61,7 +61,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: null, model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, agents: null, holdsEnded: endedByChat.get(id) || [],
-    group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', usageOut: false, starting: false, loadingEarlier: false,
+    group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', refused: null, usageOut: false, starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     jump: 0, earlierSeq: 0, context: null,
   });
@@ -146,7 +146,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   function connect() {
     es = new EventSource(`api/sessions/${enc(id)}/events`);
     const on = (type, fn) => es.addEventListener(type, e => { if (!closed) fn(JSON.parse(e.data || '{}')); });
-    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), outside: s.outside || null, outsideStart: began(s.outside), notice: '', usageOut: false }); fetchNew(); refreshContext(); });
+    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), outside: s.outside || null, outsideStart: began(s.outside), notice: '', refused: null, usageOut: false }); fetchNew(); refreshContext(); });
     // Capcom's own work takes over from a turn another app was running, and the old line must not flash back when its turn ends.
     on('state', d => { patchStatus({ state: d.state }); store.set(d.state === 'idle' ? { work: null, turnStart: 0 } : { outside: null, outsideStart: 0 }); });
     on('delta', d => { const fresh = ended; ended = false; store.set(s => ({ live: (fresh ? '' : s.live) + d.text })); });
@@ -299,7 +299,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // `stay` leaves the chat scrolled where it is, for a message sent from a widget the owner is still using.
   async function send(text, images, mode, files = [], { stay = false } = {}) {
     const message = { text, images, files };
-    store.set(s => ({ sending: [...s.sending, message], notice: '', usageOut: false, jump: stay ? s.jump : s.jump + 1 }));
+    store.set(s => ({ sending: [...s.sending, message], notice: '', refused: null, usageOut: false, jump: stay ? s.jump : s.jump + 1 }));
     try {
       const { unarchived, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }) });
       // Each change of fast mode reaches the page over SSE, and a reply can be older than the last one.
@@ -307,7 +307,10 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
       if (unarchived) refreshIndex();
       return true;
     } catch (err) {
-      if (!closed) store.set(s => ({ sending: s.sending.filter(m => m !== message), notice: `Not sent: ${err.message}` }));
+      // A 409 for a blocked pin shows the notice with its buttons, and the text stays in the box because this returns false.
+      const blocked = err.status === 409 ? err.data?.blocked : null;
+      if (!closed) store.set(s => ({ sending: s.sending.filter(m => m !== message), ...(blocked ? { refused: blocked } : { notice: `Not sent: ${err.message}` }) }));
+      if (blocked && !closed) refreshIndex();
       return false;
     }
   }
@@ -350,6 +353,14 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     }
   }
 
+  // Pins `at` ({ kind, id }) to an account or clears it. The notice for a pin that blocked this chat goes, and a refusal throws for the caller to show.
+  async function repin(at, account) {
+    await api('api/layout/account', { ...at, account });
+    store.set({ refused: null });
+    patchStatus({ blocked: null });
+    await refreshIndex();
+  }
+
   // ---- the settings under the prompt box ---------------------------------------------------------------
 
   function setDraft(patch) {
@@ -375,6 +386,10 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // Capcom answers with, which holds a later pick that went through, and puts the old value back only when there is none.
   // `kind` is 'model', 'effort' or 'fast', and fast mode's value is true or false.
   async function pick(kind, value) {
+    if (kind === 'account' && !draft) {
+      try { await repin({ kind: 'session', id }, value); } catch (err) { notice(err.message); }
+      return;
+    }
     const patch = kind === 'model' ? { model: value, shownModel: value } : { [kind]: value };
     if (draft) return setDraft(patch);
     const before = state().status || {};
@@ -408,16 +423,19 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     const s = state().status;
     const group = state().group;
     store.set({ starting: true, notice: '' });
+    // The server places the session in its group when it starts it, so the group's pin applies to its first turn. Pinned is a section and is pinned after.
+    const joins = group && !pinsOnStart(group) && pins();
     try {
       const { id: created } = await api('api/new', {
         cwd: HOME, text, ...(s.mode && { mode: s.mode }), ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
+        ...(touched.has('account') && s.account && { account: s.account }), ...(joins && { group }),
         ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('fast') && { fast: s.fast }),
       });
       onCreated();
       let notPlaced = null;
       // Placed before this function reads the list; a refresh elsewhere can still draw it ungrouped for a moment. A failure still opens it.
       const pinning = pinsOnStart(group);
-      if (group) {
+      if (group && !joins) {
         try { await (pinning ? api('api/layout/pin', { id: created, pinned: true }) : api('api/layout/move', { id: created, group })); } catch (err) { notPlaced = err; }
       }
       startedHere = { id: created, text, images, files };
@@ -437,6 +455,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
 
   return {
     id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, retry,
-    send, prompt, stop, decide, dismissHold, chip, setMode, pick, startNew, notice, imageUrl, fileUrl,
+    send, prompt, stop, decide, dismissHold, chip, setMode, pick, repin, startNew, notice, imageUrl, fileUrl,
   };
 }
