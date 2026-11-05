@@ -118,6 +118,7 @@ export function FileTab({ file: { n, chat, path, line, from, clips, preview, err
   const reads = !error && (!preview || (text && !preview.tooLarge));
   // Audio has Download and no new tab, because the sandbox on a served file stops Chrome's media page loading the clip.
   const audible = kind === 'audio' && !preview.tooLarge;
+  const loading = !preview && !error;
   const openable = !!preview && !preview.tooLarge && kind !== 'binary' && kind !== 'image';
   const lines = preview?.truncated ? linesOf(preview.text).length : 0;
   const editing = useEdit(chat, path);
@@ -138,7 +139,7 @@ export function FileTab({ file: { n, chat, path, line, from, clips, preview, err
   // The line asked for goes to the middle of the body, and anything else starts at the top, so a note about a missing clip is seen. A clip that plays, or is still loading, leaves a long list where it is.
   useLayoutEffect(() => {
     const el = body.current;
-    if (!el || audible || (clips.length > 1 && !preview && !error)) return;
+    if (!el || audible || (clips.length > 1 && loading)) return;
     const hit = el.querySelector('[data-hit]');
     el.scrollTop = hit ? hit.offsetTop - (el.clientHeight - hit.offsetHeight) / 2 : 0;
   }, [preview, source, error]);
@@ -177,6 +178,6 @@ export function FileTab({ file: { n, chat, path, line, from, clips, preview, err
       </div>
     </div>
     ${preview?.readOnly && !editing ? html`<p class="file-readonly">${preview.readOnly}</p>` : null}
-    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-editing=${editing ? '' : undefined} data-kind=${kind} tabindex=${reads && !editing ? 0 : -1} role=${reads && !editing ? 'region' : undefined} aria-label=${reads && !editing ? `Contents of ${name}` : undefined}>${audible || moves ? html`<div class="file-bar">${audible ? html`<${Player} url=${url} name=${name} />` : null}${moves ? html`<${ClipNav} clips=${clips} path=${path} onPick=${pick} />` : null}</div>` : null}${content}${moves ? html`<${ClipList} clips=${clips} path=${path} onPick=${pick} />` : null}</div>
+    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-editing=${editing ? '' : undefined} data-kind=${kind} tabindex=${reads && !editing ? 0 : -1} role=${reads && !editing ? 'region' : undefined} aria-label=${reads && !editing ? `Contents of ${name}` : undefined}>${audible || moves ? html`<div class="file-bar">${audible ? html`<${Player} url=${url} name=${name} />` : null}${moves ? html`<${ClipNav} clips=${clips} path=${path} onPick=${pick} />` : null}</div>` : null}${content}${moves ? html`<${ClipList} clips=${clips} path=${path} follow=${audible || loading} onPick=${pick} />` : null}</div>
   </div>`;
 }

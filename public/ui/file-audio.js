@@ -72,12 +72,13 @@ export function ClipNav({ clips, path, onPick }) {
   </div>`;
 }
 
-export function ClipList({ clips, path, onPick }) {
+// `follow` is off for a clip with something to read above the list, such as the note about a missing file, so that stays on screen.
+export function ClipList({ clips, path, follow, onPick }) {
   const list = useRef(null);
 
   useEffect(() => {
-    list.current.querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest' });
-  }, [path]);
+    if (follow) list.current.querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest' });
+  }, [path, follow]);
 
   return html`<ol class="file-clips-list" ref=${list}>${clips.map(p => html`<li key=${p}><button class="file-clip" type="button" title=${p} aria-current=${p === path ? 'true' : undefined} onClick=${() => onPick(p)}>${base(p)}</button></li>`)}</ol>`;
 }

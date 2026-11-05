@@ -303,6 +303,20 @@ test('in a long list the buttons stay on screen, the current row comes into view
   assert.deepEqual(page.problems.filter(p => !/404/.test(p)), []);
 });
 
+test('a missing clip far down a long list, opened from the chat, shows its note above the list', { skip, timeout }, async t => {
+  const page = await appPage(t, { chat: 'long' });
+  await page.resize(1280, 500);
+  await page.click(link(GONE));
+  await page.until(`(() => {
+    const bar = document.querySelector('.file-bar')?.getBoundingClientRect();
+    const note = document.querySelector('.file-note[role="alert"]')?.getBoundingClientRect();
+    return !!note && note.top >= bar.bottom && note.bottom <= document.querySelector('.file-body').getBoundingClientRect().bottom;
+  })()`);
+  await wait(300);
+  assert.equal(await page.evaluate(`document.querySelector('.file-body').scrollTop`), 0);
+  assert.deepEqual(page.problems.filter(p => !/404/.test(p)), []);
+});
+
 test('audio has Download and no Open in new tab, because Chrome\'s media page cannot load a clip under the sandbox the server sends', { skip, timeout }, async t => {
   const page = await appPage(t);
   await page.click(link('one'));
