@@ -158,7 +158,13 @@ function useKeyboardFit(box) {
     };
     const fit = () => {
       const focused = document.activeElement === el;
-      if (!covered() || (!focused && !panel.hasAttribute('data-keyboard'))) { unpin(); if (!focused) stop(); return; }
+      if (!covered() || (!focused && !panel.hasAttribute('data-keyboard'))) {
+        unpin();
+        // iOS leaves the box scrolled past its end once the panel grows back, and the next tap then jumps the text away from the caret.
+        el.scrollTop = Math.min(el.scrollTop, el.scrollHeight - el.clientHeight);
+        if (!focused) stop();
+        return;
+      }
       if (!width) width = panel.offsetWidth;
       panel.style.setProperty('--vv-top', `${view.offsetTop}px`);
       panel.style.setProperty('--vv-right', `${Math.max(0, window.innerWidth - view.offsetLeft - view.width)}px`);
