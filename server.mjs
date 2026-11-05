@@ -681,7 +681,7 @@ const accountProblem = (got, nameOf) => {
 // A routine's own pin must be an account GhostShell lists and can run on. A run in a group or project is placed after it starts, so only its pin counts.
 function routineProblems(r) {
   const found = startProblems(r, 'routine');
-  const problem = accountProblem(typeof r.account === 'string' && r.account ? { account: r.account, from: 'routine', via: r.id } : null, () => r.title ?? '');
+  const problem = accountProblem(typeof r.account === 'string' && r.account ? { account: r.account, from: 'routine', via: r.id, pin: { kind: 'routine', id: r.id } } : null, () => r.title ?? '');
   if (problem) found.account = problem;
   return found;
 }

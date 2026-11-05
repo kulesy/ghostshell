@@ -212,7 +212,7 @@ button.thumb:focus-visible, .option:focus-visible {
 
 .quiet { color: var(--muted-foreground); }
 
-.account-label { min-width: 0; overflow: hidden; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
+.account-label { min-width: 0; max-width: 9rem; margin-right: 0.25rem; overflow: hidden; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
 
 .pad { padding: 1rem; }
 
@@ -2974,6 +2974,12 @@ button.thumb {
   .composer-left .pick > span[aria-hidden="true"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .composer-right { flex-shrink: 0; }
+
+  .account-label { max-width: 3.5rem; }
+}
+
+@media (max-width: 27.99rem) {
+  .account-label { display: none; }
 }
 
 .btn .pick-warning { width: 0.875rem; height: 0.875rem; color: var(--warning-foreground); }

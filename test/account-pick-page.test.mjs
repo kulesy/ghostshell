@@ -101,7 +101,23 @@ const rowMenu = async (page, id) => {
   await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
 };
 
-test('with one account and nothing pinned the menus, the label and the routine form show no account pick', { skip, timeout }, async t => {
+// Lists what the page posts as window.__posts ([url, body]) and holds its reads of the session index until window.__release() is called, so a test can send
+// before the index has caught up with the server.
+const hold = page => page.evaluate(`(() => {
+  const real = window.fetch;
+  const gate = new Promise(resolve => { window.__release = resolve; });
+  window.__posts = [];
+  window.fetch = async (url, init) => {
+    const address = String(url);
+    if (init?.method === 'POST') window.__posts.push([address, JSON.parse(init.body)]);
+    else if (/^api\\/sessions(\\?|$)/.test(address)) await gate;
+    return real(url, init);
+  };
+})()`);
+
+const type = (page, text) => page.evaluate(`(el => { el.focus(); el.value = ${JSON.stringify(text)}; el.dispatchEvent(new Event('input', { bubbles: true })); })(document.querySelector('#text'))`);
+
+test('with one account and nothing pinned the menus and the label show no account pick', { skip, timeout }, async t => {
   const c = await open({ one: true });
   const page = await openPage(t, c, '#/s/live');
   await page.until(`!!document.querySelector('#model') && !document.querySelector('#model').disabled`, 15_000);
@@ -189,25 +205,58 @@ test('a session pinned with only one account listed still shows its pick', { ski
   assert.equal((await labels(page)).includes('Account'), false, 'a session with no pin shows none');
 });
 
-test('a signed out pin shows the notice with Sign in and Change the pin, and a send keeps its text in the box', { skip, timeout }, async t => {
+test('a refused send shows the notice with its buttons and keeps the text, before the index has caught up', { skip, timeout }, async t => {
   const c = await open({ accounts: { live: 'second' } });
+  const page = await openPage(t, c, '#/s/live');
+  await page.until(`!!document.querySelector('#model') && !document.querySelector('#model').disabled`, 15_000);
+  assert.equal(await page.evaluate(`!!document.querySelector('#blocked')`), false);
+  await hold(page);
   signedIn(c.s, c.dir, false);
   assert.equal((await pin(c, 'session', 'other', 'second')).status, 409);
-  const page = await openPage(t, c, '#/s/live');
-  await page.until(`!!document.querySelector('#blocked')`, 15_000);
+  await type(page, 'keep this text');
+  await page.click('#send');
+  await page.until(`document.querySelector('#text').value === 'keep this text' && !!document.querySelector('#blocked')`, 15_000);
   assert.match(await page.evaluate(`document.querySelector('#blocked').textContent`), /is pinned to Second, which is signed out\. Sign it in first\./);
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.notice-action .btn')].map(b => b.textContent)`), ['Sign in to Second', 'Change the pin']);
-  await page.evaluate(`document.querySelector('#text').focus()`);
-  await page.evaluate(`(el => { el.value = 'keep this text'; el.dispatchEvent(new Event('input', { bubbles: true })); })(document.querySelector('#text'))`);
-  await page.click('#send');
-  await page.until(`document.querySelector('#text').value === 'keep this text' && !!document.querySelector('#blocked')`);
   await shot(page, 'blocked-signed-out');
 
+  await page.evaluate(`window.__release()`);
   await page.click('#blockedChange');
   await page.until(`!!document.querySelector('${MENU}')`);
   await choose(page, MENU, 'Active account');
   await until(async () => (await rowOf(c, 'live')).accountPin === undefined);
   await page.until(`!document.querySelector('#blocked')`);
+});
+
+test('a refused send leaves no notice behind once the pin is cleared from the row menu', { skip, timeout }, async t => {
+  const c = await open({ accounts: { live: 'second' } });
+  const page = await openPage(t, c, '#/s/live');
+  await page.until(`!!document.querySelector('#model') && !document.querySelector('#model').disabled`, 15_000);
+  await hold(page);
+  signedIn(c.s, c.dir, false);
+  assert.equal((await pin(c, 'session', 'other', 'second')).status, 409);
+  await type(page, 'keep this text');
+  await page.click('#send');
+  await page.until(`!!document.querySelector('#blocked')`, 15_000);
+  await page.evaluate(`window.__release()`);
+  await page.until(`!!document.querySelector('#blocked')`);
+
+  await rowMenu(page, 'live');
+  await openSub(page, 'Account');
+  await choose(page, SUB, 'Active account');
+  await until(async () => (await rowOf(c, 'live')).accountPin === undefined);
+  await page.until(`!document.querySelector('#blocked')`, 15_000);
+  assert.equal(await page.evaluate(`document.querySelector('#text').value`), 'keep this text');
+});
+
+test('the composer of a new session in a group pinned to Second labels Second', { skip, timeout }, async t => {
+  const c = await open();
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  const page = await openPage(t, c, '#/new/cg-b');
+  await page.until(`document.querySelector('#accountLabel')?.textContent === 'Second'`, 15_000);
+  await shot(page, 'composer-draft-pinned-group');
+  const loose = await openPage(t, c, '#/new');
+  await loose.until(`document.querySelector('#accountLabel')?.textContent === 'Main'`, 15_000);
 });
 
 test('a removed pin shows Clear the pin even with one account, and clearing it removes the notice', { skip, timeout }, async t => {
@@ -233,18 +282,25 @@ test('a blocked group pin is cleared at the group, not at the session', { skip, 
   await until(async () => (await index(c)).groups.find(g => g.id === 'cg-a').account === undefined);
 });
 
-test('a new session started in a group passes the group, so a group pin applies to its first turn', { skip, timeout }, async t => {
+test('a new session started in a group passes the group, so a group pin applies to its first turn, and is not moved after', { skip, timeout }, async t => {
   const c = await open();
   assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
-  const page = await openPage(t, c, '#/new/cg-b');
+  const page = await openPage(t, c, '');
+  await hold(page);
+  await page.evaluate(`location.hash = '#/new/cg-b'`);
   await page.until(`!!document.querySelector('#text')`, 15_000);
-  await page.evaluate(`(el => { el.value = 'begin a session'; el.dispatchEvent(new Event('input', { bubbles: true })); })(document.querySelector('#text'))`);
+  await type(page, 'begin a session');
+  await page.until(`!document.querySelector('#send').disabled`);
   await page.click('#send');
+  await page.evaluate(`window.__release()`);
   await page.until(`location.hash.startsWith('#/s/') || !!document.querySelector('#notice:not([hidden])')`, 15_000);
   const id = decodeURIComponent(await page.evaluate('location.hash')).slice(4);
   await until(async () => (await rowOf(c, id))?.group === 'cg-b');
   const made = await rowOf(c, id);
   assert.deepEqual([made.account, made.accountFrom], ['second', 'group']);
+  const posts = await page.evaluate('window.__posts');
+  assert.equal(posts.find(([url]) => url === 'api/new')[1].group, 'cg-b');
+  assert.equal(posts.some(([url]) => url === 'api/layout/move'), false);
 });
 
 test('a new session picks its account in the composer and sends it', { skip, timeout }, async t => {

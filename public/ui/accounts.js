@@ -2,8 +2,8 @@
 // usage and for a switch GhostShell made by itself, the reminder that Chrome is on another account, and the button in a chat that switches and carries on. See docs/adr/20261102-switch-claude-accounts.md.
 import { api } from './api.js';
 import { Banner } from './banner.js';
-import { loadAccounts, useAccounts } from './account-list.js';
-import { accountItems, autoBanner, blockedPlan, chromeBanner, needsSignIn, outBanner, planAsOf, rowIn, sameAccountWords, signInLine, waitingWords } from './account-rules.js';
+import { accountList, loadAccounts, useAccounts } from './account-list.js';
+import { accountItems, autoBanner, blockedNow, blockedPlan, chromeBanner, needsSignIn, outBanner, planAsOf, rowFor, sameAccountWords, signInLine, waitingWords } from './account-rules.js';
 import { Button, useRefusal } from './banners.js';
 import { Plan } from './context.js';
 import { planRows } from './context-rules.js';
@@ -27,7 +27,7 @@ function useAccountList() {
   const [list, setList] = useState(null);
   const [problem, setProblem] = useState('');
   const count = useRef({ asked: 0, drawn: 0 });
-  const show = useCallback((mine, got) => { if (mine > count.current.drawn) { count.current.drawn = mine; setList(got); } }, []);
+  const show = useCallback((mine, got) => { if (mine > count.current.drawn) { count.current.drawn = mine; setList(got); accountList.set({ accounts: got.accounts, at: Date.now() }); } }, []);
   const load = useCallback(async () => {
     const mine = ++count.current.asked;
     try {
@@ -238,12 +238,13 @@ export function BlockedNotice({ ctrl }) {
   const [shown, setShown] = useState(null);
   const [problem, setProblem] = useState('');
   const opened = useRef(0);
-  const row = rowIn(ix, ctrl.id);
-  const blocked = refused ?? (row ? row.blocked : status?.blocked);
-  const group = row?.group ?? ix?.groups?.find(g => g.session?.id === ctrl.id)?.id ?? null;
-  const project = ix?.groups?.find(g => g.id === group)?.project ?? null;
-  const routine = ix?.routines?.find(g => g.latest?.id === ctrl.id || g.earlier?.some(r => r.id === ctrl.id))?.name ?? null;
-  const plan = blockedPlan(blocked, { id: ctrl.id, group, project, routine });
+  const row = rowFor(ix, ctrl.id);
+  // A refusal holds until the list is read again, and then the row says what is true.
+  const seen = useRef({ refused: null, ix: null });
+  if (seen.current.refused !== refused) seen.current = { refused, ix };
+  const blocked = blockedNow({ row, status, refused, fresh: seen.current.ix === ix });
+  const plan = blockedPlan(blocked);
+  const sameAs = plan?.signIn ? accounts?.find(a => a.id === plan.signIn && a.sameAs) : null;
   useEffect(() => { setProblem(''); setShown(null); }, [blocked?.message]);
   if (!plan) return null;
 
@@ -262,6 +263,7 @@ export function BlockedNotice({ ctrl }) {
       ${plan.clear ? html`<${Button} action=${{ label: 'Clear the pin', variant: 'outline' }} onClick=${() => repin(null)} />` : null}
       ${plan.routine ? html`<a class="btn" data-variant="outline" href=${routineHash(plan.routine)}>Open the routine</a>` : null}
     </div>
+    ${sameAs ? html`<${Alert} tone="warning">${sameAccountWords(sameAs, { accounts })}<//>` : null}
     <p class="notice" role="alert">${problem}</p>
     <${Menu} menu=${shown && { ...shown, label: 'Account', items }} onClose=${() => setShown(null)} />`;
 }

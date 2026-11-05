@@ -5,7 +5,7 @@ import { useStore } from './hooks.js';
 import { useEffect } from './html.js';
 import { createStore } from './store.js';
 
-const FRESH_MS = 10_000;
+const FRESH_MS = 3000;
 export const accountList = createStore({ accounts: null, at: 0 });
 let asking = null;
 

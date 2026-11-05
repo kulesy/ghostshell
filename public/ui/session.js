@@ -1,6 +1,5 @@
 // One open chat: the transcript, the live event stream and every action on them. It is plain data and functions, so
 // the components only draw what is in its store and call what it returns.
-import { supportsPins } from './account-rules.js';
 import { api } from './api.js';
 import { mergeContext } from './context-rules.js';
 import { pinsOnStart } from './group-rules.js';
@@ -8,7 +7,6 @@ import { HOME } from './env.js';
 import { leadingMentions } from './files.js';
 import { payload } from './images.js';
 import { createStore } from './store.js';
-import { sessionIndex } from './subs.js';
 import { heardAgents } from './subagent-rules.js';
 import { createTerminal } from './terminal-state.js';
 import { absorb, prepend } from './thread.js';
@@ -54,7 +52,7 @@ const endedByChat = new Map();
 const OPEN_FAILED = 'Could not open this session: ';
 
 // `toast` shows a note on the screen. The page passes it in so this file loads without the page's components.
-export function createChat({ id = null, draft = false, row = null, refreshIndex, toast = () => {} }) {
+export function createChat({ id = null, draft = false, row = null, refreshIndex, pins = () => false, toast = () => {} }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
   if (first) startedHere = null;
   // Until a new session starts, the box holds its settings here; the ones left alone follow the home folder's defaults.
@@ -312,6 +310,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
       // A 409 for a blocked pin shows the notice with its buttons, and the text stays in the box because this returns false.
       const blocked = err.status === 409 ? err.data?.blocked : null;
       if (!closed) store.set(s => ({ sending: s.sending.filter(m => m !== message), ...(blocked ? { refused: blocked } : { notice: `Not sent: ${err.message}` }) }));
+      if (blocked && !closed) refreshIndex();
       return false;
     }
   }
@@ -425,7 +424,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     const group = state().group;
     store.set({ starting: true, notice: '' });
     // The server places the session in its group when it starts it, so the group's pin applies to its first turn. Pinned is a section and is pinned after.
-    const joins = group && !pinsOnStart(group) && supportsPins(sessionIndex.get().ix);
+    const joins = group && !pinsOnStart(group) && pins();
     try {
       const { id: created } = await api('api/new', {
         cwd: HOME, text, ...(s.mode && { mode: s.mode }), ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),

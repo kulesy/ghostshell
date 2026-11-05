@@ -420,3 +420,16 @@ test('a session the pin names keeps its accountPin when only one account is list
   assert.equal((await accountsOf(lone)).accounts.length, 1);
   assert.equal((await rowOf(lone, 'other')).accountPin, 'second');
 });
+
+test('a blocked row names the session, group or project that holds the pin, also for a session nested under it', async () => {
+  const c = await open({ sessions: [{ id: 'top', title: 'Top', source: 'cli', ago: 5 }, { id: 'kid', title: 'Kid', source: 'cli', ago: 6 }], chips: [{ sessionId: 'top', startedId: 'kid', status: 'started', title: 'Follow up' }] });
+  await pin(c, 'session', 'top', 'second');
+  await pin(c, 'project', 'cp-a', 'second');
+  await signOutSecond(c);
+  assert.deepEqual((await rowOf(c, 'top')).blocked.pin, { kind: 'session', id: 'top' });
+  const kid = (await rowOf(c, 'kid')).blocked;
+  assert.deepEqual([kid.from, kid.pin], ['parent', { kind: 'session', id: 'top' }]);
+  assert.deepEqual((await rowOf(c, 'grouped')).blocked.pin, { kind: 'project', id: 'cp-a' });
+  const refused = await say(c, 'kid');
+  assert.deepEqual(refused.body().blocked.pin, { kind: 'session', id: 'top' });
+});

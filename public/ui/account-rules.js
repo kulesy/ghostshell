@@ -1,5 +1,7 @@
 // What the Accounts pane and the banners about accounts say, as rules that need no page, so node can test them. Times are the page's own clock.
 import { endWords, SOON } from './banner-rules.js';
+import { pinsOnStart } from './group-rules.js';
+import { findRow } from './tree.js';
 
 export const supportsAccounts = ix => !!ix?.features?.accounts;
 
@@ -95,28 +97,65 @@ export function accountItems({ accounts, pin, follows, pick }) {
   ];
 }
 
-// The row for a session in the index, wherever it sits, or null.
-export function rowIn(ix, id) {
-  if (!ix || !id) return null;
-  const all = [...(ix.pinned ?? []), ...(ix.groups ?? []).flatMap(g => g.sessions ?? []), ...(ix.started ?? []), ...(ix.ungrouped ?? []), ...(ix.other ?? []), ...(ix.routines ?? []).flatMap(r => [r.latest, ...(r.earlier ?? [])])];
-  return all.flatMap(r => (r ? [r, ...(r.children ?? [])] : [])).find(r => r.id === id) ?? null;
-}
+// The row of a chat in the index: a session wherever it sits, or a group's own chat, or null.
+export const rowFor = (ix, id) => (id && ix ? findRow(ix, id) ?? (ix.groups ?? []).find(g => g.session?.id === id)?.session ?? null : null);
 
 // The small label in a chat: the account it runs on, shown only when more than one is listed.
 export const accountLabel = (accounts, id) => ((accounts?.length ?? 0) > 1 ? accountName(accounts, id) : '');
 
-// What a blocked notice offers. `blocked` is the server's `{ reason, account, from, message }`; `ctx` names the session's own group, project and routine.
-// The pin is cleared or changed at the level `from` names, and a routine's is edited in the routine form.
-export function blockedPlan(blocked, ctx) {
+// The account a new session will run on, as /api/new works it out: its own pick, then the pin of the group it joins, then that group's project, then the active
+// account. `group` counts only when the page sends it, which is for a group of the list and not for Pinned.
+export function draftAccount({ ix, accounts, group, pick }) {
+  if (pick) return { account: pick, from: 'session' };
+  const held = group && !pinsOnStart(group) && supportsPins(ix) ? (ix.groups ?? []).find(g => g.id === group) : null;
+  if (held?.account) return { account: held.account, from: 'group' };
+  const project = held && (ix.projects ?? []).find(p => p.id === held.project)?.account;
+  if (project) return { account: project, from: 'project' };
+  return { account: accounts?.find(a => a.active)?.id ?? null, from: 'active' };
+}
+
+// Whom "Active account" runs as for a session row: nobody in particular when the session holds its own pin.
+const rowFollows = (accounts, row) => (row.accountPin ? '' : accountName(accounts, row.account));
+
+// What the composer shows for a chat: whether it offers the pick, the chat's own pin, the account it runs on (for the label), and whom "Active account" follows.
+// `picked` is a draft's own pick and `group` the group it will start in. A group's own chat has a row for the label but no pick of its own.
+export function chatAccount({ ix, accounts, draft, id, group, picked }) {
+  if (draft) {
+    const pin = picked ?? null;
+    return {
+      offered: !!accounts && offersPick(ix, accounts, !!pin),
+      pin,
+      shown: draftAccount({ ix, accounts, group, pick: pin }).account,
+      follows: accountName(accounts, draftAccount({ ix, accounts, group, pick: null }).account),
+    };
+  }
+  const row = findRow(ix, id);
+  const pin = row?.accountPin ?? null;
+  return { offered: !!accounts && !!row && offersPick(ix, accounts, !!pin), pin, shown: rowFor(ix, id)?.account ?? null, follows: row ? rowFollows(accounts, row) : '' };
+}
+
+// The Account item of a menu, or nothing when there is no choice to make or the accounts are not known yet. `follows` is for the first item's value.
+export const accountMenu = ({ ix, accounts, pin, follows = '', pick, icon }) => (accounts && offersPick(ix, accounts, !!pin)
+  ? [{ label: 'Account', ...(icon && { icon }), value: pin ? accountName(accounts, pin) || 'Removed' : null, items: accountItems({ accounts, pin, follows, pick }) }]
+  : []);
+
+// A session row's Account item, which follows nobody when the row holds its own pin.
+export const rowAccountMenu = ({ ix, accounts, row, pick, icon }) => accountMenu({ ix, accounts, pin: row.accountPin, follows: accounts ? rowFollows(accounts, row) : '', pick, icon });
+
+// The notice a chat shows: the refusal of a send while the list has not been read again since, otherwise what the chat's row says, and the status for a chat with no row.
+export const blockedNow = ({ row, status, refused, fresh }) => (refused && fresh ? refused : row ? row.blocked ?? null : status?.blocked ?? null);
+
+// What a blocked notice offers. `blocked` is the server's `{ reason, account, pin, message }`: `pin` names the session, group or project that holds the pin, and
+// that is where it is cleared or changed. A routine's pin is edited in the routine form.
+export function blockedPlan(blocked) {
   if (!blocked) return null;
-  const { from } = blocked;
-  const at = from === 'session' ? { kind: 'session', id: ctx.id } : from === 'group' && ctx.group ? { kind: 'group', id: ctx.group } : from === 'project' && ctx.project ? { kind: 'project', id: ctx.project } : null;
+  const at = blocked.pin && blocked.pin.kind !== 'routine' ? blocked.pin : null;
   return {
     message: blocked.message,
     signIn: blocked.reason === 'signed-out' ? blocked.account?.id : null,
     change: blocked.reason === 'signed-out' ? at : null,
     clear: blocked.reason === 'removed' ? at : null,
-    routine: from === 'routine' ? ctx.routine ?? null : null,
+    routine: blocked.pin?.kind === 'routine' ? blocked.pin.id : null,
   };
 }
 

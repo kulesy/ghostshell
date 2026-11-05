@@ -3,7 +3,7 @@
 // onto a section to move it there, or onto another row to nest it under that one, and a group's header can be dragged among the groups
 // or onto a project. Everything else is done from menus, so a phone can do it all.
 import { useAccounts } from './account-list.js';
-import { accountItems, accountName, offersPick, supportsAccounts } from './account-rules.js';
+import { accountMenu as pinItems, rowAccountMenu, supportsAccounts } from './account-rules.js';
 import { api } from './api.js';
 import { ask } from './ask.js';
 import { isRunning, stopQuestion, subsRunning } from './close.js';
@@ -566,10 +566,11 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     return problem ? null : made;
   }
 
-  // The Account submenu of a session, group or project, or nothing when there is no choice to make or the accounts are not known yet.
-  const pinMenu = (kind, id, pin, follows = '') => (accounts && offersPick(ix, accounts, !!pin)
-    ? [{ label: 'Account', icon: icons.circleUser, value: pin ? accountName(accounts, pin) || 'Removed' : null, items: accountItems({ accounts, pin, follows, pick: account => change('api/layout/account', { kind, id, account }) }) }]
-    : []);
+  // The Account submenu of a session, group or project, from the one rule the composer uses too.
+  const pinMenu = (kind, id, pin, row = null) => {
+    const pick = account => change('api/layout/account', { kind, id, account });
+    return row ? rowAccountMenu({ ix, accounts, row, pick, icon: icons.circleUser }) : pinItems({ ix, accounts, pin, pick, icon: icons.circleUser });
+  };
 
   // The row that takes the focus once `ids` leave: the one above them at their level of the tree, or else the next one in the list.
   const focusAfter = ids => {
@@ -929,7 +930,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
         ...(parent ? [{ label: `Move out of “${parent.title || UNTITLED}”`, icon: icons.indentDecrease, run: () => nestSession(id, title, null, parent.title || UNTITLED) }] : []),
         ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(nestItem), find: q => findSessions(under, q).map(f => nestItem(f.row)), findLabel: 'Search sessions' }] : []),
         ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places, find: q => findPlaces(targets, q).map(p => ({ ...choice(p.label, p.section, p.where), value: p.value })), findLabel: 'Search places' }] : []),
-        ...pinMenu('session', id, r.accountPin, r.accountPin ? '' : accountName(accounts, r.account)),
+        ...pinMenu('session', id, r.accountPin, r),
         { label: picked ? 'Deselect' : 'Select', icon: icons.squareCheck, run: () => setPick(p => toggleRow(p, id)) },
         { separator: true },
         { label: running ? 'Stop and archive' : 'Archive', icon: icons.archive, danger: running, hint: archiveHint(), run: () => (below ? confirmStop(id, title) : archiveRow(id, title, { ask: !running })) },

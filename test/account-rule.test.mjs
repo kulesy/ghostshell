@@ -9,7 +9,7 @@ const data = ({ known = {}, routines = {}, groups = {}, projects = {}, active = 
 });
 
 test('with nothing pinned the active account is used', () => {
-  assert.deepEqual(accountFor({ id: 's1' }, data()), { account: 'main', from: 'active', via: null });
+  assert.deepEqual(accountFor({ id: 's1' }, data()), { account: 'main', from: 'active', via: null, pin: null });
 });
 
 test('each step on its own picks its account and says where it came from', () => {
@@ -19,11 +19,11 @@ test('each step on its own picks its account and says where it came from', () =>
     groups: { g1: { account: 'grouppin', project: 'p1' }, g2: { project: 'p1' } },
     projects: { p1: { account: 'projectpin' } },
   });
-  assert.deepEqual(accountFor({ id: 's1', pin: 'sessionpin' }, d), { account: 'sessionpin', from: 'session', via: 's1' });
-  assert.deepEqual(accountFor({ id: 's1', routine: 'r1' }, d), { account: 'routinepin', from: 'routine', via: 'r1' });
-  assert.deepEqual(accountFor({ id: 's1', parent: 'up' }, d), { account: 'parentpin', from: 'parent', via: 'up' });
-  assert.deepEqual(accountFor({ id: 's1', group: 'g1' }, d), { account: 'grouppin', from: 'group', via: 'g1' });
-  assert.deepEqual(accountFor({ id: 's1', group: 'g2' }, d), { account: 'projectpin', from: 'project', via: 'p1' });
+  assert.deepEqual(accountFor({ id: 's1', pin: 'sessionpin' }, d), { account: 'sessionpin', from: 'session', via: 's1', pin: { kind: 'session', id: 's1' } });
+  assert.deepEqual(accountFor({ id: 's1', routine: 'r1' }, d), { account: 'routinepin', from: 'routine', via: 'r1', pin: { kind: 'routine', id: 'r1' } });
+  assert.deepEqual(accountFor({ id: 's1', parent: 'up' }, d), { account: 'parentpin', from: 'parent', via: 'up', pin: { kind: 'session', id: 'up' } });
+  assert.deepEqual(accountFor({ id: 's1', group: 'g1' }, d), { account: 'grouppin', from: 'group', via: 'g1', pin: { kind: 'group', id: 'g1' } });
+  assert.deepEqual(accountFor({ id: 's1', group: 'g2' }, d), { account: 'projectpin', from: 'project', via: 'p1', pin: { kind: 'project', id: 'p1' } });
 });
 
 test('an earlier step beats every later one', () => {
@@ -54,9 +54,9 @@ test('a parent passes on what it resolves to, including its own group, and a par
     known: { up: { group: 'g1' }, plain: {}, mid: { parent: 'up' } },
     groups: { g1: { account: 'a' }, g2: { account: 'b' } },
   });
-  assert.deepEqual(accountFor({ id: 's', parent: 'up' }, d), { account: 'a', from: 'parent', via: 'up' });
-  assert.deepEqual(accountFor({ id: 's', parent: 'mid' }, d), { account: 'a', from: 'parent', via: 'mid' });
-  assert.deepEqual(accountFor({ id: 's', parent: 'plain', group: 'g2' }, d), { account: 'b', from: 'group', via: 'g2' });
+  assert.deepEqual(accountFor({ id: 's', parent: 'up' }, d), { account: 'a', from: 'parent', via: 'up', pin: { kind: 'group', id: 'g1' } });
+  assert.deepEqual(accountFor({ id: 's', parent: 'mid' }, d), { account: 'a', from: 'parent', via: 'mid', pin: { kind: 'group', id: 'g1' } });
+  assert.deepEqual(accountFor({ id: 's', parent: 'plain', group: 'g2' }, d), { account: 'b', from: 'group', via: 'g2', pin: { kind: 'group', id: 'g2' } });
 });
 
 test('a parent the index does not know is ignored', () => {
@@ -67,7 +67,7 @@ test('a parent the index does not know is ignored', () => {
 
 test('a loop of parents ends, and a session that is its own parent is ignored', () => {
   const d = data({ known: { a: { parent: 'b' }, b: { parent: 'a' }, c: { parent: 'c', pin: 'x' } }, groups: { g1: { account: 'a' } } });
-  assert.deepEqual(accountFor({ id: 'a', parent: 'b', group: 'g1' }, d), { account: 'a', from: 'group', via: 'g1' });
+  assert.deepEqual(accountFor({ id: 'a', parent: 'b', group: 'g1' }, d), { account: 'a', from: 'group', via: 'g1', pin: { kind: 'group', id: 'g1' } });
   assert.equal(accountFor({ id: 'z', parent: 'c' }, d).account, 'x');
   assert.equal(accountFor({ id: 'c', parent: 'c' }, d).account, 'main');
   assert.equal(accountFor({ id: 'q', parent: 'q' }, data()).from, 'active');
@@ -75,8 +75,8 @@ test('a loop of parents ends, and a session that is its own parent is ignored', 
 
 test('a pin to an id nobody lists stands and never falls through to the next step', () => {
   const d = data({ routines: { r1: { account: 'gone' } }, groups: { g1: { account: 'other' } } });
-  assert.deepEqual(accountFor({ id: 's', pin: 'gone', group: 'g1' }, d), { account: 'gone', from: 'session', via: 's' });
-  assert.deepEqual(accountFor({ id: 's', routine: 'r1', group: 'g1' }, d), { account: 'gone', from: 'routine', via: 'r1' });
+  assert.deepEqual(accountFor({ id: 's', pin: 'gone', group: 'g1' }, d), { account: 'gone', from: 'session', via: 's', pin: { kind: 'session', id: 's' } });
+  assert.deepEqual(accountFor({ id: 's', routine: 'r1', group: 'g1' }, d), { account: 'gone', from: 'routine', via: 'r1', pin: { kind: 'routine', id: 'r1' } });
 });
 
 test('a pin that is empty or not a string is no pin', () => {
@@ -92,8 +92,8 @@ test('an id such as __proto__ or toString finds nothing in the maps', () => {
 
 test('a group\'s chat takes the group\'s pin, and a section\'s chat has no group so it falls to active', () => {
   const d = data({ known: { gchat: { group: 'g1' }, schat: {} }, groups: { g1: { account: 'a' } } });
-  assert.deepEqual(accountFor({ id: 'gchat', ...d.facts('gchat') }, d), { account: 'a', from: 'group', via: 'g1' });
-  assert.deepEqual(accountFor({ id: 'schat', ...d.facts('schat') }, d), { account: 'main', from: 'active', via: null });
+  assert.deepEqual(accountFor({ id: 'gchat', ...d.facts('gchat') }, d), { account: 'a', from: 'group', via: 'g1', pin: { kind: 'group', id: 'g1' } });
+  assert.deepEqual(accountFor({ id: 'schat', ...d.facts('schat') }, d), { account: 'main', from: 'active', via: null, pin: null });
 });
 
 const states = ({ out = [], unchecked = [] } = {}) => ({
@@ -111,13 +111,13 @@ test('only a pin blocks, and the active account never does, signed out or not', 
 
 test('a pinned account that is signed out blocks and the data names the account and where the pin sits', () => {
   assert.deepEqual(blockedBy({ account: 'second', from: 'group', via: 'g1' }, states({ out: ['second'] }), nameOf), {
-    account: { id: 'second', name: 'Second' }, reason: 'signed-out', from: 'group', fromName: 'group:g1',
+    account: { id: 'second', name: 'Second' }, reason: 'signed-out', from: 'group', fromName: 'group:g1', pin: null,
   });
 });
 
 test('a pinned account nobody lists blocks as removed with no account', () => {
   assert.deepEqual(blockedBy({ account: 'gone', from: 'session', via: 's1' }, states(), nameOf), {
-    account: null, reason: 'removed', from: 'session', fromName: 'session:s1',
+    account: null, reason: 'removed', from: 'session', fromName: 'session:s1', pin: null,
   });
 });
 
@@ -139,4 +139,27 @@ test('the refusal names the account and where the pin came from, and the error c
   assert.equal(e.status, 409);
   assert.equal(e.blocked, signedOut);
   assert.equal(e.message, blockedMessage(signedOut));
+});
+
+test('a pin names the session, routine, group or project that holds it, following a parent up to it', () => {
+  const d = data({
+    known: { up: { group: 'g1' }, mid: { parent: 'up' }, top: { pin: 'x' }, kid: { parent: 'top' } },
+    routines: { r1: { account: 'a' } },
+    groups: { g1: { account: 'a' }, g2: { project: 'p1' } },
+    projects: { p1: { account: 'b' } },
+  });
+  assert.deepEqual(accountFor({ id: 's', pin: 'a' }, d).pin, { kind: 'session', id: 's' });
+  assert.deepEqual(accountFor({ id: 's', routine: 'r1' }, d).pin, { kind: 'routine', id: 'r1' });
+  assert.deepEqual(accountFor({ id: 's', group: 'g1' }, d).pin, { kind: 'group', id: 'g1' });
+  assert.deepEqual(accountFor({ id: 's', group: 'g2' }, d).pin, { kind: 'project', id: 'p1' });
+  assert.deepEqual(accountFor({ id: 's', parent: 'mid' }, d).pin, { kind: 'group', id: 'g1' });
+  assert.deepEqual(accountFor({ id: 's', parent: 'kid' }, d).pin, { kind: 'session', id: 'top' });
+  assert.equal(accountFor({ id: 's' }, d).pin, null);
+});
+
+test('the blocked data carries the pin of the result, so a nested session names the session above that holds it', () => {
+  const pin = { kind: 'session', id: 'top' };
+  const got = blockedBy({ account: 'gone', from: 'parent', via: 'kid', pin }, states(), nameOf);
+  assert.deepEqual(got.pin, pin);
+  assert.deepEqual(blockedBy({ account: 'second', from: 'routine', via: 'r1', pin: { kind: 'routine', id: 'r1' } }, states({ out: ['second'] }), nameOf).pin, { kind: 'routine', id: 'r1' });
 });

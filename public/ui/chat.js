@@ -1,5 +1,5 @@
 // The chat pane: header, transcript and the dock under it. It owns one chat controller for as long as it is on screen.
-import { supportsAccounts } from './account-rules.js';
+import { supportsAccounts, supportsPins } from './account-rules.js';
 import { BlockedNotice, SwitchAndContinue } from './accounts.js';
 import { Approvals } from './approvals.js';
 import { ArchiveButton } from './chat-archive.js';
@@ -164,7 +164,7 @@ function Notice({ ctrl }) {
 export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside, group = null, rename }) {
   const held = useRef(null);
   const pane = useRef(null);
-  if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex, toast });
+  if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex, pins: () => supportsPins(sessionIndex.get().ix), toast });
   const ctrl = held.current;
   const named = useStore(ctrl.store, s => s.session?.title);
   const terminal = useStore(ctrl.store, s => s.terminal);

@@ -1,6 +1,7 @@
 import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
-import { supportsAccounts } from './ui/account-rules.js';
+import { loadAccounts } from './ui/account-list.js';
+import { supportsAccounts, supportsPins } from './ui/account-rules.js';
 import { AccountsPane, AutoBanner, ChromeBanner, OutBanner } from './ui/accounts.js';
 import { supportsBanners } from './ui/banner-rules.js';
 import { LoginBanner, UpdateBanner, useBanners } from './ui/banners.js';
@@ -68,6 +69,8 @@ function App() {
   const [offering, stopOffering] = usePasskeyOffer();
   const banners = useBanners(supportsBanners(ix));
   const mod = useModifier();
+  // The banners poll carries the accounts' state, so a sign in, a sign out or a switch reaches the picks without a chat being reopened.
+  useEffect(() => { if (supportsPins(ix) && banners.banners) loadAccounts(); }, [banners.banners]);
   const flipKey = useRef(null);
   useRenewal();
 
