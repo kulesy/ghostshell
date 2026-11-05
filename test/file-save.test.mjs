@@ -127,6 +127,57 @@ test('a dot file that is a link into a folder of ordinary files stays read only,
   assert.equal(fs.readFileSync(target, 'utf8'), 'edited\n');
 });
 
+test('a link written as ~/ is judged where it ends, so a dot file or a Library file linked that way stays read only through a link', async () => {
+  const { s, fresh, link } = await setup();
+  const plain = fresh('plain.txt', 'ordinary\n');
+  link(`~/${path.relative(s.home, plain)}`);
+  assert.equal((await previewOf(`~/${path.relative(s.home, plain)}`)).body().editable, true, 'a plain name under ~/ is editable');
+  assert.equal((await saveNow(`~/${path.relative(s.home, plain)}`, 'changed\n')).status, 200);
+
+  const elsewhere = path.join(s.home, 'tilde-places');
+  fs.mkdirSync(elsewhere, { recursive: true });
+  for (const [linkedAs, inHome] of [['~/.tilde-rc', '.tilde-rc'], ['~/Library/tilde-prefs.txt', 'Library/tilde-prefs.txt']]) {
+    const real = path.join(elsewhere, path.basename(inHome));
+    fs.writeFileSync(real, 'export A=1\n');
+    const at = path.join(s.home, inHome);
+    fs.mkdirSync(path.dirname(at), { recursive: true });
+    fs.symlinkSync(real, at);
+    link(linkedAs);
+    const shown = (await previewOf(linkedAs)).body();
+    assert.equal(shown.editable, undefined, linkedAs);
+    assert.match(shown.readOnly, /Hidden files and folders and Library/, linkedAs);
+    const res = await save(linkedAs, 'export A=2\n', sha('export A=1\n'));
+    assert.equal(res.status, 403, linkedAs);
+    assert.equal(fs.readFileSync(real, 'utf8'), 'export A=1\n', linkedAs);
+    assert.equal(fs.lstatSync(at).isSymbolicLink(), true, linkedAs);
+  }
+});
+
+test('a file with an execute bit stays read only, through a link too, and the save is refused with the bytes unchanged', async () => {
+  const { s, put, fresh, link } = await setup();
+  for (const rel of ['bin/run.sh', 'scripts/job.py', 'start-all.sh']) {
+    const file = put(rel, '#!/bin/sh\necho hi\n', { mode: 0o755 });
+    const shown = (await previewOf(file)).body();
+    assert.equal(shown.editable, undefined, rel);
+    assert.equal(shown.readOnly, 'This file can run as a program, so it stays read only here.', rel);
+    const res = await save(file, 'rm -rf x\n', sha('#!/bin/sh\necho hi\n'));
+    assert.equal(res.status, 403, rel);
+    assert.equal(res.body().error, shown.readOnly);
+    assert.equal(fs.readFileSync(file, 'utf8'), '#!/bin/sh\necho hi\n', rel);
+  }
+  const target = path.join(s.home, 'bin', 'run.sh');
+  const plainName = path.join(s.home, 'exec-link.txt');
+  fs.symlinkSync(target, plainName);
+  link(plainName);
+  assert.match((await previewOf(plainName)).body().readOnly, /run as a program/);
+  assert.equal((await save(plainName, 'x\n', sha('#!/bin/sh\necho hi\n'))).status, 403);
+  assert.equal(fs.readFileSync(target, 'utf8'), '#!/bin/sh\necho hi\n');
+
+  const script = fresh('no-bit.sh', '#!/bin/sh\necho hi\n', { mode: 0o644 });
+  assert.equal((await previewOf(script)).body().editable, true, 'the same script without the bit is editable');
+  assert.equal((await saveNow(script, '#!/bin/sh\necho bye\n')).status, 200);
+});
+
 test('the places that run code, hold secrets or belong to GhostShell stay read only, and the save is refused with the bytes unchanged', async () => {
   const { s, put, link, outside } = await setup();
   const outsideFile = path.join(outside, 'plain.txt');
@@ -227,6 +278,7 @@ test('a file changed on disk since it was opened answers 409 and writes nothing'
   const res = await save(file, 'my edit\n', version);
   assert.equal(res.status, 409);
   assert.match(res.body().error, /changed on disk/);
+  assert.equal(res.body().changed, true, 'the page reads this field and not the sentence');
   assert.equal(fs.readFileSync(file, 'utf8'), 'theirs\n');
 });
 
@@ -280,7 +332,7 @@ test('the route needs a sign-in, this host\'s Origin, no cross-site fetch, a JSO
 
 test('a save keeps the mode of the file', async () => {
   const { fresh } = await setup();
-  for (const mode of [0o640, 0o755]) {
+  for (const mode of [0o640, 0o600]) {
     const file = fresh('mode.txt', 'before\n', { mode });
     assert.equal((await saveNow(file, 'after\n')).status, 200);
     assert.equal(fs.statSync(file).mode & 0o777, mode);
@@ -342,24 +394,24 @@ test('a write that fails leaves the original whole and no temporary file', async
     const base = sha('original\n');
 
     fsp.rename = async () => { throw Object.assign(new Error('disk trouble'), { code: 'EIO' }); };
-    await assert.rejects(saveFile(file, linked, { text: 'new\n', base }), /disk trouble/);
+    await assert.rejects(saveFile(file, linked, { text: 'new\n', base }, []), /disk trouble/);
     fsp.rename = rename;
     assert.equal(fs.readFileSync(file, 'utf8'), 'original\n');
     assert.deepEqual(fs.readdirSync(dir), ['keep.txt']);
 
     fsp.rename = async () => { throw Object.assign(new Error('read only'), { code: 'EROFS' }); };
-    await assert.rejects(saveFile(file, linked, { text: 'new\n', base }), { status: 403 });
+    await assert.rejects(saveFile(file, linked, { text: 'new\n', base }, []), { status: 403 });
     fsp.rename = rename;
     assert.deepEqual(fs.readdirSync(dir), ['keep.txt']);
 
     // Someone else's write lands after the copy is made and before the rename.
     fsp.copyFile = async (...args) => { await copyFile(...args); fs.writeFileSync(file, 'theirs\n'); };
-    await assert.rejects(saveFile(file, linked, { text: 'new\n', base }), { status: 409 });
+    await assert.rejects(saveFile(file, linked, { text: 'new\n', base }, []), { status: 409 });
     fsp.copyFile = copyFile;
     assert.equal(fs.readFileSync(file, 'utf8'), 'theirs\n');
     assert.deepEqual(fs.readdirSync(dir), ['keep.txt']);
 
-    const done = await saveFile(file, linked, { text: 'new\n', base: sha('theirs\n') });
+    const done = await saveFile(file, linked, { text: 'new\n', base: sha('theirs\n') }, []);
     assert.equal(done.version, sha('new\n'));
   } finally {
     fsp.rename = rename;

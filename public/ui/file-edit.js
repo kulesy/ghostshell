@@ -22,23 +22,20 @@ let original = '';
 const DEBOUNCE_MS = 400;
 let timer = 0;
 
-// True when the browser refused a draft, so the leave prompt is the only thing that still guards the edit.
-let lost = false;
-
 const changedNow = () => text !== original;
 
 function persist() {
   clearTimeout(timer);
   const { key, base, unstored } = edit.get();
   if (!key) return;
-  lost = !writeDraft(key, changedNow() ? { text, base } : null);
+  const lost = !writeDraft(key, changedNow() ? { text, base } : null);
   if (lost !== unstored) edit.set({ unstored: lost });
 }
 
 addEventListener('pagehide', persist);
 addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
 addEventListener('beforeunload', ev => {
-  if (!lost || !edit.get().key || !changedNow()) return;
+  if (!edit.get().unstored || !edit.get().key || !changedNow()) return;
   ev.preventDefault();
   ev.returnValue = '';
 });
@@ -51,7 +48,6 @@ export function startEdit(chat, path, preview, { focus = false } = {}) {
   const draft = readDraft(key);
   original = lf(preview.text);
   text = draft ? draft.text : original;
-  lost = false;
   edit.set({ ...IDLE, key, chat, path, name: preview.name, focus, base: draft ? draft.base : preview.version, changed: changedNow(), restored: !!draft && changedNow(), conflict: !!draft && draft.base !== preview.version });
 }
 
@@ -72,7 +68,6 @@ const stop = () => {
   clearTimeout(timer);
   text = '';
   original = '';
-  lost = false;
   edit.set(IDLE);
 };
 
@@ -82,7 +77,7 @@ export function leaveEdit(nextKey = null) {
   if (!key) return;
   persist();
   const unsaved = changedNow();
-  if (unsaved && lost) toast(`Your changes to ${name} could not be kept, because this browser would not store them.`, { problem: true });
+  if (unsaved && edit.get().unstored) toast(`Your changes to ${name} could not be kept, because this browser would not store them.`, { problem: true });
   else if (unsaved && key !== nextKey) toast(`Unsaved changes to ${name} are kept. Open the file again to finish.`);
   stop();
 }
@@ -117,7 +112,7 @@ export async function saveEdit(view) {
     toast(`Saved ${preview.name}`);
   } catch (err) {
     if (edit.get().key !== key) return;
-    edit.set(err.status === 409 && err.message.startsWith('This file changed on disk') ? { saving: false, conflict: true } : { saving: false, error: err.message });
+    edit.set(err.data?.changed ? { saving: false, conflict: true } : { saving: false, error: err.message });
   }
 }
 
@@ -143,12 +138,59 @@ export function EditNotes() {
     ${unstored ? html`<p class="file-hint" role="status">This browser would not keep a draft of your text, so save or copy it before you leave.</p>` : null}`;
 }
 
+// iOS covers the layout viewport with the keyboard and pans the page to the caret, which carries Save and Cancel off the screen. While the
+// box is focused and the keyboard is up, the panel is pinned to the area the visual viewport shows. It lets go once the keyboard is gone.
+function useKeyboardFit(box) {
+  useLayoutEffect(() => {
+    const el = box.current;
+    const panel = el.closest('.panel');
+    const view = window.visualViewport;
+    if (!panel || !view) return undefined;
+    let width = 0;
+    const covered = () => view.scale <= 1 && (window.innerHeight - view.height > 1 || view.offsetTop > 0);
+    const unpin = () => {
+      panel.removeAttribute('data-keyboard');
+      for (const name of ['--vv-top', '--vv-right', '--vv-width', '--vv-height']) panel.style.removeProperty(name);
+      width = 0;
+    };
+    const fit = () => {
+      const focused = document.activeElement === el;
+      if (!covered() || (!focused && !panel.hasAttribute('data-keyboard'))) { unpin(); if (!focused) stop(); return; }
+      if (!width) width = panel.offsetWidth;
+      panel.style.setProperty('--vv-top', `${view.offsetTop}px`);
+      panel.style.setProperty('--vv-right', `${Math.max(0, window.innerWidth - view.offsetLeft - view.width)}px`);
+      panel.style.setProperty('--vv-width', `${width}px`);
+      panel.style.setProperty('--vv-height', `${view.height}px`);
+      panel.setAttribute('data-keyboard', '');
+    };
+    const watch = () => { view.addEventListener('resize', fit); view.addEventListener('scroll', fit); addEventListener('resize', refit); };
+    const stop = () => { view.removeEventListener('resize', fit); view.removeEventListener('scroll', fit); removeEventListener('resize', refit); };
+    const refit = () => { unpin(); fit(); };
+    // The keyboard can still be on its way out when the box loses focus, so the pin goes when the viewport says it is gone, not before.
+    const onFocus = () => { watch(); fit(); };
+    el.addEventListener('focus', onFocus);
+    el.addEventListener('blur', fit);
+    if (document.activeElement === el) onFocus();
+    return () => {
+      el.removeEventListener('focus', onFocus);
+      el.removeEventListener('blur', fit);
+      stop();
+      unpin();
+    };
+  }, []);
+}
+
 // The text box, left to the browser while it is typed in. Escape does nothing here but keep the panel from closing, because the text is not
 // lost by leaving, and Tab is left alone so the focus can move on. Ctrl or Cmd+S saves.
 export function Editor({ name, focus, saving, view }) {
   const box = useRef(null);
   useLayoutEffect(() => { box.current.value = text; }, []);
-  useEffect(() => { if (focus) box.current?.focus({ preventScroll: true }); }, []);
+  useKeyboardFit(box);
+  useEffect(() => {
+    if (!focus) return;
+    box.current.setSelectionRange(0, 0);
+    box.current.focus({ preventScroll: true });
+  }, []);
   const onKeyDown = ev => {
     if (ev.key === 'Escape') { ev.preventDefault(); return; }
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); saveEdit(view); }

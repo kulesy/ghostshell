@@ -1,7 +1,8 @@
 // Run with `npm test`. Editing a file that a reply links to, in the real page against the real server: the pencil, the text box that typing does not
 // redraw, Save writing the file on disk, a file that changed meanwhile keeping the text and overwriting nothing, Cancel showing the file as it is
 // now, Escape keeping the text, a read only file saying why with no pencil, edits kept as a draft when the file is left and given back when it
-// is opened again, sign-out and a full browser store, and the buttons within reach on a phone 390 and 320 px wide. It needs Playwright's Chromium
+// is opened again, closing the panel on a half edited file, the panel pinned above an on-screen keyboard (stood in for by a fake visual viewport),
+// sign-out and a full browser store, and the buttons within reach on a phone 390 and 320 px wide. It needs Playwright's Chromium
 // headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -66,6 +67,9 @@ async function appPage(t, { phone = false } = {}) {
     await page.evaluate(`window.stale = true; localStorage.removeItem('capcom.panels'); localStorage.removeItem('capcom.fileDrafts'); location.reload()`);
     await page.until(`!window.stale && document.readyState === 'complete' && ${LIST}`, 10_000);
   }
+  // A reload keeps the hash, and setting the same hash again opens nothing.
+  await page.evaluate(`location.hash = '#/'`);
+  await new Promise(resolve => setTimeout(resolve, 100));
   await page.evaluate(`location.hash = '#/s/chat'`);
   await page.until(`!!document.querySelector('.msg.claude a[data-file]')`, 15_000);
   return page;
@@ -83,6 +87,7 @@ async function open(page, name, { phone = false } = {}) {
 // Replaces everything in the text box with `text`, typed as one insertion.
 async function typeOver(page, text) {
   await page.until(`!!document.querySelector('.file-editor')`);
+  await new Promise(resolve => setTimeout(resolve, 150));
   await page.evaluate(`(box => { box.focus(); box.select(); })(document.querySelector('.file-editor'))`);
   await page.insert(text);
 }
@@ -105,6 +110,9 @@ test('the pencil opens the file in a text box, typing redraws nothing, and Save 
   assert.equal(await page.evaluate(`${named('Save')}.disabled`), true, 'nothing to save yet');
   assert.equal(await page.evaluate(`!!document.querySelector(${JSON.stringify(button('Close file'))})`), false, 'the head holds Cancel and Save only');
   assert.equal(await page.evaluate(`document.querySelector('.file-editor').getAttribute('autocorrect')`), 'off');
+  assert.equal(await page.evaluate(`document.querySelector('.file-editor').selectionStart`), 0, 'the caret starts where the view does');
+  assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.file-editor')).boxShadow`), 'none', 'no focus ring');
+  assert.equal(await page.evaluate(`document.querySelector('.panel').hasAttribute('data-keyboard')`), false, 'no keyboard, so nothing is pinned');
   await typeOver(page, 'changed in the box\nsecond line\n');
   await page.until(`!${named('Save')}.disabled`);
   await page.evaluate(`window.redrawn = 0; new MutationObserver(list => { window.redrawn += list.length; }).observe(document.querySelector('.file-view'), { subtree: true, childList: true, attributes: true, characterData: true })`);
@@ -232,6 +240,48 @@ test('a browser that will not store the draft says so beside the text', { skip, 
   await typeOver(page, 'no room\n');
   await page.until(`document.querySelector('.file-hint')?.textContent === 'This browser would not keep a draft of your text, so save or copy it before you leave.'`);
   assert.equal(await page.evaluate(`document.querySelector('.file-hint').getAttribute('role')`), 'status');
+  assert.deepEqual(page.problems, []);
+});
+
+test('closing the panel with its own X while a file is half edited says the edit is kept, and the file gives it back', { skip, timeout }, async t => {
+  const page = await appPage(t);
+  await open(page, 'draft');
+  await page.click(button('Edit file'));
+  await typeOver(page, 'closed with the X\n');
+  await page.click('.panel-head button[aria-label="Close panel"]');
+  await page.until(`!document.querySelector('#panel')`);
+  await page.until(`!!document.querySelector('[data-sonner-toast]')`);
+  assert.ok((await toasts(page)).includes('Unsaved changes to draft.txt are kept. Open the file again to finish.'), JSON.stringify(await toasts(page)));
+  assert.match(await page.evaluate(`localStorage.getItem('capcom.fileDrafts')`), /closed with the X/);
+  await open(page, 'draft');
+  await page.until(`document.querySelector('.file-editor')?.value === 'closed with the X\\n'`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('on a phone with the keyboard up, the panel is pinned to what the visual viewport shows so Save and Cancel stay on screen, and it lets go when the keyboard goes', { skip, timeout }, async t => {
+  const page = await appPage(t, { phone: true });
+  await open(page, 'draft', { phone: true });
+  await page.evaluate(`(() => {
+    const view = Object.assign(new EventTarget(), { height: 300, width: innerWidth, offsetTop: 40, offsetLeft: 0, scale: 1 });
+    Object.defineProperty(window, 'visualViewport', { value: view, configurable: true });
+    window.keyboard = view;
+  })()`);
+  await page.tap(button('Edit file'));
+  await page.until(`document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  const where = () => page.evaluate(`(() => {
+    const r = document.querySelector('.panel').getBoundingClientRect();
+    const head = [...document.querySelectorAll('.file-actions button')].map(b => b.getBoundingClientRect());
+    return { top: r.top, height: r.height, heads: head.every(b => b.top >= r.top && b.bottom <= r.bottom) };
+  })()`);
+  assert.deepEqual(await where(), { top: 40, height: 300, heads: true });
+  await page.evaluate(`keyboard.offsetTop = 90; keyboard.height = 250; keyboard.dispatchEvent(new Event('scroll'))`);
+  await page.until(`document.querySelector('.panel').getBoundingClientRect().top === 90`);
+  assert.deepEqual(await where(), { top: 90, height: 250, heads: true });
+  await page.evaluate(`document.querySelector('.file-editor').blur()`);
+  assert.equal(await page.evaluate(`document.querySelector('.panel').hasAttribute('data-keyboard')`), true, 'still pinned while the keyboard is on its way out');
+  await page.evaluate(`keyboard.offsetTop = 0; keyboard.height = innerHeight; keyboard.dispatchEvent(new Event('resize'))`);
+  await page.until(`!document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  assert.equal(await page.evaluate(`document.querySelector('.panel').style.cssText`), '');
   assert.deepEqual(page.problems, []);
 });
 

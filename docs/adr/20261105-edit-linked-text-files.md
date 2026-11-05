@@ -34,7 +34,7 @@ Scope is the files a chat links to, which is all the viewer opens. Browsing to a
 
 ## Decision Drivers
 
-- A list of known bad names always misses one, so the design allows a closed set of places and refuses the rest.
+- A list of known bad names always misses one. Almost everything on a Mac that runs code or holds a secret hides behind a dot name, `Library` or an execute bit, so a rule on that shape covers a new tool's files too.
 - Most links in a chat point into the project it works on, which is what the owner wants to change.
 - Many sessions work in a worktree at `<repo>/.claude/worktrees/<name>`, so a rule against dot folders must not refuse those.
 - The server decides. The page's Edit button is a convenience and guards nothing.
@@ -42,14 +42,14 @@ Scope is the files a chat links to, which is all the viewer opens. Browsing to a
 
 ## Considered Options
 
-1. Allow a closed set of places inside the home folder
+1. Allow the home folder, except dot names, `Library`, GhostShell's folders and files that can run
 2. Allow any linked text file, and refuse a list of sensitive paths
 3. Allow only files inside the chat's own working folder
 4. Allow any linked text file, with no location check
 
 ## Decision Outcome
 
-Chosen option: "Allow a closed set of places inside the home folder", because it covers the files the owner edits, and anything nobody thought of stays read only.
+Chosen option: "Allow the home folder, except dot names, `Library`, GhostShell's folders and files that can run", because it covers the files the owner edits. A new dot folder is read only with no change to GhostShell, and a new place with a plain name is editable.
 
 **What the owner can edit.** A file can be saved only when all of these hold. `lib/files.mjs` checks them on the real path, after it resolves symlinks and `..`. It also checks the location rules on the path as linked, so `~/.zshrc` stays read only when it is a symlink into a dotfiles folder.
 
@@ -57,6 +57,7 @@ Chosen option: "Allow a closed set of places inside the home folder", because it
 2. It sits inside the owner's home folder.
 3. It is UTF-8 text with no NUL byte, checked across the whole file, and at most 1 MB. Those limits mean the box holds the whole file and nothing else.
 4. It is a plain file the owner owns and can write, with one hard link.
+5. It has no execute bit.
 
 **What stays read only, and why.**
 
@@ -65,6 +66,7 @@ Chosen option: "Allow a closed set of places inside the home folder", because it
 | Anything outside the home folder, such as `/etc`, `/usr`, `/opt`, `/Applications` and `/tmp` | System and shared places, and no project of the owner's lives there. |
 | Any folder or file below the home folder whose name starts with a dot | Covers `.zshrc` and the other shell profiles, `.ssh`, `.aws`, `.gnupg`, `.claude`, `.config`, `.env`, and `.git` with its hooks and config. These files run on their own or hold secrets. A dot name inside a project also counts, so a project's `.claude/settings.json` and `.github/workflows` stay read only. |
 | `~/Library` | `LaunchAgents` runs what it holds, and the folder also holds keychains and app data. |
+| Any file with an execute bit | launchd and shells run it with the owner's rights, and the scripts in `~/bin` and the home folder are the ones launchd starts. |
 | GhostShell's state folder, its transcripts folder and Desktop's folder, wherever `config.json` puts them | They hold the sign-in, the layout and the chats. |
 | GhostShell's own checkout | The server runs from it, and a change there would stop the next update. |
 | Binary files, pictures, PDFs and files over 1 MB | GhostShell does not show the whole file as text, so a save would destroy what the owner cannot see. |
@@ -91,22 +93,25 @@ One exception: the `.claude/worktrees/<name>` folders inside a repo count as ord
 ### Consequences
 
 - ✅ The owner can change a line in a project file from a phone.
-- ✅ A new sensitive dot folder is read only from the day it appears, with no change to GhostShell.
+- ✅ A new sensitive dot folder is read only from the day it appears, with no change to GhostShell. A new place with a plain name is editable.
 - ❌ The owner cannot edit a skill, a memory file, a hook or a shell profile in the viewer. Those run with the owner's rights, and a reply can link them, so the owner uses the terminal or asks Claude.
 - ❌ Dot files inside a project, such as `.gitignore` and `.env.example`, are read only too.
-- ❌ Ordinary project files that run code, such as a shell script or a `package.json`, stay editable, because they are what the owner comes to change. So does a file in a dotfiles folder linked by its plain path. Only the owner's own text reaches them.
+- ❌ `package.json` and a script with no execute bit stay editable, because they are what the owner comes to change. A script with an execute bit is read only, so the owner uses the terminal for it. A file in a dotfiles folder linked by its plain path is editable too. Only the owner's own text reaches them.
+- ❌ Two cases are accepted. A file an interpreter runs with no execute bit, such as a server a LaunchAgent starts with `node`, is editable. So is a `CLAUDE.md` in a project, which a session reads as instructions.
 - ❌ Files in `~/Library/CloudStorage`, where OneDrive keeps its folder, are read only, as are projects outside the home folder.
 - ❌ Text in the box has no line numbers or highlighting.
 - ❌ The gap between the last hash check and the rename is short but real, so a writer outside GhostShell that lands in it loses its change.
 - ❌ A draft left unfinished stays in the browser until the owner reopens the file, cancels or signs out.
+- ❌ File drafts share the browser's storage with the prompt drafts and are never pruned, so a full store can also stop prompt drafts from saving.
 
 ## Pros and Cons of the Options
 
-### Allow a closed set of places inside the home folder
+### Allow the home folder, except dot names, `Library`, GhostShell's folders and files that can run
 
-- ✅ Sensitive places nobody listed stay read only.
+- ✅ A new dot folder is read only with no change to GhostShell.
 - ✅ One rule covers shell profiles, keys, Claude's config, git hooks and CI files.
 - ❌ It refuses some harmless files, such as `.gitignore`.
+- ❌ A sensitive file with a plain name, outside `Library` and with no execute bit, is editable.
 
 ### Allow any linked text file, and refuse a list of sensitive paths
 

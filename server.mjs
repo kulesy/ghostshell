@@ -1879,6 +1879,13 @@ async function accountsApi(req, res, parts) {
   return send(res, 200, accountsNow());
 }
 
+// Whether a chat links to a path, for a read and a save alike, or null when this Mac has no such session.
+function linkedIn(id) {
+  const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+  const chat = getChat(id);
+  return !t && !chat ? null : linksOf(t, chat?.live, cfg.outputChars);
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'banners') return bannersApi(req, res, parts);
@@ -2090,10 +2097,8 @@ async function api(req, res, u) {
   // `about` keeps a browser from reading the JSON about a file as anything else.
   const about = { 'x-content-type-options': 'nosniff', 'cross-origin-resource-policy': 'same-origin' };
   if (req.method === 'GET' && (action === 'preview' || action === 'file') && !parts[4]) {
-    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
-    const chat = getChat(id);
-    if (!t && !chat) return send(res, 404, { error: NO_SESSION }, 'application/json', about);
-    const linked = linksOf(t, chat?.live, cfg.outputChars);
+    const linked = linkedIn(id);
+    if (!linked) return send(res, 404, { error: NO_SESSION }, 'application/json', about);
     const wanted = u.searchParams.get('path');
     try {
       if (action === 'preview') return send(res, 200, await previewFile(wanted, linked, frozen), 'application/json', about);
@@ -2118,13 +2123,12 @@ async function api(req, res, u) {
     if (!body || [body.path, body.text, body.base].some(v => typeof v !== 'string')) return reply(400, { error: 'Send the path, the text and the version of the file.' });
     // A new password can land while the body is still arriving, so the session is checked again before anything is written.
     if (!auth.check(req)) return reply(401, { error: 'Signed out.' });
-    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
-    const chat = getChat(id);
-    if (!t && !chat) return reply(404, { error: NO_SESSION });
+    const linked = linkedIn(id);
+    if (!linked) return reply(404, { error: NO_SESSION });
     try {
-      return reply(200, await saveFile(body.path, linksOf(t, chat?.live, cfg.outputChars), { text: body.text, base: body.base }, frozen));
+      return reply(200, await saveFile(body.path, linked, { text: body.text, base: body.base }, frozen));
     } catch (e) {
-      return reply(e.status || 500, { error: e.message });
+      return reply(e.status || 500, { error: e.message, ...(e.changed && { changed: true }) });
     }
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });

@@ -3762,6 +3762,18 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .panel:focus-visible { box-shadow: none; }
 
+.session[data-panel] > .panel[data-keyboard] {
+  position: fixed;
+  top: var(--vv-top);
+  right: var(--vv-right);
+  bottom: auto;
+  left: auto;
+  z-index: 5;
+  width: var(--vv-width);
+  height: var(--vv-height);
+  padding-bottom: 0;
+}
+
 .panel-resize {
   position: absolute;
   inset-block: 0;
@@ -4173,10 +4185,7 @@ html.viewing, html.viewing body { overflow: hidden; }
   scrollbar-color: var(--border) transparent;
 }
 
-.file-editor:focus-visible {
-  outline: 0;
-  box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
-}
+.file-editor:focus-visible { outline: 0; box-shadow: none; }
 
 @media (pointer: coarse) {
   .file-editor { font-size: 1rem; }
