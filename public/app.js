@@ -225,7 +225,7 @@ function App() {
       await loadIndex();
     }
   }, []);
-  useLayoutEffect(() => { sessionActions.set({ archive }); }, [archive]);
+  useLayoutEffect(() => { sessionActions.set({ archive, refresh: loadIndex }); }, [archive]);
 
   // Archives or unarchives several sessions one after another, one request each, and loads the list once at the end. Archiving takes
   // every row out at once, and the rows the server refused come back at once. It resolves with { done, stopped, subs, failed }: the ids the

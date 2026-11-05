@@ -340,7 +340,9 @@ a.group-head[aria-current="page"] .name { color: inherit; }
 
 .sub-acts { display: flex; flex: none; align-items: center; gap: 0.25rem; margin-left: auto; }
 
-.sub-archive, .sub-fold { flex: none; color: var(--muted-foreground); }
+.sub-archive, .sub-answer, .sub-fold { flex: none; color: var(--muted-foreground); }
+
+.sub-answer[aria-expanded="true"] { color: var(--foreground); }
 
 .sub-fold .chevron { width: 0.875rem; height: 0.875rem; }
 
@@ -364,6 +366,14 @@ a.group-head[aria-current="page"] .name { color: inherit; }
 }
 
 .sub-open .sub-reply:focus-visible { outline-offset: 2px; }
+
+.sub-send { display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; align-self: stretch; min-width: 0; }
+
+.sub-send .input { height: auto; max-height: 10rem; padding-block: 0.5rem; background: var(--background); field-sizing: content; resize: none; }
+
+.sub-send-note { align-self: stretch; margin: 0; color: var(--muted-foreground); font-size: 0.8125rem; line-height: 1.25rem; overflow-wrap: anywhere; }
+
+.sub-send-note[data-tone="error"] { color: color-mix(in oklab, var(--destructive) 60%, var(--foreground)); }
 
 .sub-under { margin-left: 0.75rem; padding-left: 0.75rem; border-left: 1px solid var(--border); }
 

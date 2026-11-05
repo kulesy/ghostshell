@@ -16,6 +16,7 @@ import { pullsOn, pullStore, usePullNeeds } from './pulls.js';
 import { createStore } from './store.js';
 import { batchesOf, drawnRows, KEPT, linesOf, nextStep, partsOf, pillOf, splitWaiting, staleIds, stampOf, summaryLine, trim, withPulls } from './sub-panel-rules.js';
 import { rollupLine, rollupOf } from './sub-rules.js';
+import { say } from './toast.js';
 import { everyRow } from './tree.js';
 
 // Lucide's list-tree, as the header button and the tab draw it.
@@ -25,8 +26,8 @@ export const LIST_TREE = ['M21 12h-8', 'M21 6H8', 'M21 18h-8', 'M3 6v4c0 1.1.9 2
 export const sessionIndex = createStore({ ix: null });
 
 // The page's `archive(id, archived, { stop })`, which app.js keeps here for the same reason. A card shows no Archive button without it.
-// `close` is the sidebar's archive flow for the open chat, which the list sets.
-export const sessionActions = createStore({ archive: null, close: null });
+// `close` is the sidebar's archive flow for the open chat, which the list sets. `refresh` loads the list again.
+export const sessionActions = createStore({ archive: null, close: null, refresh: null });
 
 // Where the focus goes once an archive has moved a card: `to()` finds the element, and `root` is the tab it was asked in, so another tab ignores it.
 const landing = createStore({ root: null, to: null });
@@ -36,6 +37,39 @@ const archiving = new Set();
 const archiveButton = id => document.querySelector(`[data-archive-card="${CSS.escape(id)}"]`);
 const titleLink = id => document.querySelector(`[data-sub-card="${CSS.escape(id)}"]`);
 const land = (root, to) => { if (root.isConnected) landing.set({ root, to }); };
+
+// Each card's reply box by session id, as `{ open, text, sending, problem }`. It lives out here because a card is drawn afresh when its session moves to another part of the tab.
+const boxes = createStore({});
+const NO_BOX = {};
+const setBox = (id, patch) => boxes.set(all => ({ [id]: { ...all[id], ...patch } }));
+// The id of the box just opened, which takes the focus. A box drawn afresh takes it only if it had it.
+let opening = null;
+const replyButton = id => document.querySelector(`[data-reply-card="${CSS.escape(id)}"]`);
+const replyText = id => document.querySelector(`[data-reply-text="${CSS.escape(id)}"]`);
+const sameInNewCard = el => (el.dataset.replyText ? replyText(el.dataset.replyText) : el.dataset.replyCard ? replyButton(el.dataset.replyCard) : null);
+
+function flipBox(id) {
+  const open = !boxes.get()[id]?.open;
+  opening = open ? id : null;
+  setBox(id, { open });
+}
+
+async function sendReply(id, name, form) {
+  const { text = '', sending } = boxes.get()[id];
+  if (sending || !text.trim()) return;
+  setBox(id, { sending: true, problem: '' });
+  try {
+    // No `mode`, which leaves a running chat on its mode and starts any other on the session's own, as its chat's prompt box would.
+    await api(`api/sessions/${enc(id)}/send`, { text: text.trim() });
+    const at = document.activeElement;
+    if (at === document.body || form.contains(at)) replyButton(id)?.focus({ preventScroll: true });
+    setBox(id, { open: false, text: '', sending: false });
+    say(`Sent to ${name}`);
+  } catch (e) {
+    setBox(id, { open: true, sending: false, problem: e.message });
+  }
+  sessionActions.get().refresh?.();
+}
 
 const NOTHING = { line: '', pending: [] };
 const NONE = new Set();
@@ -135,6 +169,39 @@ function Status({ id, pull, row, said }) {
   </div>`;
 }
 
+function ReplyBox({ row, name, box, id }) {
+  const form = useRef(null);
+  const area = useRef(null);
+  // Send sits under the text, so near the foot of the list the whole box is brought into view as it opens and grows.
+  const show = () => form.current.scrollIntoView({ block: 'nearest' });
+  useLayoutEffect(() => {
+    if (opening !== row.id) return;
+    opening = null;
+    area.current.focus();
+    show();
+  }, []);
+  useLayoutEffect(() => { if (box.problem) show(); }, [box.problem]);
+  // Enter sends where there is a keyboard, as in the chat's prompt box.
+  const onKeyDown = e => {
+    // Esc goes no further, or the panel would close and the open chat would stop.
+    if (e.key === 'Escape' && !e.isComposing) {
+      e.preventDefault();
+      flipBox(row.id);
+      replyButton(row.id)?.focus();
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
+      e.preventDefault();
+      form.current.requestSubmit();
+    }
+  };
+  const notes = [row.state === 'waiting' && `${id}-wait`, box.problem && `${id}-problem`].filter(Boolean).join(' ');
+  return html`<form class="sub-send" id=${id} ref=${form} onSubmit=${e => { e.preventDefault(); sendReply(row.id, name, form.current); }}>
+    <textarea class="input" ref=${area} rows="2" data-reply-text=${row.id} aria-label=${`Message to ${name}`} aria-describedby=${notes || null} aria-invalid=${box.problem ? 'true' : null} placeholder="Message" value=${box.text ?? ''} readOnly=${!!box.sending} onInput=${e => { setBox(row.id, { text: e.currentTarget.value }); show(); }} onKeyDown=${onKeyDown}></textarea>
+    ${row.state === 'waiting' ? html`<p class="sub-send-note" id=${`${id}-wait`}>It's waiting on a card in its chat, so this reaches it after you answer that.</p>` : null}
+    ${box.problem ? html`<p class="sub-send-note" id=${`${id}-problem`} data-tone="error" role="alert">Not sent: ${box.problem}</p>` : null}
+    <button class="btn" data-size="xs" type="submit" disabled=${!!box.sending || !box.text?.trim()}>${box.sending ? 'Sending' : 'Send'}</button>
+  </form>`;
+}
+
 // The cards after and before the card `li` that stay, nearest first, so the focus can move to one when the card goes.
 function neighbours(li) {
   const cards = [...li.closest('.subs').querySelectorAll('[data-sub-card]')].filter(el => !li.contains(el));
@@ -146,6 +213,7 @@ function Line({ node, shared }) {
   const { row, subs } = node;
   const { rows, opened, active, flip, known, archive } = shared;
   const open = !!opened[row.id];
+  const box = useStore(boxes, all => all[row.id]) ?? NO_BOX;
   const heard = said.get(row.id);
   const roll = rollupLine(rollupOf(rows, row.id));
   const name = row.title || UNTITLED;
@@ -172,6 +240,7 @@ function Line({ node, shared }) {
     });
   };
   const under = `${body}-subs`;
+  const sendBox = `${body}-send`;
   const showSubs = open && subs.length > 0;
   return html`<li class=${open ? 'sub open' : 'sub'}>
     <div class="sub-card">
@@ -186,11 +255,13 @@ function Line({ node, shared }) {
       <div class="sub-foot">
         ${roll ? html`<p class="sub-roll"><${Words} text=${roll} /></p>` : null}
         <div class="sub-acts">
+          <button class="btn sub-answer" data-variant="ghost" data-size="xs" type="button" data-reply-card=${row.id} aria-expanded=${!!box.open} aria-controls=${box.open ? sendBox : null} aria-label=${`Reply to ${name}`} data-tip=${`Reply to ${name}`} onClick=${() => flipBox(row.id)}>${draw(icons.messageSquare)}Reply</button>
           ${archive ? html`<button class="btn sub-archive" data-variant="ghost" data-size="xs" type="button" data-archive-card=${row.id} aria-label=${`${running || below ? 'Stop and archive' : 'Archive'} ${name}`} data-tip=${`${running || below ? 'Stop and archive' : 'Archive'} ${name}`} onClick=${e => (e.detail > 1 ? null : close(e.currentTarget))}>${draw(icons.archive)}Archive</button>` : null}
           <button class="btn sub-fold" data-variant="ghost" data-size="xs" type="button" aria-expanded=${open} aria-controls=${open ? (showSubs ? `${body} ${under}` : body) : null} aria-label=${`Details of ${name}`} data-tip=${`Details of ${name}`} onClick=${() => flip(row.id)}>Details${chevron()}</button>
         </div>
       </div>
       ${open ? html`<div class="sub-open" id=${body}><${Reply} row=${row} active=${active} /></div>` : null}
+      ${box.open ? html`<${ReplyBox} row=${row} name=${name} box=${box} id=${sendBox} />` : null}
     </div>
     ${showSubs ? html`<div class="sub-under" id=${under}><${Lines} nodes=${subs} shared=${shared} label=${`Sub sessions of ${name}`} /></div>` : null}
   </li>`;
@@ -230,7 +301,10 @@ export function SubsTab({ ctrl, active }) {
     landing.set({ root: null, to: null });
     if (Date.now() - leftAt < 5000) setTimeout(() => { if (document.activeElement === document.body) document.getElementById('text')?.focus(); });
   }, []);
+  // The list loading again can move a card, so the reply box or button in use keeps the focus.
+  const using = document.activeElement;
   useLayoutEffect(() => {
+    if (using && !using.isConnected) sameInNewCard(using)?.focus({ preventScroll: true });
     if (!landed || !root.current) return;
     landed()?.focus({ preventScroll: true });
     landing.set({ root: null, to: null });
@@ -239,7 +313,7 @@ export function SubsTab({ ctrl, active }) {
   const shared = { rows, opened, active, known, archive, flip: key => setOpened(all => flipped(all, key)) };
   const summary = summaryLine(ix, id, undefined, needs);
   // A held Enter or Space repeats on whatever has the focus, which would archive card after card as each one goes.
-  const held = e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); };
+  const held = e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ') && e.target.tagName !== 'TEXTAREA') e.preventDefault(); };
   return html`<div class="subs" tabindex="-1" ref=${root} onKeyDown=${held}>
     ${summary ? html`<p class="subs-sum" tabindex="-1"><${Words} text=${summary} /></p>` : null}
     ${PARTS.map(([key, label]) => (parts[key].length ? html`<${Section} key=${key} label=${label} nodes=${parts[key]} shared=${shared} />` : null))}
