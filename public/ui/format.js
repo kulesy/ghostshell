@@ -34,12 +34,13 @@ export function when(ms) {
 }
 
 // When a message was sent, as a clock time with the day added once it is not today. A message stays on screen, so unlike `when` this
-// holds no "5 min" that goes stale. It reads the page's own clock and only the day can change, which `useToday` draws again for.
+// holds no "5 min" that goes stale. It counts from midnight, so one day reads the same all day and the words change only when `useToday` draws again.
 export function sentAt(at, now = Date.now()) {
   const t = Date.parse(at);
   if (Number.isNaN(t)) return '';
   const d = new Date(t);
   const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
   if (d.toDateString() === today.toDateString()) return clock(d);
   const date = d.getFullYear() === today.getFullYear() ? undefined : { day: 'numeric', month: 'short', year: 'numeric' };
   return `${pastDay(d, today, date)}, ${clock(d)}`;

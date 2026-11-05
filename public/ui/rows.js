@@ -155,6 +155,7 @@ function Quoted({ quote }) {
   <//>`;
 }
 
+// Row never reads `today`. It is here so a new day redraws the rows, whose times `sentAt` works out against the date.
 const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
   && a.term === b.term && a.terminal === b.terminal && a.today === b.today
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));

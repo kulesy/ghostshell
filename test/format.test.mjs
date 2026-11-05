@@ -303,6 +303,12 @@ test('a message with no usable time shows none', () => {
   for (const at of [null, undefined, '', 'not a date']) assert.equal(sentAt(at, NOW), '');
 });
 
+test('one day reads the same all day, whatever the hour', () => {
+  const sent = (...parts) => sentAt(local(...parts).toISOString(), NOW).split(', ')[0];
+  assert.equal(sent(2026, 9, 30, 8, 0), sent(2026, 9, 30, 20, 0));
+  assert.equal(sent(2026, 9, 30, 8, 0), local(2026, 9, 30).toLocaleDateString([], { weekday: 'short' }));
+});
+
 test('the next midnight is on the calendar, whatever the day\'s length', () => {
   const now = local(2026, 10, 5, 23, 59, 30).getTime();
   assert.equal(untilMidnight(now), 30_000);
@@ -314,6 +320,12 @@ test('the next midnight is on the calendar, whatever the day\'s length', () => {
 test('the sidebar\'s time still reads as it did', () => {
   assert.equal(when(Date.now() - 1000), 'now');
   assert.equal(when(Date.now() - 5 * 60_000), '5 min');
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (Date.now() - today > 3600_000) assert.equal(when(today.getTime()), today.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+  assert.equal(when(yesterday.getTime()), 'Yesterday');
   assert.equal(when(Date.now() - 2 * 86400_000), new Date(Date.now() - 2 * 86400_000).toLocaleDateString([], { weekday: 'short' }));
   assert.equal(when(Date.now() - 30 * 86400_000), new Date(Date.now() - 30 * 86400_000).toLocaleDateString([], { day: 'numeric', month: 'short' }));
   assert.equal(when(null), '');

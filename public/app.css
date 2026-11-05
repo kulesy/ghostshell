@@ -2085,6 +2085,8 @@ body.dragging .rows .more { opacity: 0; }
 
 .msg.user[data-time]::after { margin-top: -0.25rem; }
 
+.msg.claude[data-time] > :last-child { margin-bottom: 0; }
+
 .msg.user {
   display: flex;
   flex-direction: column;

@@ -85,9 +85,17 @@ test('both sides of a chat show the time, and an older message also shows its da
     assert.equal(times[0], times[1]);
     assert.match(times[2], /^\d{1,2}:\d{2}/, 'today gives the time alone');
     assert.equal(times[2], times[3]);
-    const side = selector => page.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)}), '::after').display`);
-    assert.equal(await side('.msg.user'), 'block');
-    assert.equal(await side('.msg.claude'), 'block');
+    const side = selector => page.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).alignItems`);
+    assert.equal(await side('.msg.user'), 'flex-end', 'yours sits on the right, with the message');
+    assert.equal(await side('.msg.claude'), 'normal', 'Claude\'s sits on the left, with the message');
+  } finally { await page.close(); }
+});
+
+test('the time sits as close under a code block as under text', { skip, timeout }, async () => {
+  const page = await opened();
+  try {
+    await page.evaluate(`draw([{ kind: 'assistant', msgId: 'c', text: 'Run this:\\n\\n\\\`\\\`\\\`\\nls\\n\\\`\\\`\\\`', at: new Date().toISOString() }], 'one')`);
+    assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.msg.claude > :last-child')).marginBottom`), '0px');
   } finally { await page.close(); }
 });
 
