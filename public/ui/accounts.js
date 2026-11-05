@@ -3,7 +3,7 @@
 import { api } from './api.js';
 import { Banner } from './banner.js';
 import { accountList, loadAccounts, useAccounts } from './account-list.js';
-import { accountItems, autoBanner, blockedNow, blockedPlan, chromeBanner, needsSignIn, outBanner, planAsOf, rowFor, sameAccountWords, signInLine, waitingWords } from './account-rules.js';
+import { accountItems, autoBanner, blockedNow, blockedPlan, chromeBanner, needsSignIn, outBanner, pinnedStay, pinnedWords, planAsOf, rowFor, sameAccountWords, signInLine, SWITCH_LEAVES_PINS, waitingWords } from './account-rules.js';
 import { Button, useRefusal } from './banners.js';
 import { Plan } from './context.js';
 import { planRows } from './context-rules.js';
@@ -83,6 +83,7 @@ function AccountRow({ a, list, act }) {
   const run = async path => { setRefused(''); setRefused(await act(path)); };
   const rows = a.plan ? planRows(a.plan.limits) : [];
   const same = a.sameAs ? sameAccountWords(a, list) : '';
+  const pins = pinnedWords(a.pinned);
 
   return html`<li class="account" aria-labelledby=${`account-${a.id}`}>
     <div class="account-head">
@@ -98,6 +99,7 @@ function AccountRow({ a, list, act }) {
           : html`<p class="account-name"><span id=${`account-${a.id}`}>${a.name}</span>${a.active ? html` <span class="badge" data-variant="secondary">Active</span>` : null}</p>`}
         <p class="account-meta">${a.email ? html`<span>${a.email}</span>` : null}${a.planType ? html`<span>${a.planType}</span>` : null}</p>
         <p class="account-line">${signInLine(a)}</p>
+        ${pins ? html`<p class="account-line">${pins}</p>` : null}
       </div>
       <div class="account-actions">
         ${!a.active && !a.signedOut ? html`<button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => run(`api/accounts/${enc(a.id)}/use`)}>Switch to this</button>` : null}
@@ -156,7 +158,7 @@ export function AccountsPane() {
     <div class="accounts-body">
       <div class="accounts-inner">
         <${ChromeBanner} chrome=${list?.chrome} load=${load} />
-        <p class="quiet account-lead">Chats and routines run on the active account. Switching takes one click and no sign-in, and a chat carries on where it was.</p>
+        <p class="quiet account-lead">Chats and routines run on the active account. Switching takes one click and no sign-in, and a chat carries on where it was.${list?.accounts.length > 1 && list.accounts.some(a => pinnedWords(a.pinned)) ? ` ${SWITCH_LEAVES_PINS}` : ''}</p>
         ${list
           ? html`<ul class="account-list">${list.accounts.map(a => html`<${AccountRow} key=${a.id} a=${a} list=${list} act=${act} />`)}</ul>
             <${AddForm} list=${list} act=${act} />
@@ -214,6 +216,8 @@ export function ChromeBanner({ chrome, load }) {
 
 // Under a chat's error notice, when its turn ran out of usage and another account can take over: switches to the one the server picks for the banner and sends "Continue.".
 export function SwitchAndContinue({ ctrl, on }) {
+  const ix = useStore(sessionIndex, s => s.ix);
+  const accounts = useAccounts(ix);
   const [target, setTarget] = useState(null);
   useEffect(() => {
     setTarget(null);
@@ -222,7 +226,10 @@ export function SwitchAndContinue({ ctrl, on }) {
     api('api/banners').then(banners => { if (live) setTarget(banners?.accounts?.out?.to ?? null); }).catch(() => {});
     return () => { live = false; };
   }, [on]);
-  if (!on || !target) return null;
+  if (!on) return null;
+  const stays = pinnedStay(rowFor(ix, ctrl.id), accounts);
+  if (stays) return html`<div class="notice-action"><p class="quiet account-hint">${stays}</p></div>`;
+  if (!target) return null;
   const go = async () => {
     try { await api(`api/accounts/${enc(target.id)}/use`, { continue: ctrl.id }); ctrl.notice(''); } catch (e) { ctrl.notice(e.message); }
   };

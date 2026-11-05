@@ -36,13 +36,19 @@ export function loginBanner(login, now = Date.now()) {
     progress: waiting ? 'Approve the sign-in page in the browser on the Mac.' : '',
     problem: login.stage === 'failed' ? login.problem : '',
   };
-  if (login.signedOut) return { ...view, tone: 'warning', title: 'Claude is signed out', text: 'Every chat and routine fails until you sign in again.' };
+  // `account` is set once the server lists more than one, and then the words name the account.
+  const { account } = login;
+  if (login.signedOut) {
+    return account
+      ? { ...view, tone: 'warning', title: `${account} is signed out`, text: `Chats and routines on ${account} fail until you sign in again.` }
+      : { ...view, tone: 'warning', title: 'Claude is signed out', text: 'Every chat and routine fails until you sign in again.' };
+  }
   const days = daysLeft(login.endsAt, now);
   const when = days <= 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
   return {
     ...view,
     tone: null,
-    title: `Claude's sign-in ends ${when}`,
+    title: `${account ? `${account}'s` : "Claude's"} sign-in ends ${when}`,
     text: `It ends on ${endWords(login.endsAt)}. Chats and routines stop until you sign in again. Signing in now starts a fresh four weeks.`,
   };
 }

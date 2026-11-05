@@ -173,3 +173,20 @@ export function accountChoices(accounts, current) {
   const list = (accounts ?? []).map(a => [a.id, a.signedOut ? `${a.name} (signed out)` : a.name, !!a.signedOut && a.id !== current]);
   return [['', 'Active account', false], ...list, ...(current && !accountName(accounts, current) ? [[current, 'Removed account', false]] : [])];
 }
+
+// The line that stands in for the switch-and-continue button when the session's own pin keeps it where it is, or an empty string when a switch would move it.
+// `from` is where the row's account came from, and 'active' means nothing pins it.
+export function pinnedStay(row, accounts) {
+  if (!row?.accountFrom || row.accountFrom === 'active') return '';
+  return `This session stays on ${accountName(accounts, row.account) || 'its account'} because of a pin, so a switch won't move it. Change the pin to move it.`;
+}
+
+const COUNTS = [['sessions', 'session', 'sessions'], ['groups', 'group', 'groups'], ['projects', 'project', 'projects'], ['routines', 'routine', 'routines']];
+
+// What an account has pinned to it, such as "Pinned: 2 sessions, 1 group", or an empty string when nothing is.
+export function pinnedWords(pinned) {
+  const parts = COUNTS.filter(([key]) => pinned?.[key] > 0).map(([key, one, many]) => `${pinned[key]} ${pinned[key] === 1 ? one : many}`);
+  return parts.length ? `Pinned: ${parts.join(', ')}` : '';
+}
+
+export const SWITCH_LEAVES_PINS = 'A switch leaves pinned work on its account.';

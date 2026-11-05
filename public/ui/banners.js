@@ -22,10 +22,10 @@ export function useBanners(on) {
       return null;
     }
   }, [on]);
-  const act = useCallback(async step => {
+  const act = useCallback(async (step, body = {}) => {
     try {
       const mine = ++count.current.asked;
-      const got = await api(`api/banners/${step}`, {});
+      const got = await api(`api/banners/${step}`, body);
       if (mine > count.current.drawn) { count.current.drawn = mine; setBanners(got); }
       return '';
     } catch (e) {
@@ -69,9 +69,9 @@ export function useRefusal(...moved) {
 
 export function LoginBanner({ banners, act }) {
   const view = loginBanner(banners?.login);
-  const [refused, setRefused] = useRefusal(banners?.login?.stage, banners?.login?.signedOut);
+  const [refused, setRefused] = useRefusal(banners?.login?.stage, banners?.login?.signedOut, banners?.login?.accountId);
   if (!view) return null;
-  const start = async () => { setRefused(''); setRefused(await act('sign-in')); };
+  const start = async () => { setRefused(''); setRefused(await act('sign-in', { account: banners.login.accountId })); };
   return html`<${Banner} ...${view} problem=${refused || view.problem} actions=${html`<${Button} action=${view.action} onClick=${start} />`} />`;
 }
 

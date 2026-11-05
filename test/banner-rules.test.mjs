@@ -131,3 +131,16 @@ test('the Force restart question says the changes are pulled first, and that it 
     '1 running chat will be cut. This goes ahead inside the quiet window, which holds restarts until 09:45 on weekdays.',
   );
 });
+
+test('with an account named, the signed out banner names it and says which chats and routines fail', () => {
+  const view = loginBanner(login({ signedOut: true, endsAt: null, account: 'Second', accountId: 'second' }), NOW);
+  assert.deepEqual([view.tone, view.title, view.text], ['warning', 'Second is signed out', 'Chats and routines on Second fail until you sign in again.']);
+});
+
+test('with an account named, an ending sign-in names it and keeps the existing text', () => {
+  const view = loginBanner(login({ account: 'Second', accountId: 'second' }), NOW);
+  assert.equal(view.title, "Second's sign-in ends in 4 days");
+  assert.equal(view.text, 'It ends on Fri 6 Nov, 09:36. Chats and routines stop until you sign in again. Signing in now starts a fresh four weeks.');
+  assert.equal(loginBanner(login({ account: 'Second', endsAt: new Date(2026, 10, 3, 9, 0).getTime() }), NOW).title, "Second's sign-in ends tomorrow");
+  assert.equal(loginBanner(login({ account: 'Second', endsAt: new Date(2026, 10, 2, 23, 0).getTime() }), NOW).title, "Second's sign-in ends today");
+});
