@@ -235,7 +235,7 @@ a.group-head[aria-current="page"] .name { color: inherit; }
 
 .sub { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 
-.sub.open { grid-column: 1 / -1; }
+.sub.open, .sub:has(.sub-send) { grid-column: 1 / -1; }
 
 .sub-card {
   display: flex;
@@ -342,8 +342,6 @@ a.group-head[aria-current="page"] .name { color: inherit; }
 
 .sub-archive, .sub-answer, .sub-fold { flex: none; color: var(--muted-foreground); }
 
-.sub-answer[aria-expanded="true"] { color: var(--foreground); }
-
 .sub-fold .chevron { width: 0.875rem; height: 0.875rem; }
 
 .sub-fold[aria-expanded="true"] .chevron { transform: rotate(90deg); }
@@ -367,7 +365,7 @@ a.group-head[aria-current="page"] .name { color: inherit; }
 
 .sub-open .sub-reply:focus-visible { outline-offset: 2px; }
 
-.sub-send { display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; align-self: stretch; min-width: 0; }
+.sub-send { display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; align-self: stretch; min-width: 0; scroll-margin-bottom: 1rem; }
 
 .sub-send .input { height: auto; max-height: 10rem; padding-block: 0.5rem; background: var(--background); field-sizing: content; resize: none; }
 

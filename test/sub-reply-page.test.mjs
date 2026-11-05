@@ -10,7 +10,8 @@ import { as, cliCalls, PASSWORD, request, signIn, start, until } from './harness
 
 const SESSIONS = [
   { id: 'hub', title: 'Hub', ago: 5 },
-  ...['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'].map((id, at) => ({ id, title: id[0].toUpperCase() + id.slice(1), parent: 'hub', ago: 20 + at })),
+  ...['first', 'second', 'third', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'].map((id, at) => ({ id, title: id[0].toUpperCase() + id.slice(1), parent: 'hub', ago: 20 + at })),
+  { id: 'planner', title: 'Planner', parent: 'hub', ago: 40, fields: { permissionMode: 'plan' } },
 ];
 
 const chromium = findChromium();
@@ -79,6 +80,11 @@ const toastSays = (page, text) => page.until(`[...document.querySelectorAll('[da
 const told = text => cliCalls(app).some(call => call.user === text);
 const startedFor = id => cliCalls(app).find(call => call.started?.includes(id))?.started;
 const flag = (args, name) => args[args.indexOf(name) + 1];
+const notInterrupted = async message => {
+  await new Promise(done => setTimeout(done, 500));
+  assert.equal(fs.existsSync(path.join(app.home, 'layout-at-interrupt.json')), false, message);
+};
+const failNextSend = (page, body) => page.evaluate(`(() => { const real = window.fetch; window.fetch = (url, init) => (String(url).endsWith('/send') ? (window.fetch = real, Promise.resolve(new Response(${JSON.stringify(JSON.stringify(body))}, { status: 409 }))) : real(url, init)); })()`);
 const rowOf = async id => {
   const { ungrouped } = (await request(app, 'GET', '/api/sessions', { headers: as(token) })).body();
   return ungrouped.flatMap(r => [r, ...(r.children ?? [])]).find(r => r.id === id);
@@ -130,13 +136,24 @@ test('a message sent from a card reaches that session, says it went and leaves t
 
 test('a card sends what the chat would: the words alone, with the session on its own permission mode', { skip, timeout }, async t => {
   const page = await hubPage(t);
-  await openBox(page, 'third');
+  await openBox(page, 'planner');
   await page.insert('  plain words\n');
   await page.press('Enter');
   await until(() => told('plain words'));
-  await request(app, 'POST', '/api/sessions/fourth/send', { headers: as(token), json: { text: 'from its own chat', mode: flag(startedFor('third'), '--permission-mode') } });
-  await until(() => told('from its own chat'));
-  assert.equal(flag(startedFor('third'), '--permission-mode'), flag(startedFor('fourth'), '--permission-mode'));
+  assert.equal(flag(startedFor('planner'), '--permission-mode'), 'plan');
+});
+
+test('a held Enter sends once, on the press and not on the repeats, and a held Shift+Enter keeps making lines', { skip, timeout }, async t => {
+  const page = await hubPage(t);
+  await openBox(page, 'third');
+  await page.insert('kept draft');
+  await page.press('Enter', 0, { repeat: true });
+  assert.equal(await value(page, 'third'), 'kept draft', 'a repeat from the Reply button neither sends nor adds a line');
+  await page.press('Enter', 8, { repeat: true });
+  assert.equal(await value(page, 'third'), 'kept draft\n');
+  await new Promise(done => setTimeout(done, 300));
+  assert.equal(told('kept draft\n'), false);
+  assert.equal(told('kept draft'), false);
 });
 
 test('an archived session comes back when a card sends to it, as it does from its own chat', { skip, timeout }, async t => {
@@ -154,7 +171,7 @@ test('an archived session comes back when a card sends to it, as it does from it
 
 test('a send that fails keeps the text in the box and says why, and the same text can go again', { skip, timeout }, async t => {
   const page = await hubPage(t);
-  await page.evaluate(`(() => { const real = window.fetch; window.fetch = (url, init) => (String(url).endsWith('/send') ? (window.fetch = real, Promise.resolve(new Response(JSON.stringify({ error: 'The account is out of usage.' }), { status: 409 }))) : real(url, init)); })()`);
+  await failNextSend(page, { error: 'The account is out of usage.', blocked: { from: 'session' } });
   await openBox(page, 'sixth');
   await page.insert('Please rebase');
   await page.press('Enter');
@@ -162,6 +179,7 @@ test('a send that fails keeps the text in the box and says why, and the same tex
   assert.equal(await value(page, 'sixth'), 'Please rebase');
   assert.equal(await page.evaluate(`document.querySelector(${JSON.stringify(box('sixth'))}).getAttribute('aria-invalid')`), 'true');
   assert.equal(told('Please rebase'), false);
+  await toastSays(page, 'Not sent to Sixth: The account is out of usage.');
 
   await page.press('Enter');
   await toastSays(page, 'Sent to Sixth');
@@ -170,7 +188,7 @@ test('a send that fails keeps the text in the box and says why, and the same tex
   assert.deepEqual(page.problems.filter(p => !p.includes('409')), []);
 });
 
-test('Esc closes the box and keeps its text, the panel stays and the chat on screen is not stopped, and Shift+Enter is a new line', { skip, timeout }, async t => {
+test('Esc closes the box from anywhere in it and keeps its text, even after a click on Send failed, the panel stays and the chat on screen is not stopped, and Shift+Enter is a new line', { skip, timeout }, async t => {
   await request(app, 'POST', '/api/sessions/hub/send', { headers: as(token), json: { text: 'keep going' } });
   const page = await hubPage(t);
   await page.until(`document.querySelector('#chatLamp')?.dataset.state === 'working'`);
@@ -183,9 +201,23 @@ test('Esc closes the box and keeps its text, the panel stays and the chat on scr
   await page.until(`!document.querySelector('.sub-send')`);
   assert.equal(await page.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(button('seventh'))})`), true);
   assert.equal(await page.evaluate(`!!document.querySelector('#panel .subs')`), true);
-  assert.equal(fs.existsSync(path.join(app.home, 'layout-at-interrupt.json')), false, 'no interrupt reached the chat');
+  await notInterrupted('no interrupt reached the chat');
   await openBox(page, 'seventh');
   assert.equal(await value(page, 'seventh'), 'line one\nline two');
+
+  await page.evaluate(`document.querySelector('.sub-send button[type=submit]').focus()`);
+  await page.press('Escape');
+  await page.until(`!document.querySelector('.sub-send')`);
+  await notInterrupted('Esc on Send stays in the box');
+  await openBox(page, 'seventh');
+
+  await failNextSend(page, { error: 'Not now.' });
+  await page.click('.sub-send button[type=submit]');
+  await page.until(`!!document.querySelector('.sub-send-note[role=alert]')`);
+  assert.equal(await page.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(box('seventh'))})`), true, 'the focus stays in the box');
+  await page.press('Escape');
+  await page.until(`!document.querySelector('.sub-send')`);
+  await notInterrupted('Esc after a failed click stays in the box');
   await request(app, 'POST', '/api/sessions/hub/send', { headers: as(token), json: { text: 'finish the turn' } });
 });
 
@@ -202,6 +234,19 @@ test('a card that moves to another part while its box is in use keeps the text a
   assert.equal(await page.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(box('eighth'))})`), true);
   await page.insert(' more');
   assert.equal(await value(page, 'eighth'), 'half a thought more');
+  assert.deepEqual(page.problems, []);
+});
+
+test('archiving a card with its box open moves the focus on, and the text is there when the session comes back', { skip, timeout }, async t => {
+  const page = await hubPage(t);
+  await openBox(page, 'tenth');
+  await page.insert('for later');
+  await page.click('[data-archive-card="tenth"]');
+  await page.until(`!document.querySelector(${JSON.stringify(button('tenth'))})`);
+  await page.until(`document.activeElement !== document.body`);
+  await request(app, 'POST', '/api/layout/archive', { headers: as(token), json: { id: 'tenth', archived: false } });
+  await page.until(`!!document.querySelector(${JSON.stringify(box('tenth'))})`, 16_000);
+  assert.equal(await value(page, 'tenth'), 'for later');
   assert.deepEqual(page.problems, []);
 });
 

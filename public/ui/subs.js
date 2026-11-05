@@ -38,7 +38,7 @@ const archiveButton = id => document.querySelector(`[data-archive-card="${CSS.es
 const titleLink = id => document.querySelector(`[data-sub-card="${CSS.escape(id)}"]`);
 const land = (root, to) => { if (root.isConnected) landing.set({ root, to }); };
 
-// Each card's reply box by session id, as `{ open, text, sending, problem }`. It lives out here because a card is drawn afresh when its session moves to another part of the tab.
+// Each card's reply box by session id, as `{ open, text, sending, problem }`. It lives out here because a card is drawn afresh when its session moves to another part of the tab. It is kept in memory only, so a reload loses it.
 const boxes = createStore({});
 const NO_BOX = {};
 const setBox = (id, patch) => boxes.set(all => ({ [id]: { ...all[id], ...patch } }));
@@ -54,7 +54,7 @@ function flipBox(id) {
   setBox(id, { open });
 }
 
-async function sendReply(id, name, form) {
+async function sendReply(id, name) {
   const { text = '', sending } = boxes.get()[id];
   if (sending || !text.trim()) return;
   setBox(id, { sending: true, problem: '' });
@@ -62,11 +62,12 @@ async function sendReply(id, name, form) {
     // No `mode`, which leaves a running chat on its mode and starts any other on the session's own, as its chat's prompt box would.
     await api(`api/sessions/${enc(id)}/send`, { text: text.trim() });
     const at = document.activeElement;
-    if (at === document.body || form.contains(at)) replyButton(id)?.focus({ preventScroll: true });
+    if (at === document.body || replyText(id)?.form.contains(at)) replyButton(id)?.focus({ preventScroll: true });
     setBox(id, { open: false, text: '', sending: false });
     say(`Sent to ${name}`);
   } catch (e) {
     setBox(id, { open: true, sending: false, problem: e.message });
+    say(`Not sent to ${name}: ${e.message}`);
   }
   sessionActions.get().refresh?.();
 }
@@ -180,7 +181,11 @@ function ReplyBox({ row, name, box, id }) {
     area.current.focus();
     show();
   }, []);
-  useLayoutEffect(() => { if (box.problem) show(); }, [box.problem]);
+  const shown = useRef(box.problem);
+  useLayoutEffect(() => {
+    if (box.problem && box.problem !== shown.current) show();
+    shown.current = box.problem;
+  }, [box.problem]);
   // Enter sends where there is a keyboard, as in the chat's prompt box.
   const onKeyDown = e => {
     // Esc goes no further, or the panel would close and the open chat would stop.
@@ -188,14 +193,20 @@ function ReplyBox({ row, name, box, id }) {
       e.preventDefault();
       flipBox(row.id);
       replyButton(row.id)?.focus();
-    } else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
+    } else if (e.target === area.current && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
       e.preventDefault();
-      form.current.requestSubmit();
+      if (!e.repeat) form.current.requestSubmit();
     }
   };
+  // Send is disabled while it sends, which would drop the focus to the page, where Esc stops the open chat.
+  const submit = e => {
+    e.preventDefault();
+    area.current.focus({ preventScroll: true });
+    sendReply(row.id, name);
+  };
   const notes = [row.state === 'waiting' && `${id}-wait`, box.problem && `${id}-problem`].filter(Boolean).join(' ');
-  return html`<form class="sub-send" id=${id} ref=${form} onSubmit=${e => { e.preventDefault(); sendReply(row.id, name, form.current); }}>
-    <textarea class="input" ref=${area} rows="2" data-reply-text=${row.id} aria-label=${`Message to ${name}`} aria-describedby=${notes || null} aria-invalid=${box.problem ? 'true' : null} placeholder="Message" value=${box.text ?? ''} readOnly=${!!box.sending} onInput=${e => { setBox(row.id, { text: e.currentTarget.value }); show(); }} onKeyDown=${onKeyDown}></textarea>
+  return html`<form class="sub-send" id=${id} ref=${form} onKeyDown=${onKeyDown} onSubmit=${submit}>
+    <textarea class="input" ref=${area} rows="2" data-reply-text=${row.id} aria-label=${`Message to ${name}`} aria-describedby=${notes || null} aria-invalid=${box.problem ? 'true' : null} placeholder="Message" value=${box.text ?? ''} readOnly=${!!box.sending} onInput=${e => { setBox(row.id, { text: e.currentTarget.value }); show(); }}></textarea>
     ${row.state === 'waiting' ? html`<p class="sub-send-note" id=${`${id}-wait`}>It's waiting on a card in its chat, so this reaches it after you answer that.</p>` : null}
     ${box.problem ? html`<p class="sub-send-note" id=${`${id}-problem`} data-tone="error" role="alert">Not sent: ${box.problem}</p>` : null}
     <button class="btn" data-size="xs" type="submit" disabled=${!!box.sending || !box.text?.trim()}>${box.sending ? 'Sending' : 'Send'}</button>
@@ -304,7 +315,11 @@ export function SubsTab({ ctrl, active }) {
   // The list loading again can move a card, so the reply box or button in use keeps the focus.
   const using = document.activeElement;
   useLayoutEffect(() => {
-    if (using && !using.isConnected) sameInNewCard(using)?.focus({ preventScroll: true });
+    if (using && !using.isConnected) {
+      const same = sameInNewCard(using);
+      same?.focus({ preventScroll: true });
+      if (using.dataset.replyText) same?.setSelectionRange(using.selectionStart, using.selectionEnd);
+    }
     if (!landed || !root.current) return;
     landed()?.focus({ preventScroll: true });
     landing.set({ root: null, to: null });
