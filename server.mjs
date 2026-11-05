@@ -2123,8 +2123,8 @@ async function api(req, res, u) {
     const wanted = u.searchParams.get('path');
     try {
       if (action === 'preview') return send(res, 200, await previewFile(wanted, linked, frozen), 'application/json', about);
-      const file = await serveFile(wanted, linked, u.searchParams.get('download') === '1');
-      res.writeHead(200, file.headers);
+      const file = await serveFile(wanted, linked, u.searchParams.get('download') === '1', req.headers.range);
+      res.writeHead(file.status, file.headers);
       if (!file.stream) return res.end();
       return pipeline(file.stream, res, () => {});
     } catch (e) {

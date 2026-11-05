@@ -2,6 +2,7 @@
 import { md } from '../md.mjs';
 import { api } from './api.js';
 import { draftKey, readDraft, route } from './file-edit-rules.js';
+import { CLIP, ClipList, ClipNav, clipsIn, Player, playClip, stopClip } from './file-audio.js';
 import { cancelEdit, Editor, EditNotes, leaveEdit, saveEdit, startEdit, useEdit } from './file-edit.js';
 import { fileSize, grouped, lf } from './format.js';
 import { useStore } from './hooks.js';
@@ -22,6 +23,7 @@ let count = 0;
 // the file once it has answered or been waited for, and the waiting shows as "Loading".
 export function openFile({ id, path, line, from }) {
   const n = ++count;
+  const was = shown.get().open;
   leaveEdit(draftKey(id, path));
   const mine = () => shown.get().open?.n === n;
   const patch = change => { if (mine()) shown.set(s => ({ open: { ...s.open, ...change } })); };
@@ -31,10 +33,16 @@ export function openFile({ id, path, line, from }) {
     before = panelNow(id);
     showPanel(id, 'file', from);
   };
-  shown.set({ open: { n, chat: id, path, line, from, late: false, preview: null, error: '' } });
+  // A move from one clip to another keeps the File tab, and the player if the clip before had one, on screen until the next preview answers.
+  const swap = was?.chat === id && (was.late || was.preview || was.error) && CLIP.test(was.path) && CLIP.test(path);
+  const clips = [clipsIn(from), was?.chat === id ? was.clips : []].find(list => list?.includes(path)) ?? [];
+  if (CLIP.test(path)) playClip(route(id, 'file', path));
+  else stopClip();
+  shown.set({ open: { n, chat: id, path, line, from, clips, late: swap, preview: swap && was.preview?.kind === 'audio' && !was.preview.tooLarge ? was.preview : null, error: '' } });
   setTimeout(() => { patch({ late: true }); reveal(); }, WAIT_MS);
   api(route(id, 'preview', path)).then(preview => {
     if (!mine()) return;
+    if (preview.kind !== 'audio' || preview.tooLarge) stopClip();
     if (preview.kind === 'image' && !preview.tooLarge) {
       const src = route(id, 'file', path);
       shown.set({ open: null });
@@ -46,13 +54,15 @@ export function openFile({ id, path, line, from }) {
       reveal();
     }
   }, e => {
-    patch({ error: e.message });
+    if (mine()) stopClip();
+    patch({ error: e.message, preview: null });
     reveal();
   });
 }
 
 export const closeFile = () => {
   leaveEdit();
+  stopClip();
   shown.set({ open: null });
 };
 
@@ -97,18 +107,23 @@ function Document({ text }) {
 export const backTo = (from, path) => (from?.isConnected ? from : [...document.querySelectorAll('a[data-file]')].find(a => a.dataset.file === path));
 
 // The file's head and body, which the panel shows in its File tab. `onClose` closes the file.
-export function FileTab({ file: { n, chat, path, line, preview, error }, onClose }) {
+export function FileTab({ file: { n, chat, path, line, from, clips, preview, error }, onClose }) {
   const body = useRef(null);
   const [source, setSource] = useState(line != null);
-  const name = preview?.name ?? path.split('/').pop();
+  const name = path.split('/').pop();
   const kind = preview?.kind;
   const url = route(chat, 'file', path);
   const text = kind === 'text' || kind === 'markdown';
   const framed = kind === 'pdf' && !preview.tooLarge;
   const reads = !error && (!preview || (text && !preview.tooLarge));
+  // Audio has Download and no new tab, because the sandbox on a served file stops Chrome's media page loading the clip.
+  const audible = kind === 'audio' && !preview.tooLarge;
+  const loading = !preview && !error;
   const openable = !!preview && !preview.tooLarge && kind !== 'binary' && kind !== 'image';
   const lines = preview?.truncated ? linesOf(preview.text).length : 0;
   const editing = useEdit(chat, path);
+  const moves = !editing && clips.length > 1;
+  const pick = next => openFile({ id: chat, path: next, line: null, from });
   const focusBody = () => body.current?.focus();
   const view = {
     done: next => { refreshPreview(n, next); focusBody(); },
@@ -121,18 +136,19 @@ export function FileTab({ file: { n, chat, path, line, preview, error }, onClose
     if (preview?.editable && readDraft(draftKey(chat, path))) startEdit(chat, path, preview);
   }, [preview]);
 
-  // The line asked for goes to the middle of the body, and anything else starts at the top.
+  // The line asked for goes to the middle of the body, and anything else starts at the top, so a note about a missing clip is seen. A clip that plays, or is still loading, leaves a long list where it is.
   useLayoutEffect(() => {
     const el = body.current;
-    if (!el) return;
+    if (!el || audible || (clips.length > 1 && loading)) return;
     const hit = el.querySelector('[data-hit]');
     el.scrollTop = hit ? hit.offsetTop - (el.clientHeight - hit.offsetHeight) / 2 : 0;
-  }, [preview, source]);
+  }, [preview, source, error]);
 
   let content;
   if (error) content = html`<p class="file-note" role="alert">${error}</p>`;
   else if (!preview) content = html`<p class="file-note" role="status">Loading</p>`;
   else if (editing) content = html`<${EditNotes} /><${Editor} name=${name} focus=${editing.focus} saving=${editing.saving} view=${view} />`;
+  else if (audible) content = null;
   else if (preview.tooLarge || !(text || kind === 'pdf')) {
     content = html`<div class="file-meta">
       <p class="file-kind">${kindName(name)}</p>
@@ -149,19 +165,19 @@ export function FileTab({ file: { n, chat, path, line, preview, error }, onClose
     <div class="file-head">
       <div class="file-title">
         <h3 id="file-title" class="file-name">${name}</h3>
-        <div class="file-where"><span class="file-path" title=${path}><bdi>${path}</bdi></span>${preview ? html`<span class="file-size">${fileSize(preview.size)}</span>` : null}</div>
+        <div class="file-where"><span class="file-path" title=${path}><bdi>${path}</bdi></span>${preview?.path === path ? html`<span class="file-size">${fileSize(preview.size)}</span>` : null}</div>
       </div>
       <div class="file-actions">
         ${editing ? html`<button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => cancelEdit(view)}>Cancel</button>
         <button class="btn" data-size="sm" type="button" disabled=${editing.saving || (!editing.changed && !editing.conflict)} onClick=${() => saveEdit(view)}>${editing.saving ? 'Saving' : 'Save'}</button>` : null}
         ${!editing && preview?.editable ? html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label="Edit file" data-tip="Edit file" onClick=${() => startEdit(chat, path, preview, { focus: true })}>${draw(icons.pencil, 'icon')}</button>` : null}
         ${!editing && openable && kind === 'markdown' ? html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label=${source ? 'Show rendered' : 'Show source'} data-tip=${source ? 'Show rendered' : 'Show source'} onClick=${() => setSource(s => !s)}>${source ? html`<${Page} />` : html`<${Code} />`}</button>` : null}
-        ${!editing && openable ? html`<a class="btn" data-variant="outline" data-size="icon-sm" href=${url} target="_blank" rel="noopener" aria-label="Open in new tab" data-tip="Open in new tab"><${NewTab} /></a>
-        <a class="btn" data-variant="outline" data-size="icon-sm" href=${`${url}&download=1`} download=${name} aria-label="Download" data-tip="Download"><${Download} /></a>` : null}
+        ${!editing && openable && kind !== 'audio' ? html`<a class="btn" data-variant="outline" data-size="icon-sm" href=${url} target="_blank" rel="noopener" aria-label="Open in new tab" data-tip="Open in new tab"><${NewTab} /></a>` : null}
+        ${!editing && openable ? html`<a class="btn" data-variant="outline" data-size="icon-sm" href=${`${url}&download=1`} download=${name} aria-label="Download" data-tip="Download"><${Download} /></a>` : null}
         ${editing ? null : html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label="Close file" data-tip="Close file" onClick=${onClose}>${draw(icons.x, 'icon')}</button>`}
       </div>
     </div>
     ${preview?.readOnly && !editing ? html`<p class="file-readonly">${preview.readOnly}</p>` : null}
-    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-editing=${editing ? '' : undefined} data-kind=${kind} tabindex=${reads && !editing ? 0 : -1} role=${reads && !editing ? 'region' : undefined} aria-label=${reads && !editing ? `Contents of ${name}` : undefined}>${content}</div>
+    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-editing=${editing ? '' : undefined} data-kind=${kind} tabindex=${reads && !editing ? 0 : -1} role=${reads && !editing ? 'region' : undefined} aria-label=${reads && !editing ? `Contents of ${name}` : undefined}>${audible || moves ? html`<div class="file-bar">${audible ? html`<${Player} url=${url} name=${name} />` : null}${moves ? html`<${ClipNav} clips=${clips} path=${path} onPick=${pick} />` : null}</div>` : null}${content}${moves ? html`<${ClipList} clips=${clips} path=${path} follow=${audible || loading} onPick=${pick} />` : null}</div>
   </div>`;
 }

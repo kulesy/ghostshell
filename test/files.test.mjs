@@ -12,12 +12,43 @@ import path from 'node:path';
 import { once } from 'node:events';
 import { Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { linksOf, MAX_FILE_BYTES, MAX_TEXT_BYTES, previewFile, serveFile } from '../lib/files.mjs';
+import { linksOf, MAX_AUDIO_BYTES, MAX_FILE_BYTES, MAX_TEXT_BYTES, previewFile, serveFile } from '../lib/files.mjs';
 import { as, request, ROOT, signIn, start } from './harness.mjs';
 
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+// A WAV whose data is `length` bytes of a repeating pattern, so a slice of it can be told from any other.
+function wav(length) {
+  const head = Buffer.alloc(44);
+  head.write('RIFF', 0, 'latin1');
+  head.writeUInt32LE(36 + length, 4);
+  head.write('WAVEfmt ', 8, 'latin1');
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(1, 20);
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(8000, 24);
+  head.writeUInt32LE(16000, 28);
+  head.writeUInt16LE(2, 32);
+  head.writeUInt16LE(16, 34);
+  head.write('data', 36, 'latin1');
+  head.writeUInt32LE(length, 40);
+  return Buffer.concat([head, Buffer.from(Array.from({ length }, (_, i) => i % 251))]);
+}
+const WAV = wav(10_000);
+const filler = Buffer.from(Array.from({ length: 2000 }, (_, i) => (i * 7) % 256));
+const ftyp = (major, ...compatible) => {
+  const brands = [major, ...compatible];
+  const head = Buffer.alloc(12 + brands.length * 4 + 4);
+  head.writeUInt32BE(head.length, 0);
+  head.write('ftyp', 4, 'latin1');
+  brands.forEach((b, i) => head.write(b, i === 0 ? 8 : 12 + i * 4, 'latin1'));
+  return Buffer.concat([head, filler]);
+};
+const MP3_ID3 = Buffer.concat([Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]), filler]);
+const MP3_FRAME = Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0x00]), filler]);
+const M4A_BRAND = ftyp('M4A ', 'mp42', 'isom');
+const M4A_NAME = ftyp('isom', 'iso2', 'mp41');
 const TEXT_TYPE = 'text/plain; charset=utf-8';
 const SANDBOX = "sandbox; default-src 'none'";
 
@@ -45,9 +76,9 @@ async function watchOpens(run) {
 }
 
 // The server's bytes, which the test harness's own request would decode as text.
-function bytes(s, token, url) {
+function bytes(s, token, url, extra = {}) {
   return new Promise((resolve, reject) => {
-    http.get({ host: '127.0.0.1', port: s.port, path: url, headers: { host: `localhost:${s.port}`, ...as(token) } }, res => {
+    http.get({ host: '127.0.0.1', port: s.port, path: url, headers: { host: `localhost:${s.port}`, ...as(token), ...extra } }, res => {
       const chunks = [];
       res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
@@ -86,6 +117,20 @@ function setup() {
     write('past-cut.txt', 'linked after the page stops reading a thought\n');
     write('across-cut.txt', 'linked across the end of what a thought is cut to\n');
     write('reply-past-cut.txt', 'linked late in a reply, which is not cut\n');
+    write('clip.wav', WAV);
+    write('song.mp3', MP3_ID3);
+    write('bare.mp3', MP3_FRAME);
+    write('voice.m4a', M4A_BRAND);
+    write('plain-isom.m4a', M4A_NAME);
+    write('movie.mp4', M4A_NAME);
+    write('id3-note.mp3', 'ID3 is how an MP3 starts\n');
+    write('riff-note.wav', 'RIFFxxxxWAVE is how a WAV starts\n');
+    write('other.wav', WAV);
+    write('unlinked.wav', WAV);
+    for (const [name, size] of [['long.wav', MAX_FILE_BYTES + 4096], ['huge.wav', MAX_AUDIO_BYTES + 1]]) {
+      write(name, WAV);
+      fs.truncateSync(at(name), size);
+    }
     fs.chmodSync(at('locked.txt'), 0o000);
     fs.mkdirSync(at('folder'));
     fs.symlinkSync(at('target.txt'), at('link.txt'));
@@ -106,7 +151,7 @@ function setup() {
     const link = (label, name) => `[${label}](<${at(name)}>)`;
     fs.writeFileSync(transcript, lines([
       asked(`Look at [theirs](<${at('user-only.txt')}>)`),
-      said(['Here they are:', ...['note.txt', 'doc.md', 'pic.png', 'doc.pdf', 'blob.bin', 'page.html', 'pic.svg', 'with space.txt', 'long.txt', 'empty.txt', 'naïve café.txt', 'locked.txt', 'folder', 'link.txt', 'dangling.txt', 'to-folder', 'loop-a', 'pipe', 'big.bin', 'missing.txt'].map(name => `- ${link(name, name)}`)].join('\n')),
+      said(['Here they are:', ...['note.txt', 'doc.md', 'pic.png', 'doc.pdf', 'blob.bin', 'page.html', 'pic.svg', 'with space.txt', 'long.txt', 'empty.txt', 'naïve café.txt', 'locked.txt', 'folder', 'link.txt', 'dangling.txt', 'to-folder', 'loop-a', 'pipe', 'big.bin', 'missing.txt', 'clip.wav', 'song.mp3', 'bare.mp3', 'voice.m4a', 'plain-isom.m4a', 'movie.mp4', 'id3-note.mp3', 'riff-note.wav', 'long.wav', 'huge.wav'].map(name => `- ${link(name, name)}`)].join('\n')),
       said(`And [the home one](~/notes/n.md) and [line two](<${at('note.txt')}:2>)\n\n\`\`\`\n${at('fenced.txt')}\n\`\`\``),
       said(`And [an escaped one](${at('pct file.txt').replaceAll(' ', '%20')})`),
       thought(`I should look at ${link('my thought', 'target.txt')}`),
@@ -115,6 +160,7 @@ function setup() {
       said(`${'x'.repeat(CUT)} ${link('late in a reply', 'reply-past-cut.txt')} and [the null device](</dev/null>)`),
       entry('user', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: `[a result](<${at('in-tool.txt')}>)` }]),
     ]));
+    fs.writeFileSync(path.join(folder, 'sess-2.jsonl'), lines([said(`Only here: ${link('other.wav', 'other.wav')}`)]));
     const { token } = await signIn(s);
     return { s, token, dir, at, transcript, link };
   })();
@@ -123,7 +169,7 @@ function setup() {
 
 const get = async (url, headers) => { const { s, token } = await setup(); return request(s, 'GET', url, { headers: headers ?? as(token) }); };
 const previewOf = async file => get(`/api/sessions/sess-1/preview?path=${encodeURIComponent(file)}`);
-const fileOf = async (file, extra = '') => { const { s, token } = await setup(); return bytes(s, token, `/api/sessions/sess-1/file?path=${encodeURIComponent(file)}${extra}`); };
+const fileOf = async (file, extra = '', headers) => { const { s, token } = await setup(); return bytes(s, token, `/api/sessions/sess-1/file?path=${encodeURIComponent(file)}${extra}`, headers); };
 const errorOf = res => res.body().error;
 
 test('a signed-out browser is refused both routes, and the messages say the routes exist once it signs in', async () => {
@@ -457,4 +503,159 @@ test('a file that shrinks while it is sent fails the stream, so the response is 
   });
   assert.ok(got < 300 * 1024, 'it stopped short of the length it promised');
   assert.equal(handle.fd, -1, 'and the file was closed');
+});
+
+const GUARDS = { 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'cross-origin-resource-policy': 'same-origin', 'content-security-policy': SANDBOX };
+const guards = (res, what) => assert.deepEqual(Object.keys(GUARDS).map(k => res.headers[k]), Object.values(GUARDS), what);
+const range = (file, value) => fileOf(file, '', { range: value });
+
+test('a WAV, an MP3 and an M4A are audio by their bytes, with the type a browser plays them as', async () => {
+  const { at } = await setup();
+  const kinds = {};
+  for (const name of ['clip.wav', 'song.mp3', 'bare.mp3', 'voice.m4a', 'plain-isom.m4a', 'movie.mp4']) {
+    const p = (await previewOf(at(name))).body();
+    kinds[name] = [p.kind, p.type, p.tooLarge];
+  }
+  assert.deepEqual(kinds, {
+    'clip.wav': ['audio', 'audio/wav', undefined],
+    'song.mp3': ['audio', 'audio/mpeg', undefined],
+    'bare.mp3': ['audio', 'audio/mpeg', undefined],
+    'voice.m4a': ['audio', 'audio/mp4', undefined],
+    'plain-isom.m4a': ['audio', 'audio/mp4', undefined],
+    'movie.mp4': ['binary', 'application/octet-stream', undefined],
+  });
+  assert.equal((await previewOf(at('clip.wav'))).body().text, undefined, 'audio is not sent as text');
+});
+
+test('a note that starts like an MP3 or a WAV stays a text file, because audio is checked after text', async () => {
+  const { at } = await setup();
+  for (const name of ['id3-note.mp3', 'riff-note.wav']) {
+    const p = (await previewOf(at(name))).body();
+    assert.deepEqual([p.kind, p.type], ['text', TEXT_TYPE], name);
+    const served = await fileOf(at(name), '', { range: 'bytes=0-3' });
+    assert.equal(served.status, 200, `${name} ignores a range`);
+    assert.equal(served.headers['accept-ranges'], undefined, name);
+  }
+});
+
+test('audio goes out whole with accept-ranges and every guard header', async () => {
+  const { at } = await setup();
+  const res = await fileOf(at('clip.wav'));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.equals(WAV), true);
+  assert.equal(res.headers['accept-ranges'], 'bytes');
+  assert.equal(res.headers['content-type'], 'audio/wav');
+  assert.equal(res.headers['content-length'], String(WAV.length));
+  assert.equal(res.headers['content-disposition'], 'inline; filename="clip.wav"; filename*=UTF-8\'\'clip.wav');
+  guards(res, 'whole');
+  for (const [name, type, body] of [['song.mp3', 'audio/mpeg', MP3_ID3], ['voice.m4a', 'audio/mp4', M4A_BRAND]]) {
+    const other = await fileOf(at(name));
+    assert.deepEqual([other.headers['content-type'], other.body.equals(body)], [type, true], name);
+  }
+});
+
+test('a byte range of audio is a 206 with just those bytes, the guard headers and a content-range', async () => {
+  const { at } = await setup();
+  const total = WAV.length;
+  const cases = [
+    ['bytes=100-199', 100, 199],
+    ['bytes=9000-', 9000, total - 1],
+    ['bytes=-50', total - 50, total - 1],
+    [`bytes=${total - 10}-${total + 5000}`, total - 10, total - 1],
+    ['bytes=0-1', 0, 1],
+    ['bytes=0-0', 0, 0],
+  ];
+  for (const [header, start, end] of cases) {
+    const res = await range(at('clip.wav'), header);
+    assert.equal(res.status, 206, header);
+    assert.equal(res.body.equals(WAV.subarray(start, end + 1)), true, header);
+    assert.equal(res.headers['content-range'], `bytes ${start}-${end}/${total}`, header);
+    assert.equal(res.headers['content-length'], String(end - start + 1), header);
+    assert.equal(res.headers['accept-ranges'], 'bytes', header);
+    assert.equal(res.headers['content-type'], 'audio/wav', header);
+    guards(res, header);
+  }
+  assert.equal((await range(at('clip.wav'), 'bytes=0-1')).body.length, 2, 'the probe Safari sends gets two bytes');
+});
+
+test('a range that cannot be met is a 416 with the size and no bytes, and one that is not a single range gets the whole file', async () => {
+  const { at } = await setup();
+  const total = WAV.length;
+  for (const header of [`bytes=${total}-`, `bytes=${total + 100}-${total + 200}`, 'bytes=-0']) {
+    const res = await range(at('clip.wav'), header);
+    assert.equal(res.status, 416, header);
+    assert.equal(res.headers['content-range'], `bytes */${total}`, header);
+    assert.deepEqual([res.headers['content-length'], res.body.length], ['0', 0], header);
+    guards(res, header);
+  }
+  for (const header of ['bytes=0-1,5-9', 'bytes=abc', 'bytes=-', 'bytes=9-3', 'items=0-1', '0-1']) {
+    const res = await range(at('clip.wav'), header);
+    assert.equal(res.status, 200, header);
+    assert.equal(res.body.equals(WAV), true, header);
+    assert.equal(res.headers['content-range'], undefined, header);
+  }
+});
+
+test('only audio answers a Range header: text and a picture are sent whole and say nothing about ranges', async () => {
+  const { at } = await setup();
+  for (const [name, body] of [['note.txt', Buffer.from('line one\nline two\nline three\n')], ['pic.png', PNG]]) {
+    const res = await range(at(name), 'bytes=2-5');
+    assert.equal(res.status, 200, name);
+    assert.equal(res.body.equals(body), true, name);
+    assert.equal(res.headers['accept-ranges'], undefined, name);
+    assert.equal(res.headers['content-range'], undefined, name);
+  }
+});
+
+test('a range does not get round the link gate: an unlinked path, another chat\'s link and a signed-out browser are all refused', async () => {
+  const { s, at } = await setup();
+  const unlinked = await range(at('unlinked.wav'), 'bytes=0-1');
+  assert.equal(unlinked.status, 403);
+  assert.equal(unlinked.body.includes(WAV.subarray(0, 4)), false, 'and no bytes');
+  guarded(unlinked);
+  const other = await range(at('other.wav'), 'bytes=0-1');
+  assert.equal(other.status, 403, 'linked by sess-2 only');
+  assert.equal((await bytes(s, (await setup()).token, `/api/sessions/sess-2/file?path=${encodeURIComponent(at('other.wav'))}`, { range: 'bytes=0-1' })).status, 206, 'and sess-2 can read it');
+  const url = `/api/sessions/sess-1/file?path=${encodeURIComponent(at('clip.wav'))}`;
+  const out = await request(s, 'GET', url, { headers: { range: 'bytes=0-1' } });
+  assert.equal(out.status, 401);
+});
+
+test('audio over 20 MB is sent, and audio over its own limit is described and refused', async () => {
+  const { at } = await setup();
+  const long = await previewOf(at('long.wav'));
+  assert.deepEqual([long.body().kind, long.body().tooLarge, long.body().size], ['audio', undefined, MAX_FILE_BYTES + 4096]);
+  const slice = await range(at('long.wav'), `bytes=${MAX_FILE_BYTES}-`);
+  assert.equal(slice.status, 206);
+  assert.equal(slice.headers['content-range'], `bytes ${MAX_FILE_BYTES}-${MAX_FILE_BYTES + 4095}/${MAX_FILE_BYTES + 4096}`);
+  assert.equal(slice.body.length, 4096);
+
+  const huge = await previewOf(at('huge.wav'));
+  assert.deepEqual([huge.body().kind, huge.body().tooLarge, huge.body().size], ['audio', true, MAX_AUDIO_BYTES + 1]);
+  for (const headers of [undefined, { range: 'bytes=0-1' }]) {
+    const res = await fileOf(at('huge.wav'), '', headers);
+    assert.equal(res.status, 413);
+    assert.match(JSON.parse(res.body).error, /1024 MB/);
+  }
+});
+
+test('the file is closed after a range, a range that cannot be met and a client that gives up part way through', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-audio-'));
+  const file = path.join(dir, 'big.wav');
+  fs.writeFileSync(file, wav(400_000));
+  const all = () => true;
+  const drain = async stream => { for await (const chunk of stream) void chunk; };
+  const handles = await watchOpens(async () => {
+    const part = await serveFile(file, all, false, 'bytes=1000-70000');
+    assert.equal(part.status, 206);
+    await drain(part.stream);
+    const none = await serveFile(file, all, false, 'bytes=999999999-');
+    assert.deepEqual([none.status, none.stream], [416, null]);
+    const dropped = (await serveFile(file, all, false, 'bytes=100-')).stream;
+    await dropped[Symbol.asyncIterator]().next();
+    dropped.destroy();
+    await once(dropped, 'close');
+  });
+  assert.equal(handles.length, 3);
+  assert.deepEqual(handles.map(h => h.fd), [-1, -1, -1]);
 });
