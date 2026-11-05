@@ -36,6 +36,9 @@ const furnished = () => start({ sessions: SESSIONS, claude: true });
 const LOGIN = `!!document.querySelector('#password')`;
 const LIST = `!document.querySelector('#boot') && !!document.querySelector('.list-foot')`;
 const CHIP = '.start-group';
+const HEAD = `document.querySelector('.chat-head')?.textContent`;
+const IN_WORK = `/Code in \\S*work/.test(${HEAD})`;
+const AT_HOME = `${HEAD} && !${IN_WORK}`;
 const BUTTON = id => `li:has(> a.row[data-id="${id}"]) > .head-tool`;
 
 async function login(page) {
@@ -97,6 +100,31 @@ test('pressing it opens the new session page with the parent in a chip, and the 
   await page.click(`${CHIP} button`);
   await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}')`);
   assert.equal(await page.evaluate(`document.querySelector('#text').value`), 'half a thought');
+  await page.until(AT_HOME);
+  assert.deepEqual(page.problems, []);
+});
+
+test('moving from one parent\'s page to another parent\'s and on to a group\'s changes the chip and the folder', { skip, timeout }, async t => {
+  const s = await start({ sessions: SESSIONS, claude: true, groups: [{ id: 'cg-work', name: 'Team' }] });
+  const page = await appPage(t, s);
+  await page.click(BUTTON('boss'));
+  await page.until(`location.hash === '#/new-under/boss' && ${IN_WORK}`);
+  await page.evaluate(`location.hash = '#/new-under/long'`);
+  await page.until(`document.querySelector('${CHIP} .name')?.textContent === ${JSON.stringify(LONG)} && ${AT_HOME}`);
+  await page.evaluate(`location.hash = '#/new-under/boss'`);
+  await page.until(`document.querySelector('${CHIP} .name')?.textContent === 'Plan the release' && ${IN_WORK}`);
+  await page.evaluate(`location.hash = '#/new/cg-work'`);
+  await page.until(`document.querySelector('${CHIP} .name')?.textContent === 'Team' && ${AT_HOME}`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a page opened for a sub session shows its parent, and one for a session that is gone shows no chip and the home folder', { skip, timeout }, async t => {
+  const s = await furnished();
+  const page = await appPage(t, s);
+  await page.evaluate(`location.hash = '#/new-under/kid'`);
+  await page.until(`document.querySelector('${CHIP} .name')?.textContent === 'Plan the release' && ${IN_WORK}`);
+  await page.evaluate(`location.hash = '#/new-under/nobody'`);
+  await page.until(`!document.querySelector('${CHIP}') && ${AT_HOME}`);
   assert.deepEqual(page.problems, []);
 });
 

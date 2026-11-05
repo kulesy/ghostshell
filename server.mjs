@@ -1248,12 +1248,7 @@ function manyChange({ ids, to }) {
   if (aim === 'parent' && to.parent === null) {
     steps = direct.filter(id => own(id) !== null).map(id => ({ kind: 'unnest', id, group: rows.get(id).group, pinned: rows.get(id).pinned, relink: leave(id).relink }));
   } else if (aim === 'parent') {
-    if (groupSessions.has(to.parent)) throw refuse(400, `A ${kindOf(groupSessions.get(to.parent))}'s session cannot hold sessions.`);
-    const target = rows.get(to.parent);
-    if (!target) throw refuse(404, NO_SESSION);
-    if (target.archived) throw refuse(400, 'That session is archived.');
-    if (target.routine) throw refuse(400, 'A routine run cannot hold sessions.');
-    const root = target.parent ?? target.id;
+    const { root } = familyRoot(to.parent, { rows, groupSessions });
     const refusal = 'A session cannot nest under itself or a session nested under it.';
     if (chosen.has(to.parent) || chosen.has(root)) throw refuse(400, refusal);
     steps = direct.filter(id => rows.get(id).parent !== root).map(id => ({ kind: 'nest', id, parent: root, relink: leave(id).relink }));
@@ -1960,6 +1955,7 @@ async function api(req, res, u) {
       try {
         ({ root } = familyRoot(parent));
       } catch (e) {
+        if (!e.status) throw e;
         return send(res, e.status, { error: e.message });
       }
     }

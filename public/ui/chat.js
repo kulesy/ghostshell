@@ -25,7 +25,7 @@ import { agentsButtonName, partsOf } from './subagent-rules.js';
 import { BOT } from './subagents.js';
 import { subsButtonName, subsOffered, subsStatus } from './sub-panel-rules.js';
 import { LIST_TREE, sessionIndex } from './subs.js';
-import { findRow } from './tree.js';
+import { rootOf } from './tree.js';
 import { runnableBlock } from './terminal-rules.js';
 import { toast } from './toast.js';
 import { Transcript } from './transcript.js';
@@ -92,7 +92,7 @@ function ChatHead({ ctrl, kind, rename }) {
   const draft = !!ctrl.draft;
   const pinning = draft && pinsOnStart(group);
   const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? (pinning ? 'Pinned' : null) : null));
-  const parentName = useStore(sessionIndex, s => (draft && parent ? findRow(s.ix, parent)?.title || UNTITLED : null));
+  const parentName = useStore(sessionIndex, s => { const up = draft && parent ? rootOf(s.ix, parent) : null; return up ? up.title || UNTITLED : null; });
   const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
   const agents = useAgentsOffered(ctrl);
   const state = status?.state || 'idle';
@@ -178,7 +178,7 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     return ctrl.close;
   }, [ctrl]);
   const startIn = useStore(sessionIndex, s => draftGroup(s.ix, group));
-  const folder = useStore(sessionIndex, s => (parent && findRow(s.ix, parent)?.cwd) || HOME);
+  const folder = useStore(sessionIndex, s => (parent && rootOf(s.ix, parent)?.cwd) || HOME);
   useLayoutEffect(() => { if (ctrl.draft) ctrl.store.set({ group: startIn, parent }); }, [ctrl, startIn, parent]);
   useLayoutEffect(() => { if (ctrl.draft) ctrl.setFolder(folder); }, [ctrl, folder]);
   useLayoutEffect(() => {

@@ -915,7 +915,7 @@ test('a new session with no parent names none and works in the home folder', asy
   const { chat, posted } = await startFrom(null);
   const body = posted.find(([url]) => url === 'api/new')[1];
   assert.equal('parent' in body, false);
-  assert.equal(body.cwd, chat.store.get().folder);
+  assert.equal(body.cwd, '/Users/someone');
 });
 
 test('a new chat whose folder changes drops the defaults of the old one, reads the new one\'s, and ignores a late answer for the old one', async () => {

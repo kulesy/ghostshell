@@ -102,9 +102,16 @@ test('the composer of a draft in a group pinned to Second labels Second and says
 });
 
 test('a new session under a parent shows the account the parent is pinned to, its own pick comes first, and a parent on the active account changes nothing', () => {
-  const ix = { ...IX, started: [{ id: 'held', account: 'second', accountFrom: 'session' }, { id: 'free', account: 'main', accountFrom: 'active' }] };
+  const ix = { ...IX, started: [
+    { id: 'held', account: 'second', accountFrom: 'session' },
+    { id: 'grouped', account: 'second', accountFrom: 'group' },
+    { id: 'free', account: 'main', accountFrom: 'active' },
+    { id: 'kid', parent: 'held', account: 'main', accountFrom: 'active' },
+  ] };
   const draft = (parent, picked = null) => chatAccount({ ix, accounts: LIST, draft: true, id: null, group: null, parent, picked }).shown;
   assert.equal(draft('held'), 'second');
+  assert.equal(draft('grouped'), 'second');
+  assert.equal(draft('kid'), 'second', 'a sub session stands for its parent');
   assert.equal(draft('held', 'main'), 'main');
   assert.equal(draft('free'), LIST.find(a => a.active).id);
   assert.equal(draft('gone'), LIST.find(a => a.active).id);

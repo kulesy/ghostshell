@@ -15,8 +15,9 @@ const SESSIONS = [
   { id: 'gone', title: 'Archived', archived: true, ago: 5 },
   { id: 'run', title: 'Nightly', routine: 'nightly', ago: 6 },
   { id: CHAT, title: 'Talk about the work', source: 'cli', group: 'cg-work', ago: 1 },
+  { id: 'held', title: 'In a pinned group', group: 'cg-pinned', folder: 'work', ago: 4 },
 ];
-const GROUPS = [{ id: 'cg-work', name: 'Work', session: CHAT }];
+const GROUPS = [{ id: 'cg-work', name: 'Work', session: CHAT }, { id: 'cg-pinned', name: 'Pinned' }];
 
 async function open(layout = {}) {
   const first = await start({ claude: true, sessions: SESSIONS, groups: GROUPS, layout });
@@ -43,6 +44,18 @@ test('a session started under a parent works in the parent\'s folder whatever fo
   assert.deepEqual([started(c)[0].cwd, started(c)[0].configDir], [fs.realpathSync(path.join(c.s.home, 'work')), c.dir]);
   assert.equal(onDisk(c).parents[made.body().id], 'boss');
   assert.equal((await rowOf(c, made.body().id)).parent, 'boss');
+});
+
+test('a session started under a parent whose group is pinned runs on that account and stays out of the group', async () => {
+  const c = await open();
+  const pinned = await request(c.s, 'POST', '/api/layout/account', { headers: { connection: 'close', origin: c.s.origin, ...as(c.token) }, json: { kind: 'group', id: 'cg-pinned', account: 'second' } });
+  assert.equal(pinned.status, 200, pinned.text);
+  const made = await post(c, { cwd: c.s.home, text: 'begin a session', parent: 'held' });
+  assert.equal(made.status, 200, made.text);
+  await until(() => started(c).length === 1, 20_000);
+  assert.equal(started(c)[0].configDir, c.dir);
+  assert.equal(onDisk(c).parents[made.body().id], 'held');
+  assert.equal(onDisk(c).assignments?.[made.body().id], undefined);
 });
 
 test('a sub session named as the parent stands for its parent', async () => {

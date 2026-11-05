@@ -1,7 +1,7 @@
 // What the Accounts pane and the banners about accounts say, as rules that need no page, so node can test them. Times are the page's own clock.
 import { endWords, SOON } from './banner-rules.js';
 import { pinsOnStart } from './group-rules.js';
-import { findRow } from './tree.js';
+import { findRow, rootOf } from './tree.js';
 
 export const supportsAccounts = ix => !!ix?.features?.accounts;
 
@@ -107,7 +107,7 @@ export const accountLabel = (accounts, id) => ((accounts?.length ?? 0) > 1 ? acc
 // joins, then that group's project, then the active account. `group` counts only when the page sends it, which is for a group of the list and not for Pinned.
 export function draftAccount({ ix, accounts, group, parent, pick }) {
   if (pick) return { account: pick, from: 'session' };
-  const up = parent ? findRow(ix, parent) : null;
+  const up = parent ? rootOf(ix, parent) : null;
   if (up?.account && up.accountFrom !== 'active') return { account: up.account, from: 'parent' };
   const held = group && !pinsOnStart(group) && supportsPins(ix) ? (ix.groups ?? []).find(g => g.id === group) : null;
   if (held?.account) return { account: held.account, from: 'group' };
