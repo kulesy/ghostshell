@@ -50,9 +50,9 @@ function Parts({ figure, view, busy, failed }) {
 
 // The plan's limits are the account's, so they show for any chat. Each is a bar like the one above, and a row that is near its limit takes
 // the severity colour the server names.
-export function Plan({ id, rows }) {
+export function Plan({ id, rows, account = '' }) {
   return html`<section class="context-plan" aria-labelledby=${`${id}-plan`}>
-    <h4 class="context-plan-title" id=${`${id}-plan`}>Plan usage</h4>
+    <h4 class="context-plan-title" id=${`${id}-plan`}>${account ? `Plan usage, ${account}` : 'Plan usage'}</h4>
     <ul class="plan-list">
       ${rows.map(row => html`<li key=${row.key} class="plan-row" data-severity=${row.severity}>
         <div class="plan-head"><span class="plan-label">${row.label}</span><span class="plan-percent">${row.percent}%</span></div>
@@ -66,7 +66,7 @@ export function Plan({ id, rows }) {
 }
 
 function Popover({ id, box, open, anchor, shut, figure, r, view, busy, failed, plan }) {
-  const rows = plan ? planRows(plan) : [];
+  const rows = plan ? planRows(plan.rows) : [];
   const [at, setAt] = useState(null);
   const size = useRef(null);
   const placed = at !== null;
@@ -150,7 +150,7 @@ function Popover({ id, box, open, anchor, shut, figure, r, view, busy, failed, p
     </div>`}
     ${r.line ? html`<p class="context-line">${r.line}</p>` : null}
     <${Parts} figure=${figure} view=${view} busy=${busy} failed=${failed} />
-    ${rows.length ? html`<${Plan} id=${id} rows=${rows} />` : null}
+    ${rows.length ? html`<${Plan} id=${id} rows=${rows} account=${plan.account} />` : null}
   </div>`;
 }
 
@@ -187,7 +187,7 @@ function Meter({ ctrl, figure }) {
   useEffect(() => {
     if (!open) return undefined;
     let live = true;
-    ctrl.loadPlan().then(rows => { if (live) setPlan(rows); });
+    ctrl.loadPlan().then(got => { if (live) setPlan(got); });
     return () => { live = false; };
   }, [open]);
 

@@ -952,9 +952,12 @@ async function askPlan(account, first) {
   return null;
 }
 
+// The account is named once more than one is listed, since the figures are that account's and not the one in the sidebar.
 async function planFor(id) {
   const own = getChat(id);
-  return { limits: await askPlan(own?.proc ? own.account : accountOfSession(id).id, own) };
+  const account = own?.proc ? own.account : accountOfSession(id).id;
+  const limits = await askPlan(account, own);
+  return { limits, ...(accounts.list().length > 1 && { account: accounts.find(account)?.name }) };
 }
 
 // What the page redraws from. The clock is left out because it moves on every read.
@@ -1725,8 +1728,14 @@ const groupUpdates = makeGroupUpdates({
 // The sidebar banners: when Claude's sign-in ends, and merged changes waiting on main. Both answer from what was last worked out, so a request waits
 // on no git, keychain or CLI work. See docs/adr/20261102-banners-for-sign-in-and-updates.md.
 // Each account has a sign-in of its own, a mark when it is out of usage, and its last plan usage. See docs/adr/20261102-switch-claude-accounts.md.
+// The accounts with a pin on a session, group, project or routine, or a running chat. The sign-in banner covers these and the active account.
+const accountsInUse = () => {
+  const own = pinsOf(layout.read());
+  return [...Object.values(own.accounts), ...[...own.groups, ...own.projects, ...routineStore.read().routines].map(item => item.account), ...runningChats().map(c => c.account)].filter(Boolean);
+};
 const accountLogins = makeAccountLogins({
   accounts,
+  inUse: accountsInUse,
   authInfo: opts => authInfo({ claude: cfg.claude, ...opts }),
   readLoginEnd: opts => readLoginEnd({ security: cfg.security, ...opts }),
   startSignIn: opts => startSignIn({ claude: cfg.claude, ...opts }),
@@ -1770,7 +1779,13 @@ async function bannersApi(req, res, parts) {
   if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
   // `claude auth login` is not a chat, so the restart helper would not wait for it.
   if (step === 'sign-in') {
-    const refused = accountLogins.signIn(accounts.active);
+    // No account named means the active one, as a page left open from before sends.
+    const body = await readJson(req, 10_000);
+    if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+    if (body.account !== undefined && typeof body.account !== 'string') return send(res, 400, { error: 'Say which account.' });
+    const account = body.account === undefined ? accounts.active : accounts.find(body.account);
+    if (!account) return send(res, 404, { error: 'Not found' });
+    const refused = accountLogins.signIn(account);
     if (refused) return send(res, 409, { error: refused });
   } else if (accountLogins.waiting() && updates.state().restart) return send(res, 409, { error: 'A sign-in is waiting on the Mac, so GhostShell cannot restart yet.' });
   else {
@@ -1866,6 +1881,9 @@ async function accountsApi(req, res, parts) {
   if (parts[3] !== 'use') return refuse(404, 'Not found');
   const row = body.continue === undefined ? null : typeof body.continue === 'string' && /^[\w-]+$/.test(body.continue) ? findRow(body.continue) : null;
   if (body.continue !== undefined && !row) return refuse(404, NO_SESSION);
+  // A pinned session stays where its pin puts it, so a switch cannot carry it on, and the active account is left alone.
+  const pinned = row && accountOfSession(row.id);
+  if (pinned && pinned.from !== 'active' && pinned.id !== account.id) return refuse(409, `This session stays on ${accounts.find(pinned.id)?.name ?? 'its account'} because of its pin, so a switch won't move it. Change the pin to move it.`);
   await accountLogins.refresh(account);
   if (accountLogins.state(account).signedOut) return refuse(409, `${account.name} is signed out. Sign it in first.`);
   if (account.id !== accounts.active.id) accountLogins.switchTo(account);

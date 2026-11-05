@@ -9,8 +9,8 @@ const DAY = 86_400_000;
 const MIN = 60_000;
 
 // `who` maps an account id to what its fake CLI says. An id with `null` says nothing usable, and one with `loggedIn: false` is signed out.
-function rig({ ids = ['main', 'second', 'third'], auto = false, who = {}, restarting = false } = {}) {
-  const r = { at: START, noEnd: false, asks: [], ends: 0, retired: 0, begun: [], prepared: [], switches: [], restarting, who };
+function rig({ ids = ['main', 'second', 'third'], auto = false, who = {}, restarting = false, used = [] } = {}) {
+  const r = { at: START, noEnd: false, endOf: {}, used, asks: [], ends: 0, retired: 0, begun: [], prepared: [], switches: [], restarting, who };
   for (const id of ids) if (!(id in r.who)) r.who[id] = { loggedIn: true, email: `${id}@example.com`, subscriptionType: 'max', orgId: `org-${id}` };
   const list = ids.map(id => ({ id, name: id[0].toUpperCase() + id.slice(1) }));
   let active = ids[0];
@@ -27,9 +27,10 @@ function rig({ ids = ['main', 'second', 'third'], auto = false, who = {}, restar
   r.logins = makeAccountLogins({
     accounts: r.accounts,
     authInfo: async ({ extra }) => { r.asks.push(extra.CLAUDE_CONFIG_DIR); return r.who[extra.CLAUDE_CONFIG_DIR]; },
-    readLoginEnd: async () => { r.ends++; return r.noEnd ? null : r.at + 20 * DAY; },
+    readLoginEnd: async ({ service }) => { r.ends++; return r.noEnd ? null : r.endOf[service.replace('service-', '')] ?? r.at + 20 * DAY; },
     startSignIn: ({ extra }) => { r.begun.push(extra.CLAUDE_CONFIG_DIR); return { exited: new Promise(() => {}), stop() {} }; },
     retireOtherAccounts: () => { r.retired++; },
+    inUse: () => r.used,
     afterSwitch: a => r.switches.push([a.id, active]),
     restarting: () => r.restarting,
     now: () => r.at,
@@ -186,4 +187,74 @@ test('a switch by hand and a switch by itself both tell afterSwitch, once the ne
   r.logins.switchTo(r.accounts.find('main'));
   r.logins.markUsage('main', 'out');
   assert.deepEqual(r.switches, [['second', 'second'], ['main', 'main'], ['second', 'second']]);
+});
+
+// ---- the sign-in banner across the accounts in use. `endOf` sets the end of an account's sign-in, and a past end with a CLI that says signed out is a signed out account.
+
+const signOut = (r, id) => { r.endOf[id] = r.at - 1; r.who[id] = { loggedIn: false }; };
+const shown = r => { const { account, accountId, visible } = r.logins.loginNow(); return [accountId, account, visible]; };
+
+test('the sign-in banner follows the active account alone when no other account is in use, and names it once more than one is listed', async () => {
+  const r = await checked(rig({ ids: ['main', 'second'] }));
+  assert.deepEqual(shown(r), ['main', 'Main', false]);
+  const one = await checked(rig({ ids: ['main'] }));
+  assert.deepEqual(Object.keys(one.logins.loginNow()).sort(), ['endsAt', 'problem', 'signedOut', 'stage', 'visible'], 'with one account the answer is as it was');
+});
+
+test('an account that is not in use does not show a banner, signed out or ending', async () => {
+  const r = rig({ ids: ['main', 'second'] });
+  signOut(r, 'second');
+  await checked(r);
+  assert.deepEqual(shown(r), ['main', 'Main', false]);
+  r.used = ['second'];
+  assert.deepEqual(shown(r), ['second', 'Second', true]);
+  r.used = [];
+  r.endOf.second = r.at + 2 * DAY;
+  r.who.second = { loggedIn: true };
+  await r.logins.refresh(r.accounts.find('second'));
+  assert.equal(r.logins.loginNow().visible, false, 'an ending sign-in on an account nobody uses is not shown either');
+});
+
+test('of the accounts in use, a sign-in waiting on the Mac shows first, then a signed out account, then the sign-in ending soonest, the active account winning a tie', async () => {
+  const r = rig({ used: ['second', 'third'] });
+  r.endOf.main = r.at + 3 * DAY;
+  r.endOf.second = r.at + 2 * DAY;
+  signOut(r, 'third');
+  await checked(r);
+  assert.equal(shown(r)[0], 'third', 'signed out beats an ending sign-in');
+  r.logins.signIn(r.accounts.find('second'));
+  assert.equal(shown(r)[0], 'second', 'a sign-in waiting on the Mac beats a signed out account');
+  assert.deepEqual(r.logins.loginNow().stage, 'waiting');
+
+  const ending = rig({ used: ['second', 'third'] });
+  ending.endOf.main = ending.at + 3 * DAY;
+  ending.endOf.second = ending.at + 2 * DAY;
+  ending.endOf.third = ending.at + 4 * DAY;
+  await checked(ending);
+  assert.equal(shown(ending)[0], 'second', 'the soonest end');
+  ending.endOf.main = ending.at + 2 * DAY;
+  await checked(ending);
+  assert.equal(shown(ending)[0], 'main', 'the active account wins a tie');
+  ending.endOf.second = ending.at + 20 * DAY;
+  ending.endOf.main = ending.at + 20 * DAY;
+  ending.endOf.third = ending.at + 20 * DAY;
+  await checked(ending);
+  assert.deepEqual(shown(ending), ['main', 'Main', false], 'none visible answers the active account');
+});
+
+test('one banner shows at a time, and the next shows once that one is fixed', async () => {
+  const r = rig({ used: ['second', 'third'] });
+  signOut(r, 'second');
+  signOut(r, 'third');
+  await checked(r);
+  assert.equal(shown(r)[0], 'second');
+  r.endOf.second = r.at + 20 * DAY;
+  r.who.second = { loggedIn: true };
+  await checked(r);
+  assert.equal(shown(r)[0], 'third');
+});
+
+test('an id in use that no account has is ignored', async () => {
+  const r = await checked(rig({ ids: ['main', 'second'], used: ['gone', 'second', 'second'] }));
+  assert.deepEqual(shown(r), ['main', 'Main', false]);
 });

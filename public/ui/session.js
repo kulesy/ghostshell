@@ -243,12 +243,12 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     return asking[detail];
   }
 
-  // The plan's usage rows, which belong to the account and not to this chat. A failed ask or a draft gives null.
+  // The plan's usage rows, which belong to the account and not to this chat, and the account's name when the server lists more than one. A failed ask or a draft gives null.
   async function loadPlan() {
     if (draft) return null;
     try {
       const reply = await api(`api/sessions/${enc(id)}/plan`, {});
-      return Array.isArray(reply?.limits) && reply.limits.length ? reply.limits : null;
+      return Array.isArray(reply?.limits) && reply.limits.length ? { rows: reply.limits, account: typeof reply.account === 'string' ? reply.account : '' } : null;
     } catch {
       return null;
     }
