@@ -159,14 +159,15 @@ function useKeyboardFit(box) {
     const fit = () => {
       const focused = document.activeElement === el;
       if (!covered() || (!focused && !panel.hasAttribute('data-keyboard'))) { unpin(); if (!focused) stop(); return; }
-      if (!width) width = Math.min(panel.offsetWidth, view.width);
-      el.scrollTop += view.offsetTop - panned;
-      panned = view.offsetTop;
+      if (!width) width = panel.offsetWidth;
       panel.style.setProperty('--vv-top', `${view.offsetTop}px`);
       panel.style.setProperty('--vv-right', `${Math.max(0, window.innerWidth - view.offsetLeft - view.width)}px`);
-      panel.style.setProperty('--vv-width', `${width}px`);
+      panel.style.setProperty('--vv-width', `${Math.min(width, view.width)}px`);
       panel.style.setProperty('--vv-height', `${view.height}px`);
       panel.setAttribute('data-keyboard', '');
+      // After the pin, because the box can only scroll this far once the panel has shrunk.
+      el.scrollTop += view.offsetTop - panned;
+      panned = view.offsetTop;
     };
     const watch = () => { view.addEventListener('resize', fit); view.addEventListener('scroll', fit); addEventListener('resize', refit); };
     const stop = () => { view.removeEventListener('resize', fit); view.removeEventListener('scroll', fit); removeEventListener('resize', refit); };

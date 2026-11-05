@@ -3785,7 +3785,8 @@ html.viewing, html.viewing body { overflow: hidden; }
   pointer-events: none;
 }
 
-.session[data-panel] > .panel[data-keyboard] .panel-head {
+.session[data-panel] > .panel[data-keyboard] .panel-head,
+.session[data-panel] > .panel[data-keyboard] .file-head {
   touch-action: none;
 }
 

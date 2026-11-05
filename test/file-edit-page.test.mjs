@@ -26,7 +26,8 @@ const says = (id, text) => {
 };
 
 // A file in the test home that the chat links to.
-const NAMES = ['saves', 'races', 'draft', 'phone', 'long', 'locked', 'gone'];
+const NAMES = ['saves', 'races', 'draft', 'phone', 'long', 'fits', 'locked', 'gone'];
+const LINES = { long: 300, fits: 20 };
 const files = {};
 
 before(async () => {
@@ -36,7 +37,7 @@ before(async () => {
   fs.mkdirSync(dir, { recursive: true });
   for (const name of NAMES) {
     files[name] = path.join(dir, `${name}.txt`);
-    fs.writeFileSync(files[name], name === 'long' ? Array.from({ length: 300 }, (_, i) => `line ${i + 1}\n`).join('') : `first line of ${name}\nsecond line\n`);
+    fs.writeFileSync(files[name], LINES[name] ? Array.from({ length: LINES[name] }, (_, i) => `line ${i + 1}\n`).join('') : `first line of ${name}\nsecond line\n`);
   }
   files.locked = path.join(app.home, '.zshrc');
   fs.writeFileSync(files.locked, 'export A=1\n');
@@ -307,11 +308,28 @@ test('on a phone, the pan iOS makes to reach the caret scrolls the text box by t
   assert.equal(await scrolled(), 100, 'another scroll event at the same offset adds nothing');
   await page.evaluate(`window.dispatchEvent(new Event('resize'))`);
   assert.equal(await scrolled(), 100, 'a rotation adds nothing');
-  await page.evaluate(`keyboard.width = 200; window.dispatchEvent(new Event('resize'))`);
-  assert.equal(await wide(), 200, 'the panel is no wider than the viewport');
-  await page.evaluate(`keyboard.width = innerWidth; window.dispatchEvent(new Event('resize'))`);
+  await page.evaluate(`keyboard.width = 200; keyboard.dispatchEvent(new Event('resize'))`);
+  assert.equal(await wide(), 200, 'the panel is no wider than the viewport, even when the viewport changes after the width was measured');
+  await page.evaluate(`keyboard.width = innerWidth; keyboard.dispatchEvent(new Event('resize'))`);
   assert.equal(await wide(), screen);
   assert.equal(await scrolled(), 100);
+  assert.deepEqual(page.problems, []);
+});
+
+test('on a phone, a file that only overflows once the keyboard is up still scrolls to the caret', { skip, timeout }, async t => {
+  const page = await appPage(t, { phone: true });
+  await open(page, 'fits', { phone: true });
+  await page.evaluate(`(() => {
+    const view = Object.assign(new EventTarget(), { height: innerHeight, width: innerWidth, offsetTop: 0, offsetLeft: 0, scale: 1 });
+    Object.defineProperty(window, 'visualViewport', { value: view, configurable: true });
+    window.keyboard = view;
+  })()`);
+  await page.tap(button('Edit file'));
+  await page.until(`document.activeElement === document.querySelector('.file-editor')`);
+  const box = `document.querySelector('.file-editor')`;
+  assert.equal(await page.evaluate(`${box}.scrollHeight <= ${box}.clientHeight`), true, 'the text fits before the keyboard opens');
+  await page.evaluate(`keyboard.offsetTop = 100; keyboard.height = 300; keyboard.dispatchEvent(new Event('resize'))`);
+  assert.equal(await page.evaluate(`${box}.scrollTop`), 100);
   assert.deepEqual(page.problems, []);
 });
 
