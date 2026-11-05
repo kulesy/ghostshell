@@ -163,3 +163,23 @@ test('the blocked data carries the pin of the result, so a nested session names 
   assert.deepEqual(got.pin, pin);
   assert.deepEqual(blockedBy({ account: 'second', from: 'routine', via: 'r1', pin: { kind: 'routine', id: 'r1' } }, states({ out: ['second'] }), nameOf).pin, { kind: 'routine', id: 'r1' });
 });
+
+test('a block reached through a parent names the group, project or session that holds the pin, with its own name', () => {
+  const of = (pin, account = 'second') => blockedBy({ account, from: 'parent', via: 'mid', pin }, states({ out: ['second'] }), nameOf);
+  const group = of({ kind: 'group', id: 'g1' });
+  assert.equal(group.fromName, 'group:g1');
+  assert.equal(blockedMessage(group), 'The group of the session it sits under (group:g1) is pinned to Second, which is signed out. Sign it in first.');
+  assert.equal(blockedMessage(of({ kind: 'project', id: 'p1' })), 'The project of the session it sits under (project:p1) is pinned to Second, which is signed out. Sign it in first.');
+  assert.equal(blockedMessage(of({ kind: 'session', id: 'top' })), 'The session it sits under (session:top) is pinned to Second, which is signed out. Sign it in first.');
+  assert.equal(blockedMessage(of({ kind: 'routine', id: 'r1' }, 'gone')), 'The routine of the session it sits under (routine:r1) is pinned to an account GhostShell no longer lists. Clear the pin first.');
+});
+
+test('a grandparent whose own parent inherits from a group is named for the group', () => {
+  const d = {
+    facts: id => ({ mid: { parent: 'kid' }, kid: { group: 'g1' } })[id] ?? null,
+    groups: { g1: { account: 'second' } }, projects: {}, routines: {}, active: 'main',
+  };
+  const got = accountFor({ id: 'self', parent: 'mid' }, d);
+  assert.deepEqual([got.from, got.via, got.pin], ['parent', 'mid', { kind: 'group', id: 'g1' }]);
+  assert.match(blockedMessage(blockedBy(got, states({ out: ['second'] }), nameOf)), /^The group of the session it sits under \(group:g1\)/);
+});

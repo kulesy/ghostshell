@@ -32,8 +32,8 @@ const SESSIONS = [
 ];
 
 // A server with accounts Main and Second (just Main with `one`), Second signed out with `out`, and `accounts` as the layout's session pins.
-async function open({ one = false, out = false, accounts = {}, groups = GROUPS, routines } = {}) {
-  const first = await start({ claude: true, sessions: SESSIONS, groups, layout: { projects: [{ id: 'cp-a', name: 'Proj' }], accounts } });
+async function open({ one = false, out = false, accounts = {}, groups = GROUPS, routines, chips, sessions = [] } = {}) {
+  const first = await start({ claude: true, sessions: [...SESSIONS, ...sessions], groups, chips, layout: { projects: [{ id: 'cp-a', name: 'Proj' }], accounts } });
   const dir = path.join(first.state, 'accounts', 'second');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(first.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: false, accounts: [{ id: 'main', name: 'Main' }, ...(one ? [] : [{ id: 'second', name: 'Second', dir }])] }));
@@ -278,8 +278,41 @@ test('a blocked group pin is cleared at the group, not at the session', { skip, 
   fs.writeFileSync(c.s.layout, JSON.stringify({ ...JSON.parse(fs.readFileSync(c.s.layout, 'utf8')), groups: JSON.parse(fs.readFileSync(c.s.layout, 'utf8')).groups.map(g => (g.id === 'cg-a' ? { ...g, account: 'gone' } : g)) }));
   const page = await openPage(t, c, '#/s/grouped');
   await page.until(`!!document.querySelector('#blocked')`, 20_000);
-  await page.evaluate(`[...document.querySelectorAll('.notice-action .btn')].find(b => b.textContent === 'Clear the pin').click()`);
+  await page.evaluate(`[...document.querySelectorAll('.notice-action .btn')].find(b => b.textContent === "Clear the group's pin").click()`);
   await until(async () => (await index(c)).groups.find(g => g.id === 'cg-a').account === undefined);
+});
+
+// Sets a group's pin to an account nobody lists, which the pin route refuses, by writing the layout.
+const removeGroupAccount = (c, id) => {
+  const layout = JSON.parse(fs.readFileSync(c.s.layout, 'utf8'));
+  fs.writeFileSync(c.s.layout, JSON.stringify({ ...layout, groups: layout.groups.map(g => (g.id === id ? { ...g, account: 'gone' } : g)) }));
+};
+
+test('a session nested under a session in a pinned group names the group, and its button clears the group\'s pin', { skip, timeout }, async t => {
+  const c = await open({ one: true, chips: [{ sessionId: 'grouped', startedId: 'nested', status: 'started', title: 'Follow up' }], sessions: [{ id: 'nested', title: 'Nested', source: 'cli', ago: 5 }] });
+  assert.equal((await pin(c, 'group', 'cg-a', 'main')).status, 200);
+  removeGroupAccount(c, 'cg-a');
+  const page = await openPage(t, c, '#/s/nested');
+  await page.until(`!!document.querySelector('#blocked')`, 20_000);
+  assert.match(await page.evaluate(`document.querySelector('#blocked').textContent`), /^The group of the session it sits under \(Work\) is pinned to an account GhostShell no longer lists/);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.notice-action .btn')].map(b => b.textContent)`), ["Clear the group's pin"]);
+  await shot(page, 'blocked-nested-group');
+  await page.evaluate(`[...document.querySelectorAll('.notice-action .btn')][0].click()`);
+  await until(async () => (await index(c)).groups.find(g => g.id === 'cg-a').account === undefined);
+  await page.until(`!document.querySelector('#blocked')`, 15_000);
+});
+
+test('a group\'s own chat shows the notice of its group\'s pin, and it goes once the pin is cleared', { skip, timeout }, async t => {
+  const CHAT = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
+  const c = await open({ one: true, groups: [{ id: 'cg-a', name: 'Work', project: 'cp-a', session: CHAT }, GROUPS[1]] });
+  assert.equal((await pin(c, 'group', 'cg-a', 'main')).status, 200);
+  removeGroupAccount(c, 'cg-a');
+  const page = await openPage(t, c, '#/g/cg-a');
+  await page.until(`!!document.querySelector('#blocked')`, 20_000);
+  await shot(page, 'blocked-group-chat');
+  await page.evaluate(`[...document.querySelectorAll('.notice-action .btn')].find(b => b.textContent === "Clear the group's pin").click()`);
+  await until(async () => (await index(c)).groups.find(g => g.id === 'cg-a').account === undefined);
+  await page.until(`!document.querySelector('#blocked')`, 15_000);
 });
 
 test('a new session started in a group passes the group, so a group pin applies to its first turn, and is not moved after', { skip, timeout }, async t => {

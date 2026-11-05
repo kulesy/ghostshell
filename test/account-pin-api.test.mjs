@@ -433,3 +433,19 @@ test('a blocked row names the session, group or project that holds the pin, also
   const refused = await say(c, 'kid');
   assert.deepEqual(refused.body().blocked.pin, { kind: 'session', id: 'top' });
 });
+
+test('a group\'s own chat carries its account and block on the index, and a session nested under a group pin names the group', async () => {
+  const c = await open({
+    groups: [{ id: 'cg-a', name: 'Work', project: 'cp-a', session: WORK_CHAT }, GROUPS[1]],
+    chips: [{ sessionId: 'grouped', startedId: 'nested', status: 'started', title: 'Follow up' }],
+    sessions: [{ id: 'nested', title: 'Nested', source: 'cli', ago: 5 }],
+  });
+  await pin(c, 'group', 'cg-a', 'second');
+  await signOutSecond(c);
+  const chat = (await index(c)).groups.find(g => g.id === 'cg-a').session;
+  assert.deepEqual([chat.account, chat.accountFrom, chat.blocked.reason, chat.blocked.pin], ['second', 'group', 'signed-out', { kind: 'group', id: 'cg-a' }]);
+  assert.match(chat.blocked.message, /^Its group \(Work\) is pinned to Second/);
+  const nested = (await rowOf(c, 'nested')).blocked;
+  assert.deepEqual([nested.from, nested.pin, nested.fromName], ['parent', { kind: 'group', id: 'cg-a' }, 'Work']);
+  assert.match(nested.message, /^The group of the session it sits under \(Work\) is pinned to Second/);
+});

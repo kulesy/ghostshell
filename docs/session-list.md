@@ -271,7 +271,7 @@ With more than one account, a session, a group and a project each have an Accoun
 
 - With one account and nothing pinned, no pick shows. Anything already pinned keeps its pick, so it can be cleared.
 - A chat shows the account it runs on as a quiet label in the composer row when there is more than one account. Rows in the list carry no label.
-- A pinned account that is signed out or removed puts a notice above the composer in the server's words. Signed out offers Sign in and Change the pin, and removed offers Clear the pin, even with one account. The pin is changed at the level the notice names: the session, its group or its project. For a routine, the notice sends you to the routine's form.
+- A pinned account that is signed out or removed puts a notice above the composer in the server's words. Signed out offers Sign in and Change the pin, and removed offers Clear the pin, even with one account. The server names where the pin lives (`blocked.pin`), and the notice names that holder, also for a session that reaches it through a parent. The pin is changed there: the session, its group or its project, and the buttons say "the group's pin" when it is not this session's. For a routine, the notice sends you to the routine's form.
 - A send the server refuses for this keeps the text in the box and shows the same notice.
 
 See [Pin work to an account](adr/20261104-pin-work-to-an-account.md).

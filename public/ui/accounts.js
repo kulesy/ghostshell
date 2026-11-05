@@ -244,7 +244,6 @@ export function BlockedNotice({ ctrl }) {
   if (seen.current.refused !== refused) seen.current = { refused, ix };
   const blocked = blockedNow({ row, status, refused, fresh: seen.current.ix === ix });
   const plan = blockedPlan(blocked);
-  const sameAs = plan?.signIn ? accounts?.find(a => a.id === plan.signIn && a.sameAs) : null;
   useEffect(() => { setProblem(''); setShown(null); }, [blocked?.message]);
   if (!plan) return null;
 
@@ -259,11 +258,10 @@ export function BlockedNotice({ ctrl }) {
   return html`<p class="notice" id="blocked" role="alert">${plan.message}</p>
     <div class="notice-action">
       ${plan.signIn ? html`<${Button} action=${{ label: `Sign in to ${blocked.account.name}`, variant: 'outline' }} onClick=${signIn} />` : null}
-      ${plan.change && accounts ? html`<button class="btn" id="blockedChange" type="button" data-variant="outline" aria-haspopup="menu" aria-expanded=${!!shown} aria-controls=${shown ? layerId(shown.id) : null} ...${opener(pop)}>Change the pin</button>` : null}
-      ${plan.clear ? html`<${Button} action=${{ label: 'Clear the pin', variant: 'outline' }} onClick=${() => repin(null)} />` : null}
+      ${plan.change && accounts ? html`<button class="btn" id="blockedChange" type="button" data-variant="outline" aria-haspopup="menu" aria-expanded=${!!shown} aria-controls=${shown ? layerId(shown.id) : null} ...${opener(pop)}>${plan.changeLabel}</button>` : null}
+      ${plan.clear ? html`<${Button} action=${{ label: plan.clearLabel, variant: 'outline' }} onClick=${() => repin(null)} />` : null}
       ${plan.routine ? html`<a class="btn" data-variant="outline" href=${routineHash(plan.routine)}>Open the routine</a>` : null}
     </div>
-    ${sameAs ? html`<${Alert} tone="warning">${sameAccountWords(sameAs, { accounts })}<//>` : null}
     <p class="notice" role="alert">${problem}</p>
     <${Menu} menu=${shown && { ...shown, label: 'Account', items }} onClose=${() => setShown(null)} />`;
 }

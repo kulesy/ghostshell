@@ -375,7 +375,9 @@ function buildIndex({ archived = false } = {}) {
   const pinned = sortRows(top.filter(r => r.pinned), sorts.pinned);
   const groups = own.groups.map(g => {
     const sort = groupSort(g.id);
-    const session = g.session ? { id: g.session, state: groupSessions.get(g.session).state } : null;
+    // A group's own chat carries what accountRows worked out for it, so its notice reads the same as a session's.
+    const chat = g.session && groupSessions.get(g.session);
+    const session = chat ? { id: g.session, state: chat.state, ...(chat.account && { account: chat.account, accountFrom: chat.accountFrom }), ...(chat.accountPin && { accountPin: chat.accountPin }), ...(chat.blocked && { blocked: chat.blocked }) } : null;
     return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, ...(g.account && { account: g.account }), sort, session, archived: archivedIn.get(g.id) ?? 0, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
   });
   // A routine's runs go newest first, and the routines go by their latest run.

@@ -150,8 +150,14 @@ export const blockedNow = ({ row, status, refused, fresh }) => (refused && fresh
 export function blockedPlan(blocked) {
   if (!blocked) return null;
   const at = blocked.pin && blocked.pin.kind !== 'routine' ? blocked.pin : null;
+  // The buttons say whose pin they act on when it is not this session's, so no one rewrites a pin they were not shown.
+  const kind = blocked.pin?.kind;
+  const of = !kind || blocked.from === 'session' ? '' : kind === 'session' ? "the parent's" : `the ${kind}'s`;
+  const pinWords = of ? `${of} pin` : 'the pin';
   return {
     message: blocked.message,
+    changeLabel: `Change ${pinWords}`,
+    clearLabel: `Clear ${pinWords}`,
     signIn: blocked.reason === 'signed-out' ? blocked.account?.id : null,
     change: blocked.reason === 'signed-out' ? at : null,
     clear: blocked.reason === 'removed' ? at : null,

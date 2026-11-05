@@ -128,3 +128,20 @@ test('the routine form keeps a signed out or removed value as its own option and
   assert.deepEqual(accountChoices(list, 'second').map(c => c[2]), [false, false, false]);
   assert.deepEqual(accountChoices([MAIN], 'gone').at(-1), ['gone', 'Removed account', false]);
 });
+
+test('the buttons say whose pin they act on when it is not the session\'s own', () => {
+  const out = { reason: 'signed-out', account: SECOND, message: 'words' };
+  const own = blockedPlan({ ...out, from: 'session', pin: { kind: 'session', id: 's' } });
+  assert.deepEqual([own.changeLabel, own.clearLabel], ['Change the pin', 'Clear the pin']);
+  assert.equal(blockedPlan({ ...out, from: 'parent', pin: { kind: 'group', id: 'g' } }).changeLabel, "Change the group's pin");
+  assert.equal(blockedPlan({ reason: 'removed', account: null, from: 'project', pin: { kind: 'project', id: 'p' } }).clearLabel, "Clear the project's pin");
+  assert.equal(blockedPlan({ reason: 'removed', account: null, from: 'parent', pin: { kind: 'session', id: 'top' } }).clearLabel, "Clear the parent's pin");
+});
+
+test('a group\'s own chat reads its block from the row the index sends for it', () => {
+  const rest = { pinned: [], started: [], ungrouped: [], other: [], routines: [] };
+  const ix = { ...rest, groups: [{ id: 'g', session: { id: 'gchat', account: 'gone', blocked: { message: 'chat block' } }, sessions: [] }] };
+  assert.equal(blockedNow({ row: rowFor(ix, 'gchat'), refused: null, fresh: false }).message, 'chat block');
+  const cleared = { ...rest, groups: [{ id: 'g', session: { id: 'gchat', state: 'idle' }, sessions: [] }] };
+  assert.equal(blockedNow({ row: rowFor(cleared, 'gchat'), refused: null, fresh: false }), null);
+});
