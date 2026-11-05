@@ -1414,7 +1414,6 @@ a.row[data-id], [data-slot="command-item"][data-archived] { touch-action: pan-y 
   --swipe-ink: var(--muted-foreground);
   --swipe-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3h18a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z'/%3E%3Cpath d='M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8'/%3E%3Cpath d='M10 12h4'/%3E%3C/svg%3E");
   position: relative;
-  isolation: isolate;
   border-radius: var(--radius-md);
   background: linear-gradient(var(--swipe-fill), var(--swipe-fill)) top / 100% var(--swipe-height) no-repeat;
 }
@@ -4149,6 +4148,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .file-body {
   position: relative;
+  isolation: isolate;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -4268,10 +4268,13 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .file-note[role="alert"] { color: var(--destructive); }
 
-.file-audio {
+.file-bar {
   position: sticky;
   top: 0;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   padding: 0.75rem;
   border-bottom: 1px solid var(--border);
   background: var(--background);
@@ -4281,13 +4284,11 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .file-audio .file-note { padding: 0.75rem 0 0; }
 
-.file-clips { padding: 0.75rem; }
-
 .file-clips-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 
 .file-clips-count { font-size: 0.875rem; line-height: 1.25rem; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
 
-.file-clips-list { margin: 0.75rem 0 0; padding: 0; list-style: none; }
+.file-clips-list { margin: 0; padding: 0.75rem; list-style: none; }
 
 .file-clip {
   display: block;
@@ -4296,6 +4297,7 @@ html.viewing, html.viewing body { overflow: hidden; }
   min-height: 2.25rem;
   padding: 0.5rem 0.75rem;
   overflow: hidden;
+  scroll-margin-block: 9rem 0.75rem;
   border: 0;
   border-radius: var(--radius-md);
   background: none;

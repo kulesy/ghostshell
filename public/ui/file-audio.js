@@ -62,16 +62,22 @@ export function Player({ url, name }) {
 const base = path => path.split('/').pop();
 
 // Previous and Next wrap around, so neither is ever disabled and the focus never leaves the one pressed.
-export function Clips({ clips, path, onPick }) {
-  if (clips.length < 2) return null;
+export function ClipNav({ clips, path, onPick }) {
   const at = clips.indexOf(path);
   const step = by => onPick(clips[(at + by + clips.length) % clips.length]);
-  return html`<div class="file-clips">
-    <div class="file-clips-nav">
-      <button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => step(-1)}>Previous</button>
-      <span class="file-clips-count" role="status">${at + 1} of ${clips.length}</span>
-      <button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => step(1)}>Next</button>
-    </div>
-    <ol class="file-clips-list">${clips.map(p => html`<li key=${p}><button class="file-clip" type="button" title=${p} aria-current=${p === path ? 'true' : undefined} onClick=${() => onPick(p)}>${base(p)}</button></li>`)}</ol>
+  return html`<div class="file-clips-nav">
+    <button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => step(-1)}>Previous</button>
+    <span class="file-clips-count" role="status">${at + 1} of ${clips.length}</span>
+    <button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => step(1)}>Next</button>
   </div>`;
+}
+
+export function ClipList({ clips, path, onPick }) {
+  const list = useRef(null);
+
+  useEffect(() => {
+    list.current.querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest' });
+  }, [path]);
+
+  return html`<ol class="file-clips-list" ref=${list}>${clips.map(p => html`<li key=${p}><button class="file-clip" type="button" title=${p} aria-current=${p === path ? 'true' : undefined} onClick=${() => onPick(p)}>${base(p)}</button></li>`)}</ol>`;
 }

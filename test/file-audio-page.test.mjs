@@ -45,11 +45,12 @@ function tone(hertz, seconds = 5) {
 }
 
 const CLIPS = ['one', 'two', 'missing', 'four', 'five'];
+const TAKES = Array.from({ length: 26 }, (_, i) => `take-${String(i).padStart(2, '0')}`);
 const files = {};
 
 before(async () => {
   if (skip) return;
-  app = await start({ sessions: [{ id: 'chat', title: 'Chat', ago: 10 }, { id: 'solo', title: 'Solo', ago: 20 }, { id: 'texty', title: 'Texty', ago: 30 }], claude: true });
+  app = await start({ sessions: [{ id: 'chat', title: 'Chat', ago: 10 }, { id: 'solo', title: 'Solo', ago: 20 }, { id: 'texty', title: 'Texty', ago: 30 }, { id: 'long', title: 'Long', ago: 40 }], claude: true });
   const dir = path.join(app.home, 'work');
   fs.mkdirSync(dir, { recursive: true });
   for (const name of [...CLIPS, 'secret', 'solo', 'text']) files[name] = path.join(dir, `${name}.wav`);
@@ -57,11 +58,16 @@ before(async () => {
   fs.writeFileSync(files.secret, tone(900));
   fs.writeFileSync(files.solo, tone(500));
   fs.writeFileSync(files.text, 'This is only text that has a .wav name.\n');
+  for (const name of TAKES) {
+    files[name] = path.join(dir, `${name}.wav`);
+    fs.writeFileSync(files[name], tone(400, 2));
+  }
   for (let i = 0; i < 40; i++) says('chat', `Filler paragraph ${i} so the chat is taller than the screen.`);
   says('chat', `${CLIPS.map(name => `- [${name}.wav](<${files[name]}>)`).join('\n')}`);
   for (let i = 0; i < 6; i++) says('chat', `More filler ${i} after the clips.`);
   says('solo', `Only [one clip](<${files.solo}>) here.`);
   says('texty', `Only [text.wav](<${files.text}>) here.`);
+  says('long', TAKES.map(name => `- [${name}.wav](<${files[name]}>)`).join('\n'));
   browser = await launch(chromium);
 });
 
@@ -95,7 +101,7 @@ async function appPage(t, { phone = false, chat = 'chat' } = {}) {
 }
 
 const link = name => `a[data-file="${files[name]}"]`;
-const urlOf = name => `api/sessions/chat/file?path=${encodeURIComponent(files[name])}`;
+const urlOf = (name, chat = 'chat') => `api/sessions/${chat}/file?path=${encodeURIComponent(files[name])}`;
 const AUDIO = `document.querySelector('.file-audio audio')`;
 const state = page => page.evaluate(`(a => a && ({ paused: a.paused, t: a.currentTime, src: a.getAttribute('src'), end: a.seekable.length ? a.seekable.end(0) : 0, seeking: a.seeking, error: !!a.error }))(${AUDIO})`);
 const current = page => page.evaluate(`document.querySelector('.file-clip[aria-current]')?.textContent`);
@@ -103,8 +109,8 @@ const count = page => page.evaluate(`document.querySelector('.file-clips-count')
 const button = label => `.file-view button[aria-label="${label}"]`;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function playing(page, name) {
-  await page.until(`!!${AUDIO} && ${AUDIO}.getAttribute('src') === ${JSON.stringify(urlOf(name))} && !${AUDIO}.paused && ${AUDIO}.currentTime > 0.2`, 10_000);
+async function playing(page, name, chat) {
+  await page.until(`!!${AUDIO} && ${AUDIO}.getAttribute('src') === ${JSON.stringify(urlOf(name, chat))} && !${AUDIO}.paused && ${AUDIO}.currentTime > 0.2`, 10_000);
 }
 
 test('a click on a clip plays it in the panel, and pause and seek work', { skip, timeout }, async t => {
@@ -204,7 +210,7 @@ test('a chat with one clip shows the player and no navigation', { skip, timeout 
   const page = await appPage(t, { chat: 'solo' });
   await page.click(link('solo'));
   await page.until(`!!${AUDIO}`);
-  assert.equal(await page.evaluate(`document.querySelectorAll('.file-clips, .file-clip').length`), 0);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.file-clips-nav, .file-clip').length`), 0);
   assert.deepEqual(page.problems, []);
 });
 
@@ -256,6 +262,27 @@ test('on a phone, 390 and 320 px wide, nothing scrolls sideways and the player a
   }
   await page.tap('.file-clips-nav button:last-child');
   await playing(page, 'two');
+  assert.deepEqual(page.problems, []);
+});
+
+test('in a long list the buttons stay on screen, the current row comes into view, and the player leaves the resize handle free', { skip, timeout }, async t => {
+  const page = await appPage(t, { chat: 'long' });
+  await page.resize(1280, 500);
+  await page.click(link('take-25'));
+  await playing(page, 'take-25', 'long');
+  const facts = await page.evaluate(`(() => {
+    const body = document.querySelector('.file-body').getBoundingClientRect();
+    const bar = document.querySelector('.file-bar').getBoundingClientRect();
+    const row = document.querySelector('.file-clip[aria-current]').getBoundingClientRect();
+    const player = ${AUDIO}.getBoundingClientRect();
+    const hit = document.elementFromPoint(document.querySelector('.panel-resize').getBoundingClientRect().left + 2, player.top + player.height / 2);
+    const next = document.querySelector('.file-clips-nav button:last-child').getBoundingClientRect();
+    return { scrolled: document.querySelector('.file-body').scrollTop > 0, rowShown: row.top >= bar.bottom && row.bottom <= body.bottom, nextShown: next.top >= body.top && next.bottom <= bar.bottom, handle: hit?.className };
+  })()`);
+  assert.deepEqual(facts, { scrolled: true, rowShown: true, nextShown: true, handle: 'panel-resize' });
+  await page.click('.file-clips-nav button:last-child');
+  await playing(page, 'take-00', 'long');
+  await page.until(`document.querySelector('.file-body').scrollTop === 0`);
   assert.deepEqual(page.problems, []);
 });
 

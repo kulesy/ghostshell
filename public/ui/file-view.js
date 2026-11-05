@@ -2,7 +2,7 @@
 import { md } from '../md.mjs';
 import { api } from './api.js';
 import { draftKey, readDraft, route } from './file-edit-rules.js';
-import { CLIP, Clips, clipsIn, Player, playClip, stopClip } from './file-audio.js';
+import { CLIP, ClipList, ClipNav, clipsIn, Player, playClip, stopClip } from './file-audio.js';
 import { cancelEdit, Editor, EditNotes, leaveEdit, saveEdit, startEdit, useEdit } from './file-edit.js';
 import { fileSize, grouped, lf } from './format.js';
 import { useStore } from './hooks.js';
@@ -121,6 +121,8 @@ export function FileTab({ file: { n, chat, path, line, from, clips, preview, err
   const openable = !!preview && !preview.tooLarge && kind !== 'binary' && kind !== 'image';
   const lines = preview?.truncated ? linesOf(preview.text).length : 0;
   const editing = useEdit(chat, path);
+  const moves = !editing && clips.length > 1;
+  const pick = next => openFile({ id: chat, path: next, line: null, from });
   const focusBody = () => body.current?.focus();
   const view = {
     done: next => { refreshPreview(n, next); focusBody(); },
@@ -145,7 +147,7 @@ export function FileTab({ file: { n, chat, path, line, from, clips, preview, err
   if (error) content = html`<p class="file-note" role="alert">${error}</p>`;
   else if (!preview) content = html`<p class="file-note" role="status">Loading</p>`;
   else if (editing) content = html`<${EditNotes} /><${Editor} name=${name} focus=${editing.focus} saving=${editing.saving} view=${view} />`;
-  else if (audible) content = html`<${Player} url=${url} name=${name} />`;
+  else if (audible) content = null;
   else if (preview.tooLarge || !(text || kind === 'pdf')) {
     content = html`<div class="file-meta">
       <p class="file-kind">${kindName(name)}</p>
@@ -175,6 +177,6 @@ export function FileTab({ file: { n, chat, path, line, from, clips, preview, err
       </div>
     </div>
     ${preview?.readOnly && !editing ? html`<p class="file-readonly">${preview.readOnly}</p>` : null}
-    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-editing=${editing ? '' : undefined} data-kind=${kind} tabindex=${reads && !editing ? 0 : -1} role=${reads && !editing ? 'region' : undefined} aria-label=${reads && !editing ? `Contents of ${name}` : undefined}>${content}${editing ? null : html`<${Clips} clips=${clips} path=${path} onPick=${next => openFile({ id: chat, path: next, line: null, from })} />`}</div>
+    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-editing=${editing ? '' : undefined} data-kind=${kind} tabindex=${reads && !editing ? 0 : -1} role=${reads && !editing ? 'region' : undefined} aria-label=${reads && !editing ? `Contents of ${name}` : undefined}>${audible || moves ? html`<div class="file-bar">${audible ? html`<${Player} url=${url} name=${name} />` : null}${moves ? html`<${ClipNav} clips=${clips} path=${path} onPick=${pick} />` : null}</div>` : null}${content}${moves ? html`<${ClipList} clips=${clips} path=${path} onPick=${pick} />` : null}</div>
   </div>`;
 }
