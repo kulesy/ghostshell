@@ -46,6 +46,7 @@ function tone(hertz, seconds = 5) {
 
 const CLIPS = ['one', 'two', 'missing', 'four', 'five'];
 const TAKES = Array.from({ length: 26 }, (_, i) => `take-${String(i).padStart(2, '0')}`);
+const GONE = 'take-24';
 const files = {};
 
 before(async () => {
@@ -60,7 +61,7 @@ before(async () => {
   fs.writeFileSync(files.text, 'This is only text that has a .wav name.\n');
   for (const name of TAKES) {
     files[name] = path.join(dir, `${name}.wav`);
-    fs.writeFileSync(files[name], tone(400, 2));
+    if (name !== GONE) fs.writeFileSync(files[name], tone(400, 2));
   }
   for (let i = 0; i < 40; i++) says('chat', `Filler paragraph ${i} so the chat is taller than the screen.`);
   says('chat', `${CLIPS.map(name => `- [${name}.wav](<${files[name]}>)`).join('\n')}`);
@@ -280,10 +281,26 @@ test('in a long list the buttons stay on screen, the current row comes into view
     return { scrolled: document.querySelector('.file-body').scrollTop > 0, rowShown: row.top >= bar.bottom && row.bottom <= body.bottom, nextShown: next.top >= body.top && next.bottom <= bar.bottom, handle: hit?.className };
   })()`);
   assert.deepEqual(facts, { scrolled: true, rowShown: true, nextShown: true, handle: 'panel-resize' });
+  const scrollTop = `document.querySelector('.file-body').scrollTop`;
+  const shown = selector => `(() => {
+    const bar = document.querySelector('.file-bar').getBoundingClientRect();
+    const body = document.querySelector('.file-body').getBoundingClientRect();
+    const box = document.querySelector('${selector}')?.getBoundingClientRect();
+    return !!box && box.top >= bar.bottom && box.bottom <= body.bottom;
+  })()`;
+  const stayed = await page.evaluate(scrollTop);
+  await page.click(`.file-clips-list li:nth-child(${TAKES.indexOf('take-23') + 1}) .file-clip`);
+  await playing(page, 'take-23', 'long');
+  assert.equal(await page.evaluate(scrollTop), stayed);
+  await page.click(`.file-clips-list li:nth-child(${TAKES.indexOf(GONE) + 1}) .file-clip`);
+  await page.until(shown('.file-note[role="alert"]'));
+  await page.click('.file-clips-nav button:last-child');
+  await playing(page, 'take-25', 'long');
+  await page.until(shown('.file-clip[aria-current]'));
   await page.click('.file-clips-nav button:last-child');
   await playing(page, 'take-00', 'long');
-  await page.until(`document.querySelector('.file-body').scrollTop === 0`);
-  assert.deepEqual(page.problems, []);
+  await page.until(shown('.file-clip[aria-current]'));
+  assert.deepEqual(page.problems.filter(p => !/404/.test(p)), []);
 });
 
 test('audio has Download and no Open in new tab, because Chrome\'s media page cannot load a clip under the sandbox the server sends', { skip, timeout }, async t => {

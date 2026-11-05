@@ -135,13 +135,13 @@ export function FileTab({ file: { n, chat, path, line, from, clips, preview, err
     if (preview?.editable && readDraft(draftKey(chat, path))) startEdit(chat, path, preview);
   }, [preview]);
 
-  // The line asked for goes to the middle of the body, and anything else starts at the top. A move between clips leaves a long list where it is.
+  // The line asked for goes to the middle of the body, and anything else starts at the top, so a note about a missing clip is seen. A clip that plays, or is still loading, leaves a long list where it is.
   useLayoutEffect(() => {
     const el = body.current;
-    if (!el || audible || clips.length > 1) return;
+    if (!el || audible || (clips.length > 1 && !preview && !error)) return;
     const hit = el.querySelector('[data-hit]');
     el.scrollTop = hit ? hit.offsetTop - (el.clientHeight - hit.offsetHeight) / 2 : 0;
-  }, [preview, source]);
+  }, [preview, source, error]);
 
   let content;
   if (error) content = html`<p class="file-note" role="alert">${error}</p>`;
