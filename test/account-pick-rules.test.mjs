@@ -135,7 +135,7 @@ test('the buttons say whose pin they act on when it is not the session\'s own', 
   assert.deepEqual([own.changeLabel, own.clearLabel], ['Change the pin', 'Clear the pin']);
   assert.equal(blockedPlan({ ...out, from: 'parent', pin: { kind: 'group', id: 'g' } }).changeLabel, "Change the group's pin");
   assert.equal(blockedPlan({ reason: 'removed', account: null, from: 'project', pin: { kind: 'project', id: 'p' } }).clearLabel, "Clear the project's pin");
-  assert.equal(blockedPlan({ reason: 'removed', account: null, from: 'parent', pin: { kind: 'session', id: 'top' } }).clearLabel, "Clear the parent's pin");
+  assert.equal(blockedPlan({ reason: 'removed', account: null, from: 'parent', pin: { kind: 'session', id: 'top' } }).clearLabel, "Clear that session's pin");
 });
 
 test('a group\'s own chat reads its block from the row the index sends for it', () => {
