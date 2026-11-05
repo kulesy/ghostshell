@@ -40,7 +40,7 @@ A row whose turn is running also shows how long that turn has run, left of the m
 
 ### Dots and fold arrows
 
-The dots button takes the mark's place only on a mouse in a window at least 48rem wide, while the pointer is over the row or the focus is in it. The arrow that folds a parent's nested sessions or a routine's earlier runs sits to its left, and shows only then or while they are folded. Below that width, or with no hover, the mark, the arrow and the dots all show.
+The dots button takes the mark's place only on a mouse in a window at least 48rem wide, while the pointer is over the row or the focus is in it. The arrow that folds a parent's nested sessions or a routine's earlier runs sits to its left, and shows only then or while they are folded. A parent's new session button sits left of the arrow and shows with the dots. Below that width, or with no hover, the mark, the arrow and the dots all show.
 
 ### Tooltips and touch
 
@@ -52,11 +52,12 @@ New sessions start from any of these:
 
 - New session, the first item in the + menu at the top of the list.
 - The new session button on a group's header, or on Pinned's or Started here's.
+- The new session button on a parent session's row, which starts the session nested under that parent, in the parent's folder and on its account. A nested session's row, a session with none nested under it and a routine have none.
 - The search's New session action.
 - Ctrl+N.
 - Cmd+N in the installed app.
 
-Each opens an empty chat, and the first message starts the session in the home folder. A session started from a group's header joins that group when it starts, so the group's account pin applies to its first turn. The + and the keys work while the list is still loading. The search shows its action once the list has arrived.
+Each opens an empty chat, and the first message starts the session in the home folder, or in the parent's folder when the chat names a parent. A chip on that chat names the parent, and its x starts the session outside it. A session started from a group's header joins that group when it starts, so the group's account pin applies to its first turn, and one started under a parent runs on the parent's account from its first turn. The + and the keys work while the list is still loading. The search shows its action once the list has arrived.
 
 ### Cmd+N in a tab and in the app
 

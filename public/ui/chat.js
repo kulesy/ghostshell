@@ -12,6 +12,7 @@ import { Holds } from './holds.js';
 import { useDocumentTitle, useFields, useStore } from './hooks.js';
 import { html, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
+import { UNTITLED } from './order.js';
 import { Panel, useAgentsOffered, useShownTab } from './panel.js';
 import { toggleTab } from './panel-state.js';
 import { runFromClick } from './run.js';
@@ -24,6 +25,7 @@ import { agentsButtonName, partsOf } from './subagent-rules.js';
 import { BOT } from './subagents.js';
 import { subsButtonName, subsOffered, subsStatus } from './sub-panel-rules.js';
 import { LIST_TREE, sessionIndex } from './subs.js';
+import { rootOf } from './tree.js';
 import { runnableBlock } from './terminal-rules.js';
 import { toast } from './toast.js';
 import { Transcript } from './transcript.js';
@@ -86,17 +88,18 @@ function ChatHead({ ctrl, kind, rename }) {
   const [renaming, setRenaming] = useState(false);
   const pencil = useRef(null);
   const refocus = useRef(false);
-  const { session, status, outside, terminal, group } = useFields(ctrl.store, 'session', 'status', 'outside', 'terminal', 'group');
+  const { session, status, outside, terminal, group, parent, folder } = useFields(ctrl.store, 'session', 'status', 'outside', 'terminal', 'group', 'parent', 'folder');
   const draft = !!ctrl.draft;
   const pinning = draft && pinsOnStart(group);
   const groupName = useStore(sessionIndex, s => (draft && group ? groupById(s.ix, group)?.name ?? (pinning ? 'Pinned' : null) : null));
+  const parentName = useStore(sessionIndex, s => { const up = draft && parent ? rootOf(s.ix, parent) : null; return up ? up.title || UNTITLED : null; });
   const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
   const agents = useAgentsOffered(ctrl);
   const state = status?.state || 'idle';
   useDocumentTitle(draft ? 'New session · GhostShell' : session?.title ? `${session.title} · GhostShell` : 'GhostShell');
   const place = kind ? [kind] : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : ''] : [];
   const meta = draft
-    ? 'Starts Claude Code in your home folder'
+    ? `Starts Claude Code in ${folderName(folder, HOME) || 'your home folder'}`
     : session ? [...place, settingsLine(status)].filter(Boolean).join('  ') : '';
   const title = draft ? 'New session' : session?.title || 'Session';
   const renamable = !!rename && !draft && !!session;
@@ -124,7 +127,7 @@ function ChatHead({ ctrl, kind, rename }) {
             ${renamable ? html`<button class="btn chat-rename" type="button" data-variant="ghost" data-size="icon-xs" ref=${pencil} aria-label=${rename.label} data-tip=${rename.label} onClick=${() => setRenaming(true)}>${draw(icons.pencil, 'icon')}</button>` : null}`}
       </div>
       <p class="chat-meta" id="meta">${meta}</p>
-      ${draft && groupName ? html`<span class="start-group">${draw(pinning ? icons.pin : icons.folder, 'icon')}<span class="name">${groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${pinning ? 'Start without pinning' : `Start outside ${groupName}`} data-tip=${pinning ? 'Start without pinning' : 'Start outside the group'} onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
+      ${draft && (groupName || parentName) ? html`<span class="start-group">${draw(parentName ? icons.indentIncrease : pinning ? icons.pin : icons.folder, 'icon')}<span class="name">${parentName || groupName}</span><button class="btn" id="startOutside" type="button" data-variant="ghost" data-size="icon-xs" aria-label=${pinning ? 'Start without pinning' : `Start outside ${parentName || groupName}`} data-tip=${pinning ? 'Start without pinning' : `Start outside the ${parentName ? 'parent' : 'group'}`} onClick=${startOutside}>${draw(icons.x, 'icon')}</button></span>` : null}
     </div>
     ${archivable || terminal || subs || agents ? html`<div class="chat-tools">${archivable ? html`<${ArchiveButton} id=${ctrl.id} state=${state} title=${session.title} />` : null}${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${agents ? html`<${AgentsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
   </header>`;
@@ -161,7 +164,7 @@ function Notice({ ctrl }) {
 // `rename` is what the header's pencil renames with, from chat-rename.js, or null for a chat that cannot be renamed there.
 // `meta` stands in the header for the folder and branch, and `aside` is drawn between the header and the transcript. `aside` must be
 // one element that follows a store of its own, because a new element on each render would redraw the whole chat.
-export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside, group = null, rename }) {
+export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside, group = null, parent = null, rename }) {
   const held = useRef(null);
   const pane = useRef(null);
   if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex, pins: () => supportsPins(sessionIndex.get().ix), toast });
@@ -175,7 +178,9 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     return ctrl.close;
   }, [ctrl]);
   const startIn = useStore(sessionIndex, s => draftGroup(s.ix, group));
-  useLayoutEffect(() => { if (ctrl.draft) ctrl.store.set({ group: startIn }); }, [ctrl, startIn]);
+  const folder = useStore(sessionIndex, s => (parent && rootOf(s.ix, parent)?.cwd) || HOME);
+  useLayoutEffect(() => { if (ctrl.draft) ctrl.store.set({ group: startIn, parent }); }, [ctrl, startIn, parent]);
+  useLayoutEffect(() => { if (ctrl.draft) ctrl.setFolder(folder); }, [ctrl, folder]);
   useLayoutEffect(() => {
     const { session } = ctrl.store.get();
     if (title && session && session.title !== title) ctrl.store.set({ session: { ...session, title } });
@@ -195,4 +200,4 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     <${Panel} ctrl=${ctrl} />
     <${PanelKeys} ctrl=${ctrl} />
   </section>`;
-}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside && a.group === b.group && a.rename === b.rename);
+}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside && a.group === b.group && a.parent === b.parent && a.rename === b.rename);

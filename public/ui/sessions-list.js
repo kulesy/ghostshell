@@ -14,7 +14,7 @@ import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatHead, NewHereButton } from './group-button.js';
 import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } from './group-drag-rules.js';
-import { deleteDetail, groupById, newRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
+import { deleteDetail, groupById, newRoute, newUnderRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
 import { isWide, useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { carriedOf, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNote, nestedNote, pinnedNote, placeName, placeTo, refuseNest, topmost, unnestedNote } from './many-rules.js';
@@ -123,7 +123,7 @@ function Head({ id, name, count, open, toggle, menu, chat, extra, handle, form, 
     ${chat
       ? html`<${GroupChatHead} group=${chat} name=${name} count=${count} current=${current === chat.session?.id} />`
       : html`<button class="group-head" type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>`}
-    ${from !== undefined ? html`<${NewHereButton} group=${chat} start=${() => newSession(from)} />` : null}
+    ${from !== undefined ? html`<${NewHereButton} label=${`New session in ${chat.name}`} start=${() => newSession(from)} />` : null}
     ${extra}
     ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
     ${chat ? html`<${FoldButton} label=${`Sessions in ${name}`} open=${open} controls=${count ? `rows-${id}` : null} onClick=${() => toggle(id, open)} />` : null}
@@ -206,7 +206,7 @@ function Family({ r, rowProps, holds, open, onToggle, tree }) {
   const renaming = tree.renaming === r.id;
   const list = `family-${r.id}`;
   return html`<li class="has-fold">
-    ${renaming ? tree.sessionForm(r) : html`<${RowLink} r=${r} dot=${note?.dot} ...${rowProps(r)} /><${RowMore} r=${r} tree=${tree} />`}
+    ${renaming ? tree.sessionForm(r) : html`<${RowLink} r=${r} dot=${note?.dot} ...${rowProps(r)} /><${NewHereButton} label=${`New session under ${r.title || UNTITLED}`} start=${() => newUnder(r.id)} /><${RowMore} r=${r} tree=${tree} />`}
     ${renaming ? null : html`<${FoldButton} label=${nested} open=${open} controls=${list} onClick=${() => onToggle(r.id)} />`}
     ${open ? html`<ul class="sub-rows" id=${list} aria-label=${`Nested under ${r.title || UNTITLED}`} data-drop=${holds ? NEST + r.id : null}>${r.children.map(c => html`<${Row} key=${c.id} r=${c} ...${rowProps(c)} tree=${tree} />`)}</ul>` : null}
   </li>`;
@@ -315,12 +315,13 @@ function walk(e, box, landed) {
 
 // Opens a new session, in a group when one is given. When a new session page is open already the cursor goes to its message box, because
 // that page is not mounted again and the box only takes the focus when it is.
-export const newSession = group => {
+const openDraft = to => {
   const open = !!parseNewRoute(location.hash);
-  const to = newRoute(group);
   if (location.hash !== to) location.hash = to;
   if (open) document.getElementById('text')?.focus();
 };
+export const newSession = group => openDraft(newRoute(group));
+export const newUnder = parent => openDraft(newUnderRoute(parent));
 
 // The Move to items for `targets` (see sessionTargets), with each project's groups under its name. What follows the projects' groups is Home's,
 // and takes a heading of its own so the sections read alike. `choice(label, section, where)` makes one item.

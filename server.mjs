@@ -1085,25 +1085,31 @@ const CHANGES = {
   archived: setArchived,
 };
 
-// Nests a session under another, or takes it out when `parent` is null. A family is one level deep, so a drop on a child nests under that
-// child's parent. The answer carries the parent the list now shows.
-function nest(id, parent) {
-  if (parent !== null && typeof parent !== 'string') throw refuse(400, 'Nest it under which session?');
-  const index = buildIndex();
-  const { rows, groupSessions } = index;
-  if (parent === null) {
-    // A null written with no link to override would hide one that Desktop makes later.
-    if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, index) });
-    return { parent: null };
-  }
+// The session a new one nests under, and the root of its family: a family is one level deep, so a child stands for its parent. Throws the first refusal.
+function familyRoot(parent, { rows, groupSessions } = buildIndex()) {
+  if (typeof parent !== 'string') throw refuse(400, 'Nest it under which session?');
   if (groupSessions.has(parent)) throw refuse(400, `A ${kindOf(groupSessions.get(parent))}'s session cannot hold sessions.`);
   const target = rows.get(parent);
   if (!target) throw refuse(404, NO_SESSION);
   if (target.archived) throw refuse(400, 'That session is archived.');
   if (target.routine) throw refuse(400, 'A routine run cannot hold sessions.');
+  return { target, root: target.parent ?? target.id };
+}
+
+// Nests a session under another, or takes it out when `parent` is null. A family is one level deep, so a drop on a child nests under that
+// child's parent. The answer carries the parent the list now shows.
+function nest(id, parent) {
+  if (parent !== null && typeof parent !== 'string') throw refuse(400, 'Nest it under which session?');
+  const index = buildIndex();
+  const { rows } = index;
+  if (parent === null) {
+    // A null written with no link to override would hide one that Desktop makes later.
+    if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, index) });
+    return { parent: null };
+  }
+  const { target, root } = familyRoot(parent, index);
   // The links lead through archived sessions too, which a family does not show, so they are followed all the way up.
   if ([target, ...chainOf(rows, linksNow(), target)].some(r => r.id === id)) throw refuse(400, 'A session cannot nest under itself or its own child.');
-  const root = target.parent ?? target.id;
   // A session that shows under that parent already keeps its own group and its link.
   if (rows.get(id).parent === root) return { parent: root };
   layout.nest(id, root, { relink: keepFamily(id, index) });
@@ -1242,12 +1248,7 @@ function manyChange({ ids, to }) {
   if (aim === 'parent' && to.parent === null) {
     steps = direct.filter(id => own(id) !== null).map(id => ({ kind: 'unnest', id, group: rows.get(id).group, pinned: rows.get(id).pinned, relink: leave(id).relink }));
   } else if (aim === 'parent') {
-    if (groupSessions.has(to.parent)) throw refuse(400, `A ${kindOf(groupSessions.get(to.parent))}'s session cannot hold sessions.`);
-    const target = rows.get(to.parent);
-    if (!target) throw refuse(404, NO_SESSION);
-    if (target.archived) throw refuse(400, 'That session is archived.');
-    if (target.routine) throw refuse(400, 'A routine run cannot hold sessions.');
-    const root = target.parent ?? target.id;
+    const { root } = familyRoot(to.parent, { rows, groupSessions });
     const refusal = 'A session cannot nest under itself or a session nested under it.';
     if (chosen.has(to.parent) || chosen.has(root)) throw refuse(400, refusal);
     steps = direct.filter(id => rows.get(id).parent !== root).map(id => ({ kind: 'nest', id, parent: root, relink: leave(id).relink }));
@@ -1939,9 +1940,9 @@ async function api(req, res, u) {
     return send(res, 200, { folders: [home, ...[...seen.keys()].filter(f => f !== home)].slice(0, 25) });
   }
   if (req.method === 'POST' && u.pathname === '/api/new') {
-    const { cwd, text, mode, model, effort, fast, group, account, images: sent, files: listed } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
-    // A pin, or a group that picks the account, decides which subscription the session spends.
-    if ((account != null || group != null) && !strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+    const { cwd, text, mode, model, effort, fast, group, parent, account, images: sent, files: listed } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
+    // A pin, or a group or parent that picks the account, decides which subscription the session spends.
+    if ((account != null || group != null || parent != null) && !strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
     const { images, error } = readImages(sent);
     if (error) return send(res, 400, { error });
     const { files, error: fileError } = uploads.readFiles(listed);
@@ -1949,17 +1950,35 @@ async function api(req, res, u) {
     if (files.length && isSlashCommand(text || '')) return send(res, 400, { error: SLASH_WITH_FILES });
     const { documents, error: documentError } = uploads.readDocuments(files);
     if (documentError) return send(res, 400, { error: documentError });
-    if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) return send(res, 400, { error: 'That folder does not exist on this Mac.' });
+    let root = null;
+    if (parent != null) {
+      try {
+        ({ root } = familyRoot(parent));
+      } catch (e) {
+        if (!e.status) throw e;
+        return send(res, e.status, { error: e.message });
+      }
+    }
+    const folder = root ? findRow(root)?.cwd : cwd;
+    if (!folder || !fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) return send(res, 400, { error: 'That folder does not exist on this Mac.' });
     if (!text?.trim() && !images.length && !files.length) return send(res, 400, { error: 'Write the first message.' });
     if (model && !MODEL.test(model)) return send(res, 400, { error: 'Unknown model.' });
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
     if (fast !== undefined && typeof fast !== 'boolean') return send(res, 400, { error: 'Unknown fast mode.' });
     if (group != null && !groupList().some(g => g.id === group)) return send(res, 400, { error: 'Unknown group.' });
     if (account != null && (typeof account !== 'string' || !accounts.find(account))) return send(res, 400, { error: 'Unknown account.' });
-    const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
-    const id = await newSession({ cwd, text: text || '', images, documents, files, mode: chosen, model, effort, fast, group: group ?? null, account: account ?? null });
-    if (group) placeStarted(id, group);
+    const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd: folder }).mode;
+    const home = root ? null : group ?? null;
+    const id = await newSession({ cwd: folder, text: text || '', images, documents, files, mode: chosen, model, effort, fast, group: home, parent: root, account: account ?? null });
+    if (home) placeStarted(id, home);
     uploads.record(id, files);
+    if (!root) return send(res, 200, { id });
+    try {
+      layout.nest(id, root);
+    } catch (e) {
+      console.error(`Could not nest ${id} under ${root}: ${e.message}`);
+      return send(res, 200, { id, notNested: true });
+    }
     return send(res, 200, { id });
   }
   if (u.pathname === '/api/uploads') return uploadsApi(req, res);

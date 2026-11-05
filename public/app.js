@@ -31,7 +31,7 @@ import { busyOf, withoutFamily } from './ui/sub-rules.js';
 import { findRow, listedIds, nestRow, placeRow, sortByTitle, stampTurns, unnestRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
-// #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in),
+// #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet (#/new/<id> with a group chosen to start it in, #/new-under/<id> nested under a parent session),
 // #/passkeys the passkeys, #/accounts the Claude accounts and #/routines the routines, with #/routines/new to add one and #/routines/<id> to edit one. #/scheduled is the same for scheduled sessions.
 function parseRoute(hash) {
   try {
@@ -39,7 +39,7 @@ function parseRoute(hash) {
     if (hash.startsWith('#/g/')) return { name: 'group', id: decodeURIComponent(hash.slice(4)) };
   } catch {}
   const fresh = parseNewRoute(hash);
-  if (fresh) return { name: 'new', group: fresh.group };
+  if (fresh) return { name: 'new', group: fresh.group, parent: fresh.parent ?? null };
   const routines = routineRoute(hash);
   if (routines) return { name: 'routines', ...routines };
   const scheduled = scheduledRoute(hash);
@@ -370,7 +370,7 @@ function App() {
       ${view === 'chat' && route.name === 'routines' ? html`<${RoutinesPane} ix=${ix} route=${route} routines=${routines} error=${routinesError} reload=${loadRoutines} refresh=${refreshRoutines} />` : null}
       ${view === 'chat' && route.name === 'scheduled' ? html`<${ScheduledPane} ix=${ix} route=${route} scheduled=${scheduled} error=${scheduledError} reload=${loadScheduled} refresh=${refreshScheduled} />` : null}
       ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} edit=${edit} />` : null}
-      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'accounts' && route.name !== 'routines' && route.name !== 'scheduled' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} rename=${renamer} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'accounts' && route.name !== 'routines' && route.name !== 'scheduled' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} group=${route.name === 'new' ? route.group : null} parent=${route.name === 'new' ? route.parent : null} rename=${renamer} />` : null}
     </main>
   </div>
   <${Spotlight} open=${finding} ix=${ix} scheduled=${scheduled} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />
