@@ -101,6 +101,15 @@ test('the composer of a draft in a group pinned to Second labels Second and says
   assert.equal(chatAccount({ ix: IX, accounts: LIST, draft: true, id: null, group: 'gs', picked: 'main' }).shown, 'main');
 });
 
+test('a new session under a parent shows the account the parent is pinned to, its own pick comes first, and a parent on the active account changes nothing', () => {
+  const ix = { ...IX, started: [{ id: 'held', account: 'second', accountFrom: 'session' }, { id: 'free', account: 'main', accountFrom: 'active' }] };
+  const draft = (parent, picked = null) => chatAccount({ ix, accounts: LIST, draft: true, id: null, group: null, parent, picked }).shown;
+  assert.equal(draft('held'), 'second');
+  assert.equal(draft('held', 'main'), 'main');
+  assert.equal(draft('free'), LIST.find(a => a.active).id);
+  assert.equal(draft('gone'), LIST.find(a => a.active).id);
+});
+
 test('the composer of a session has a pick only when its row is in the list, and a group\'s own chat has a label and no pick', () => {
   const ix = { ...IX, groups: [{ id: 'g', session: { id: 'gchat', account: 'second' }, sessions: [{ id: 's', account: 'main', accountPin: 'main' }] }] };
   const own = chatAccount({ ix, accounts: LIST, draft: false, id: 's' });

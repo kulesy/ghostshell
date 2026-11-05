@@ -1,7 +1,7 @@
 // Run with `npm test`. How a group's sessions fall into the parts of its panel and of the list tool, and the summary line over them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newRoute, paneOf, parseNewRoute, RECENT_MS, startsFrom, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups } from '../public/ui/group-rules.js';
+import { BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newRoute, newUnderRoute, paneOf, parseNewRoute, RECENT_MS, startsFrom, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups } from '../public/ui/group-rules.js';
 import { supportsSections } from '../public/ui/sections.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -205,6 +205,16 @@ test('an address that is not the new session page gives none, and one with a gro
   for (const hash of ['', '#/', '#/s/new', '#/g/x', '#/newer', '#/new2/x', '#/passkeys']) assert.equal(parseNewRoute(hash), null, hash);
   assert.deepEqual(parseNewRoute('#/new/'), { group: null });
   assert.deepEqual(parseNewRoute('#/new/%E0%A4%A'), { group: null });
+});
+
+test('the new session under a parent address carries an id of any characters and reads back as that parent, with no group', () => {
+  for (const id of ['boss', 'a/b', 'a b?c#d', '100%', 'ünï', '../s/x']) {
+    assert.equal(newUnderRoute(id), `#/new-under/${encodeURIComponent(id)}`);
+    assert.deepEqual(parseNewRoute(newUnderRoute(id)), { group: null, parent: id }, id);
+  }
+  assert.deepEqual(parseNewRoute('#/new-under/'), { group: null, parent: null });
+  assert.deepEqual(parseNewRoute('#/new-under/%E0%A4%A'), { group: null, parent: null });
+  assert.equal(parseNewRoute('#/new-underneath'), null);
 });
 
 test('a new session starts in the group of the address only while it is a group the owner made or Pinned, and any other section or an unknown id means none', () => {

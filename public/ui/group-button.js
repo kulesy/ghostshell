@@ -13,8 +13,7 @@ export function GroupChatHead({ group, name, count, current }) {
     <span class="name">${name}</span> <span class="badge count">${count}</span>${lit ? html`<span class="lamp" data-state=${lit} aria-hidden="true"></span>` : null}</a>`;
 }
 
-// The class `more` gives it the header's small button, which a press does not lift for a drag.
-export function NewHereButton({ group, start }) {
-  const label = `New session in ${group.name}`;
+// The class `more` gives it the header's small button, which a press does not lift for a drag. A parent session's row has one too.
+export function NewHereButton({ label, start }) {
   return html`<button class="more head-tool" type="button" aria-label=${label} data-tip=${label} onClick=${start}>${draw(icons.messageSquarePlus)}</button>`;
 }

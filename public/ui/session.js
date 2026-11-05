@@ -61,7 +61,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: null, model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, agents: null, holdsEnded: endedByChat.get(id) || [],
-    group: null, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', refused: null, usageOut: false, starting: false, loadingEarlier: false,
+    group: null, parent: null, folder: HOME, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', refused: null, usageOut: false, starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     jump: 0, earlierSeq: 0, context: null,
   });
@@ -116,7 +116,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   async function open() {
     document.addEventListener('visibilitychange', onVisible);
     if (draft) {
-      loadDefaults();
+      loadDefaults(HOME);
       return;
     }
     await load();
@@ -408,26 +408,35 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
 
   // ---- starting a session ------------------------------------------------------------------------------
 
-  // A new session starts the way Desktop would start one in the home folder: its mode there, and its effort.
-  async function loadDefaults() {
+  // A new session starts the way Desktop would start one in its folder: its mode there, and its effort.
+  const applyDefaults = d => patchStatus({ ...(!touched.has('mode') && { mode: d.mode }), ...(!touched.has('model') && { model: d.model, shownModel: d.shownModel }), ...(!touched.has('effort') && { effort: d.effort }) });
+
+  async function loadDefaults(cwd) {
     try {
-      const d = await api(`api/defaults?cwd=${enc(HOME)}`);
-      if (closed) return;
-      patchStatus({ ...(!touched.has('mode') && { mode: d.mode }), ...(!touched.has('model') && { model: d.model, shownModel: d.shownModel }), ...(!touched.has('effort') && { effort: d.effort }) });
+      const d = await api(`api/defaults?cwd=${enc(cwd)}`);
+      if (!closed && state().folder === cwd) applyDefaults(d);
     } catch {}
+  }
+
+  // The folder changes when a parent's row loads. Defaults of the old folder go, and a slow answer for it is dropped.
+  function setFolder(cwd) {
+    if (cwd === state().folder) return;
+    store.set({ folder: cwd });
+    applyDefaults({ mode: null, model: null, shownModel: null, effort: null });
+    loadDefaults(cwd);
   }
 
   // The first message goes to the new session; the page follows once the list knows about it.
   async function startNew(text, images, onCreated, files = []) {
     if (state().starting) return;
     const s = state().status;
-    const group = state().group;
+    const { group, parent, folder } = state();
     store.set({ starting: true, notice: '' });
     // The server places the session in its group when it starts it, so the group's pin applies to its first turn. Pinned is a section and is pinned after.
     const joins = group && !pinsOnStart(group) && pins();
     try {
-      const { id: created } = await api('api/new', {
-        cwd: HOME, text, ...(s.mode && { mode: s.mode }), ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
+      const { id: created, notNested } = await api('api/new', {
+        cwd: folder, ...(parent && { parent }), text, ...(s.mode && { mode: s.mode }), ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
         ...(touched.has('account') && s.account && { account: s.account }), ...(joins && { group }),
         ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('fast') && { fast: s.fast }),
       });
@@ -441,6 +450,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
       startedHere = { id: created, text, images, files };
       await refreshIndex();
       location.hash = `#/s/${enc(created)}`;
+      if (notNested) toast('Started the session, but could not nest it under its parent.', { problem: true });
       if (notPlaced) toast(`Started the session, but could not ${pinning ? 'pin it' : 'put it in the group'}: ${notPlaced.message}`, { problem: true });
     } catch (err) {
       notice(err.message);
@@ -455,6 +465,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
 
   return {
     id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, retry,
-    send, prompt, stop, decide, dismissHold, chip, setMode, pick, repin, startNew, notice, imageUrl, fileUrl,
+    send, prompt, stop, decide, dismissHold, chip, setMode, pick, repin, setFolder, startNew, notice, imageUrl, fileUrl,
   };
 }

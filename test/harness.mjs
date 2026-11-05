@@ -141,9 +141,9 @@ const freePort = () => new Promise(resolve => {
 // 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool>, and a message that opens with a <session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
 // `autoTitle` turns on naming sessions from their first turn, which is off in the tests unless they ask, since the fake CLI would be asked as well.
 // `env` is added to the server's environment.
-// A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
+// A session is { id, title, folder, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
 // edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
-// `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
+// `folder` is a folder under home that the Desktop record works in, made if it is not there. `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
 // lastTurnEdgeAt and createdAt, `forkedFrom` its forkedFromSessionId, `verdict` the status_category of its postTurnSummary, and `errorAgo` an error and when it
 // happened. `fields` is merged over the record last, so a key set to undefined is left out of it. `said` is what the assistant says after the first line, one text each.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, with its `routine`, and 'cli' has a transcript only, as a terminal
@@ -188,12 +188,14 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     fs.writeFileSync(path.join(state, 'chips.json'), JSON.stringify(Object.fromEntries(made.map(c => [c.toolUseId, c]))));
   }
   const started = [];
-  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said = [] }) => {
+  sessions.forEach(({ id, title = '', folder, archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said = [] }) => {
     const at = back(ago);
+    const cwd = folder ? path.join(home, folder) : home;
+    if (folder) fs.mkdirSync(cwd, { recursive: true });
     if (source === 'desktop') {
       const record = path.join(records, `local_${id}.json`);
       fs.writeFileSync(record, JSON.stringify({
-        sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at,
+        sessionId: `local_${id}`, cliSessionId: id, title, cwd, isArchived: archived, lastActivityAt: at,
         ...(routine && { scheduledTaskId: routine }), ...(remoteMcpServersConfig !== undefined && { remoteMcpServersConfig }), ...(spawnedFrom && { spawnedFrom }), ...(lineageDetached !== undefined && { lineageDetached }),
         ...(edgeAgo !== undefined && { lastTurnEdgeAt: back(edgeAgo) }), ...(createdAgo !== undefined && { createdAt: back(createdAgo) }), ...(forkedFrom && { forkedFromSessionId: `local_${forkedFrom}` }),
         ...(verdict && { postTurnSummary: { status_category: verdict } }), ...(errorAgo !== undefined && { error: 'The turn failed.', errorAt: back(errorAgo) }),

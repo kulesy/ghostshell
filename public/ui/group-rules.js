@@ -79,11 +79,17 @@ export const groupById = (ix, id) => (sectionById(id) ? sectionGroup(ix, id) : i
 // The address of the new session page, with the group the session will start in when one is chosen.
 export const newRoute = group => (group ? `#/new/${encodeURIComponent(group)}` : '#/new');
 
-// The new session page an address names, as { group }, or null when it is another page. A group id that cannot be decoded is no group.
+// The address of the new session page that nests the session under a parent session.
+export const newUnderRoute = parent => `#/new-under/${encodeURIComponent(parent)}`;
+
+// The new session page an address names, as { group } or, under a parent, { group: null, parent }, or null when it is another page. An id that cannot be decoded is none.
 export function parseNewRoute(hash) {
   if (hash === '#/new') return { group: null };
-  if (!hash.startsWith('#/new/')) return null;
-  try { return { group: decodeURIComponent(hash.slice(6)) || null }; } catch { return { group: null }; }
+  const under = hash.startsWith('#/new-under/');
+  if (!under && !hash.startsWith('#/new/')) return null;
+  let id = null;
+  try { id = decodeURIComponent(hash.slice(under ? 12 : 6)) || null; } catch {}
+  return under ? { group: null, parent: id } : { group: id };
 }
 
 // The group a new session starts in: the one the address names while it is a group the owner made, or Pinned, which pins it. Before the list

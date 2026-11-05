@@ -89,7 +89,7 @@ export function focusNextComposer() {
 }
 
 export function Composer({ ctrl }) {
-  const { status, starting, terminal, session } = useFields(ctrl.store, 'status', 'starting', 'terminal', 'session');
+  const { status, starting, terminal, session, folder } = useFields(ctrl.store, 'status', 'starting', 'terminal', 'session', 'folder');
   // The draft this box writes to: the session's own, or the new session page's.
   const key = ctrl.id ?? NEW;
   const { images, files, preparing } = useStore(attachments, a => attachedTo(a, key));
@@ -124,7 +124,7 @@ export function Composer({ ctrl }) {
   // The / list opens while the first word of the message is being typed, with the caret in it.
   const typed = caret === null ? null : typedCommand(text, caret);
   const query = typed ? typed.query : null;
-  const target = draft ? { cwd: HOME } : { id: ctrl.id };
+  const target = draft ? { cwd: folder } : { id: ctrl.id };
   const { commands, error } = useCommands(target, query !== null && focused);
   const matches = useMemo(() => (commands && query !== null ? matching(commands, query) : []), [commands, query]);
   const open = query !== null && focused && !composing && dismissed !== query && (!commands || matches.length > 0);
@@ -144,7 +144,8 @@ export function Composer({ ctrl }) {
   const ix = useStore(sessionIndex, st => st.ix);
   const accounts = useAccounts(ix);
   const draftGroupId = useStore(ctrl.store, st => st.group ?? null);
-  const mine = chatAccount({ ix, accounts, draft, id: ctrl.id, group: draftGroupId, picked: s.account ?? null });
+  const draftParent = useStore(ctrl.store, st => st.parent ?? null);
+  const mine = chatAccount({ ix, accounts, draft, id: ctrl.id, group: draftGroupId, parent: draftParent, picked: s.account ?? null });
   const accountPart = mine.offered
     ? [{ separator: true }, ...accountMenu({ ix, accounts, pin: mine.pin, follows: mine.follows, pick: value => pickSetting('account', value) })]
     : [];

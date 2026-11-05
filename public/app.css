@@ -831,6 +831,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 
 .rows .fold { right: 2.5rem; }
 
+.rows .head-tool { right: 4.75rem; }
+
 .more svg { flex: none; width: 1rem; height: 1rem; }
 
 .more:focus-visible, .fold:focus-visible { box-shadow: 0 0 0 2px var(--sidebar-ring); }
@@ -1299,6 +1301,8 @@ body[data-scroll-locked] {
 
 .has-fold > .row { padding-right: 4.25rem; }
 
+.has-fold:has(> .head-tool) > .row { padding-right: 6.5rem; }
+
 .row-nest.row-idle { grid-area: meta; min-width: 0; margin-left: 0; overflow: hidden; text-overflow: ellipsis; }
 
 @media (pointer: fine) {
@@ -1362,11 +1366,15 @@ body[data-scroll-locked] {
 
   .has-fold > .row { padding-right: 2.875rem; }
 
+  .has-fold:has(> .head-tool) > .row { padding-right: 4.25rem; }
+
   .row-dot { right: 0.75rem; }
 
   .rows .more { right: 0.125rem; }
 
   .rows .fold { right: 1.5rem; opacity: 0; }
+
+  .rows .head-tool { right: 2.875rem; }
 
   .rows .fold[aria-expanded="false"],
   li:has(> :is(.row, .more, .fold):is(:hover, :focus-visible, [data-state="open"])) > :is(.more, .fold) { opacity: 1; }

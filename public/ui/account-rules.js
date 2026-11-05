@@ -103,10 +103,12 @@ export const rowFor = (ix, id) => (id && ix ? findRow(ix, id) ?? (ix.groups ?? [
 // The small label in a chat: the account it runs on, shown only when more than one is listed.
 export const accountLabel = (accounts, id) => ((accounts?.length ?? 0) > 1 ? accountName(accounts, id) : '');
 
-// The account a new session will run on, as /api/new works it out: its own pick, then the pin of the group it joins, then that group's project, then the active
-// account. `group` counts only when the page sends it, which is for a group of the list and not for Pinned.
-export function draftAccount({ ix, accounts, group, pick }) {
+// The account a new session will run on, as /api/new works it out: its own pick, then the pinned account of the parent it nests under, then the pin of the group it
+// joins, then that group's project, then the active account. `group` counts only when the page sends it, which is for a group of the list and not for Pinned.
+export function draftAccount({ ix, accounts, group, parent, pick }) {
   if (pick) return { account: pick, from: 'session' };
+  const up = parent ? findRow(ix, parent) : null;
+  if (up?.account && up.accountFrom !== 'active') return { account: up.account, from: 'parent' };
   const held = group && !pinsOnStart(group) && supportsPins(ix) ? (ix.groups ?? []).find(g => g.id === group) : null;
   if (held?.account) return { account: held.account, from: 'group' };
   const project = held && (ix.projects ?? []).find(p => p.id === held.project)?.account;
@@ -118,15 +120,15 @@ export function draftAccount({ ix, accounts, group, pick }) {
 const rowFollows = (accounts, row) => (row.accountPin ? '' : accountName(accounts, row.account));
 
 // What the composer shows for a chat: whether it offers the pick, the chat's own pin, the account it runs on (for the label), and whom "Active account" follows.
-// `picked` is a draft's own pick and `group` the group it will start in. A group's own chat has a row for the label but no pick of its own.
-export function chatAccount({ ix, accounts, draft, id, group, picked }) {
+// `picked` is a draft's own pick, `group` the group it will start in and `parent` the session it will nest under. A group's own chat has a row for the label but no pick of its own.
+export function chatAccount({ ix, accounts, draft, id, group, parent, picked }) {
   if (draft) {
     const pin = picked ?? null;
     return {
       offered: !!accounts && offersPick(ix, accounts, !!pin),
       pin,
-      shown: draftAccount({ ix, accounts, group, pick: pin }).account,
-      follows: accountName(accounts, draftAccount({ ix, accounts, group, pick: null }).account),
+      shown: draftAccount({ ix, accounts, group, parent, pick: pin }).account,
+      follows: accountName(accounts, draftAccount({ ix, accounts, group, parent, pick: null }).account),
     };
   }
   const row = findRow(ix, id);

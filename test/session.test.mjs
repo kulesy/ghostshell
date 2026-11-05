@@ -895,6 +895,53 @@ test('the group a new session is placed in is the one at send time, whatever is 
   assert.equal(none.posted.some(([url]) => url === 'api/layout/move'), false, 'a group picked after sending does not attach');
 });
 
+test('a new session under a parent sends the parent and its folder, and says so when the nesting did not take', async () => {
+  globalThis.location = {};
+  const notes = [];
+  const chat = createChat({ draft: true, refreshIndex: async () => {}, toast: (text, options) => notes.push([text, options]) });
+  chat.store.set({ parent: 'boss', folder: '/work' });
+  try {
+    await withChanges(() => ({ status: 200, ok: true, json: async () => ({ id: 'made-1', notNested: true }) }), async sent => {
+      await chat.startNew('hello', [], () => {});
+      assert.deepEqual([sent[0][0], sent[0][1].cwd, sent[0][1].parent], ['api/new', '/work', 'boss']);
+    });
+    assert.deepEqual(notes, [['Started the session, but could not nest it under its parent.', { problem: true }]]);
+  } finally {
+    delete globalThis.location;
+  }
+});
+
+test('a new session with no parent names none and works in the home folder', async () => {
+  const { chat, posted } = await startFrom(null);
+  const body = posted.find(([url]) => url === 'api/new')[1];
+  assert.equal('parent' in body, false);
+  assert.equal(body.cwd, chat.store.get().folder);
+});
+
+test('a new chat whose folder changes drops the defaults of the old one, reads the new one\'s, and ignores a late answer for the old one', async () => {
+  globalThis.location = {};
+  const real = globalThis.fetch;
+  const held = new Map();
+  globalThis.fetch = (url) => new Promise(resolve => held.set(decodeURIComponent(String(url).split('cwd=')[1]), body => resolve({ status: 200, ok: true, json: async () => body })));
+  try {
+    const chat = createChat({ draft: true, refreshIndex() {} });
+    await chat.open();
+    const home = chat.store.get().folder;
+    chat.setFolder('/work');
+    chat.setFolder('/work');
+    held.get(home)(PLAN_DEFAULTS);
+    await settled();
+    assert.equal(chat.store.get().status.mode, null, 'the home folder\'s answer came too late');
+    held.get('/work')({ ...PLAN_DEFAULTS, mode: 'acceptEdits' });
+    await settled();
+    assert.equal(chat.store.get().status.mode, 'acceptEdits');
+    chat.close();
+  } finally {
+    globalThis.fetch = real;
+    delete globalThis.location;
+  }
+});
+
 // A new chat whose home-folder defaults are held until `land(body)` is called, or refused when `land` is given nothing. `sent` lists the posts as [url, body].
 async function withHeldDefaults(run) {
   globalThis.location = {};
