@@ -108,6 +108,14 @@ A call that returned pictures to Claude, such as a screenshot, shows them as thu
 
 A picture a tool returned in a form the page cannot draw still shows as "[image]" in the call's output.
 
+### Audio files
+
+A link to a local `.wav`, `.mp3` or `.m4a` file opens in the File tab with a player, which starts at once. It has play and pause, a seek bar and a volume control, and it works in Chrome and in iPhone Safari. The page checks the file's bytes, so a `.wav` that holds text opens as text.
+
+When the chat links more than one clip, the tab also shows Previous and Next, which wrap round, and a list of the clips with the playing one marked. A move keeps the File tab open and the sound playing. Closing the tab stops the sound.
+
+The file must be one the chat links, as with any file in the tab. A clip can be up to 1 GB, and other files up to 20 MB. A clip has Download and no "Open in new tab", because the browser's own media page cannot load it under the file's security rules.
+
 ### MCP tool names
 
 A call to an MCP tool shows its server first, as in "Chrome computer" or "Gmail search threads", and GhostShell labels its thumbnails with where they came from, such as "Image from Chrome". Desktop's app tools show as "Desktop".
