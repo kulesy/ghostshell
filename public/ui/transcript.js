@@ -4,7 +4,7 @@ import { closeFile, openFile } from './file-view.js';
 import { duration, tokenCount } from './format.js';
 import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
-import { gapBelow, NEAR_END, useClock, useFields, usePin, useStick, useStore } from './hooks.js';
+import { gapBelow, NEAR_END, useClock, useFields, usePin, useStick, useStore, useToday } from './hooks.js';
 import { linksOn, useLinkPreviews } from './links.js';
 import { loadingView } from './load-rules.js';
 import { QuoteFloat } from './quote.js';
@@ -93,6 +93,7 @@ export function Transcript({ ctrl, quoting }) {
   const fileUrl = fileLinks ? ctrl.fileUrl : null;
   const rows = useMemo(() => display(items), [items]);
   const turn = useStore(ctrl.store, turnOf);
+  const today = useToday();
   const [away, setAway] = useState(false);
   const pin = usePin(box);
   useLinkPreviews(box, useStore(sessionIndex, s => linksOn(s.ix)));
@@ -165,7 +166,7 @@ export function Transcript({ ctrl, quoting }) {
       ${view === 'failed' ? html`<div class="load-state" role="alert"><p>Could not open this chat.</p><button class="btn" data-variant="outline" type="button" onClick=${ctrl.retry}>Try again</button></div>` : null}
       <button class="btn earlier" data-variant="outline" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
       <ol class="items" id="items">
-        ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} term=${ctrl.term} terminal=${terminal} />`)}
+        ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} term=${ctrl.term} terminal=${terminal} today=${today} />`)}
         ${ctrl.term ? html`<${BangRuns} ctrl=${ctrl} items=${items} hasEarlier=${hasEarlier} />` : null}
         ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, files: m.files, sending: true }} onImage=${viewImage} />`)}
       </ol>

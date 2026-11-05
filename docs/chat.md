@@ -8,6 +8,10 @@ The prompt box follows Desktop's. It is one row: a + on the left attaches files 
 
 The permission mode (Manual, Accept edits, Plan, Auto, Bypass permissions) sits under the box as plain text and opens its list when you click it.
 
+## Message times
+
+Each message shows when it was sent, in small grey text under it: yours on the right and Claude's on the left. A message from today shows the time, and an older one adds the day, as in "Yesterday, 4:12 pm", "Mon, 4:12 pm" or "3 Nov, 4:12 pm". The time comes from the transcript, so it reads the same live and after a reload, and it appears once the message is saved. It uses the clock of the device you read it on. Copying or quoting a message leaves the time out.
+
 ## Quotes
 
 Select text anywhere in a chat's messages, tool output and code blocks included, and a Quote button shows beside the selection. Click it, or press Ctrl+' or Cmd+', and the text goes into the prompt box as a quote, with the cursor at the end of your text. On a phone the button sits above the prompt box, clear of the phone's own selection menu.

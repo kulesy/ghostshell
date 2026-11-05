@@ -1077,3 +1077,15 @@ test('a scan is kept for the newest 16 files unless the caller passes a number o
   assert.equal(rounds(2), 10, 'two kept of five in turn means each is read again');
   assert.equal(rounds(Infinity), 5);
 });
+
+test('a saved message gives the same time read live as it does after a reload', () => {
+  const first = user('first');
+  const said = { ...assistant('m1', [{ type: 'text', text: 'one' }]), timestamp: '2026-10-16T03:04:05.000Z' };
+  const mine = { ...user('then me'), timestamp: '2026-10-16T03:05:06.000Z' };
+  const t = file('times', [first, said, mine]);
+  const from = Buffer.byteLength(`${JSON.stringify(first)}\n`);
+  const times = items => items.map(i => [i.kind, i.at]);
+  const want = [['assistant', said.timestamp], ['user', mine.timestamp]];
+  assert.deepEqual(times(readAfter(t, from, '/work', 8000).items), want, 'as it arrives');
+  assert.deepEqual(times(itemsOf(t)).slice(1), want, 'on a reload');
+});

@@ -1,7 +1,7 @@
 // Run with `npm test`. Small text helpers the page uses, which need no browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromeTool, duration, fileSize, fullToolLabel, grouped, groupHolds, holdCause, holdEnd, preview, serverLabel, thousands, tickIn, tokenCount, toolLabel, toolSource, windowSize } from '../public/ui/format.js';
+import { chromeTool, duration, fileSize, fullToolLabel, grouped, groupHolds, holdCause, holdEnd, preview, sentAt, serverLabel, thousands, tickIn, tokenCount, toolLabel, toolSource, untilMidnight, when, windowSize } from '../public/ui/format.js';
 
 const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
 const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
@@ -277,4 +277,56 @@ test('a file size reads in bytes, then KB, then MB, and rounds up to the next un
   assert.deepEqual([0, 1, 900, 1023].map(fileSize), ['0 bytes', '1 byte', '900 bytes', '1023 bytes']);
   assert.deepEqual([1024, 1536, 10_239, 10_240, 12_345, 1_048_000].map(fileSize), ['1 KB', '1.5 KB', '10 KB', '10 KB', '12 KB', '1023 KB']);
   assert.deepEqual([1_048_576 - 1, 1_048_576, 3_565_158, 20 * 1024 * 1024].map(fileSize), ['1 MB', '1 MB', '3.4 MB', '20 MB']);
+});
+
+// A Thursday, at a local time, so the tests read the same in any zone.
+const local = (...parts) => new Date(...parts);
+const NOW = local(2026, 10, 5, 16, 30).getTime();
+const clockOf = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+test('a message from today shows its time, and an older one adds its day', () => {
+  const sent = (...parts) => sentAt(local(...parts).toISOString(), NOW);
+  const at = clockOf(local(2026, 10, 5, 9, 5));
+  assert.equal(sent(2026, 10, 5, 9, 5), at, 'earlier today');
+  assert.equal(sent(2026, 10, 5, 0, 0), clockOf(local(2026, 10, 5, 0, 0)), 'the first minute of today is still today');
+  assert.equal(sent(2026, 10, 4, 23, 59), `Yesterday, ${clockOf(local(2026, 10, 4, 23, 59))}`, 'a minute before midnight is yesterday');
+  assert.equal(sent(2026, 10, 2, 9, 5), `${local(2026, 10, 2).toLocaleDateString([], { weekday: 'short' })}, ${at}`);
+  assert.equal(sent(2026, 9, 20, 9, 5), `${local(2026, 9, 20).toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${at}`);
+  assert.equal(sent(2025, 10, 5, 9, 5), `${local(2025, 10, 5).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}, ${at}`, 'another year names it');
+});
+
+test('new year\'s eve reads as yesterday on new year\'s day, with no year on it', () => {
+  assert.equal(sentAt(local(2026, 11, 31, 22, 0).toISOString(), local(2027, 0, 1, 8, 0).getTime()), `Yesterday, ${clockOf(local(2026, 11, 31, 22, 0))}`);
+});
+
+test('a message with no usable time shows none', () => {
+  for (const at of [null, undefined, '', 'not a date']) assert.equal(sentAt(at, NOW), '');
+});
+
+test('one day reads the same all day, whatever the hour', () => {
+  const sent = (...parts) => sentAt(local(...parts).toISOString(), NOW).split(', ')[0];
+  assert.equal(sent(2026, 9, 30, 8, 0), sent(2026, 9, 30, 20, 0));
+  assert.equal(sent(2026, 9, 30, 8, 0), local(2026, 9, 30).toLocaleDateString([], { weekday: 'short' }));
+});
+
+test('the next midnight is on the calendar, whatever the day\'s length', () => {
+  const now = local(2026, 10, 5, 23, 59, 30).getTime();
+  assert.equal(untilMidnight(now), 30_000);
+  const at = NOW + untilMidnight(NOW);
+  assert.equal(new Date(at).getHours(), 0);
+  assert.equal(new Date(at).getDate(), 6);
+});
+
+test('the sidebar\'s time still reads as it did', () => {
+  assert.equal(when(Date.now() - 1000), 'now');
+  assert.equal(when(Date.now() - 5 * 60_000), '5 min');
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (Date.now() - today > 3600_000) assert.equal(when(today.getTime()), today.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
+  assert.equal(when(yesterday.getTime()), 'Yesterday');
+  assert.equal(when(Date.now() - 2 * 86400_000), new Date(Date.now() - 2 * 86400_000).toLocaleDateString([], { weekday: 'short' }));
+  assert.equal(when(Date.now() - 30 * 86400_000), new Date(Date.now() - 30 * 86400_000).toLocaleDateString([], { day: 'numeric', month: 'short' }));
+  assert.equal(when(null), '');
 });

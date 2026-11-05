@@ -2073,6 +2073,20 @@ body.dragging .rows .more { opacity: 0; }
 
 .msg { overflow-wrap: anywhere; font-size: 0.875rem; line-height: 1.625; }
 
+.msg[data-time]::after {
+  content: attr(data-time);
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.msg.user[data-time]::after { margin-top: -0.25rem; }
+
+.msg.claude[data-time] > :last-child { margin-bottom: 0; }
+
 .msg.user {
   display: flex;
   flex-direction: column;
