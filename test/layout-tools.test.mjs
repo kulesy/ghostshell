@@ -385,18 +385,35 @@ test('a group name is checked against every group, on Home and in every project,
     refused(() => createGroup({ name: ' reviewing', project }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
   }
   refused(() => createGroup({ name: 'backlog' }, subs, groups), /\[cg-b, cg-c\]/);
-  for (const twin of ['Reviewing\u200B', 'Re\u00ADviewing', 'Review"ing', '[Reviewing]']) refused(() => createGroup({ name: twin }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
-  for (let point = 0; point <= 0x10FFFF; point++) {
-    const unseen = String.fromCodePoint(point);
-    if (!showsNothing(unseen)) continue;
-    refused(() => createGroup({ name: `Reviewing${unseen}` }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
-    if (!/\s/u.test(unseen)) refused(() => createGroup({ name: `Re${unseen}viewing` }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
-  }
+  for (const twin of ['Review"ing', '[Reviewing]']) refused(() => createGroup({ name: twin }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
   refused(() => createGroup({ name: 'Cafe\u0301' }, subs, [{ id: 'cg-e', name: 'Caf\u00E9' }]), /^There is already a group called "Caf\u00E9" \[cg-e\]/);
   refused(() => createGroup({ name: 'Caf\u00E9' }, subs, [{ id: 'cg-e', name: 'Cafe"\u0301' }]), /\[cg-e\]/);
   assert.deepEqual(subs.calls, []);
   assert.match(createGroup({ name: 'Work', project: 'Work' }, subs, groups), /^Created the group "Work" \[cg-Work\] in the project "Work"\./);
   assert.match(createGroup({ name: 'Home lab' }, subs, groups), /on Home\./);
+});
+
+test('no one character, wherever it sits, gets a new name past the duplicate check with the same card as a group that exists', () => {
+  const subs = subsFor();
+  const groups = [{ id: 'cg-s', name: 'Dep loy' }, { id: 'cg-p', name: 'Deploy' }];
+  const cards = groups.map(group => layoutSummary('create_group', { name: group.name }, subs, groups));
+  for (let point = 0; point <= 0x10FFFF; point++) {
+    if (point >= 0xD800 && point <= 0xDFFF) continue;
+    const one = String.fromCodePoint(point);
+    for (const name of [`Dep${one}loy`, `Dep loy${one}`, `Deploy${one}`, `De${one}ploy`]) {
+      if (!cards.includes(layoutSummary('create_group', { name }, subs, groups))) continue;
+      assert.throws(() => createGroup({ name }, subs, groups), undefined, `U+${point.toString(16)} in ${JSON.stringify(name)}`);
+    }
+    if (showsNothing(one) && !/\s/u.test(one)) refused(() => createGroup({ name: `A${one}B` }, subs, groups), /draws nothing/);
+  }
+  assert.deepEqual(subs.calls, []);
+});
+
+test('a new name keeps the joiners inside an emoji', () => {
+  const subs = subsFor();
+  for (const name of ['\u{1F9D1}\u200D\u{1F4BB} Dev', '\u2699\uFE0F Ops']) assert.equal(createGroup({ name }, subs, []).startsWith('Created'), true);
+  refused(() => createGroup({ name: 'Ops\uFE0F' }, subs, []), /draws nothing/);
+  assert.equal(subs.calls.length, 2);
 });
 
 test('a group name that is missing, not text, blank or over 80 characters is refused, and so is a project name the server cannot find', () => {
