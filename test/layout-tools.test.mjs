@@ -376,7 +376,7 @@ test('a project that is unknown is refused with the names, two with the same nam
   assert.deepEqual([subs.calls, twin.calls.length], [[], 1]);
 });
 
-test('a group name is checked against every group, on Home and in every project, ignoring case and extra spaces, and a project\'s name does not block it', () => {
+test('a group name is checked against every group, on Home and in every project, as a person would read it, and a project\'s name does not block it', () => {
   const subs = subsFor();
   const groups = [...GROUPS, { id: 'cg-in', name: 'Deep   Work', project: 'cp-w' }];
   for (const project of [undefined, 'Work', 'Home lab']) {
@@ -384,6 +384,7 @@ test('a group name is checked against every group, on Home and in every project,
     refused(() => createGroup({ name: ' reviewing', project }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
   }
   refused(() => createGroup({ name: 'backlog' }, subs, groups), /\[cg-b, cg-c\]/);
+  for (const twin of ['Reviewing\u200B', 'Re\u00ADviewing', 'Review"ing', '[Reviewing]']) refused(() => createGroup({ name: twin }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
   assert.deepEqual(subs.calls, []);
   assert.match(createGroup({ name: 'Work', project: 'Work' }, subs, groups), /^Created the group "Work" \[cg-Work\] in the project "Work"\./);
   assert.match(createGroup({ name: 'Home lab' }, subs, groups), /on Home\./);
