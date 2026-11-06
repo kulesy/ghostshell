@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { archiveSession, createGroup, createProject, findSessions, groupNamed, layoutSummary, listChips, moveSession, projectNamed, setSessionTitle, unarchiveSession } from '../lib/layout-tools.mjs';
+import { showsNothing } from '../lib/layout.mjs';
 import { descendantsOf } from '../public/ui/sub-rules.js';
 import { handleMcp, LAYOUT_READ_NAMES, LAYOUT_WRITE_NAMES, SEND_NAME, SUB_READ_NAMES, TOOL_NAMES, TREE_WRITE_NAMES } from '../lib/tools.mjs';
 
@@ -385,6 +386,14 @@ test('a group name is checked against every group, on Home and in every project,
   }
   refused(() => createGroup({ name: 'backlog' }, subs, groups), /\[cg-b, cg-c\]/);
   for (const twin of ['Reviewing\u200B', 'Re\u00ADviewing', 'Review"ing', '[Reviewing]']) refused(() => createGroup({ name: twin }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
+  for (let point = 0; point <= 0x10FFFF; point++) {
+    const unseen = String.fromCodePoint(point);
+    if (!showsNothing(unseen)) continue;
+    refused(() => createGroup({ name: `Reviewing${unseen}` }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
+    if (!/\s/u.test(unseen)) refused(() => createGroup({ name: `Re${unseen}viewing` }, subs, groups), /^There is already a group called "Reviewing" \[cg-d\]/);
+  }
+  refused(() => createGroup({ name: 'Cafe\u0301' }, subs, [{ id: 'cg-e', name: 'Caf\u00E9' }]), /^There is already a group called "Caf\u00E9" \[cg-e\]/);
+  refused(() => createGroup({ name: 'Caf\u00E9' }, subs, [{ id: 'cg-e', name: 'Cafe"\u0301' }]), /\[cg-e\]/);
   assert.deepEqual(subs.calls, []);
   assert.match(createGroup({ name: 'Work', project: 'Work' }, subs, groups), /^Created the group "Work" \[cg-Work\] in the project "Work"\./);
   assert.match(createGroup({ name: 'Home lab' }, subs, groups), /on Home\./);
@@ -393,7 +402,7 @@ test('a group name is checked against every group, on Home and in every project,
 test('a group name that is missing, not text, blank or over 80 characters is refused, and so is a project name the server cannot find', () => {
   const subs = subsFor();
   for (const name of [undefined, null, 5]) refused(() => createGroup({ name }, subs, GROUPS), 'Give the name as name.');
-  refused(() => createGroup({ name: '  ' }, subs, GROUPS), 'Give it a name.');
+  for (const name of ['  ', '\u200B', '""', '[]']) refused(() => createGroup({ name }, subs, GROUPS), 'Give it a name.');
   refused(() => createGroup({ name: 'x'.repeat(81) }, subs, GROUPS), 'Names run to 80 characters at most.');
   const gone = { ...subs, projects: () => PROJECTS, addGroup() { throw status(404, 'Unknown project.'); } };
   refused(() => createGroup({ name: 'A', project: 'Work' }, gone, GROUPS), 'Unknown project.');
@@ -427,6 +436,8 @@ test('a project is named the way a group is, by id first, and a group and a proj
   assert.deepEqual(projectNamed('cp-h', PROJECTS, 'create_group'), { project: PROJECTS[1] });
   assert.deepEqual(projectNamed(' WORK ', PROJECTS, 'create_group'), { project: PROJECTS[0] });
   assert.deepEqual(groupNamed('Work', [{ id: 'g', name: 'Work' }], 'move_session_to_group'), { group: { id: 'g', name: 'Work' } });
+  assert.deepEqual(groupNamed('Cafe\u0301', [{ id: 'g', name: 'Caf\u00E9' }], 'spawn_task').group?.id, 'g', 'a lookup makes the same match the duplicate check does');
+  for (const value of ['"', '[', '\u200B']) assert.match(groupNamed(value, [{ id: 'g', name: '[]' }], 'spawn_task').refusal, /has no group called/, 'a name with nothing to read matches nothing');
 });
 
 test('create_project and create_group answer through the tool call, with the project looked up from the callbacks', () => {
