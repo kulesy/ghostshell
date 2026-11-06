@@ -550,7 +550,7 @@ test('a routines.json that cannot be read stops the check without throwing, and 
 test('the list shows each routine with its next fire in local time, whether it is running, and what is wrong with it', () => {
   const r = rig({ enabled: false });
   const [item] = r.sched.list().routines;
-  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'account', 'enabled', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'retry', 'running', 'next', 'problem']);
+  assert.deepEqual(Object.keys(item), ['id', 'title', 'heading', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'account', 'enabled', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'retry', 'running', 'next', 'problem']);
   assert.deepEqual([item.id, item.title, item.enabled, item.running, item.problem], ['demo', 'Demo routine', false, false, null]);
   assert.equal(item.next, '2026-10-16T07:42:17+11:00');
   r.store.update('demo', { cron: 'nonsense' });
@@ -937,6 +937,68 @@ test('a title is read as a group\'s name is: one that draws nothing is refused, 
   assert.equal(r.sched.edit('demo', { title: ` ${family} day ` }).title, `${family} day`);
   assert.throws(() => r.sched.add({ ...input, title: `\u202e${'x'.repeat(121)}` }), refused(400, ['title']));
   assert.equal(r.sched.add({ ...input, title: `\u202e${'x'.repeat(120)}` }).title, 'x'.repeat(120), 'the length is counted once the controls are dropped');
+});
+
+test('a routine has no heading until it is given one, and a heading reads as a title does: bidi controls dropped, one that draws nothing none', () => {
+  const r = rig({ enabled: false });
+  const input = { ...MORNING, cwd: r.state };
+  assert.equal(r.sched.list().routines.find(x => x.id === 'demo').heading, null, 'an entry written with no heading field');
+  assert.equal(r.sched.add(input).heading, null);
+  assert.equal(r.sched.add({ ...input, heading: '\u202e Reports \u2069' }).heading, 'Reports');
+  for (const heading of ['', '   ', null, '\u200b', '\u2800']) assert.equal(r.sched.edit('demo', { heading }).heading, null, JSON.stringify(heading));
+  assert.equal(r.sched.edit('demo', { heading: 'Inbox' }).heading, 'Inbox');
+  assert.equal(r.sched.edit('demo', { title: 'Renamed' }).heading, 'Inbox', 'an edit that does not send it leaves it');
+  assert.equal(r.sched.add({ ...input, heading: 'x'.repeat(120) }).heading, 'x'.repeat(120));
+  assert.deepEqual(Object.keys(JSON.parse(rawOf(r)).routines[0]).slice(8, 11), ['mode', 'heading', 'account'], 'kept with the fields a person sets');
+});
+
+test('a heading that is not text, or runs past 120 characters, is refused with the group named', () => {
+  const r = rig({ enabled: false });
+  const input = { ...MORNING, cwd: r.state };
+  for (const heading of [7, true, {}, ['a']]) {
+    assert.throws(() => r.sched.add({ ...input, heading }), e => refused(400, ['heading'])(e) && e.problems.heading === 'Unknown group.' && /group/.test(e.message), JSON.stringify(heading));
+    assert.throws(() => r.sched.edit('demo', { heading }), refused(400, ['heading']));
+  }
+  assert.throws(() => r.sched.add({ ...input, heading: 'x'.repeat(121) }), e => refused(400, ['heading'])(e) && /120 characters/.test(e.problems.heading));
+  assert.throws(() => r.sched.edit('demo', { heading: 'x'.repeat(121) }), refused(400, ['heading']));
+  assert.equal(r.demo().heading, null);
+});
+
+test('a hand edited heading that is not text, or draws nothing, reads as none', () => {
+  const r = rig({ enabled: false });
+  for (const heading of [7, [], {}, true, '', '  ', '\u200b']) {
+    handEdit(r, data => { data.routines[0].heading = heading; });
+    assert.equal(r.demo().heading, null, JSON.stringify(heading));
+  }
+  handEdit(r, data => { data.routines[0].heading = ' Reports '; });
+  assert.equal(r.demo().heading, 'Reports');
+});
+
+test('a name that differs only by case takes the spelling another routine already uses, and the only routine in a heading can respell it', () => {
+  const r = rig({ enabled: false });
+  const input = { ...MORNING, cwd: r.state };
+  assert.equal(r.sched.edit('demo', { heading: 'Reports' }).heading, 'Reports');
+  assert.equal(r.sched.add({ ...input, heading: 'reports' }).heading, 'Reports');
+  assert.equal(r.sched.add({ ...input, heading: 'REPORTS' }).heading, 'Reports');
+  const other = r.sched.add({ ...input, heading: 'Inbox' });
+  assert.equal(r.sched.edit(other.id, { heading: 'reports' }).heading, 'Reports');
+  const alone = r.sched.add({ ...input, heading: 'Solo' });
+  assert.equal(r.sched.edit(alone.id, { heading: 'SOLO' }).heading, 'SOLO', 'the routine being edited is left out of the check');
+  assert.equal(r.sched.edit(alone.id, { heading: 'Inbox' }).heading, 'Inbox');
+});
+
+test('a heading change leaves the place in the schedule and the next fire alone', async () => {
+  const r = rig();
+  r.clock.t = at(2026, 10, 16, 9);
+  const before = r.sched.list().routines.find(x => x.id === 'demo');
+  const out = r.sched.edit('demo', { heading: 'Reports' });
+  assert.equal(out.armedAt, before.armedAt);
+  assert.equal(out.next, before.next);
+  assert.equal(Date.parse(r.demo().armedAt), T0);
+  await r.tickAt(at(2026, 10, 16, 9, 0, 5));
+  assert.equal(r.calls.length, 1, 'the 07:42 fire is still caught up');
+  const taken = r.sched.edit('demo', { heading: null });
+  assert.equal(taken.armedAt, r.demo().armedAt);
 });
 
 test('a second routine with the same title gets -2, then -3, and a prompt file kept from a deleted routine counts as taken', () => {
@@ -1406,7 +1468,7 @@ test('the store adds and removes routines, and refuses an id that is there, one 
   const dir = fs.mkdtempSync(path.join(base, 'store-'));
   const store = makeRoutines(dir);
   const routine = { id: 'a', title: 'A', cron: '0 0 * * *', jitterSeconds: 0, file: store.promptFile('a'), cwd: dir, model: null, effort: null, mode: null, enabled: true, armedAt: localIso(T0) };
-  assert.deepEqual(store.add(routine), { ...routine, account: null, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null, retry: null });
+  assert.deepEqual(store.add(routine), { ...routine, heading: null, account: null, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null, retry: null });
   assert.throws(() => store.add(routine), refused(409));
   assert.deepEqual(store.read().routines.map(x => x.id), ['a']);
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'routines.json'), 'utf8')).routines[0]).slice(0, 4), ['id', 'title', 'cron', 'jitterSeconds']);

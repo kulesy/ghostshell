@@ -300,6 +300,7 @@ test('the sessions list tells a page this server can add, edit and delete routin
   assert.equal(res.status, 200);
   assert.equal(res.body().features.routineEdits, true);
   assert.equal(res.body().features.routineFiles, true);
+  assert.equal(res.body().features.routineHeadings, true);
   assert.equal(res.body().features.groupEdits, true);
 });
 
@@ -427,4 +428,35 @@ test('a title in routines.json that is not text gives way to the routine\'s id',
   fs.writeFileSync(path.join(c.s.state, 'routines.json'), JSON.stringify(data));
   const [group] = (await sessionsOf(c)).routines;
   assert.deepEqual([group.title, group.latest.title], ['desk', 'desk']);
+});
+
+test('a heading goes through add and edit over HTTP, a run row carries it at once, and taking it away leaves the row as it was', async () => {
+  const c = await open([{ id: 'd1', title: 'First', routine: 'desk', ago: 5 }]);
+  const [plain] = (await sessionsOf(c)).routines;
+  assert.equal(Object.hasOwn(plain, 'heading'), false, 'a routine with none adds no key');
+  assert.equal((await routinesOf(c))[0].heading, null);
+  const edited = await write(c, 'PATCH', '/api/routines/desk', { heading: ' Reports ' });
+  assert.equal(edited.status, 200, edited.text);
+  assert.equal(JSON.parse(c.raw()).routines[0].heading, 'Reports');
+  const [group] = (await sessionsOf(c)).routines;
+  assert.equal(group.heading, 'Reports', 'the sidebar entry does not wait for api/routines');
+  const added = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, heading: 'reports' });
+  assert.equal(added.body().routine.heading, 'Reports', 'the spelling another routine uses');
+  const gone = await write(c, 'PATCH', '/api/routines/desk', { heading: null });
+  assert.equal(gone.body().routine.heading, null);
+  const [after] = (await sessionsOf(c)).routines;
+  assert.equal(Object.hasOwn(after, 'heading'), false);
+});
+
+test('a heading that is not text or is too long is refused over HTTP under problems.heading, and a hand edit of one reads as none', async () => {
+  const c = await open([{ id: 'd1', title: 'First', routine: 'desk', ago: 5 }]);
+  for (const heading of [7, 'x'.repeat(121)]) {
+    const res = await write(c, 'PATCH', '/api/routines/desk', { heading });
+    assert.deepEqual([res.status, Object.keys(res.body().problems), res.body().error], [400, ['heading'], 'Nothing was saved. Check the group.']);
+  }
+  const data = JSON.parse(c.raw());
+  data.routines[0].heading = 5;
+  fs.writeFileSync(path.join(c.s.state, 'routines.json'), JSON.stringify(data));
+  assert.equal((await routinesOf(c))[0].heading, null);
+  assert.equal(Object.hasOwn((await sessionsOf(c)).routines[0], 'heading'), false);
 });

@@ -21,6 +21,8 @@ let app;
 let older;
 let plain;
 let lonely;
+let groups;
+let ungroup;
 let named;
 let queued;
 let browser;
@@ -151,6 +153,8 @@ before(async () => {
   older = await without(app, 'routineEdits');
   plain = await without(app, 'routineFiles');
   lonely = await unrun();
+  groups = await grouped();
+  ungroup = await without(app, 'routineHeadings');
   browser = await launch(chromium);
 });
 
@@ -158,6 +162,7 @@ after(async () => {
   await browser?.close();
   await older?.close();
   await plain?.close();
+  await ungroup?.close();
 });
 
 // Signs the page in through the login page if it is on it, and sends the passkey offer away.
@@ -848,5 +853,240 @@ test('a routine with a run that is queued to retry says so on its run\'s row, be
   assert.equal(await page.evaluate(`document.querySelector('a.row[data-id="r1"] .row-dot')?.dataset.dot`), 'error', 'the run\'s own error stays');
   assert.match(await page.evaluate(`document.querySelector('a.row[data-id="r1"]').dataset.tip`), /^The last try said: spawn claude ENOENT( · |$)/);
   assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="a1"] .row-idle')`), false, 'a routine that is not queued is drawn as before');
+  assert.deepEqual(page.problems, []);
+});
+
+// ---- groups: routines under headings in Home ------------------------------------------------------
+
+const MARKUP = '<img src=x onerror="window.pwned = 1">';
+const LONG = 'A group name that runs on and on until it reaches the hundred characters the form allows, which is long!';
+
+// A server whose routines sit under headings. Reports holds two routines with runs (one with an earlier run) and one with none, Inbox one,
+// and a markup name another. Solo's only run is pinned, and two routines have none or a hand edited heading that is not text.
+async function grouped() {
+  const first = await start({
+    sessions: [
+      { id: 'a1', title: 'Alpha run', routine: 'alpha', ago: 5 },
+      { id: 'a2', title: 'Alpha earlier', routine: 'alpha', ago: 65 },
+      { id: 'b1', title: 'Beta run', routine: 'beta', ago: 10 },
+      { id: 'c1', title: 'Carry run', routine: 'carry', ago: 15 },
+      { id: 'k1', title: 'Kept run', routine: 'kept', pinned: true, ago: 6 },
+      { id: 'l1', title: 'Loose run', routine: 'loose', ago: 20 },
+      { id: 'w1', title: 'Weird run', routine: 'weird', ago: 25 },
+      { id: 'm1', title: 'Markup run', routine: 'markup', ago: 30 },
+      { id: 'n1', title: 'Long run', routine: 'longer', ago: 35 },
+    ],
+    claude: true,
+  });
+  const work = path.join(first.home, 'work');
+  fs.mkdirSync(work);
+  fs.mkdirSync(path.join(first.state, 'routines'));
+  const routine = (id, title, extra = {}) => {
+    fs.writeFileSync(path.join(first.state, 'routines', `${id}.md`), `Do ${title}.\n`);
+    return { id, title, cron: '0 3 1 1 *', jitterSeconds: 0, file: path.join(first.state, 'routines', `${id}.md`), cwd: work, model: null, effort: null, mode: null, enabled: true, ...extra };
+  };
+  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({
+    routines: [
+      routine('alpha', 'Alpha check', { heading: 'Reports' }),
+      routine('beta', 'Beta check', { heading: 'Reports' }),
+      routine('carry', 'Carry check', { heading: 'Inbox' }),
+      routine('kept', 'Kept check', { heading: 'Solo' }),
+      routine('loose', 'Loose check'),
+      routine('weird', 'Weird check', { heading: 7 }),
+      routine('markup', 'Markup check', { heading: MARKUP }),
+      routine('longer', 'Long check', { heading: LONG }),
+      routine('idle', 'Idle check', { heading: 'Reports' }),
+      routine('plain', 'Plain check'),
+    ],
+  }, null, 2));
+  return restart(first);
+}
+
+const sidebar = page => page.evaluate(`[...document.querySelectorAll('#rows-routines > li')].map(li => [
+  li.classList.contains('routine-heading') ? li.querySelector(':scope > .group-head .name').textContent : null,
+  li.classList.contains('routine-heading') ? Number(li.querySelector(':scope > .group-head .count').textContent) : null,
+  [...li.querySelectorAll('a.row:not(.earlier-runs a.row)')].map(a => a.dataset.id ?? a.dataset.idle),
+])`);
+// The headings are the last rows of the section, in name order: markup, long, Inbox, Reports.
+const headingNamed = name => `#rows-routines > li.routine-heading:nth-last-child(${{ Reports: 1, Inbox: 2 }[name]})`;
+const gatherCollapsed = page => page.evaluate(`JSON.parse(localStorage.getItem('capcom.collapsed') ?? '{}')`);
+
+test('routines with a group show under headings in name order after the ones with none, each with the count of its routines, and a pinned run raises none', { skip, timeout }, async t => {
+  const page = await appPage(t, groups.origin);
+  await page.until(`!!document.querySelector('a.row[data-id="a1"]')`);
+  const names = [MARKUP, 'Inbox', LONG, 'Reports'].sort(new Intl.Collator('en', { sensitivity: 'base', numeric: true }).compare);
+  const shown = await sidebar(page);
+  const loose = shown.filter(([name]) => name === null).flatMap(([, , ids]) => ids).sort();
+  assert.deepEqual(loose, ['l1', 'plain', 'w1']);
+  assert.equal(shown.findIndex(([name]) => name !== null), shown.length - 4, 'the headings follow every row with none');
+  assert.deepEqual(shown.filter(([name]) => name !== null).map(([name]) => name), names);
+  const by = Object.fromEntries(shown.filter(([name]) => name !== null).map(([name, count, ids]) => [name, [count, ids.sort()]]));
+  assert.deepEqual(by.Reports, [3, ['a1', 'b1', 'idle']]);
+  assert.deepEqual(by.Inbox, [1, ['c1']]);
+  assert.equal('Solo' in by, false, 'the pinned run stays in Pinned and raises no heading');
+  assert.equal(await page.evaluate(`!!document.querySelector('#rows-pinned a.row[data-id="k1"]')`), true);
+  assert.equal(await text(page, '.group-head[data-key="routines"] .count'), '9', 'the Routines count is as it was');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a heading folds its rows away, says so to a screen reader, and stays folded after a reload', { skip, timeout }, async t => {
+  const page = await appPage(t, groups.origin);
+  await page.until(`!!document.querySelector('a.row[data-id="a1"]')`);
+  const reports = headingNamed('Reports');
+  const button = `${reports} > .group-head`;
+  assert.deepEqual(await page.evaluate(`(b => [b.getAttribute('aria-expanded'), b.getAttribute('aria-controls'), !!document.getElementById(b.getAttribute('aria-controls'))])(document.querySelector(${JSON.stringify(button)}))`), ['true', 'rows-routines-3', true]);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('[id]')].some(el => el.id.includes('Reports') || el.id.includes('<'))`), false, 'a name is never in an id');
+  await page.click(button);
+  await page.until(`!document.querySelector('${reports} a.row')`);
+  assert.deepEqual(await page.evaluate(`(b => [b.getAttribute('aria-expanded'), b.getAttribute('aria-controls')])(document.querySelector(${JSON.stringify(button)}))`), ['false', null]);
+  assert.equal(await text(page, `${button} .count`), '3', 'a folded heading still counts');
+  assert.equal(await page.evaluate(`!!document.querySelector('${headingNamed('Inbox')} a.row[data-id="c1"]')`), true, 'the others stay open');
+  assert.equal((await gatherCollapsed(page))['routine-heading:Reports'], true);
+  await page.evaluate(`window.beforeReload = true; location.reload()`);
+  await page.until(`window.beforeReload === undefined && !!document.querySelector('a.row[data-id="c1"]')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('${reports}')`), true);
+  assert.equal(await page.evaluate(`!!document.querySelector('${reports} a.row')`), false, 'still folded');
+  await page.click(`${reports} > .group-head`);
+  await page.until(`!!document.querySelector('${reports} a.row[data-id="a1"]')`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a routine under a heading keeps its earlier runs fold, and folding the heading does not shut it', { skip, timeout }, async t => {
+  const page = await appPage(t, groups.origin);
+  await page.until(`!!document.querySelector('a.row[data-id="a1"]')`);
+  const reports = headingNamed('Reports');
+  assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="a2"]')`), false);
+  await page.click(`${reports} li.has-fold > .fold`);
+  await page.until(`!!document.querySelector('${reports} .earlier-runs a.row[data-id="a2"]')`);
+  assert.equal(await text(page, `${reports} > .group-head .count`), '3', 'an earlier run is no routine');
+  await page.click(`${reports} > .group-head`);
+  await page.until(`!document.querySelector('${reports} a.row')`);
+  await page.click(`${reports} > .group-head`);
+  await page.until(`!!document.querySelector('${reports} .earlier-runs a.row[data-id="a2"]')`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a heading name is drawn as text, a long one is cut with the count in place, and a hand edited heading that is not text leaves the routine with none', { skip, timeout }, async t => {
+  const page = await appPage(t, groups.origin);
+  await page.until(`!!document.querySelector('a.row[data-id="m1"]')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('.sections img, .sections [onerror]') || window.pwned !== undefined`), false);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('.routine-heading .name')].some(el => el.textContent === ${JSON.stringify(MARKUP)})`), true);
+  assert.equal(await page.evaluate(`(name => { const b = name.closest('.group-head').getBoundingClientRect(); return [name.scrollWidth > name.clientWidth, name.getBoundingClientRect().right <= b.right, getComputedStyle(name).textOverflow]; })([...document.querySelectorAll('.routine-heading .name')].find(el => el.textContent.startsWith('A group name')))`).then(v => JSON.stringify(v)), JSON.stringify([true, true, 'ellipsis']));
+  assert.equal(await page.evaluate(`document.querySelector('#rows-routines > li > a.row[data-id="w1"]') !== null`), true, 'the routine with a heading that is not text is among those with none');
+  assert.deepEqual(page.problems, []);
+});
+
+test('the arrow keys walk a heading: left on a row goes to its heading, right on an open heading to its first row, left on a folded heading to the Routines head', { skip, timeout }, async t => {
+  const page = await appPage(t, groups.origin);
+  await page.until(`!!document.querySelector('a.row[data-id="c1"]')`);
+  const inbox = headingNamed('Inbox');
+  const at = selector => page.until(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
+  await page.evaluate(`document.querySelector('${inbox} > .group-head').focus()`);
+  await page.press('ArrowRight');
+  await at(`${inbox} a.row[data-id="c1"]`);
+  await page.press('ArrowLeft');
+  await at(`${inbox} > .group-head`);
+  await page.press('ArrowLeft');
+  await page.until(`document.querySelector('${inbox} > .group-head').getAttribute('aria-expanded') === 'false'`);
+  await page.press('ArrowLeft');
+  await at('.group-head[data-key="routines"]');
+  await page.press('ArrowDown');
+  await page.until(`document.activeElement !== document.querySelector('.group-head[data-key="routines"]')`);
+  await page.evaluate(`document.querySelector('${inbox} > .group-head').focus()`);
+  await page.press('ArrowRight');
+  await page.until(`document.querySelector('${inbox} > .group-head').getAttribute('aria-expanded') === 'true'`);
+  const reports = headingNamed('Reports');
+  await page.evaluate(`document.querySelector('${reports} li.has-fold > .fold').click()`);
+  await page.until(`!!document.querySelector('${reports} .earlier-runs a.row')`);
+  await page.evaluate(`document.querySelector('${reports} .earlier-runs a.row').focus()`);
+  await page.press('ArrowLeft');
+  await at(`${reports} a.row[data-id="a1"]`);
+  await page.evaluate(`document.querySelector('.group-head[data-key="routines"]').focus()`);
+  await page.press('ArrowLeft');
+  await page.until(`!document.getElementById('rows-routines')`);
+  await page.press('ArrowLeft');
+  assert.equal(await page.evaluate(`document.activeElement === document.querySelector('.group-head[data-key="routines"]')`), true, 'a folded section head stays put');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a server with no routine in a group draws no heading, and the section is the rows it always was', { skip, timeout }, async t => {
+  const page = await appPage(t, lonely.origin);
+  await ready(page);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.routine-heading').length`), 0);
+  assert.equal(await page.evaluate(`document.querySelectorAll('#rows-routines .group-head').length`), 0);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('#rows-routines > li')].every(li => li.querySelector(':scope > a.row') !== null)`), true);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('#rows-routines > li > a.row')].map(a => a.dataset.id ?? a.dataset.idle)`), ['a1', 'idle', 'lapsed', 'paused']);
+  assert.deepEqual(page.problems, []);
+});
+
+async function putInGroup(page, { phone, id, group }) {
+  const click = selector => (phone ? page.tap(selector) : page.click(selector));
+  await page.evaluate(`location.hash = '#/routines/${id}'`);
+  await page.until(`!!document.querySelector('#routine-heading') && document.querySelector('#routine-title').value !== ''`);
+  await type(page, '#routine-heading', group);
+  // The last save's toast sits over the submit button on a phone, so it goes before the tap.
+  await page.evaluate(`document.querySelectorAll('[data-sonner-toaster]').forEach(el => el.remove())`);
+  await reveal(page, '.routine-buttons button[type=submit]');
+  await click('.routine-buttons button[type=submit]');
+  await page.until(`!document.querySelector('#routine-form')`);
+  await page.evaluate(`location.hash = '#/'`);
+}
+
+for (const phone of [false, true]) {
+  test(`a routine is put in a group, moved to another and taken out through its form ${phone ? 'on a phone' : 'on the desktop'}, and a group goes once no routine uses it`, { skip, timeout }, async t => {
+    const page = await appPage(t, app.origin, { hash: '#/routines/scrum', phone });
+    await page.until(`!!document.querySelector('#routine-heading')`);
+    assert.equal(await text(page, 'label[for="routine-heading"]'), 'Group');
+    assert.equal(await text(page, '#routine-heading-hint'), 'Routines with the same group show under one heading in Home. Leave it empty for none.');
+    assert.equal(await page.evaluate(`(el => [el.list === document.querySelector('datalist'), el.hasAttribute('autocomplete'), el.list?.options.length])(document.querySelector('#routine-heading'))`).then(v => JSON.stringify(v)), JSON.stringify([true, false, 0]));
+    assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true);
+    const shown = () => page.evaluate(`[...document.querySelectorAll('#rows-routines > li.routine-heading')].map(li => [li.querySelector(':scope > .group-head .name').textContent, [...li.querySelectorAll('a.row')].map(a => a.dataset.id ?? a.dataset.idle)])`).then(v => JSON.stringify(v));
+    const onceIs = (page2, want) => page2.until(`JSON.stringify([...document.querySelectorAll('#rows-routines > li.routine-heading')].map(li => [li.querySelector(':scope > .group-head .name').textContent, [...li.querySelectorAll('a.row')].map(a => a.dataset.id ?? a.dataset.idle)])) === ${JSON.stringify(JSON.stringify(want))}`);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.routine-heading').length`), 0);
+
+    await putInGroup(page, { phone, id: 'scrum', group: 'Reports' });
+    assert.equal(routineOf('scrum').heading, 'Reports');
+    await onceIs(page, [['Reports', ['scrum']]]);
+    await putInGroup(page, { phone, id: 'alpha', group: 'reports' });
+    assert.equal(routineOf('alpha').heading, 'Reports', 'the spelling another routine uses');
+    await onceIs(page, [['Reports', ['r1', 'scrum']]]);
+
+    await page.evaluate(`location.hash = '#/routines/scrum'`);
+    await page.until(`document.querySelector('#routine-heading')?.value === 'Reports'`);
+    assert.deepEqual(await page.evaluate(`[...document.querySelector('#routine-heading').list.options].map(o => o.value)`), ['Reports']);
+    await putInGroup(page, { phone, id: 'alpha', group: 'Inbox' });
+    assert.equal(routineOf('alpha').heading, 'Inbox');
+    await onceIs(page, [['Inbox', ['r1']], ['Reports', ['scrum']]]);
+
+    await putInGroup(page, { phone, id: 'scrum', group: '' });
+    assert.equal(routineOf('scrum').heading, null);
+    await onceIs(page, [['Inbox', ['r1']]]);
+    await putInGroup(page, { phone, id: 'alpha', group: '' });
+    assert.equal(routineOf('alpha').heading, null);
+    await onceIs(page, []);
+    assert.equal(await shown(), '[]');
+    assert.deepEqual(page.problems, []);
+  });
+}
+
+test('the Group field shows a refusal beside it and takes the focus', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/routines/scrum' });
+  await page.until(`!!document.querySelector('#routine-heading')`);
+  await page.evaluate(`(of => { window.fetch = (url, init) => (init?.method === 'PATCH'
+    ? Promise.resolve(new Response(JSON.stringify({ error: 'Nothing was saved. Check the group.', problems: { heading: 'A group name runs to 120 characters at most.' } }), { status: 400, headers: { 'content-type': 'application/json' } }))
+    : of(url, init)); })(window.fetch)`);
+  await type(page, '#routine-heading', 'x');
+  await press(page, '.routine-buttons button[type=submit]');
+  await page.until(`document.querySelector('#routine-heading-error')?.textContent.includes('120 characters')`);
+  assert.equal(await page.evaluate(`document.querySelector('#routine-heading').getAttribute('aria-invalid')`), 'true');
+  assert.equal(await page.evaluate(`document.querySelector('#routine-heading').getAttribute('aria-describedby')`), 'routine-heading-hint routine-heading-error');
+  await hasFocus(page, '#routine-heading');
+  assert.equal(routineOf('scrum').heading ?? null, null);
+});
+
+test('a server that does not say it knows groups gets no Group field and sends no group', { skip, timeout }, async t => {
+  const page = await appPage(t, ungroup.origin, { hash: '#/routines/scrum' });
+  await page.until(`!!document.querySelector('#routine-form') && document.querySelector('#routine-title')?.value !== ''`);
+  assert.equal(await page.evaluate(`!!document.querySelector('#routine-heading, datalist')`), false);
   assert.deepEqual(page.problems, []);
 });

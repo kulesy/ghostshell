@@ -23,7 +23,7 @@ Each row has a switch, Run now, and a menu with Edit and Delete. A routine's row
 
 ### Adding and editing
 
-New routine and Edit open the same form: title, schedule, jitter, folder, model, effort, permission mode, account, prompt and the switch. The Account pick is on the form only when GhostShell lists more than one account, or the routine already has one. The folder is a typed absolute path, and a new routine starts in your home folder. As you type a schedule, the form shows it in words with its next three fire times. If GhostShell refuses a save, it saves nothing and shows each problem beside its field.
+New routine and Edit open the same form: title, group, schedule, jitter, folder, model, effort, permission mode, account, prompt and the switch. The Group box suggests the groups other routines use, and a name that differs from one only in case takes that one's spelling. The Account pick is on the form only when GhostShell lists more than one account, or the routine already has one. The folder is a typed absolute path, and a new routine starts in your home folder. As you type a schedule, the form shows it in words with its next three fire times. If GhostShell refuses a save, it saves nothing and shows each problem beside its field.
 
 The Prompt field is a choice between GhostShell's own text and a prompt file.
 
@@ -53,6 +53,7 @@ You can add a routine by editing `routines.json`. The file is an object with a `
 | --- | --- | --- | --- |
 | `id` | Yes | Letters, digits, `_` and `-`, and not used by another routine. It never changes, and a routine's runs group under it. | None |
 | `title` | No | The name shown in the list. | The id |
+| `heading` | No | The group name Home shows the routine under, up to 120 characters, or `null`. Routines with the same name share one heading. | `null`, no heading |
 | `cron` | Yes | Five fields in the Mac's time: minute, hour, day of the month, month and day of the week. | None |
 | `jitterSeconds` | No | A whole number of seconds from 0 to 86399, added to every fire time. | 0 |
 | `file` | Yes | The full path of the prompt file, starting with `/`. It cannot hold a double quote or a line break. | None |
@@ -141,12 +142,12 @@ A routine whose prompt file has moved, been deleted or cannot be read stops runn
 
 ## API
 
-- `GET api/sessions` lists `routineEdits` and `routineFiles` in its `features`. A page that does not see them leaves out the editing, or the choice of a prompt file.
+- `GET api/sessions` lists `routineEdits`, `routineFiles` and `routineHeadings` in its `features`. A page that does not see them leaves out the editing, the choice of a prompt file, or the Group box.
 - `GET api/routines` lists the routines with their next fire time, whether each is running, and what is wrong with it if anything.
 - `POST api/routines/<id>/run` runs one now, switched on or not, and answers 409 while its previous run is working.
 - `POST api/routines/<id>/enabled` takes `{ "enabled": true }` or `false`.
-- `POST api/routines` adds one from `title`, `cron`, `jitterSeconds`, `cwd`, `model`, `effort`, `mode`, `enabled`, and either `prompt` (GhostShell's own text) or `file` (the full path of an existing file), never both. A refusal is a 400 with a `problems` object keyed by field, `file` included.
-- `PATCH api/routines/<id>` changes the fields it is sent, refused the same way. Sending `file` points the routine at that file. Sending `prompt` on a routine on a file elsewhere writes GhostShell's own copy and moves the routine onto it, even when the text is the file's own. Sending `prompt` on a routine already on GhostShell's own text writes only if the text changed.
+- `POST api/routines` adds one from `title`, `heading`, `cron`, `jitterSeconds`, `cwd`, `model`, `effort`, `mode`, `enabled`, and either `prompt` (GhostShell's own text) or `file` (the full path of an existing file), never both. A refusal is a 400 with a `problems` object keyed by field, `file` included.
+- `PATCH api/routines/<id>` changes the fields it is sent, refused the same way. A `heading` that is `null` or shows nothing takes the routine out of its group, and changing it never moves the routine's next fire. Sending `file` points the routine at that file. Sending `prompt` on a routine on a file elsewhere writes GhostShell's own copy and moves the routine onto it, even when the text is the file's own. Sending `prompt` on a routine already on GhostShell's own text writes only if the text changed.
 - `DELETE api/routines/<id>` deletes one, and answers 409 while its run is working.
 - `GET api/routines/<id>/prompt` gives `file` (where it is read from), `text`, and `ours`, which is true when the file is GhostShell's own copy. It adds `error` when the file cannot be read.
 - `GET api/schedule?cron=&jitter=` gives the next three fire times of a schedule, or the problem with it.
