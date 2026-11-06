@@ -1,12 +1,14 @@
-// Run with `npm test`. The tools that archive, rename and move a session, and the two that find sessions and chips, against the real server and a fake CLI:
+// Run with `npm test`. The tools that archive, rename and move a session, make a project or a group, and the two that find sessions and chips, against the real server and a fake CLI:
 // each write lands in layout.json the way the layout routes write it, is held to a card in every permission mode with no Always allow, and the reads run unasked.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
 import { as, cliCalls, listen, request, signIn, start, until as waitFor } from './harness.mjs';
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 const GROUPS = [{ id: 'cg-work', name: 'Work', session: WORK }, { id: 'cg-home', name: 'Home' }];
+const PROJECTS = [{ id: 'cp-side', name: 'Side' }];
 const SESSIONS = [
   { id: 'top', title: 'Top', ago: 5 },
   { id: 'kid', title: 'Fix the first line of the prompt', ago: 4 },
@@ -21,7 +23,7 @@ const until = (check, ms = 20_000) => waitFor(check, ms);
 const get = (s, token, route) => request(s, 'GET', route, { headers: as(token) });
 const post = (s, token, route, json) => request(s, 'POST', route, { headers: as(token), json: json ?? {} });
 const ready = async mine => {
-  const s = await start({ sessions: SESSIONS, groups: GROUPS, chips: CHIPS, claude: true, ...mine });
+  const s = await start({ sessions: SESSIONS, groups: GROUPS, chips: CHIPS, claude: true, layout: { projects: PROJECTS }, ...mine });
   return { s, ...(await signIn(s)) };
 };
 const sendTo = async (s, token, id, text) => assert.equal((await post(s, token, `/api/sessions/${id}/send`, { text })).status, 200);
@@ -39,6 +41,8 @@ const WRITES = [
   ['unarchive_session', { session_id: 'gone' }, 'unarchive "Gone" [gone]'],
   ['set_session_title', { session_id: 'loose', title: 'Renamed' }, 'rename "Loose" [loose] to "Renamed"'],
   ['move_session_to_group', { session_id: 'loose', group: 'home' }, 'move "Loose" [loose] to "Home"'],
+  ['create_project', { name: 'Fresh' }, 'create the project "Fresh"'],
+  ['create_group', { name: 'Shiny', project: 'side' }, 'create the group "Shiny" in the project "Side"'],
 ];
 
 test('each write lands in layout.json as the layout route writes it, and the server lists the session as changed', async () => {
@@ -139,12 +143,12 @@ test('find_sessions and list_chips read the real index and chips, a group\'s cha
   assert.match(chips, /^1 chip, the newest first\n\n- Review - dialogs \[task_one\] · started · started session \[kid\] · made by \[top\] · /);
 });
 
-test('a group\'s chat is given the six tools and uses them, and its own chat and a section\'s cannot be changed', async () => {
+test('a group\'s chat is given the eight tools and uses them, and its own chat and a section\'s cannot be changed', async () => {
   const { s, token } = await ready();
   await sendTo(s, token, WORK, 'list the tools');
   await until(() => replies(s).length === 1);
   const listed = replies(s)[0].result.tools.map(t => t.name);
-  for (const name of ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'send_session']) assert.ok(listed.includes(name), name);
+  for (const name of ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'send_session']) assert.ok(listed.includes(name), name);
   const moved = textOf(await callTool(s, token, WORK, 'move_session_to_group', { session_id: 'loose', group: 'Work' }));
   assert.match(moved, /^Moved "Loose" \[loose\] to the group "Work"/);
   assert.match(moved, /This group's chat can now read it with read_group_session\.$/);
@@ -159,7 +163,7 @@ test('a group\'s chat is given the six tools and uses them, and its own chat and
 
 for (const mode of ['manual', 'bypassPermissions', 'auto']) {
   // The fake CLI raises the request in every mode, so this shows that Capcom never auto-allows a write. That the real CLI asks in Bypass and Auto rests on the ask rules.
-  test(`when the CLI asks in ${mode} mode, every write is held to a card that names the session, offers no Always allow, and does nothing until it is answered, in an ordinary chat and a group's`, async () => {
+  test(`when the CLI asks in ${mode} mode, every write is held to a card that names what it changes, offers no Always allow, and does nothing until it is answered, in an ordinary chat and a group's`, async () => {
     const { s, token } = await ready();
     const before = fs.readFileSync(s.layout, 'utf8');
     for (const id of ['top', WORK]) {
@@ -286,4 +290,74 @@ test('an ordinary chat and a group\'s start with an ask rule for each write, bes
   const writes = WRITES.map(([tool]) => `mcp__capcom__${tool}`);
   assert.deepEqual(asked.find(list => !list.includes('mcp__capcom__start_group_session')), ['mcp__capcom__send_session', ...writes]);
   assert.deepEqual(asked.find(list => list.includes('mcp__capcom__start_group_session')), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...writes]);
+});
+
+const chipFor = (s, taskId) => Object.values(JSON.parse(fs.readFileSync(path.join(s.state, 'chips.json'), 'utf8'))).find(c => c.id === taskId);
+const taskIdOf = reply => /task_id: (task_\w+)/.exec(textOf(reply))[1];
+const inGroup = async (s, token, group, id) => (await get(s, token, '/api/sessions')).body().groups.find(g => g.id === group).sessions.some(r => r.id === id);
+
+test('a session goes from no project to sitting in a new group in a new project by tools alone, moving itself with no card', async () => {
+  const { s, token } = await ready({ layout: {} });
+  assert.equal(onDisk(s).projects, undefined);
+  const project = textOf(await callTool(s, token, 'top', 'create_project', { name: ' Side  hustle ' }));
+  const projectId = /^Created the project "Side hustle" \[(cp-[\w-]+)\]\. It has no groups yet/.exec(project)?.[1];
+  assert.ok(projectId, project);
+  assert.deepEqual(onDisk(s).projects, [{ id: projectId, name: 'Side hustle' }]);
+  const group = textOf(await callTool(s, token, 'top', 'create_group', { name: 'Shiny', project: 'SIDE hustle' }));
+  const groupId = /^Created the group "Shiny" \[(cg-[\w-]+)\] in the project "Side hustle"\./.exec(group)?.[1];
+  assert.ok(groupId, group);
+  const written = onDisk(s).groups.find(g => g.id === groupId);
+  assert.deepEqual([written.name, written.project], ['Shiny', projectId]);
+  assert.match(textOf(await callTool(s, token, 'top', 'move_session_to_group', { session_id: 'top', group: 'shiny' })), /^Moved "Top" \[top\] to the group "Shiny"/);
+  assert.equal(onDisk(s).assignments.top, groupId);
+  const index = (await get(s, token, '/api/sessions')).body();
+  assert.deepEqual(index.projects.map(p => [p.id, p.name]), [[projectId, 'Side hustle']]);
+  assert.equal(index.groups.find(g => g.id === groupId).project, projectId);
+  assert.equal(await inGroup(s, token, groupId, 'top'), true);
+  const home = textOf(await callTool(s, token, 'top', 'create_group', { name: 'On the home screen' }));
+  assert.match(home, /on Home\./);
+  assert.equal(onDisk(s).groups.find(g => g.name === 'On the home screen').project, undefined);
+});
+
+test('spawn_task\'s group and move_session_to_group find a group inside a project as they find one on Home, by name and by id, and a chip starts its session there', async () => {
+  const layout = { projects: [{ id: 'cp-p', name: 'Proj' }] };
+  const groups = [...GROUPS, { id: 'cg-in', name: 'Inside', project: 'cp-p' }, { id: 'cg-in2', name: 'Also inside', project: 'cp-p' }];
+  const { s, token } = await ready({ layout, groups });
+  const targets = [['inside', 'cg-in'], ['cg-in', 'cg-in'], ['ALSO  inside', 'cg-in2'], ['cg-in2', 'cg-in2'], ['home', 'cg-home'], ['cg-home', 'cg-home']];
+  for (const [given, id] of targets) {
+    const made = await callTool(s, token, 'top', 'spawn_task', { title: `Into ${given}`, prompt: 'begin a session', group: given });
+    assert.notEqual(made.result.isError, true, textOf(made));
+    const chip = chipFor(s, taskIdOf(made));
+    assert.equal(chip.group, id, `${given} on the chip`);
+    const started = await request(s, 'POST', '/api/chips/start', { headers: as(token), json: { sessionId: 'top', toolUseId: chip.toolUseId } });
+    assert.equal(started.status, 200, started.text);
+    const newId = started.body().id;
+    assert.deepEqual([onDisk(s).assignments[newId], onDisk(s).parents[newId]], [id, null], `${given} where the session landed`);
+    assert.equal(await inGroup(s, token, id, newId), true, `${given} in the list`);
+    const moved = await callTool(s, token, 'top', 'move_session_to_group', { session_id: 'loose', group: given });
+    assert.match(textOf(moved), /^Moved "Loose" \[loose\] to the group /, `${given} move`);
+    assert.equal(onDisk(s).assignments.loose, id, `${given} move landed`);
+  }
+});
+
+test('a name or project already in use is refused with the id, in any case and with extra spaces, and layout.json is left as it was, though the sidebar\'s own route still allows a twin', async () => {
+  const layout = { projects: [{ id: 'cp-p', name: 'Proj' }] };
+  const groups = [...GROUPS, { id: 'cg-in', name: 'Inside', project: 'cp-p' }];
+  const { s, token } = await ready({ layout, groups });
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const refusedText = async (tool, args) => {
+    const reply = await callTool(s, token, 'top', tool, args);
+    assert.equal(reply.result.isError, true, `${tool} ${JSON.stringify(args)}`);
+    return textOf(reply);
+  };
+  assert.equal(await refusedText('create_project', { name: '  PROJ ' }), 'There is already a project called "Proj" [cp-p]. Nothing changed.');
+  assert.equal(await refusedText('create_group', { name: ' inside' }), 'There is already a group called "Inside" [cg-in]. Nothing changed.', 'a group in a project blocks one for Home');
+  assert.equal(await refusedText('create_group', { name: 'HOME', project: 'proj' }), 'There is already a group called "Home" [cg-home]. Nothing changed.', 'a group on Home blocks one for a project');
+  assert.match(await refusedText('create_group', { name: 'New', project: 'Nowhere' }), /^create_group has no project called "Nowhere"\. The projects are "Proj"\.$/);
+  assert.equal(await refusedText('create_project', { name: '  ' }), 'Give it a name.');
+  assert.equal(await refusedText('create_group', { name: 'x'.repeat(81) }), 'Names run to 80 characters at most.');
+  assert.equal(await refusedText('create_group', { name: 'New', project: 'cp-gone' }), 'create_group has no project called "cp-gone". The projects are "Proj".');
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'nothing was written');
+  assert.match(textOf(await callTool(s, token, 'top', 'create_group', { name: 'Proj', project: 'Proj' })), /^Created the group "Proj"/, 'a group may share a project\'s name');
+  assert.equal((await post(s, token, '/api/layout/group/add', { name: 'Inside' })).status, 200, 'the owner may still make a twin');
 });
