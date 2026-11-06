@@ -8,6 +8,9 @@ export const supportsRoutineEdits = ix => !!ix?.features?.routineEdits;
 // Without it the form has the text box alone, as a server that only keeps GhostShell's own text offers.
 export const supportsRoutineFiles = ix => !!ix?.features?.routineFiles;
 
+// Without it a routine has no group, and the form has no Group field.
+export const supportsRoutineHeadings = ix => !!ix?.features?.routineHeadings;
+
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -131,6 +134,23 @@ export const retryTip = r => (r.enabled === true && r.retry && r.lastError ? `Th
 
 const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
 
+// The groups routines are in, each once, in name order. It reads the routines list, so a routine with no row in the sidebar counts.
+export const headingNames = routines => [...new Set((routines ?? []).map(r => r.heading).filter(Boolean))].sort(collator.compare);
+
+// Home's routine rows by group: `loose` is the ones in none, and `headings` is one { name, runs, idle } for each group in name order.
+// A run's group comes with its entry in the list and an idle routine's with the routine. Each keeps the order it came in.
+export function byHeading(runs, idle) {
+  const named = new Map();
+  const loose = { runs: [], idle: [] };
+  const add = (kind, item) => {
+    if (item.heading && !named.has(item.heading)) named.set(item.heading, { name: item.heading, runs: [], idle: [] });
+    (item.heading ? named.get(item.heading) : loose)[kind].push(item);
+  };
+  runs.forEach(g => add('runs', g));
+  idle.forEach(r => add('idle', r));
+  return { loose, headings: [...named.values()].sort((a, b) => collator.compare(a.name, b.name)) };
+}
+
 export const byTitle = routines => [...routines].sort((a, b) => collator.compare(String(a.title ?? a.id ?? ''), String(b.title ?? b.id ?? '')) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
 export const deleteDetail = r => `It stops running. Its earlier runs stay in the list, and its prompt file stays at ${r.file}.`;
@@ -143,18 +163,18 @@ export const promptSource = p => (p.ours
 // ---- the form ------------------------------------------------------------------------------------
 
 // The order the form shows its fields, so the first refused one is the one to focus.
-export const FIELDS = ['title', 'cron', 'jitterSeconds', 'cwd', 'model', 'effort', 'mode', 'account', 'file', 'prompt'];
+export const FIELDS = ['title', 'heading', 'cron', 'jitterSeconds', 'cwd', 'model', 'effort', 'mode', 'account', 'file', 'prompt'];
 
 export const JITTER_PROBLEM = 'Use a whole number of seconds from 0 to 86399.';
 
-export const newForm = home => ({ title: '', cron: '', jitterSeconds: '0', cwd: home, model: '', effort: '', mode: '', account: '', promptKind: 'text', file: '', prompt: '', enabled: true });
+export const newForm = home => ({ title: '', heading: '', cron: '', jitterSeconds: '0', cwd: home, model: '', effort: '', mode: '', account: '', promptKind: 'text', file: '', prompt: '', enabled: true });
 
 // A prompt on a file elsewhere is one the server says is not its own. A server that copies it on save says where to, and has no file choice.
 const kindOf = prompt => (prompt.ours === false && !prompt.copyTo ? 'file' : 'text');
 
 // `prompt` is what api/routines/<id>/prompt answered. The text of a file elsewhere fills the box too, for a routine switched to GhostShell's own text.
 export const formOf = (r, prompt) => ({
-  title: r.title ?? '', cron: r.cron ?? '', jitterSeconds: String(r.jitterSeconds ?? 0), cwd: r.cwd ?? '',
+  title: r.title ?? '', heading: r.heading ?? '', cron: r.cron ?? '', jitterSeconds: String(r.jitterSeconds ?? 0), cwd: r.cwd ?? '',
   model: r.model ?? '', effort: r.effort ?? '', mode: r.mode ?? '', account: r.account ?? '', promptKind: kindOf(prompt), file: kindOf(prompt) === 'file' ? prompt.file : '',
   prompt: prompt.text, enabled: r.enabled === true,
 });
@@ -187,16 +207,18 @@ const same = (a, b) => (a || null) === (b || null);
 // `was` is { routine, kind, file, prompt } as loaded.
 export function requestOf(form, was) {
   const jitter = jitterOf(form.jitterSeconds);
+  const heading = form.heading.trim() || null;
   const all = {
     title: form.title.trim(), cron: form.cron.trim().replace(/\s+/g, ' '), jitterSeconds: jitter ?? form.jitterSeconds, cwd: form.cwd.trim(),
     model: form.model || null, effort: form.effort || null, mode: form.mode || null, enabled: form.enabled,
   };
   const text = form.promptKind !== 'file';
   const path = form.file.trim();
-  if (!was) return { ...all, ...(form.account && { account: form.account }), ...(text ? { prompt: form.prompt } : { file: path }) };
+  if (!was) return { ...all, ...(heading && { heading }), ...(form.account && { account: form.account }), ...(text ? { prompt: form.prompt } : { file: path }) };
   const r = was.routine;
   const changed = {
     ...(all.title !== r.title && { title: all.title }),
+    ...(!same(heading, r.heading) && { heading }),
     ...(all.cron !== (r.cron ?? '').trim().replace(/\s+/g, ' ') && { cron: all.cron }),
     ...(jitter !== (r.jitterSeconds ?? 0) && { jitterSeconds: all.jitterSeconds }),
     ...(all.cwd !== r.cwd && { cwd: all.cwd }),

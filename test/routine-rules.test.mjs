@@ -3,8 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ago, byTitle, choices, deleteDetail, effortChoices, FIELDS, fireTime, formOf, idleWords, isEarlierRun, jitterOf, jitterWords, modelChoices, newForm, promptHint, promptSource, refusals, requestOf, retryTip, retryWords, routineFor, routineHash,
-  routineRoute, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, titledRoutine, unrunRoutines, wasOf,
+  ago, byHeading, byTitle, choices, deleteDetail, effortChoices, FIELDS, fireTime, formOf, headingNames, idleWords, isEarlierRun, jitterOf, jitterWords, modelChoices, newForm, promptHint, promptSource, refusals, requestOf, retryTip, retryWords, routineFor, routineHash,
+  routineRoute, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, supportsRoutineHeadings, titledRoutine, unrunRoutines, wasOf,
 } from '../public/ui/routine-rules.js';
 
 test('a server that does not set routineEdits leaves the page read-only', () => {
@@ -118,7 +118,7 @@ test('a delete says the runs stay and where the prompt file is, and a server wit
 });
 
 test('a new form starts in the home folder, switched on, with the defaults and no jitter', () => {
-  assert.deepEqual(newForm('/Users/me'), { title: '', cron: '', jitterSeconds: '0', cwd: '/Users/me', model: '', effort: '', mode: '', account: '', promptKind: 'text', file: '', prompt: '', enabled: true });
+  assert.deepEqual(newForm('/Users/me'), { title: '', heading: '', cron: '', jitterSeconds: '0', cwd: '/Users/me', model: '', effort: '', mode: '', account: '', promptKind: 'text', file: '', prompt: '', enabled: true });
 });
 
 const ROUTINE = { id: 'morning', title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: 737, cwd: '/work', model: 'claude-opus-5-5', effort: null, mode: 'plan', enabled: false, file: '/state/routines/morning.md' };
@@ -128,7 +128,7 @@ const ELSEWHERE = { file: '/Users/you/prompts/daily-scrum.md', text: 'Run the sc
 
 test('an edit form is filled from the routine with null as Default, on the kind of prompt the routine uses', () => {
   assert.deepEqual(formOf(ROUTINE, OWN), {
-    title: 'Morning', cron: '30 7 * * 1-5', jitterSeconds: '737', cwd: '/work', model: 'claude-opus-5-5', effort: '', mode: 'plan', account: '', promptKind: 'text', file: '', prompt: 'Do it.', enabled: false,
+    title: 'Morning', heading: '', cron: '30 7 * * 1-5', jitterSeconds: '737', cwd: '/work', model: 'claude-opus-5-5', effort: '', mode: 'plan', account: '', promptKind: 'text', file: '', prompt: 'Do it.', enabled: false,
   });
   assert.equal(formOf({ ...ROUTINE, jitterSeconds: undefined }, { text: '', ours: true }).jitterSeconds, '0');
 });
@@ -414,4 +414,57 @@ test('a routine\'s account is sent on a new routine only when picked, and on an 
   assert.equal(loaded.account, 'second');
   assert.deepEqual(requestOf(loaded, was), {});
   assert.deepEqual(requestOf({ ...loaded, account: '' }, was), { account: null });
+});
+
+test('only a server that sets routineHeadings offers the Group field', () => {
+  assert.equal(supportsRoutineHeadings({ features: { routineHeadings: true } }), true);
+  assert.equal(supportsRoutineHeadings({ features: { routineEdits: true } }), false);
+  assert.equal(supportsRoutineHeadings(null), false);
+});
+
+test('the Group field follows the title in the form, and a form is filled with the routine\'s group', () => {
+  assert.deepEqual(FIELDS.slice(0, 3), ['title', 'heading', 'cron']);
+  assert.equal(formOf({ ...ROUTINE, heading: 'Reports' }, OWN).heading, 'Reports');
+  assert.equal(formOf({ ...ROUTINE, heading: null }, OWN).heading, '');
+});
+
+test('a new routine sends a group only when one is typed, and an edit only when it changed', () => {
+  const add = { ...newForm('/work'), title: 'Morning', cron: '30 7 * * 1-5', prompt: 'Do it.' };
+  assert.equal(Object.hasOwn(requestOf(add, null), 'heading'), false);
+  assert.equal(Object.hasOwn(requestOf({ ...add, heading: '   ' }, null), 'heading'), false);
+  assert.equal(requestOf({ ...add, heading: ' Reports ' }, null).heading, 'Reports');
+  const was = wasOf(ROUTINE, OWN);
+  assert.deepEqual(requestOf(formOf(ROUTINE, OWN), was), {}, 'a server without the feature never gets one');
+  const grouped = { ...ROUTINE, heading: 'Reports' };
+  const form = formOf(grouped, OWN);
+  assert.deepEqual(requestOf(form, wasOf(grouped, OWN)), {});
+  assert.deepEqual(requestOf({ ...form, heading: ' Reports ' }, wasOf(grouped, OWN)), {});
+  assert.deepEqual(requestOf({ ...form, heading: 'Inbox' }, wasOf(grouped, OWN)), { heading: 'Inbox' });
+  assert.deepEqual(requestOf({ ...form, heading: '' }, wasOf(grouped, OWN)), { heading: null });
+  assert.deepEqual(requestOf({ ...formOf(ROUTINE, OWN), heading: 'Reports' }, was), { heading: 'Reports' });
+});
+
+test('a refused group is found by the form and given the focus when it is the first', () => {
+  const error = Object.assign(new Error('Nothing was saved.'), { status: 400, data: { problems: { cron: 'Bad.', heading: 'Unknown group.' } } });
+  assert.deepEqual(refusals(error), { fields: { heading: 'Unknown group.', cron: 'Bad.' }, first: 'heading' });
+});
+
+test('the form suggests each group once, from every routine, in name order', () => {
+  assert.deepEqual(headingNames([{ heading: 'Reports' }, { heading: null }, {}, { heading: 'inbox' }, { heading: 'Reports' }, { heading: 'Archive 10' }, { heading: 'Archive 2' }]), ['Archive 2', 'Archive 10', 'inbox', 'Reports']);
+  assert.deepEqual(headingNames(undefined), []);
+  assert.deepEqual(headingNames([]), []);
+});
+
+test('Home\'s routine rows split by group: none first, then each group in name order, every list keeping its order', () => {
+  const run = (name, heading) => ({ name, ...(heading && { heading }) });
+  const idle = (id, heading) => ({ id, heading });
+  const split = byHeading(
+    [run('a'), run('b', 'Reports'), run('c', 'Inbox'), run('d'), run('e', 'Reports')],
+    [idle('f', null), idle('g', 'Reports'), idle('h', 'Inbox'), idle('i', 'Zebra'), idle('j')],
+  );
+  assert.deepEqual(split.loose.runs.map(g => g.name), ['a', 'd']);
+  assert.deepEqual(split.loose.idle.map(r => r.id), ['f', 'j']);
+  assert.deepEqual(split.headings.map(h => [h.name, h.runs.map(g => g.name), h.idle.map(r => r.id)]), [['Inbox', ['c'], ['h']], ['Reports', ['b', 'e'], ['g']], ['Zebra', [], ['i']]]);
+  assert.deepEqual(byHeading([], []), { loose: { runs: [], idle: [] }, headings: [] });
+  assert.deepEqual(byHeading([run('x', '__proto__')], []).headings.map(h => h.name), ['__proto__']);
 });

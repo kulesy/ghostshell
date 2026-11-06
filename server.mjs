@@ -308,7 +308,9 @@ function buildIndex({ archived = false } = {}) {
   const unarchived = new Set(own.unarchived);
   const chipTitles = chips.titles();
   // A routine's run shows the routine's title as it is now. A routine that routines.json no longer holds keeps the title its run started with.
-  const routineTitles = new Map(routineStore.read().routines.map(r => [r.id, r.title]));
+  const storedRoutines = routineStore.read().routines;
+  const routineTitles = new Map(storedRoutines.map(r => [r.id, r.title]));
+  const routineHeadings = new Map(storedRoutines.filter(r => r.heading).map(r => [r.id, r.heading]));
   for (const r of rows.values()) {
     r.group = groupIds.has(own.assignments[r.id]) ? own.assignments[r.id] : null;
     r.pinned = pins.has(r.id);
@@ -386,7 +388,7 @@ function buildIndex({ archived = false } = {}) {
   const byLatest = comparator(sorts.routines);
   const routines = new Map();
   for (const r of top.filter(r => r.routine && !r.group && !r.pinned).sort(comparator(DEFAULT_SORT))) {
-    if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, ...(routineTitles.has(r.routine) && { title: routineTitles.get(r.routine) }), latest: r, earlier: [] });
+    if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, ...(routineTitles.has(r.routine) && { title: routineTitles.get(r.routine) }), ...(routineHeadings.has(r.routine) && { heading: routineHeadings.get(r.routine) }), latest: r, earlier: [] });
     else if (routines.get(r.routine).earlier.length < 12 || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
   }
   const loose = sortRows(top.filter(r => !r.group && !r.routine && !r.pinned), sorts.sessions);
@@ -1939,8 +1941,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, the group a routine can be given for a heading in Home, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);

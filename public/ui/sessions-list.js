@@ -23,7 +23,7 @@ import { UNTITLED } from './order.js';
 import { ParentForm } from './parent-form.js';
 import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndoNote, prune, sessions, stayAfter, step, stopDetail, supportsMany, supportsNewParent, toggle as toggleRow, unarchiveNote, withSubs } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
-import { idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
+import { byHeading, idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
 import { ManageRoutines, renameRoutine, routineItems } from './routines.js';
 import { ManageScheduled, scheduledItems } from './scheduled.js';
 import { inSidebar, noteOf, ordered, scheduledHash, SCHEDULED_HASH, supportsScheduled } from './scheduled-rules.js';
@@ -156,6 +156,18 @@ function Routine({ g, routine, rowProps, open, onToggle, tree }) {
   </li>`;
 }
 
+// A group of routines in the Routines section. Its heading folds their rows away, and the fold is kept with the sections' under a key no
+// section or group id can take. The list's id is the heading's place in the section, so a name never reaches the DOM as an id.
+function RoutineHeading({ name, index, count, collapsed, toggle, children }) {
+  const key = `routine-heading:${name}`;
+  const open = !collapsed[key];
+  const list = `rows-routines-${index}`;
+  return html`<li class="routine-heading">
+    <button class="group-head" type="button" aria-expanded=${open} aria-controls=${open ? list : null} onClick=${() => toggle(key, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
+    ${open ? html`<ul class="rows" id=${list}>${children}</ul>` : null}
+  </li>`;
+}
+
 // A routine that has no run in the list. Its row opens the routine, and it has the menu a run's row has for its routine, by the dots
 // button or a right click. It is not a session, so it has no data-id and the selecting, archiving and dragging of rows leave it alone.
 function IdleRoutine({ r, editable, tree }) {
@@ -253,12 +265,17 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;
   const idle = home ? unrunRoutines(ix, routines) : [];
   const waiting = home && supportsScheduled(ix) ? ordered(inSidebar(scheduled?.scheduled)) : [];
+  const routineRows = ({ runs, idle }) => [
+    ...runs.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} routine=${routines?.routines?.find(r => r.id === g.name)} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`),
+    ...idle.map(r => html`<${IdleRoutine} key=${`idle:${r.id}`} r=${r} editable=${supportsRoutineEdits(ix)} tree=${tree} />`),
+  ];
+  const { loose, headings } = byHeading(ix.routines, idle);
   const parts = [
     home && supportsScheduled(ix) && section('scheduled', 'Scheduled', waiting, waiting.map(s => html`<${ScheduledRow} key=${s.id} s=${s} tree=${tree} />`),
       { drop: false, extra: html`<${ManageScheduled} current=${scheduledOpen} />` }),
     home && section('routines', 'Routines', [...ix.routines, ...idle], [
-      ...ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} routine=${routines?.routines?.find(r => r.id === g.name)} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`),
-      ...idle.map(r => html`<${IdleRoutine} key=${`idle:${r.id}`} r=${r} editable=${supportsRoutineEdits(ix)} tree=${tree} />`),
+      ...routineRows(loose),
+      ...headings.map((h, i) => html`<${RoutineHeading} key=${`heading:${h.name}`} name=${h.name} index=${i} count=${h.runs.length + h.idle.length} collapsed=${collapsed} toggle=${toggle}>${routineRows(h)}<//>`),
     ], { drop: false, chat: groupById(ix, 'routines'), extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned), { chat: groupById(ix, 'pinned') }),
     ...groups.map(group),
@@ -305,11 +322,12 @@ function walk(e, box, landed) {
   if (fold && (fold.getAttribute('aria-expanded') === 'true') !== opening) { e.preventDefault(); fold.click(); }
   else if (!opening && owner) go(owner);
   else if (opening) {
-    const first = item.querySelector(':scope > .sub-rows a.row');
+    const first = item.querySelector(':scope > :is(.sub-rows, .rows) a.row');
     if (first) go(first);
-  } else if (!here.matches('.group-head')) {
-    const head = here.closest('.group')?.querySelector('.group-head');
-    if (head) go(head);
+  } else {
+    // A row under a routine heading goes up to that heading, and a heading to the section's own head, which has nowhere to go.
+    const up = [here.closest('.routine-heading')?.querySelector(':scope > .group-head'), here.closest('.group')?.querySelector('.group-head')].find(head => head && head !== here);
+    if (up) go(up);
   }
 }
 

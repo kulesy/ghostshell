@@ -393,6 +393,7 @@ The up and down arrows move through the section headers and the sessions, and Ho
 
 - Right on a row whose nested sessions show moves to the first of them.
 - Left on a nested session or an earlier run moves back to the row above it.
+- Left on a routine under a heading moves to the heading, and left on a folded heading moves to the Routines header. Right on an open heading moves to its first routine.
 - Up and down also open the session they land on, and the focus stays on its row, with no tooltip over the chat. Headers, routines and scheduled sessions only take the focus, and so do Home, End, left and right. A key held down opens the first session at once and the one it rests on after a short pause, not every one between.
 - Nothing opens while rows are picked, so up and down can step between a Shift+arrow selection, or in a window under 56rem wide, where an open chat would hide the list.
 - Enter opens the focused session.
@@ -422,6 +423,8 @@ In the projects sidebar the up and down arrows, Home and End move between the vi
 ## Routine rows
 
 Routines open their latest run with a click, and the row shows the routine's title. Rename on the row, from its menu or by a double-click, renames the routine itself. The new title shows on the row, on the Routines page and in the header of each run, except a run you renamed from its own chat. A title that shows nothing is refused and the box stays open. A run of a routine that has been deleted keeps the title it started with, and its row renames that run only. The arrow at the end of a routine's row folds its earlier runs out underneath. Each earlier run shows its date and has no Rename in its menu. To give one run a title of its own, use the pencil beside its title in its chat. A routine's right-click and ... menus have Run now, Pause or Resume, Edit and Delete, and the calendar button on the Routines heading opens the [Routines page](routines.md#the-routines-page). A routine's runs list there with the routine's title (see [routines](routines.md)).
+
+A routine with a group (set in its form) shows under a heading inside the Routines section. Routines with no group come first, as they always did, and the headings follow in name order, each with the number of routines in it. A click on a heading folds its routines, and Home remembers the fold, as it does for a section. A heading is not one of your groups: it has no menu and no chat, and it cannot be dragged to or from. A heading goes once no routine uses it. A pinned run, or one you moved into a group, stays where you put it and does not bring its routine's heading with it.
 
 A routine that has no row anywhere in the list gets one at the end of the Routines section, so a routine that has never run is still there. Its row opens the routine, says "Hasn't run yet", "Last run" and how long ago when its runs were archived, "Couldn't start" and how long ago when its last try failed, or "Off" when it is paused, and has the same ... and right-click menus. A routine whose only run is pinned or in a group has that row instead. The section's count includes these rows, and the arrow keys walk onto them like any other. They are not sessions, so they cannot be selected, archived, renamed or dragged.
 

@@ -718,6 +718,15 @@ const ABOVE = {
 const ABOVE_ORDER = ['r3', 'r2', 'r1', 'w1', 'p1', 'pk', 'a1', 'c1', 'c2', 'c3', 'a2', 'a3', 'b1', 'u1', 'u2'];
 const above = (...ids) => stayAbove(ABOVE, ABOVE_ORDER, ids);
 
+test('a routine under a heading lands on the row drawn above it, whatever order the list holds them in', () => {
+  const run = (name, id) => ({ name, latest: person(id, { routine: name }), earlier: [] });
+  const ix = { ...FAM, pinned: [], groups: [], routines: [run('alpha', 'al'), run('beta', 'be'), run('gamma', 'ga')], ungrouped: [] };
+  const drawn = ['be', 'al', 'ga'];
+  assert.equal(stayAbove(ix, drawn, ['ga']), 'al');
+  assert.equal(stayAbove(ix, drawn, ['al']), 'be');
+  assert.equal(stayAbove(ix, drawn, ['be']), 'al');
+});
+
 test('a nested session lands on the nested session above it, or the one below it when it is the first, and on its parent only when it was the only one', () => {
   assert.equal(above('c2'), 'c1');
   assert.equal(above('c3'), 'c2');

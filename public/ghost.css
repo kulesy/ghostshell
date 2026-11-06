@@ -179,6 +179,11 @@
   text-transform: uppercase;
 }
 
+[data-look="ghost"] .routine-heading > .group-head .name {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 [data-look="ghost"] :is(
   .row:is([aria-current="page"], [aria-selected="true"]),
   .scope[aria-current="true"],

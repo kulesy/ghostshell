@@ -11,8 +11,8 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { Alert, aria, chevron, dots, Field } from './form-parts.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import {
-  byTitle, choices, deleteDetail, effortChoices, fireTime, formOf, jitterOf, JITTER_PROBLEM, modelChoices, newForm, NEW_ROUTINE_HASH,
-  promptHint, promptSource, refusals, requestOf, retryWords, routineHash, routineRoute, ROUTINES_HASH, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, wasOf,
+  byTitle, choices, deleteDetail, effortChoices, fireTime, formOf, headingNames, jitterOf, JITTER_PROBLEM, modelChoices, newForm, NEW_ROUTINE_HASH,
+  promptHint, promptSource, refusals, requestOf, retryWords, routineHash, routineRoute, ROUTINES_HASH, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, supportsRoutineHeadings, wasOf,
 } from './routine-rules.js';
 import { say } from './toast.js';
 import { neighbour } from './tree.js';
@@ -224,7 +224,7 @@ function RoutineList({ ix, routines, error, reload, refresh }) {
 
 // ---- the form ------------------------------------------------------------------------------------
 
-const FIELD_IDS = { title: 'routine-title', cron: 'routine-cron', jitterSeconds: 'routine-jitter', cwd: 'routine-cwd', model: 'routine-model', effort: 'routine-effort', mode: 'routine-mode', account: 'routine-account', file: 'routine-file', prompt: 'routine-prompt' };
+const FIELD_IDS = { title: 'routine-title', heading: 'routine-heading', cron: 'routine-cron', jitterSeconds: 'routine-jitter', cwd: 'routine-cwd', model: 'routine-model', effort: 'routine-effort', mode: 'routine-mode', account: 'routine-account', file: 'routine-file', prompt: 'routine-prompt' };
 
 function SchedulePreview({ cron, jitter, preview, now }) {
   const words = cron.trim() ? scheduleWords(cron, jitter ?? 0) : null;
@@ -366,6 +366,10 @@ function RoutineForm({ id, ix, routines, error, refresh }) {
     <${Field} id=${FIELD_IDS.title} label="Title" error=${refused('title')}>
       <input class="input" id=${FIELD_IDS.title} type="text" value=${form.title} autocomplete="off" onInput=${set('title')} ...${aria(FIELD_IDS.title, false, refused('title'))} />
     <//>
+    ${supportsRoutineHeadings(ix) ? html`<${Field} id=${FIELD_IDS.heading} label="Group" hint="Routines with the same group show under one heading in Home. Leave it empty for none." error=${refused('heading')}>
+      <input class="input" id=${FIELD_IDS.heading} type="text" value=${form.heading} list=${`${FIELD_IDS.heading}-names`} onInput=${set('heading')} ...${aria(FIELD_IDS.heading, true, refused('heading'))} />
+      <datalist id=${`${FIELD_IDS.heading}-names`}>${headingNames(routines?.routines).map(name => html`<option key=${name} value=${name}></option>`)}</datalist>
+    <//>` : null}
     <${Field} id=${FIELD_IDS.cron} label="Schedule" hint="Five fields: minute, hour, day of the month, month and day of the week, in this Mac's time. For example 30 7 * * 1-5." error=${cronError}>
       <input class="input routine-mono" id=${FIELD_IDS.cron} type="text" value=${form.cron} placeholder="30 7 * * 1-5" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck=${false} onInput=${set('cron')}
         ...${aria(FIELD_IDS.cron, true, cronError)} />

@@ -231,7 +231,9 @@ export function stayAbove(ix, order, ids) {
   if (!row) return null;
   const next = nextRun(ix, top, leaving);
   if (next) return next;
-  const { siblings, parent } = levelOf(ix, row);
+  const { siblings: listed, parent } = levelOf(ix, row);
+  // A routine heading draws its rows away from their place in the list, so "above" goes by the screen.
+  const siblings = [...listed].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   const at = siblings.findIndex(r => r.id === top);
   if (at < 0) return null;
   const to = siblings.slice(0, at).findLast(stays) ?? siblings.slice(at + 1).find(stays) ?? (parent && stays(parent) ? parent : null);

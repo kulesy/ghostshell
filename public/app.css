@@ -804,6 +804,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 
 .has-menu .group-head .count { margin-right: 1.75rem; }
 
+.routine-heading > .group-head .name { color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent); font-weight: 500; }
+
+.routine-heading > .rows { margin-top: var(--row-gap); margin-left: var(--nest-indent); }
+
+@media (pointer: coarse) {
+  .routine-heading > .group-head { padding-right: 0.375rem; }
+}
+
 .chevron { flex: none; width: 1rem; height: 1rem; transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1); }
 
 :is(.group-head, .fold)[aria-expanded="true"] .chevron { transform: rotate(90deg); }
