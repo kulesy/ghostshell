@@ -97,7 +97,8 @@ async function appPage(t, { phone = false, chat = 'chat' } = {}) {
   await page.evaluate(`location.hash = '#/'`);
   await new Promise(resolve => setTimeout(resolve, 100));
   await page.evaluate(`location.hash = '#/s/${chat}'`);
-  await page.until(`!!document.querySelector('.msg.claude a[data-file]')`, 15_000);
+  // The app adds its hash listener after the list draws, so it can miss the change above. Saying it again until the chat opens gets it heard.
+  await page.until(`window.dispatchEvent(new HashChangeEvent('hashchange')), !!document.querySelector('.msg.claude a[data-file]')`, 15_000);
   return page;
 }
 
