@@ -99,7 +99,7 @@ public actor GhostShellClient {
     func openStream(_ path: String) async throws -> AsyncThrowingStream<UInt8, Error> {
         await loadToken()
         var request = try build("GET", path, token: token, accept: "text/event-stream")
-        // 60 is URLRequest's default, which the session's 15 s replaces. 65 is explicit and outlasts the server's 20 s keep-alive.
+        // The server sends a keep-alive every 20 seconds, so a stream's idle timeout must be longer than that.
         request.timeoutInterval = 65
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
