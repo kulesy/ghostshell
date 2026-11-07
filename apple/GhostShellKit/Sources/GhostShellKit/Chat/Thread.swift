@@ -48,7 +48,9 @@ public struct ChatThread: Sendable {
         orphans = older.orphans
         var list = older.items
         if let seam = list.last, case .assistant(let id, let text) = seam.body, let first = items.first, case .assistant(let firstID, let firstText) = first.body, id == firstID {
+            // The joined message keeps the newer half's key, so the row the reader is on keeps its id.
             list[list.count - 1].body = .assistant(msgID: id, text: text + "\n\n" + firstText)
+            list[list.count - 1].key = first.key
             list.append(contentsOf: items.dropFirst())
         } else {
             list.append(contentsOf: items)
@@ -99,6 +101,20 @@ public enum ChatRow: Hashable, Sendable, Identifiable {
         case .item(let item): item.key
         case .group(let group): group.id
         }
+    }
+
+    /// The keys of the items this row draws. A group's id follows its first item, so older items joining it change the id and not these.
+    public var itemKeys: [String] {
+        switch self {
+        case .item(let item): [item.key]
+        case .group(let group): group.rows.map(\.key)
+        }
+    }
+
+    /// The id of the row in `rows` that draws any of `keys`, such as the row a reader was on before older items were put in front.
+    public static func id(holding keys: [String], in rows: [ChatRow]) -> String? {
+        let wanted = Set(keys)
+        return rows.first { !wanted.isDisjoint(with: $0.itemKeys) }?.id
     }
 }
 

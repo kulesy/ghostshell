@@ -146,7 +146,8 @@ final class ChatModel {
             if let names = page.session?.connectors, names != chat.session.connectors { chat.session.connectors = names }
             if page.reset { thread.removeAll(); parsed = [:] }
             thread.absorb(page.items)
-            end = page.end
+            // An incremental read never ends earlier than the last one, so a reply without an end leaves it alone.
+            end = page.reset ? page.end : max(end, page.end)
             if page.reset { (start, hasEarlier) = (page.start, page.hasEarlier) }
             settleSending(by: page.items)
             if clearLive { live = "" }
@@ -170,9 +171,15 @@ final class ChatModel {
             let page = try await chat.client.messages(sessionID: chat.sessionID, before: start)
             guard !closed, !Task.isCancelled else { return }
             note()
+            let before = rows
             thread.prepend(page.items)
             (start, hasEarlier) = (page.start, page.hasEarlier)
             rebuild()
+            // Older items can join the top group and change its id, so an opened group moves to the new id.
+            if let top = before.first, opened.contains(top.id), let now = ChatRow.id(holding: top.itemKeys, in: rows), now != top.id {
+                opened.remove(top.id)
+                opened.insert(now)
+            }
             earlierCount += 1
         } catch {
             guard !closed, !Task.isCancelled else { return }

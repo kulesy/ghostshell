@@ -68,6 +68,29 @@ final class ChatThreadTests: XCTestCase {
         XCTAssertEqual(text, "first half\n\nsecond half")
     }
 
+    func testPrependJoiningTheTopGroupStillMapsTheOldRowToItsNewId() {
+        var t = ChatThread()
+        t.absorb([tool("a"), thought(), tool("b"), said("m1", "done")])
+        let before = ChatFold.display(t.items)
+        XCTAssertEqual(before.count, 2)
+        t.prepend([said("m0", "older"), tool("z"), thought()])
+        let after = ChatFold.display(t.items)
+        XCTAssertEqual(after.count, 3)
+        // The older tool and thought fold into the group that was on top, so its id moves.
+        XCTAssertNotEqual(after[1].id, before[0].id)
+        XCTAssertEqual(ChatRow.id(holding: before[0].itemKeys, in: after), after[1].id)
+        XCTAssertEqual(ChatRow.id(holding: before[1].itemKeys, in: after), before[1].id)
+        XCTAssertNil(ChatRow.id(holding: ["gone"], in: after))
+    }
+
+    func testPrependKeepsTheKeyOfAMessageJoinedAcrossTheSeam() {
+        var t = ChatThread()
+        t.absorb([said("m1", "second half")])
+        let key = t.items[0].key
+        t.prepend([said("m1", "first half")])
+        XCTAssertEqual(t.items[0].key, key)
+    }
+
     // MARK: Folding
 
     private func keyed(_ items: [ChatItem]) -> [ChatItem] {
