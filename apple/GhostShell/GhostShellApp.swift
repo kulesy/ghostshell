@@ -25,6 +25,13 @@ struct GhostShellApp: App {
                 Button("Sign Out") { Task { await model.signOut() } }
                     .disabled(model.phase != .signedIn)
             }
+            CommandGroup(after: .sidebar) {
+                Button("Accounts") { model.navigator.show { AccountsScreen() } }
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                    .disabled(model.phase != .signedIn)
+                Button("Passkeys") { model.navigator.show { PasskeysScreen() } }
+                    .disabled(model.phase != .signedIn)
+            }
         }
     }
 }

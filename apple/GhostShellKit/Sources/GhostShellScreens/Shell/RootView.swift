@@ -31,9 +31,14 @@ public struct RootView: View {
 
     private var split: some View {
         NavigationSplitView {
-            SidebarScreen().navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 400)
+            SidebarScreen()
+                .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
+                .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 400)
         } detail: {
             if let detail = model.navigator.detail { detail } else { EmptyDetail() }
+        }
+        .toolbar {
+            if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
         }
     }
 }
