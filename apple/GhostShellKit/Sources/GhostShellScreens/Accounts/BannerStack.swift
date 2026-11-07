@@ -24,7 +24,7 @@ public struct BannerStack: View {
                     VStack(spacing: 8) {
                         ForEach(cards) { card in
                             BannerCardView(card: card, problem: state.refusal(for: card), busy: state.pending.contains(card.kind) || (card.kind == .update && state.forcing),
-                                           onAction: { act(card) }, onForce: { force(card) }, onDismiss: { dismiss(card) })
+                                           onAction: { act(card) }, onForce: { force() }, onDismiss: { dismiss(card) })
                         }
                     }
                     .padding(8)
@@ -38,8 +38,7 @@ public struct BannerStack: View {
             guard model.visible, let client = model.client else { return }
             while true {
                 await state.load(client)
-                if state.absent { return }
-                guard await pause(state.polling) else { return }
+                guard await pause(state.absent ? bannerAbsentPoll : state.polling) else { return }
             }
         }
         .alert("Force restart \u{201C}GhostShell\u{201D}?", isPresented: Binding(get: { state.asking != nil }, set: { if !$0 { state.asking = nil } }), presenting: state.asking) { _ in
@@ -79,7 +78,7 @@ public struct BannerStack: View {
         }
     }
 
-    private func force(_ card: BannerCard) {
+    private func force() {
         guard let client = model.client else { return }
         Task { await state.askToForce(client) }
     }

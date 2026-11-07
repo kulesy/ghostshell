@@ -101,6 +101,17 @@ final class AccountRulesTests: XCTestCase {
         XCTAssertEqual(ends("2026-11-12T08:00:00Z", #","stage":"idle","problem":"old""#)?.problem, "")
     }
 
+    /// The server shows a waiting sign-in that has no end date yet. The card shows with its waiting button and prints no date.
+    func testLoginCardWaitingWithNoEndDate() {
+        let card = loginCard(decode(#"{"visible":true,"stage":"waiting","account":"Work"}"#), now: now, calendar: utc)
+        XCTAssertEqual(card?.title, "Work's sign-in is waiting")
+        XCTAssertEqual(card?.action, BannerAction(label: "Waiting for the Mac", busy: true))
+        XCTAssertEqual(card?.progress, "Approve the sign-in page in the browser on the Mac.")
+        XCTAssertFalse(card?.text.contains("ends on") ?? true)
+        // Visible with no end date and nothing waiting has nothing to say.
+        XCTAssertNil(loginCard(decode(#"{"visible":true}"#), now: now, calendar: utc))
+    }
+
     func testUpdateCard() {
         let two: UpdateNotice = decode(#"{"show":true,"kind":"update","count":2,"restart":true,"changes":[{"title":"A"},{"title":"B"}]}"#)
         let card = updateCard(two)

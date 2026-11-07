@@ -48,7 +48,13 @@ public func loginCard(_ login: LoginNotice?, now: Date = Date(), calendar: Calen
         card.text = account.map { "Chats and routines on \($0) fail until you sign in again." } ?? "Every chat and routine fails until you sign in again."
         return card
     }
-    guard let ends = login.endsAt else { return nil }
+    // The server shows a waiting sign-in with no end date. The page would print a nonsense date there, so this says only that it waits.
+    guard let ends = login.endsAt else {
+        guard waiting else { return nil }
+        card.title = "\(account.map { "\($0)'s" } ?? "Claude's") sign-in is waiting"
+        card.text = "A new sign-in has started on the Mac."
+        return card
+    }
     let days = daysLeft(ends, now: now, calendar: calendar)
     let when = days <= 0 ? "today" : days == 1 ? "tomorrow" : "in \(days) days"
     card.title = "\(account.map { "\($0)'s" } ?? "Claude's") sign-in ends \(when)"
@@ -125,6 +131,8 @@ public func bannerCards(_ banners: Banners, now: Date = Date(), calendar: Calend
 
 public let bannerFastPoll: TimeInterval = 2
 public let bannerSlowPoll: TimeInterval = 15
+/// A server with no banners route is asked again slowly, so the banners appear once it is updated.
+public let bannerAbsentPoll: TimeInterval = 60
 
 /// Faster while a sign-in waits on the Mac, a restart is under way or the Chrome check runs, so the banner clears or appears soon.
 public func bannerPollInterval(_ banners: Banners?) -> TimeInterval {
