@@ -94,6 +94,23 @@ final class ChatMarkdownTests: XCTestCase {
         XCTAssertEqual(parse("> a\n> > b"), [.quote([.paragraph([.text("a")]), .quote([.paragraph([.text("b")])])])])
     }
 
+    func testQuoteDepthIsCapped() {
+        var depth = 0
+        var blocks = parse(String(repeating: ">", count: 5000) + " deep")
+        while case .quote(let inner)? = blocks.first { depth += 1; blocks = inner }
+        XCTAssertEqual(depth, 16)
+        guard case .paragraph? = blocks.first else { return XCTFail("the rest is text") }
+    }
+
+    func testOddLineBreaksNeverCrashAListParse() {
+        for sep in ["\u{2028}", "\u{2029}", "\u{85}", "\u{0B}", "\u{0C}"] {
+            XCTAssertEqual(parse("- a\(sep)b").count, sep == "\u{0B}" || sep == "\u{0C}" ? 1 : 2, sep.debugDescription)
+            _ = parse("1. a\(sep)- b\(sep)  - c")
+        }
+        // A separator the server treats as a line break splits the item, as it splits the line.
+        XCTAssertEqual(parse("- a\u{2028}b"), [.list(ordered: false, start: 1, items: [MDItem(text: [.text("a")], children: [])]), .paragraph([.text("b")])])
+    }
+
     func testTable() {
         let blocks = parse("| A | B |\n|---|:--|\n| 1 | `x` |\n| 2 | **y** |\n\nafter")
         guard case .table(let head, let rows) = blocks[0] else { return XCTFail() }

@@ -217,8 +217,13 @@ private struct BlockParser {
         return t.split(separator: "|", omittingEmptySubsequences: false).map { inline($0.trimmingCharacters(in: .whitespaces)) }
     }
 
-    func blocks(_ src: String) -> [MDBlock] {
-        let lines = src.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
+    /// Quotes nest this deep and no further, so one line of `>` cannot make the parser recurse thousands of levels.
+    private static let maxDepth = 16
+    // The server counts these as line breaks too (BREAK in lib/summaries.mjs), and the line patterns above stop at them.
+    private static let lineBreaks = Rx(#"\r\n|[\r\u0085\u2028\u2029]"#)
+
+    func blocks(_ src: String, depth: Int = 0) -> [MDBlock] {
+        let lines = Self.lineBreaks.replacing(src, with: "\n").components(separatedBy: "\n")
         var out: [MDBlock] = []
         var para: [String] = []
         func flush() {
@@ -245,15 +250,14 @@ private struct BlockParser {
                 flush(); out.append(.heading(level: h[1].count, inline(h[2]))); i += 1
             } else if Self.rule.matches(l) {
                 flush(); out.append(.rule); i += 1
-            } else if Self.listStart.matches(l) {
+            } else if Self.listStart.matches(l), let (block, next) = list(lines, i) {
                 flush()
-                let (block, next) = list(lines, i)
                 out.append(block); i = next
-            } else if Self.quote.matches(l) {
+            } else if depth < Self.maxDepth, Self.quote.matches(l) {
                 flush()
                 var body: [String] = []
                 while i < lines.count, Self.quote.matches(lines[i]) { body.append(Self.quotePrefix.replacing(lines[i], with: "")); i += 1 }
-                out.append(.quote(blocks(body.joined(separator: "\n"))))
+                out.append(.quote(blocks(body.joined(separator: "\n"), depth: depth + 1)))
             } else if Self.tableRow.matches(l), i + 1 < lines.count, Self.tableRule.matches(lines[i + 1]) {
                 flush()
                 let head = cells(l)
@@ -271,8 +275,9 @@ private struct BlockParser {
         return out
     }
 
-    private func list(_ lines: [String], _ start: Int) -> (MDBlock, Int) {
-        let first = Self.item.groups(lines[start])!
+    /// Nil when the line starts like an item but the item pattern disagrees, so the caller reads it as a paragraph.
+    private func list(_ lines: [String], _ start: Int) -> (MDBlock, Int)? {
+        guard let first = Self.item.groups(lines[start]) else { return nil }
         let indent = first[1].count
         let ordered = !first[3].isEmpty
         // An item of this list at this depth, or one nested under it. A bullet after a number starts a new list.
@@ -291,10 +296,8 @@ private struct BlockParser {
             let m = Self.item.groups(l)
             if let m, m[1].count == indent, !m[3].isEmpty == ordered {
                 items.append(MDItem(text: [], children: [])); items[items.count - 1].text = inline(m[4]); i += 1
-            } else if let m, m[1].count > indent, !items.isEmpty {
-                let (sub, next) = list(lines, i)
+            } else if let m, m[1].count > indent, !items.isEmpty, let (sub, next) = list(lines, i) {
                 items[items.count - 1].children.append(sub); i = next
-                _ = m
             } else if m == nil, l.first?.isWhitespace == true, !items.isEmpty {
                 // A wrapped line continues the item's text.
                 items[items.count - 1].text += [.text(" ")] + inline(l.trimmingCharacters(in: .whitespaces)); i += 1
