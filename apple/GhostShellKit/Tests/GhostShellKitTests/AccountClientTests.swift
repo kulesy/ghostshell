@@ -153,11 +153,20 @@ final class AccountClientTests: XCTestCase {
 
     func testOtherFailuresKeepTheirOwnWords() async throws {
         let client = await client()
-        for (status, body) in [(500, #"{"error":"boom"}"#), (404, #"{"error":"no"}"#), (409, "not json"), (400, #"{"error":""}"#)] {
+        for (status, body) in [(500, #"{"error":"boom"}"#), (404, #"{"error":"Not found"}"#), (404, "not json"), (404, #"{"error":""}"#), (409, "not json"), (400, #"{"error":""}"#)] {
             Echo.reset { _ in (status, body) }
             do { _ = try await client.banners(); XCTFail("expected a failure") } catch let error as GhostShellError {
                 XCTAssertEqual(error, .server(status: status), "status \(status)")
             }
+        }
+    }
+
+    /// A 404 with its own words, such as a passkey already gone, is shown as the server wrote it.
+    func testNotFoundWithWordsIsShown() async throws {
+        let client = await client()
+        Echo.reset { _ in (404, #"{"error":"No such passkey."}"#) }
+        do { _ = try await client.removePasskey(id: "p"); XCTFail("expected a refusal") } catch let error as GhostShellError {
+            XCTAssertEqual(error, .refused(status: 404, message: "No such passkey."))
         }
     }
 }

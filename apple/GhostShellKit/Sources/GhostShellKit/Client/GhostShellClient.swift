@@ -132,10 +132,12 @@ public actor GhostShellClient {
         return data
     }
 
-    // A 400 or 409 carries the server's own words in `{error}`, and the screens show them as they are.
+    // A 400, 409 or 404 carries the server's own words in `{error}`, and the screens show them as they are.
+    // NOTE: [8 Nov 2026] EK - The server's "Not found" is its answer for a route it lacks, so it stays `.server(404)`. BannersState reads that as a server with no banners.
     private static func refusal(_ status: Int, _ body: Data) -> GhostShellError {
         struct Words: Decodable { var error: String? }
-        guard status == 400 || status == 409, let words = (try? JSONDecoder().decode(Words.self, from: body))?.error, !words.isEmpty else { return .server(status: status) }
+        guard [400, 404, 409].contains(status), let words = (try? JSONDecoder().decode(Words.self, from: body))?.error, !words.isEmpty,
+              !(status == 404 && words == "Not found") else { return .server(status: status) }
         return .refused(status: status, message: words)
     }
 
