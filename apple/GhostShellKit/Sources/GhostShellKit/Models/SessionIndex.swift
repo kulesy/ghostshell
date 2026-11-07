@@ -1,5 +1,8 @@
 import Foundation
 
+// NOTE: [7 Nov 2026] EK - These types mirror the JSON of the `api/sessions` handler in server.mjs, which names this file in turn.
+// Decoding here is lenient, so a field the server renames is dropped with no error and reads as empty.
+
 /// What a session is doing, as the server words it. A word this app does not know is kept, never an error.
 public enum SessionState: Hashable, Sendable, Decodable {
     case working, waiting, active, idle

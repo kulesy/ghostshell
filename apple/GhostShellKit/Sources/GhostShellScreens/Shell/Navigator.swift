@@ -9,15 +9,17 @@ public final class Navigator {
 
     public init() {}
 
+    /// Any screen shown here clears the chosen row, so choosing the same session again opens it.
     public func show<Content: View>(@ViewBuilder _ content: () -> Content) {
         detail = AnyView(content())
+        selectedSessionID = nil
     }
 
     /// Shows a session's chat and marks its row as chosen.
     public func openSession(_ id: String) {
         guard id != selectedSessionID else { return }
-        selectedSessionID = id
         show { ChatScreen(sessionID: id) }
+        selectedSessionID = id
     }
 
     /// Back to the empty pane.

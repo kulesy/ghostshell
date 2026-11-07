@@ -61,9 +61,9 @@ The Debug hooks are launch arguments: `-GSKeychainService`, `-GSAddress`, `-GSDe
 ## Add a screen
 
 1. Make a folder `GhostShellKit/Sources/GhostShellScreens/<Area>/` and put a SwiftUI view in a new file. SwiftPM picks it up. Nothing else changes.
-2. If it needs the server, add `GhostShellKit/Sources/GhostShellKit/Endpoints/<Area>.swift` as an extension of `GhostShellClient`. Call `get` or `post`. Do not build a `URLRequest` anywhere else.
+2. If it needs the server, add `GhostShellKit/Sources/GhostShellKit/Endpoints/<Area>.swift` as an extension of `GhostShellClient`. Call `get`, `post` or `send` for JSON. Call `data(method, path, query:, body:, contentType:)` for DELETE, PATCH, a raw byte upload (`?path=` and a file name go in `query`) or a raw byte read. Do not build a `URLRequest` anywhere else. The client sets Cookie and Origin itself and refuses a `contentType` with a control character.
 3. Show the screen with `navigator.show { MyScreen() }` from wherever the person reaches it, such as a sidebar row, a button or a menu command. The `Navigator` keeps the detail pane as a type-erased view, so there is no central list of destinations.
-4. Read `AppModel` from the environment (`@Environment(AppModel.self)`) for the rows, the connection state and sign-out.
+4. Read `AppModel` from the environment (`@Environment(AppModel.self)`). It exposes `client` for calls, `index` for the whole session index, `rows`, the connection state and sign-out. None of that needs an edit to `AppModel.swift`.
 5. Add a unit test in `Tests/GhostShellKitTests`. Add an integration test if you add an endpoint.
 
 Opening a session's `events` stream marks that session read. Open it only for the session the person is looking at, never for each row.
@@ -80,6 +80,7 @@ A new Swift file edits none of these. Edit one only when the work needs it, and 
 6. `GhostShellKit/Sources/GhostShellKit/Models/SessionIndex.swift`: add new fields as optional so old servers still decode.
 7. `GhostShell/GhostShellApp.swift`: scenes and menu commands.
 8. `package.json`: the `apple:*` scripts.
+9. `apple/scripts/shots.mjs`: the app run. It takes a machine-wide lock (`/tmp/ghostshell-shots.lock`, a folder holding the owner pid), because System Events keystrokes are global. A second run fails at once with the owner's pid. A lock whose owner is dead is cleared.
 
 ## Folder map for later PBIs
 

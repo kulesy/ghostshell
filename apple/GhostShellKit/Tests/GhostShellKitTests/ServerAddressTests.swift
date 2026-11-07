@@ -17,6 +17,8 @@ final class ServerAddressTests: XCTestCase {
         XCTAssertNil(ServerAddress("http://127.0.0.1.example.com"))
         XCTAssertNil(ServerAddress("http://localhost.example.com"))
         XCTAssertNil(ServerAddress("http://127.1"))
+        XCTAssertNil(ServerAddress("http://0127.0.0.1"))
+        XCTAssertNil(ServerAddress("http://127.000.000.001"))
         XCTAssertEqual(ServerAddress("example.com")?.baseURL.absoluteString, "https://example.com/")
         XCTAssertEqual(ServerAddress("https://Example.com:443")?.origin, "https://example.com")
     }

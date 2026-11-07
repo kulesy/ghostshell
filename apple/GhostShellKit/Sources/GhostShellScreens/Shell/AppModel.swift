@@ -8,7 +8,9 @@ public final class AppModel {
     public enum Phase: Equatable { case starting, signedOut, signedIn }
 
     public private(set) var phase = Phase.starting
-    public private(set) var rows: [SessionRow] = []
+    /// The whole index the feed last reported, for screens that need more than the rows.
+    public private(set) var index: SessionIndex?
+    public var rows: [SessionRow] { index?.rows ?? [] }
     public private(set) var connection = FeedConnection.connecting
     /// False until the first list arrives, which is when the sidebar shows its skeleton.
     public private(set) var hasLoaded = false
@@ -20,7 +22,8 @@ public final class AppModel {
 
     private let store: TokenStore
     private let defaults: UserDefaults
-    private var client: GhostShellClient?
+    /// Screens call the server through this, so a new area needs no edit here.
+    public private(set) var client: GhostShellClient?
     private var feed: SessionIndexFeed?
     private var tasks: [Task<Void, Never>] = []
     private var visible = true
@@ -52,8 +55,9 @@ public final class AppModel {
     }
 
     public func signOut() async {
-        await client?.signOut()
-        leave()
+        guard let old = client else { return }
+        await old.signOut()
+        if client === old { leave() }
     }
 
     /// The window calls this as it shows and hides, so a hidden app stops asking the server.
@@ -67,7 +71,7 @@ public final class AppModel {
         stopWork()
         client = fresh
         address = fresh.address
-        rows = []
+        index = nil
         hasLoaded = false
         connection = .connecting
         let list = fresh.indexFeed()
@@ -81,7 +85,7 @@ public final class AppModel {
                 for await update in list.updates {
                     guard let self else { return }
                     switch update {
-                    case .index(let index): rows = index.rows; hasLoaded = true
+                    case .index(let latest): index = latest; hasLoaded = true
                     case .connection(let state): connection = state
                     }
                 }
@@ -95,7 +99,7 @@ public final class AppModel {
         stopWork()
         client = nil
         address = nil
-        rows = []
+        index = nil
         hasLoaded = false
         navigator.clear()
         phase = .signedOut

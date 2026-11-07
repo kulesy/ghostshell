@@ -14,8 +14,7 @@ extension GhostShellClient {
 
     /// One session's live events: `status`, `subagents`, `terminal`, `changed`, `outside` and the chat's own.
     ///
-    /// NOTE: [7 Nov 2026] EK - The server marks a session read when its events stream opens (`events()` in server.mjs). Open this only for a
-    /// session the person is looking at, never per row and never for the list.
+    /// NOTE: [7 Nov 2026] EK - Opening this stream marks the session read on the server. Open it only for the session on screen.
     public nonisolated func eventStream(sessionID: String) -> EventStream {
         EventStream { [self] in
             guard !sessionID.isEmpty, !sessionID.contains("/") else { throw GhostShellError.badPath(sessionID) }

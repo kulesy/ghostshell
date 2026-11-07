@@ -37,6 +37,24 @@ final class IntegrationTests: XCTestCase {
         return try XCTUnwrap(index.rows.first?.id)
     }
 
+    private actor Tally {
+        var bytes = 0
+        var ended: String?
+        func add() { bytes += 1 }
+        func end(_ why: String) { ended = why }
+    }
+
+    /// The result of `work`, or nil when it has not finished in time.
+    private func within<T: Sendable>(seconds: Int, _ work: @escaping @Sendable () async -> T) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await work() }
+            group.addTask { try? await Task.sleep(for: .seconds(seconds)); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
     private func savedToken(_ store: MemoryTokenStore, _ server: Scratch) async throws -> String {
         let token = await store.token(for: server.address)
         return try XCTUnwrap(token)
@@ -124,7 +142,12 @@ final class IntegrationTests: XCTestCase {
 
     func testTheFeedReportsTheListThenStopsOnSignOut() async throws {
         let server = try scratch()
-        let client = try await signedIn(server)
+        let store = MemoryTokenStore()
+        let client = try await signedIn(server, store: store)
+        let copy = MemoryTokenStore()
+        await copy.save(try await savedToken(store, server), for: server.address)
+        let revoker = GhostShellClient(address: server.address, store: copy)
+
         let feed = client.indexFeed()
         await feed.resume()
         var sawIndex = false
@@ -132,7 +155,35 @@ final class IntegrationTests: XCTestCase {
             if case .index(let index) = update { sawIndex = !index.rows.isEmpty; break }
         }
         XCTAssertTrue(sawIndex)
-        await feed.stop()
+
+        // The token is revoked on the server, so the next poll gets a 401.
+        await revoker.signOut()
+        let ended = await within(seconds: 20) { for await _ in feed.updates {}; return true }
+        XCTAssertEqual(ended, true, "the feed ends after the token is revoked")
+        // The sign-in put .signedIn first, so this reads on until the token is gone.
+        let state = await within(seconds: 5) { () -> AuthState? in for await change in client.authChanges where change == .signedOut { return change }; return nil }
+        XCTAssertEqual(state ?? nil, .signedOut)
+    }
+
+    // The server sends a keep-alive every 20 seconds, so a stream that is idle for 25 must still be open.
+    func testAStreamHeldOpenIdleFor25SecondsDoesNotDrop() async throws {
+        let server = try scratch()
+        let client = try await signedIn(server)
+        let id = try await firstID(client)
+        let stream = try await client.openStream("api/sessions/\(id)/events")
+        let tally = Tally()
+        let reader = Task {
+            do { for try await _ in stream { await tally.add() }; await tally.end("finished") } catch { await tally.end("\(error)") }
+        }
+        try await Task.sleep(for: .seconds(3))
+        let early = await tally.bytes
+        try await Task.sleep(for: .seconds(22))
+        let ended = await tally.ended
+        let late = await tally.bytes
+        reader.cancel()
+        XCTAssertNil(ended, "the stream ended: \(ended ?? "")")
+        XCTAssertGreaterThan(early, 0, "the snapshot arrived")
+        XCTAssertGreaterThan(late, early, "a keep-alive arrived while idle")
     }
 
     func testAnAddressNobodyListensOnIsUnreachable() async throws {

@@ -19,8 +19,7 @@ public actor MemoryTokenStore: TokenStore {
 
 /// The Keychain, in the legacy file keychain on a Mac because it is the only one open to an ad hoc signed build.
 ///
-/// NOTE: [7 Nov 2026] EK - A read can block on a macOS dialog, and `kSecUseAuthenticationUIFail` does not stop it. A build with a new code hash
-/// is asked about once per entry. Every call therefore runs on its own queue, and a refusal or any failure reads as signed out.
+/// NOTE: [7 Nov 2026] EK - A read can block on a macOS dialog that `kSecUseAuthenticationUIFail` does not stop, so every call runs on its own queue.
 public final class KeychainTokenStore: TokenStore, @unchecked Sendable {
     private let service: String
     private let queue = DispatchQueue(label: "ghostshell.keychain")

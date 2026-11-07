@@ -57,6 +57,16 @@ final class ClientTests: XCTestCase {
         await store.save(fakeToken, for: address)
     }
 
+    // URLSession hands a stubbed request its body as a stream.
+    private func bodyOf(_ request: URLRequest) -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open(); defer { stream.close() }
+        var data = Data(); var buffer = [UInt8](repeating: 0, count: 256)
+        while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: 256); if n <= 0 { break }; data.append(buffer, count: n) }
+        return data
+    }
+
     private struct Ping: Codable, Sendable, Equatable { var ok: Bool }
 
     func testSignInSendsAFormAndKeepsTheCookieToken() async throws {
@@ -70,13 +80,8 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Origin"), "https://ghost.example.com")
         XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/x-www-form-urlencoded")
-        let body = request.httpBody ?? request.httpBodyStream.flatMap { stream -> Data in
-            stream.open(); defer { stream.close() }
-            var data = Data(); var buffer = [UInt8](repeating: 0, count: 256)
-            while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: 256); if n <= 0 { break }; data.append(buffer, count: n) }
-            return data
-        }
-        XCTAssertEqual(String(decoding: body ?? Data(), as: UTF8.self), "password=p%26ss%3Dw%2Brd%20%C3%A9")
+        let body = bodyOf(request)
+        XCTAssertEqual(String(decoding: body, as: UTF8.self), "password=p%26ss%3Dw%2Brd%20%C3%A9")
         let saved = await store.token(for: address)
         XCTAssertEqual(saved, fakeToken)
     }
@@ -154,6 +159,18 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(Stub.requests().count, 1)
     }
 
+    func testARedirectOnAStreamIsNeverFollowed() async throws {
+        let evil = URL(string: "https://evil.example.org/steal")!
+        Stub.reset { request in
+            request.url?.host == "evil.example.org" ? (200, [:], "event: status\ndata: 1\n\n", nil) : (302, [:], "", evil)
+        }
+        let store = MemoryTokenStore()
+        await signedIn(store)
+        do { _ = try await client(store).openStream("api/sessions/abc/events"); XCTFail("followed") } catch { XCTAssertEqual(error as? GhostShellError, .server(status: 303)) }
+        XCTAssertTrue(Stub.requests().allSatisfy { $0.url?.host == "ghost.example.com" })
+        XCTAssertEqual(Stub.requests().count, 1)
+    }
+
     func testTheLoginRedirectIsReadAsTheAnswer() async throws {
         let token = fakeToken
         Stub.reset { request in
@@ -189,6 +206,57 @@ final class ClientTests: XCTestCase {
         let other = ServerAddress("https://other.example.com")!
         let found = await store.token(for: other)
         XCTAssertNil(found)
+    }
+
+    func testAnImplausibleStoredTokenIsForgottenAndRestoreIsFalse() async {
+        let store = MemoryTokenStore()
+        await store.save("bad\r\nX-Evil: 1", for: address)
+        let restored = await client(store).restore()
+        XCTAssertFalse(restored)
+        let left = await store.token(for: address)
+        XCTAssertNil(left)
+        await store.save(fakeToken, for: address)
+        let again = await client(store).restore()
+        XCTAssertTrue(again)
+    }
+
+    func testDataSendsADeleteWithTheCookieAndOrigin() async throws {
+        Stub.reset { _ in (200, [:], "", nil) }
+        let store = MemoryTokenStore()
+        await signedIn(store)
+        _ = try await client(store).data("DELETE", "api/things/42")
+        let request = try XCTUnwrap(Stub.requests().first)
+        XCTAssertEqual(request.httpMethod, "DELETE")
+        XCTAssertEqual(request.url?.absoluteString, "https://ghost.example.com/app/api/things/42")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Cookie"), "capcom=\(fakeToken)")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Origin"), "https://ghost.example.com")
+    }
+
+    func testDataSendsRawBytesWithTheirContentTypeAndReturnsBytes() async throws {
+        Stub.reset { _ in (200, [:], "\u{1}raw reply", nil) }
+        let store = MemoryTokenStore()
+        await signedIn(store)
+        let upload = Data([0xFF, 0x00, 0x10, 0x80])
+        let reply = try await client(store).data("PATCH", "api/files", query: [URLQueryItem(name: "path", value: "/a b/c.bin"), URLQueryItem(name: "name", value: "c.bin")],
+                                                 body: upload, contentType: "application/octet-stream")
+        XCTAssertEqual(reply, Data("\u{1}raw reply".utf8))
+        let request = try XCTUnwrap(Stub.requests().first)
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/octet-stream")
+        XCTAssertEqual(request.url?.query, "path=/a%20b/c.bin&name=c.bin")
+        XCTAssertEqual(bodyOf(request), upload)
+    }
+
+    func testDataRefusesAControlCharacterInTheContentTypeAndAnOddMethod() async {
+        Stub.reset { _ in (200, [:], "", nil) }
+        let store = MemoryTokenStore()
+        await signedIn(store)
+        let client = client(store)
+        for type in ["text/plain\r\nCookie: capcom=x", "text/plain\n", "a\u{0}b", "a\u{7F}b"] {
+            do { _ = try await client.data("POST", "api/x", body: Data([1]), contentType: type); XCTFail("sent") } catch { XCTAssertEqual(error as? GhostShellError, .badPath(type)) }
+        }
+        do { _ = try await client.data("GET\r\nX: y", "api/x"); XCTFail("sent") } catch { XCTAssertEqual(error as? GhostShellError, .badPath("GET\r\nX: y")) }
+        XCTAssertEqual(Stub.requests().count, 0)
     }
 
     func testAnImplausibleStoredTokenIsNeverPutInAHeader() async {

@@ -9,8 +9,7 @@ public enum FeedUpdate: Sendable, Equatable {
 
 /// The live list of sessions. Callers read `updates` and call `pause` and `resume` as the app hides and shows.
 ///
-/// NOTE: [7 Nov 2026] EK - The server has no push for the index, so this polls `api/sessions` about every 3 seconds. A push can replace the
-/// polling inside this type with no change for callers, who see only `updates`, `pause` and `resume`.
+/// NOTE: [7 Nov 2026] EK - The server has no push for the index, so this polls `api/sessions` every 3 seconds. A push replaces the polling inside this type only.
 public actor SessionIndexFeed {
     public nonisolated let updates: AsyncStream<FeedUpdate>
 

@@ -1919,6 +1919,8 @@ async function api(req, res, u) {
   if (parts[1] === 'scheduled') return scheduledApi(req, res, parts);
   if (parts[1] === 'schedule' && parts.length === 2) return scheduleApi(req, res, u);
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
+  // NOTE: [7 Nov 2026] EK - The Swift app decodes this reply in apple/GhostShellKit/Sources/GhostShellKit/Models/SessionIndex.swift, which names this
+  // handler in turn. Its decoding is lenient, so a field renamed here is dropped there with no error.
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const withArchived = u.searchParams.get('archived') === '1';
     const { rows, groupSessions, archivedSection, families, ...index } = buildIndex({ archived: withArchived });

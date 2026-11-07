@@ -75,12 +75,16 @@ public struct ServerAddress: Hashable, Sendable {
     private static let unreserved = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
     private static func encode(_ segment: String) -> String { segment.addingPercentEncoding(withAllowedCharacters: unreserved) ?? "" }
 
-    /// localhost, 127.0.0.0/8 and ::1 only. `inet_pton` is strict, so `127.0.0.1.example.com` and `127.1` do not pass.
+    /// localhost, 127.0.0.0/8 and ::1 only. `inet_pton` on macOS accepts `0127.0.0.1`, so the parsed address must print back as the same text.
     static func isLoopback(_ host: String) -> Bool {
         let bare = host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host
         if bare.lowercased() == "localhost" { return true }
         var v4 = in_addr()
-        if inet_pton(AF_INET, bare, &v4) == 1 { return UInt32(bigEndian: v4.s_addr) >> 24 == 127 }
+        if inet_pton(AF_INET, bare, &v4) == 1 {
+            var text = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            guard inet_ntop(AF_INET, &v4, &text, socklen_t(INET_ADDRSTRLEN)) != nil, text.withUnsafeBufferPointer { String(cString: $0.baseAddress!) } == bare else { return false }
+            return UInt32(bigEndian: v4.s_addr) >> 24 == 127
+        }
         var v6 = in6_addr()
         if inet_pton(AF_INET6, bare, &v6) == 1 {
             return withUnsafeBytes(of: &v6) { Array($0) } == [UInt8](repeating: 0, count: 15) + [1]

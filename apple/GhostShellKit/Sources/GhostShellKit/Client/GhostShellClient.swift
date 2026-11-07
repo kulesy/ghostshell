@@ -45,9 +45,8 @@ public actor GhostShellClient {
         return token != nil
     }
 
-    // NOTE: [7 Nov 2026] EK - The server's sign-in is a form POST to `login`. Success is a 303 with `Set-Cookie: capcom=<token>`, failure is a 401 page,
-    // and the locked page differs only by the words "Too many tries". If either moves, every sign-in reads as the wrong password.
-    // See the login route in server.mjs.
+    // NOTE: [7 Nov 2026] EK - The login route answers 303 with `Set-Cookie: capcom=<token>`, and 401 for wrong and locked alike (see server.mjs).
+    // If either moves, every sign-in reads as the wrong password.
     public func signIn(password: String) async throws {
         let body = Data(("password=" + FormEncoding.encode(password)).utf8)
         let request = try build("POST", "login", body: body, contentType: "application/x-www-form-urlencoded", token: nil)
@@ -90,12 +89,18 @@ public actor GhostShellClient {
         _ = try await call("POST", path, body: try JSONEncoder().encode(body), contentType: "application/json")
     }
 
+    /// Any call with a raw reply or body: DELETE, PATCH, a byte upload with `?path=` in `query`, a byte read. Cookie and Origin always come from the
+    /// address and token. A `contentType` with a control character, or a method outside GET, POST, PUT, PATCH and DELETE, is refused.
+    public func data(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil) async throws -> Data {
+        try await call(method, path, query: query, body: body, contentType: contentType)
+    }
+
     /// Opens a stream and hands back its bytes. Reaching `api/sessions/<id>/events` this way has a side effect, see Endpoints/Sessions.swift.
     func openStream(_ path: String) async throws -> AsyncThrowingStream<UInt8, Error> {
         await loadToken()
         var request = try build("GET", path, token: token, accept: "text/event-stream")
-        // The server sends a keep-alive every 20 seconds, so the idle timeout must be longer than that.
-        request.timeoutInterval = 60
+        // 60 is URLRequest's default, which the session's 15 s replaces. 65 is explicit and outlasts the server's 20 s keep-alive.
+        request.timeoutInterval = 65
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
         do { (bytes, response) = try await session.bytes(for: request) } catch { throw Self.failure(error) }
@@ -131,6 +136,10 @@ public actor GhostShellClient {
     // so every non-GET carries one. Only the Cookie and the Origin come from the address and token, never from a caller.
     private nonisolated func build(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil,
                                    token: String?, accept: String = "application/json") throws -> URLRequest {
+        guard ["GET", "POST", "PUT", "PATCH", "DELETE"].contains(method) else { throw GhostShellError.badPath(method) }
+        if let contentType, contentType.isEmpty || contentType.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) {
+            throw GhostShellError.badPath(contentType)
+        }
         var request = URLRequest(url: try address.url(for: path, query: query))
         request.httpMethod = method
         request.setValue(accept, forHTTPHeaderField: "Accept")
@@ -157,7 +166,9 @@ public actor GhostShellClient {
     private func loadToken() async {
         guard !loaded else { return }
         loaded = true
-        token = await store.token(for: address)
+        let saved = await store.token(for: address)
+        if let saved, !Self.isPlausible(saved) { await store.clear(for: address); return }
+        token = saved
     }
 
     private func forget() async {

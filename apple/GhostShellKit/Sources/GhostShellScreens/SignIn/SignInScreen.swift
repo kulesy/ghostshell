@@ -73,11 +73,13 @@ public struct SignInScreen: View {
             Text(label).font(.subheadline).foregroundStyle(.secondary)
             input()
             if let problem {
-                Text(problem)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("\(label) problem. \(problem)")
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    Text(problem).foregroundStyle(.primary)
+                }
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("\(label) problem. \(problem)")
             }
         }
     }

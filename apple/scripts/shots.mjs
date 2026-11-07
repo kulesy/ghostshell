@@ -1,12 +1,8 @@
 #!/usr/bin/env node
-// Runs the Debug app against scratch servers, drives it through System Events (XCUITest is not available here), checks the
-// flow and saves screenshots of every state in light and dark, at the default and the minimum window size.
+// Drives the Debug app through System Events (XCUITest is not available here) and saves every state in light and dark.
+// The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
 //   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat]
-//
-// The app draws its own window into a PNG when the script asks (the Debug-only hook in DebugHooks.swift), because screen
-// capture permission is off. Each launch gets a new Keychain service and defaults suite, so it never reads another build's
-// item. The default output folder is git-ignored.
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -28,8 +24,36 @@ const MIN_SIZE = [640, 420];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const osa = script => spawnSync('osascript', ['-e', script], { encoding: 'utf8', timeout: 30_000 });
-// The window title follows the chosen session, and the system's saved-password popup is a second window, so the main window is found by its kind.
-const events = body => osa(`tell application "System Events" to tell process "GhostShell"\n${body}\nend tell`);
+
+// System Events keystrokes are global, so two runs at once would type into each other's app. One run per machine holds this folder.
+const LOCK = '/tmp/ghostshell-shots.lock';
+const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } };
+const lockOwner = () => Number(fs.readFileSync(path.join(LOCK, 'pid'), 'utf8').trim());
+function acquireLock() {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      fs.mkdirSync(LOCK);
+      fs.writeFileSync(path.join(LOCK, 'pid'), String(process.pid));
+      process.on('exit', () => {
+        try { if (lockOwner() === process.pid) { fs.unlinkSync(path.join(LOCK, 'pid')); fs.rmdirSync(LOCK); } } catch { /* already gone */ }
+      });
+      return;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    let owner = NaN;
+    try { owner = lockOwner(); } catch { /* the owner has made the folder and not yet written its pid */ }
+    const young = Date.now() - fs.statSync(LOCK, { throwIfNoEntry: false })?.mtimeMs < 5000;
+    if (Number.isFinite(owner) ? alive(owner) : young) {
+      console.error(`Another shots run holds ${LOCK}${Number.isFinite(owner) ? ` (pid ${owner})` : ''}. Wait for it to finish, then run this again.`);
+      process.exit(1);
+    }
+    // Stale: its owner is dead. Renaming is atomic, so only one run clears it.
+    try { fs.renameSync(LOCK, `${LOCK}.stale-${process.pid}`); fs.unlinkSync(path.join(`${LOCK}.stale-${process.pid}`, 'pid')); fs.rmdirSync(`${LOCK}.stale-${process.pid}`); } catch { /* another run got there first */ }
+  }
+  console.error(`Could not take ${LOCK}.`);
+  process.exit(1);
+}
 
 const failures = [];
 const check = (ok, what) => {
@@ -68,6 +92,7 @@ class App {
     this.suite = `com.kulesy.ghostshell.test.${this.service}`;
     this.binary = binary;
     this.address = address;
+    this.pid = undefined;
     this.shotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-shot-'));
     services.add(this.service);
     suites.add(this.suite);
@@ -77,31 +102,35 @@ class App {
     fs.mkdirSync(this.shotDir, { recursive: true });
     this.child = spawn(this.binary, ['-GSKeychainService', this.service, '-GSAddress', this.address, '-GSDefaultsSuite', this.suite,
       '-GSAppearance', this.appearance, '-GSShotDir', this.shotDir], { stdio: 'ignore' });
+    this.pid = this.child.pid;
     apps.add(this.child);
     this.exited = new Promise(resolve => this.child.once('exit', () => { apps.delete(this.child); resolve(); }));
-    const shown = await until('window', () => events('return count of (windows whose subrole is "AXStandardWindow")').stdout.trim() === '1', 20);
+    const shown = await until('window', () => this.events('return count of (windows whose subrole is "AXStandardWindow")').stdout.trim() === '1', 20);
     if (!shown) throw new Error('The app window did not appear.');
     this.front();
     await sleep(600);
   }
 
-  front() { osa('tell application "System Events" to set frontmost of process "GhostShell" to true'); }
-  // Keystrokes go to whichever app is in front, so every one is sent only after GhostShell is confirmed to be.
+  // Another process is also named GhostShell (the installed app, and a Chrome app), so the launched app is found by its pid, never its name.
+  // The window title follows the chosen session, and the system's saved-password popup is a second window, so the main window is found by its kind.
+  events(body) { return osa(`tell application "System Events" to tell (first process whose unix id is ${this.pid})\n${body}\nend tell`); }
+  front() { osa(`tell application "System Events" to set frontmost of (first process whose unix id is ${this.pid}) to true`); }
+  // Keystrokes go to whichever app is in front, so every one is sent only after this pid is confirmed to be.
   send(command) {
-    const frontName = () => osa('tell application "System Events" to return name of first process whose frontmost is true').stdout.trim();
-    if (frontName() !== 'GhostShell') { this.front(); spawnSync('sleep', ['0.4']); }
-    if (frontName() !== 'GhostShell') throw new Error('GhostShell is not the front app, so nothing was typed.');
+    const frontPid = () => osa('tell application "System Events" to return unix id of first process whose frontmost is true').stdout.trim();
+    if (frontPid() !== String(this.pid)) { this.front(); spawnSync('sleep', ['0.4']); }
+    if (frontPid() !== String(this.pid)) throw new Error(`The app (pid ${this.pid}) is not the front process, so nothing was typed.`);
     osa(`tell application "System Events"\n${command}\nend tell`);
   }
   type(text) { this.send(`keystroke ${JSON.stringify(text)}`); }
   enter() { this.send('key code 36'); }
   // The system offers saved passwords in a small window over the field. Escape closes it, so Return reaches the form.
   submit() { this.send('key code 53'); this.send('key code 36'); }
-  resize([w, h]) { events(`set size of (first window whose subrole is "AXStandardWindow") to {${w}, ${h}}`); }
+  resize([w, h]) { this.events(`set size of (first window whose subrole is "AXStandardWindow") to {${w}, ${h}}`); }
 
   // The text of every static text in the window, one per line.
   texts() {
-    return events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
 set out to ""
 repeat with e in els
   try
@@ -111,7 +140,7 @@ end repeat
 return out`).stdout;
   }
   hasButton(name) {
-    return events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
 repeat with e in els
   try
     if role of e is "AXButton" and description of e is ${JSON.stringify(name)} then return "yes"
@@ -120,7 +149,7 @@ end repeat
 return "no"`).stdout.trim() === 'yes';
   }
   rows() {
-    return Number(events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+    return Number(this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
 set n to 0
 repeat with e in els
   try
@@ -130,7 +159,7 @@ end repeat
 return n`).stdout.trim());
   }
   chooseFirstRow() {
-    events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
 repeat with e in els
   try
     if role of e is "AXRow" then
@@ -140,7 +169,7 @@ repeat with e in els
   end try
 end repeat`);
   }
-  signOutFromMenu() { events('click menu item "Sign Out" of menu 1 of menu bar item "File" of menu bar 1'); }
+  signOutFromMenu() { this.events('click menu item "Sign Out" of menu 1 of menu bar item "File" of menu bar 1'); }
 
   async shot(name) {
     this.count += 1;
@@ -313,11 +342,16 @@ async function badAddresses(binary, appearance) {
 // A chat waiting on an approval or a failed turn can't be had on demand from a scratch server, so a stub answers the routes the list uses.
 async function marks(binary, appearance) {
   console.log(`\n== ${appearance}: every status mark`);
-  const rows = [['Waiting on an approval', 'awaiting'], ['This turn failed', 'error'], ['Finished and unread', 'ready'], ['Still working', 'running'], ['Nothing to look at']]
+  const rows = [['Waiting on an approval', 'awaiting'], ['This turn failed', 'error'], ['Finished and unread', 'ready'], ['Still working', 'running'], ['Nothing to look at'],
+    ['Work out why the nightly build of the shared design system fails on the third Tuesday of every month, but only on the runner with the older toolchain']]
     .map(([title, dot], i) => ({ id: `mark-${i}`, title, dot, state: 'idle', sortAt: Date.now() - i * 60_000 }));
+  // The login reply is held until the signing-in shot is taken.
+  let hold = true;
+  const held = [];
+  const answer = res => res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
   const stub = http.createServer((req, res) => {
     req.resume();
-    if (req.url === '/login') res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
+    if (req.url === '/login') { if (hold) held.push(res); else answer(res); }
     else res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ungrouped: rows }));
   });
   await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
@@ -326,12 +360,17 @@ async function marks(binary, appearance) {
     await app.launch();
     app.type('whatever');
     app.submit();
-    check(await until('rows', () => app.rows() === rows.length), 'the list shows a row for each mark');
+    check(await until('held', () => held.length > 0, 6), 'the stub holds the sign-in request while the window waits');
+    await app.both('signing-in');
+    hold = false;
+    held.splice(0).forEach(answer);
+    check(await until('rows', () => app.rows() === rows.length), 'the list shows a row for each mark, and a long title');
     await app.both('list-marks');
     app.signOutFromMenu();
     check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the stub');
   } finally {
     await app.quit();
+    held.splice(0).forEach(answer);
     stub.closeAllConnections();
     stub.close();
   }
@@ -344,6 +383,7 @@ const cleanup = async () => {
 };
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => cleanup().finally(() => process.exit(130)));
 
+acquireLock();
 fs.mkdirSync(OUT, { recursive: true });
 let exitCode = 1;
 try {

@@ -1,11 +1,6 @@
 #!/usr/bin/env node
-// A scratch GhostShell server for the Swift tests: its own state folder, home and port, and a password written to a file.
-// As a command it prints one JSON line with the address and where the password file is, runs until SIGINT, SIGTERM or the
-// time limit, then stops the server. The other scripts import startScratch instead. It never touches port 4310 or the real state.
-//
-//   node apple/scripts/test-server.mjs [--empty] [--claude] [--minutes 30]
-//
-// --empty seeds no sessions. --claude lets a real `claude` run chats in the test folder, through a wrapper that keeps Chrome out of it.
+// A scratch GhostShell server with its own state folder, home and port. It never touches port 4310 or the real state.
+//   node apple/scripts/test-server.mjs [--empty] [--claude] [--minutes 30]   (prints one JSON line, stops on SIGINT or the time limit)
 import { spawn, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
