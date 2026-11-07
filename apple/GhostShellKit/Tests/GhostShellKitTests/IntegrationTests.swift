@@ -1,0 +1,168 @@
+import XCTest
+@testable import GhostShellKit
+
+/// These talk to a real scratch server started by `apple/scripts/test.mjs`, which passes its address and password file in the environment.
+/// Without them every test here is skipped, so a plain `swift test` runs the unit tests only.
+final class IntegrationTests: XCTestCase {
+    private struct Scratch { let address: ServerAddress; let password: String }
+
+    private func scratch(_ addressKey: String = "GS_SCRATCH_ADDRESS", _ fileKey: String = "GS_SCRATCH_PASSWORD_FILE") throws -> Scratch {
+        let env = ProcessInfo.processInfo.environment
+        guard let text = env[addressKey], let file = env[fileKey] else { throw XCTSkip("No scratch server. Run apple/scripts/test.mjs.") }
+        let address = try XCTUnwrap(ServerAddress(text))
+        let password = try String(contentsOfFile: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        return Scratch(address: address, password: password)
+    }
+
+    private func signedIn(_ server: Scratch, store: TokenStore = MemoryTokenStore()) async throws -> GhostShellClient {
+        let client = GhostShellClient(address: server.address, store: store)
+        try await client.signIn(password: server.password)
+        return client
+    }
+
+    // The server wants `"account": null` to clear a pin, and a Swift optional would leave the key out.
+    private struct Pin: Encodable, Sendable {
+        var id: String
+        private enum Key: String, CodingKey { case kind, id, account }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: Key.self)
+            try c.encode("session", forKey: .kind)
+            try c.encode(id, forKey: .id)
+            try c.encodeNil(forKey: .account)
+        }
+    }
+
+    private func firstID(_ client: GhostShellClient) async throws -> String {
+        let index = try await client.sessionIndex()
+        return try XCTUnwrap(index.rows.first?.id)
+    }
+
+    private func savedToken(_ store: MemoryTokenStore, _ server: Scratch) async throws -> String {
+        let token = await store.token(for: server.address)
+        return try XCTUnwrap(token)
+    }
+
+    func testSignInThenTheIndexDecodes() async throws {
+        let server = try scratch()
+        let client = try await signedIn(server)
+        let index = try await client.sessionIndex()
+        XCTAssertFalse(index.rows.isEmpty, "the scratch server seeds sessions")
+        XCTAssertTrue(index.rows.allSatisfy { !$0.id.isEmpty && !$0.title.isEmpty })
+        let times = index.rows.compactMap { $0.sortAt ?? $0.lastActivityAt }
+        XCTAssertEqual(times, times.sorted(by: >), "newest first")
+    }
+
+    func testAWrongPasswordIsWrong() async throws {
+        let server = try scratch()
+        let client = GhostShellClient(address: server.address, store: MemoryTokenStore())
+        do { try await client.signIn(password: "not the password"); XCTFail("signed in") } catch { XCTAssertEqual(error as? GhostShellError, .wrongPassword) }
+    }
+
+    func testTenWrongPasswordsLockSignInAndTheRightOneIsRefused() async throws {
+        let server = try scratch("GS_LOCK_ADDRESS", "GS_LOCK_PASSWORD_FILE")
+        let client = GhostShellClient(address: server.address, store: MemoryTokenStore())
+        var seen: [GhostShellError] = []
+        for _ in 0..<12 {
+            do { try await client.signIn(password: "wrong"); XCTFail("signed in") } catch { seen.append(error as? GhostShellError ?? .unreachable) }
+            if seen.last == .locked { break }
+        }
+        XCTAssertEqual(seen.last, .locked)
+        XCTAssertTrue(seen.dropLast().allSatisfy { $0 == .wrongPassword })
+        do { try await client.signIn(password: server.password); XCTFail("signed in while locked") } catch { XCTAssertEqual(error as? GhostShellError, .locked) }
+    }
+
+    // The route pins a session to an account and takes strictOrigin, which refuses a request with no Origin. The client always sends one.
+    func testAnOwnerRouteAcceptsTheClientsOriginAndRefusesNone() async throws {
+        let server = try scratch()
+        let store = MemoryTokenStore()
+        let client = try await signedIn(server, store: store)
+        let id = try await firstID(client)
+        try await client.send("api/layout/account", json: Pin(id: id))
+
+        // The same route with no Origin, to show the route is strict and the pass above came from the header.
+        let token = try await savedToken(store, server)
+        var bare = URLRequest(url: try server.address.url(for: "api/layout/account"))
+        bare.httpMethod = "POST"
+        bare.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        bare.setValue("capcom=\(token)", forHTTPHeaderField: "Cookie")
+        bare.httpBody = try JSONEncoder().encode(Pin(id: id))
+        let (_, response) = try await URLSession(configuration: .ephemeral).data(for: bare)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 403)
+    }
+
+    func testSignOutRevokesTheTokenOnTheServer() async throws {
+        let server = try scratch()
+        let store = MemoryTokenStore()
+        let client = try await signedIn(server, store: store)
+        let copy = MemoryTokenStore()
+        await copy.save(try await savedToken(store, server), for: server.address)
+        let other = GhostShellClient(address: server.address, store: copy)
+        _ = try await other.sessionIndex()
+
+        await client.signOut()
+        let gone = await store.token(for: server.address)
+        XCTAssertNil(gone)
+        do { _ = try await other.sessionIndex(); XCTFail("the revoked token still worked") } catch { XCTAssertEqual(error as? GhostShellError, .signedOut) }
+        let left = await copy.token(for: server.address)
+        XCTAssertNil(left, "a 401 clears the token")
+    }
+
+    func testTheEventStreamSendsStatus() async throws {
+        let server = try scratch()
+        let client = try await signedIn(server)
+        let id = try await firstID(client)
+        let events = client.eventStream(sessionID: id).events()
+        let name: String? = await withTaskGroup(of: String?.self) { group in
+            group.addTask { for await event in events { if event.name == "status" { return event.name } }; return nil }
+            group.addTask { try? await Task.sleep(for: .seconds(10)); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        XCTAssertEqual(name, "status")
+    }
+
+    func testTheFeedReportsTheListThenStopsOnSignOut() async throws {
+        let server = try scratch()
+        let client = try await signedIn(server)
+        let feed = client.indexFeed()
+        await feed.resume()
+        var sawIndex = false
+        for await update in feed.updates {
+            if case .index(let index) = update { sawIndex = !index.rows.isEmpty; break }
+        }
+        XCTAssertTrue(sawIndex)
+        await feed.stop()
+    }
+
+    func testAnAddressNobodyListensOnIsUnreachable() async throws {
+        _ = try scratch()
+        let client = GhostShellClient(address: try XCTUnwrap(ServerAddress("http://127.0.0.1:9")), store: MemoryTokenStore())
+        do { try await client.signIn(password: "x"); XCTFail("signed in") } catch { XCTAssertEqual(error as? GhostShellError, .unreachable) }
+    }
+}
+
+/// Runs only when GS_KEYCHAIN_TEST names a service made for this run, so it never reads an item another build made.
+final class KeychainTests: XCTestCase {
+    func testRoundTripInTheRunsOwnService() async throws {
+        guard let service = ProcessInfo.processInfo.environment["GS_KEYCHAIN_TEST"], service.hasPrefix("gs-test-") else { throw XCTSkip("Not asked to touch the Keychain.") }
+        let store = KeychainTokenStore(service: service)
+        let a = ServerAddress("http://localhost:4310")!
+        let b = ServerAddress("https://other.example.com")!
+        var found = await store.token(for: a)
+        XCTAssertNil(found)
+        await store.save("first-fake-value", for: a)
+        await store.save("second-fake-value", for: a)
+        await store.save("other-fake-value", for: b)
+        found = await store.token(for: a)
+        XCTAssertEqual(found, "second-fake-value")
+        found = await store.token(for: b)
+        XCTAssertEqual(found, "other-fake-value")
+        await store.clear(for: a)
+        await store.clear(for: b)
+        found = await store.token(for: a)
+        XCTAssertNil(found)
+        found = await store.token(for: b)
+        XCTAssertNil(found)
+    }
+}
