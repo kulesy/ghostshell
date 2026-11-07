@@ -49,7 +49,24 @@ struct ChatThreadView: View {
         }
     }
 
+    // The button sits in a strip below the scroll view, not over it, so it never covers a row's text.
     private var thread: some View {
+        VStack(spacing: 0) {
+            scroller
+            if away {
+                Button("Scroll to end", systemImage: "arrow.down") {
+                    pinned = true
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { position.scrollTo(edge: .bottom) }
+                }
+                .labelStyle(.iconOnly).buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .help("Scroll to end")
+            }
+        }
+    }
+
+    private var scroller: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if model.hasEarlier {
@@ -94,18 +111,6 @@ struct ChatThreadView: View {
             position.scrollTo(edge: .bottom)
         }
         .onChange(of: model.earlierCount) { restore() }
-        // An inset, not an overlay, so the button has a strip of its own and never sits on a row's text.
-        .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) {
-            if away {
-                Button("Scroll to end", systemImage: "arrow.down") {
-                    pinned = true
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { position.scrollTo(edge: .bottom) }
-                }
-                .labelStyle(.iconOnly).buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large)
-                .padding(16)
-                .help("Scroll to end")
-            }
-        }
         .accessibilityLabel("Messages")
     }
 
