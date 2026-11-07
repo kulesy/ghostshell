@@ -41,10 +41,10 @@ enum ChatSlots {
     @ViewBuilder static func widget(_ tool: ToolCall, _ chat: ChatContext) -> some View { WidgetView(tool: tool, chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/91 - the panel under the thread, shown while `chat.terminalOpen`.
-    @ViewBuilder static func terminal(_ chat: ChatContext) -> some View { EmptyView() }
+    @ViewBuilder static func terminal(_ chat: ChatContext) -> some View { TerminalPanel(chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/91 - in the head of each code block.
-    @ViewBuilder static func runButton(_ code: ChatCodeBlock, _ chat: ChatContext) -> some View { EmptyView() }
+    @ViewBuilder static func runButton(_ code: ChatCodeBlock, _ chat: ChatContext) -> some View { TerminalRunButton(block: code, chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/84 (quoting a message) - the context menu items of a user or assistant message.
     @ViewBuilder static func messageActions(_ message: ChatItem, _ chat: ChatContext) -> some View { EmptyView() }
@@ -53,7 +53,7 @@ enum ChatSlots {
     @ViewBuilder static func fileToolbar(_ chat: ChatContext) -> some View { FilesSlot.toolbar(chat) }
 
     // https://github.com/kulesy/ghostshell/issues/91 - toolbar buttons, such as the terminal toggle.
-    @ViewBuilder static func terminalToolbar(_ chat: ChatContext) -> some View { EmptyView() }
+    @ViewBuilder static func terminalToolbar(_ chat: ChatContext) -> some View { TerminalToggle(chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/88 - under a suggested task card: Start, Dismiss and what became of it.
     @ViewBuilder static func chipActions(_ call: ToolCall, _ chat: ChatContext) -> some View { ChipActions(call: call, chat: chat) }
