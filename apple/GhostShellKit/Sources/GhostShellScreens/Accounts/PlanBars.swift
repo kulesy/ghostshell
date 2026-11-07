@@ -22,11 +22,11 @@ struct PlanBars: View {
         }
     }
 
-    private func tint(_ severity: PlanSeverity?) -> Color? {
+    private func tint(_ severity: PlanSeverity?) -> Color {
         switch severity {
         case .critical?: .red
         case .warning?: .orange
-        default: nil
+        default: .primary
         }
     }
 }
