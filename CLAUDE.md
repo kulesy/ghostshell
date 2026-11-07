@@ -10,6 +10,8 @@ A feature in this repo goes from the owner's request to the live service without
 4. **Merge.** The session squash merges once the branch is rebased on main, the full suite passes on Node 20 apart from failures main already had, and no finding at Major or above is open. The repo has no CI and no branch protection, so that test run and review are the only checks.
 5. **Live.** The session fast-forwards the live checkout, which must be on main and clean, and runs `npm run restart` outside weekdays 07:00 to 09:45. The restart waits for running chats, so it cuts nothing. A session never forces a restart, because Force restart is the owner's button. Afterwards the session confirms the server came back on the merged commit and tells the owner in a line or two what is live.
 
+A Swift change under `apple/` takes the same steps. At Live the session also runs `npm run apple:install` from the live checkout, which builds GhostShell.app into `~/Applications`, and tells the owner to reopen the app. A change only under `apple/` needs no restart. The visual lane uses the screenshot method in `apple/README.md`. The app bundle in the stop list below is Capcom.app, never GhostShell.app.
+
 Stop and tell the owner, with the PR link, in any of these cases:
 
 1. Majors remain after the last review round.
