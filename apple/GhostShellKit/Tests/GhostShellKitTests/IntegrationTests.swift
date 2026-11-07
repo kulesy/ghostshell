@@ -140,6 +140,32 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(name, "status")
     }
 
+    func testTheMessagesRouteReadsATranscriptBothWays() async throws {
+        let server = try scratch()
+        let client = try await signedIn(server)
+        let id = try await firstID(client)
+        let page = try await client.messages(sessionID: id)
+        XCTAssertFalse(page.hasEarlier, "a two-line transcript has nothing before it")
+        XCTAssertEqual(page.start, 0)
+        XCTAssertGreaterThan(page.end, 0)
+        let kinds = page.items.map { item -> String in
+            switch item.body {
+            case .user: "user"
+            case .assistant: "assistant"
+            default: "other"
+            }
+        }
+        XCTAssertEqual(kinds, ["user", "assistant"])
+        if case .assistant(_, let text) = page.items.last?.body { XCTAssertEqual(text, "Done.") } else { XCTFail("the last item is not the reply") }
+
+        let nothing = try await client.messages(sessionID: id, after: page.end)
+        XCTAssertTrue(nothing.items.isEmpty, "nothing is newer than the end")
+        XCTAssertFalse(nothing.reset)
+        let none = try await client.messages(sessionID: id, before: page.start)
+        XCTAssertTrue(none.items.isEmpty, "nothing is older than the start")
+        XCTAssertFalse(none.hasEarlier)
+    }
+
     func testTheFeedReportsTheListThenStopsOnSignOut() async throws {
         let server = try scratch()
         let store = MemoryTokenStore()
