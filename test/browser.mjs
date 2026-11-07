@@ -65,7 +65,8 @@ export async function launch(chromium) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-browser-'));
   // Commands go in on fd 3 and replies come out on fd 4, each JSON message ending in a NUL byte. The browser quits when its pipe
   // closes, so a test that dies takes it along.
-  const child = spawn(chromium, ['--remote-debugging-pipe', '--no-first-run', '--no-default-browser-check', '--use-mock-keychain', '--password-store=basic', `--user-data-dir=${profile}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
+  // --disable-audio-output, because --mute-audio still starts the speakers for each clip. Playback runs the same, so a test can read its position.
+  const child = spawn(chromium, ['--remote-debugging-pipe', '--disable-audio-output', '--no-first-run', '--no-default-browser-check', '--use-mock-keychain', '--password-store=basic', `--user-data-dir=${profile}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
   const [, , stderr, commands, replies] = child.stdio;
   const waiting = new Map();
   const problemsOf = new Map();
