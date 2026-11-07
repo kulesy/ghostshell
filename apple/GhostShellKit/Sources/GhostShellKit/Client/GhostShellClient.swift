@@ -91,8 +91,10 @@ public actor GhostShellClient {
 
     /// Any call with a raw reply or body: DELETE, PATCH, a byte upload with `?path=` in `query`, a byte read. Cookie and Origin always come from the
     /// address and token. A `contentType` with a control character, or a method outside GET, POST, PUT, PATCH and DELETE, is refused.
-    public func data(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil) async throws -> Data {
-        try await call(method, path, query: query, body: body, contentType: contentType)
+    /// With `refusals`, a non-2xx answer that carries the server's `{error, problems}` body throws a `ServerRefusal` in place of `GhostShellError.server`.
+    public func data(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil,
+                     refusals: Bool = false) async throws -> Data {
+        try await call(method, path, query: query, body: body, contentType: contentType, refusals: refusals)
     }
 
     /// Opens a stream and hands back its bytes. Reaching `api/sessions/<id>/events` this way has a side effect, see Endpoints/Sessions.swift.
@@ -122,13 +124,16 @@ public actor GhostShellClient {
 
     // MARK: Inside
 
-    private func call(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil) async throws -> Data {
+    private func call(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil,
+                      refusals: Bool = false) async throws -> Data {
         await loadToken()
         guard let token else { throw GhostShellError.signedOut }
         let request = try build(method, path, query: query, body: body, contentType: contentType, token: token)
         let (data, response) = try await transport(request)
         if response.statusCode == 401 { await forget(); throw GhostShellError.signedOut }
-        guard (200..<300).contains(response.statusCode) else { throw Self.refusal(response.statusCode, data) }
+        guard (200..<300).contains(response.statusCode) else {
+            throw (refusals ? ServerRefusal(status: response.statusCode, body: data) : nil) ?? Self.refusal(response.statusCode, data)
+        }
         return data
     }
 
