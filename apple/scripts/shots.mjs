@@ -268,6 +268,13 @@ async function chatFlow(binary, appearance) {
     app.scrollChat(0.35);
     await sleep(800);
     await app.shot(`6-chat-rich-middle-${appearance}`);
+    app.resize(MIN_SIZE);
+    await sleep(700);
+    app.scrollChat(0.35);
+    await sleep(800);
+    await app.shot(`6-chat-rich-middle-min-${appearance}`);
+    app.resize(DEFAULT_SIZE);
+    await sleep(700);
 
     app.chooseRow(1);
     check(await until('stream', () => app.texts().includes('Go on, I am ready.'), 20), 'a streaming chat shows its last message');
