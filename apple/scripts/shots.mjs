@@ -2,7 +2,7 @@
 // Drives the Debug app through System Events (XCUITest is not available here) and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--flow accounts]
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -19,6 +19,7 @@ const argv = process.argv.slice(2);
 const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(option('--out') || path.join(here, '..', 'screenshots'));
+const FLOW = option('--flow');
 const APPEARANCES = option('--only') ? [option('--only')] : ['light', 'dark'];
 const DEFAULT_SIZE = [960, 640];
 const MIN_SIZE = [640, 420];
@@ -190,14 +191,25 @@ repeat with e in els
 end repeat
 if bar is not missing value then set value of bar to ${to}`);
   }
-  // Presses the first button whose title or description is exactly `name`.
-  press(name) {
+  // Presses the first button whose description or title is `name`, or starts with it. An alert's buttons are in the window's contents too.
+  press(name, { prefix = false } = {}) {
+    const q = JSON.stringify(name);
     return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
 repeat with e in els
   try
-    if role of e is "AXButton" and (description of e is ${JSON.stringify(name)} or title of e is ${JSON.stringify(name)}) then
-      perform action "AXPress" of e
-      return "yes"
+    if role of e is "AXButton" then
+      set d to ""
+      try
+        set d to description of e
+      end try
+      set t to ""
+      try
+        set t to title of e
+      end try
+      if ${prefix ? `d starts with ${q} or t starts with ${q}` : `d is ${q} or t is ${q}`} then
+        click e
+        return "yes"
+      end if
     end if
   end try
 end repeat
@@ -288,6 +300,25 @@ repeat with e in els
 end repeat`);
     this.type(text);
   }
+  // SwiftUI gives its bordered buttons no name, so a button is pressed by its place in the window.
+  pressNth(n) {
+    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+set k to 0
+repeat with e in els
+  try
+    if role of e is "AXButton" then
+      set k to k + 1
+      if k is ${n} then
+        perform action "AXPress" of e
+        return "yes"
+      end if
+    end if
+  end try
+end repeat
+return "no"`).stdout.trim() === 'yes';
+  }
+  menu(bar, item) { return this.events(`click menu item ${JSON.stringify(item)} of menu 1 of menu bar item ${JSON.stringify(bar)} of menu bar 1`).status === 0; }
+  escape() { this.send('key code 53'); }
   signOutFromMenu() { this.events('click menu item "Sign Out" of menu 1 of menu bar item "File" of menu bar 1'); }
 
   async shot(name) {
@@ -612,6 +643,128 @@ async function marks(binary, appearance) {
   }
 }
 
+// The accounts, banners, context meter and passkeys all need a server that is out of usage, mid-update and so on, which a scratch server can't be.
+// A stub answers them, and records every call so the Force restart question can be shown to POST nothing until it is confirmed.
+// Never point these buttons at a real server: update and force restart run `npm run restart`, and a sign-in opens a browser on this Mac.
+async function accountsFlow(binary, appearance) {
+  console.log(`\n== ${appearance}: accounts, banners, context meter, passkeys`);
+  const now = Date.now();
+  const day = 86_400_000;
+  const rows = ['Fix the flaky upload test', 'Write the release notes', 'Tidy the sidebar']
+    .map((title, i) => ({ id: `acct-${i}`, title, dot: i === 0 ? 'running' : undefined, state: 'idle', sortAt: now - i * 60_000 }));
+  const work = { id: 'work', name: 'Work' };
+  const personal = { id: 'personal', name: 'Personal' };
+  const chrome = { state: 'elsewhere', to: personal, on: work, email: 'me@example.com' };
+  const update = { show: true, kind: 'update', stage: 'idle', count: 7, restart: true, busy: 2, force: true, blocked: '',
+    changes: [['Add a context meter', 1], ['Fix the sidebar jump', 2], ['Show the plan bars', 3]].map(([title, n]) => ({ title, url: `https://github.com/kulesy/ghostshell/pull/${n}` })) };
+  let banners = {
+    login: { visible: true, signedOut: false, endsAt: now + 3 * day, stage: 'idle', account: 'Personal', accountId: 'personal' },
+    update,
+    accounts: { out: { name: 'Work', text: 'Resets at 3:00 pm', at: now, to: personal }, auto: { at: now, from: work, to: personal } },
+    chrome,
+  };
+  const limits = [
+    { kind: 'session', percent: 62, resetsAt: new Date(now + 95 * 60_000).toISOString(), severity: 'normal' },
+    { kind: 'weekly_all', percent: 84, resetsAt: new Date(now + 2 * day).toISOString(), severity: 'warning' },
+    { kind: 'weekly_scoped', group: 'opus', scope: 'Opus', percent: 97, resetsAt: new Date(now + 2 * day).toISOString(), severity: 'critical' },
+  ];
+  const accounts = {
+    autoSwitch: true, waiting: true, auto: banners.accounts.auto, chrome,
+    accounts: [
+      { id: 'work', name: 'Work', stage: 'idle', signedOut: false, endsAt: now + 20 * day, email: 'me@example.com', planType: 'Max', active: true,
+        plan: { limits, at: now }, pinned: { sessions: 2, groups: 1 },
+        chats: [{ id: 'acct-0', title: 'Fix the flaky upload test', state: 'working' }, { id: 'acct-1', title: 'Write the release notes', state: 'waiting' }] },
+      { id: 'personal', name: 'Personal', stage: 'idle', signedOut: false, endsAt: now + 3 * day, email: 'me@home.example', planType: 'Pro', active: false,
+        plan: { limits: [limits[0]], at: now }, chromeOn: 'work', pinned: { routines: 1 }, chats: [] },
+      { id: 'spare', name: 'Spare', stage: 'waiting', signedOut: true, active: false, pinned: {}, chats: [] },
+    ],
+  };
+  const context = detail => ({ source: 'process', total: 84_000, window: 200_000, autoCompactAt: 160_000, model: 'claude-opus-4-5',
+    ...(detail === 'full' ? { categories: [{ id: 'sys', name: 'System prompt', tokens: 3200 }, { id: 'tools', name: 'Tools', tokens: 14_800 }, { id: 'msgs', name: 'Messages', tokens: 66_000 }],
+      free: { name: 'Free space', tokens: 116_000 }, buffer: { name: 'Autocompact buffer', tokens: 40_000 } } : {}) });
+  const passkeys = { available: true, passkeys: [
+    { id: 'pk-1', device: 'MacBook Pro, Safari', rpId: 'localhost', created: new Date(now - 40 * day).toISOString(), used: new Date(now - 2 * day).toISOString() },
+    { id: 'pk-2', device: 'iPhone, Safari', rpId: 'localhost', created: new Date(now - 9 * day).toISOString() },
+  ] };
+  const calls = [];
+  const send = (res, body) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+  const stub = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      const { pathname } = new URL(req.url, 'http://stub');
+      if (req.method === 'POST') calls.push(pathname);
+      if (pathname === '/login') return res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
+      if (pathname === '/api/accounts') return send(res, accounts);
+      if (pathname === '/api/accounts/plan') return send(res, accounts);
+      if (pathname === '/api/banners') return send(res, banners);
+      if (pathname === '/api/banners/force-restart') return send(res, { ...banners, update: { ...update, stage: 'restarting' } });
+      if (pathname === '/api/passkeys') return send(res, passkeys);
+      if (pathname.endsWith('/context')) return send(res, context(JSON.parse(Buffer.concat(chunks).toString() || '{}').detail));
+      if (pathname.endsWith('/plan')) return send(res, { limits });
+      return send(res, { ungrouped: rows });
+    });
+  });
+  await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
+  const app = new App(binary, { address: `http://localhost:${stub.address().port}`, appearance, tag: '6' });
+  const sees = text => app.texts().includes(text);
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('rows', () => app.rows() === rows.length), 'the stub list shows its sessions');
+
+    const titles = ["sign-in ends in 3 days", 'Work is out of usage', 'Switched to Personal', 'Chrome is still on Work', '7 merged changes are waiting'];
+    check(await until('banners', () => titles.every(sees), 20), 'each banner shows its title');
+    await app.both('banners');
+
+    // The banners are read every 15 seconds, so the four others are taken off and the update one is left to press.
+    banners = { update };
+    check(await until('only update', () => !sees('Work is out of usage') && sees('7 merged changes are waiting'), 30), 'the banners that are gone leave the sidebar');
+    check(app.pressNth(2), 'the update banner has a Force restart button');
+    check(await until('question', () => sees('2 running chats will be cut.'), 10), 'Force restart asks what it will cut');
+    await app.both('force-question');
+    check(app.press('Cancel'), 'Cancel is on the question');
+    await sleep(1500);
+    check(!calls.includes('/api/banners/force-restart'), 'Cancel sends no restart');
+    check(app.pressNth(2) && await until('question again', () => sees('2 running chats will be cut.'), 10), 'Force restart asks again');
+    check(app.press('Force restart'), 'the question has a Force restart button');
+    check(await until('posted', () => calls.filter(call => call === '/api/banners/force-restart').length === 1, 10), 'confirming sends one restart');
+    await sleep(1500);
+    check(calls.filter(call => call === '/api/banners/force-restart').length === 1, 'the restart is sent once');
+    await app.both('restarting');
+
+    check(app.menu('View', 'Accounts'), 'the View menu has Accounts');
+    check(await until('accounts', () => ['Running chats', 'Spare', 'Personal'].every(sees), 15), 'the Accounts screen shows each account');
+    check(sees('Signed out') && sees('Active'), 'the Accounts screen says which is active and which is signed out');
+    await app.both('accounts');
+
+    check(app.menu('View', 'Passkeys'), 'the View menu has Passkeys');
+    check(await until('passkeys', () => sees('MacBook Pro, Safari') && sees('iPhone, Safari'), 15), 'the Passkeys screen lists each passkey');
+    await app.both('passkeys');
+
+    app.chooseFirstRow();
+    check(await until('meter', () => app.hasButton('Context: 84,000 of 200,000 tokens, 42% used'), 15), 'choosing a session shows the context meter');
+    await app.both('meter');
+
+    // A popover can close when the window is resized, so each size opens its own.
+    for (const [name, size] of [['default', DEFAULT_SIZE], ['min', MIN_SIZE]]) {
+      app.resize(size);
+      await sleep(700);
+      check(app.press('Context:', { prefix: true }), `the meter opens its popover at the ${name} size`);
+      check(await until('popover', () => sees('Plan usage') && sees('Messages'), 10), `the popover shows the parts and the plan at the ${name} size`);
+      await app.shot(`${app.tag}-meter-popover-${appearance}-${name}`);
+      app.escape();
+      await sleep(500);
+    }
+    app.resize(DEFAULT_SIZE);
+  } finally {
+    await app.quit();
+    stub.closeAllConnections();
+    stub.close();
+  }
+}
+
 const cleanup = async () => {
   for (const child of apps) child.kill('SIGKILL');
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
@@ -626,13 +779,14 @@ try {
   const app = build({ release: false });
   const binary = path.join(app, 'Contents', 'MacOS', 'GhostShell');
   for (const appearance of APPEARANCES) {
-    if (!argv.includes('--chats-only')) {
+    if (!argv.includes('--chats-only') && FLOW !== 'accounts') {
       await mainFlow(binary, appearance, !argv.includes('--no-chat'));
       await emptyAndLocked(binary, appearance);
       await badAddresses(binary, appearance);
       await marks(binary, appearance);
     }
-    await chatFlow(binary, appearance);
+    if (FLOW !== 'accounts') await chatFlow(binary, appearance);
+    if (!argv.includes('--chats-only')) await accountsFlow(binary, appearance);
   }
   console.log(failures.length ? `\n${failures.length} check(s) failed:\n${failures.map(f => `  ${f}`).join('\n')}` : '\nAll checks passed.');
   console.log(`Screenshots: ${OUT}`);
