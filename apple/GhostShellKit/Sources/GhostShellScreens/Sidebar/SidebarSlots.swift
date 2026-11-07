@@ -19,6 +19,7 @@ struct SidebarHeading: Hashable, Sendable, Identifiable {
 /// Buttons at the end of the sidebar's toolbar, beside Sign Out.
 struct SidebarToolbarSlot: View {
     var body: some View {
+        NewSessionButton()
         NotificationToggle()
         NewGroupButton()
     }

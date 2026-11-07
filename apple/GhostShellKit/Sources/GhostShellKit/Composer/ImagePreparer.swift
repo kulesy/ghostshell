@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import UniformTypeIdentifiers
 
 /// A picture ready to send: one of the four types the server takes, within its size limits.
 public struct PreparedImage: Hashable, Sendable {
@@ -39,6 +40,13 @@ public enum ImagePreparer {
         if head.starts(with: Array("GIF87a".utf8)) || head.starts(with: Array("GIF89a".utf8)) { return "image/gif" }
         if head.count == 12, head.starts(with: Array("RIFF".utf8)), Array(head[8..<12]) == Array("WEBP".utf8) { return "image/webp" }
         return nil
+    }
+
+    /// True when ImageIO reads the bytes as a picture, such as a HEIC photo. A PDF or a text file is not one, so it goes up as a file.
+    public static func isPicture(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0,
+              let type = CGImageSourceGetType(source) else { return false }
+        return UTType(type as String)?.conforms(to: .image) == true
     }
 
     /// A picture within both limits goes as it is, which keeps an animated GIF animated. Anything else, such as a HEIC photo, is redrawn: as a PNG

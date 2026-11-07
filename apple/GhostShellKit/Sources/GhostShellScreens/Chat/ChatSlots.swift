@@ -20,7 +20,7 @@ struct ChatCodeBlock: Hashable {
 @MainActor
 enum ChatSlots {
     // https://github.com/kulesy/ghostshell/issues/84 - under the thread.
-    @ViewBuilder static func composer(_ chat: ChatContext) -> some View { EmptyView() }
+    @ViewBuilder static func composer(_ chat: ChatContext) -> some View { ComposerHost(chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/85 - above the composer, for `chat.status?.pending`: permissions, questions and plan approvals.
     @ViewBuilder static func prompts(_ chat: ChatContext) -> some View { ApprovalPrompts(chat: chat) }
@@ -55,7 +55,7 @@ enum ChatSlots {
     }
 
     // https://github.com/kulesy/ghostshell/issues/84 (quoting a message) - the context menu items of a user or assistant message.
-    @ViewBuilder static func messageActions(_ message: ChatItem, _ chat: ChatContext) -> some View { EmptyView() }
+    @ViewBuilder static func messageActions(_ message: ChatItem, _ chat: ChatContext) -> some View { QuoteMenuItem(message: message, chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/89 - toolbar buttons, such as the file panel toggle.
     @ViewBuilder static func fileToolbar(_ chat: ChatContext) -> some View { FilesSlot.toolbar(chat) }
