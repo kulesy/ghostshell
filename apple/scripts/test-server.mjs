@@ -56,6 +56,15 @@ exec ${JSON.stringify(real)} "$@"
 `, { mode: 0o755 });
 }
 
+// The server's transcript index skips a folder that is a symlink, so a finished test chat is copied in as a plain file to be read back.
+export function copyTranscript(server, id) {
+  const link = path.join(server.home, '.claude', 'projects', folderName(TEST_CWD));
+  const source = path.join(os.homedir(), '.claude', 'projects', folderName(TEST_CWD), `${id}.jsonl`);
+  fs.rmSync(link, { force: true });
+  fs.mkdirSync(link);
+  fs.copyFileSync(source, path.join(link, `${id}.jsonl`));
+}
+
 export async function startScratch({ empty = false, claude = false, base = '/private/tmp/claude-501/gs-scratch' } = {}) {
   fs.mkdirSync(base, { recursive: true });
   const dir = fs.mkdtempSync(path.join(base, 'run-'));

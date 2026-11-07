@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
-import { startScratch, TEST_CWD } from './test-server.mjs';
+import { copyTranscript, startScratch, TEST_CWD } from './test-server.mjs';
 
 const argv = process.argv.slice(2);
 const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
@@ -339,6 +339,7 @@ async function mainFlow(binary, appearance, withChat) {
       }, 90);
       check(finished, 'the chat finishes');
       await sleep(4000);
+      copyTranscript(server, id);
       await app.both('list-chat-finished');
       app.chooseRow(0);
       check(await until('real chat', () => app.texts().includes('Reply with the single word ok.'), 20), 'the finished Haiku chat reads back in the window');

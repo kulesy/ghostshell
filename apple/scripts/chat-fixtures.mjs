@@ -126,7 +126,7 @@ function stream(chat, res, timers) {
   let at = 0;
   const began = Date.now() - 14_000;
   const work = () => ({ writing: true, thinking: false, tools: [], tokens: 1240, turnMs: Date.now() - began, startedAt: began });
-  send(res, 'status', { state: 'working', running: true, model: 'claude-sonnet-5-5', mode: 'default', live: 'The fix has three parts, and I am writing them', work: work(),
+  send(res, 'status', { state: 'working', running: true, model: 'claude-sonnet-5-5', mode: 'default', live: 'The fix has three parts, and I am writing', work: work(),
     think: { id: 't1', text: 'The user wants the whole fix laid out. I will start with the helper, then the retry, then the clean up.', done: true } });
   timers.push(setInterval(() => {
     if (at >= STREAM_TEXT.length) return;
