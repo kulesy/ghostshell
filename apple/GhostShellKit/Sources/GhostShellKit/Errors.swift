@@ -19,7 +19,7 @@ extension GhostShellError: LocalizedError {
         case .wrongPassword: "That password did not match."
         case .locked: "Too many tries. Wait 15 minutes."
         case .unreachable: "Can't reach that server. Check the address and that GhostShell is running."
-        case .server(let status): "The server answered with an error (\(status)). Try again."
+        case .server(let status): status == 0 ? "The server sent something GhostShell did not understand." : "The server answered with an error (\(status)). Try again."
         case .signedOut: "You are signed out."
         }
     }
