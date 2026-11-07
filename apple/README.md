@@ -107,6 +107,25 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 
 The two sidebar PBIs share one folder. Split the work by file inside `Sidebar/`.
 
+## Sidebar slots
+
+`Sidebar/SidebarSlots.swift` holds the places later features plug into the sidebar. The sidebar already draws each one, and each is empty. A feature writes its view or modifier in its own folder and adds one line to the slot's body. Slots read `SidebarState` (the view, folds, selection and search text) from the environment.
+
+| Slot | What it is | Who fills it |
+| --- | --- | --- |
+| `SidebarToolbarSlot` | Buttons at the end of the sidebar toolbar | 87 (New group), 92 (Routines, Scheduled), 94 (notification toggle) |
+| `ViewMenuSlot` | Items at the end of the Home and projects menu | 87 (new and edit projects) |
+| `SessionRowMenuSlot` | A session row's right-click menu | 87 (rename, move, nest, archive), 92 (routine items) |
+| `SessionRowSlot` | Modifiers on each session row | 87 (drag and drop) |
+| `HeadingAccessorySlot` | Small buttons on a section or group heading | 88 (open the group chat) |
+| `HeadingMenuSlot` | A heading's right-click menu | 87 (rename, move, delete a group), 88 |
+| `HeadingSlot` | Modifiers on each heading | 87 (drop target) |
+| `HomeTopSectionsSlot` | Whole sections at the top of Home | 92 (Scheduled) |
+| `RoutineRowsSlot` | Rows at the end of a routine bucket | 92 (idle routines) |
+| `SidebarWatchSlot` | Modifiers on the whole sidebar, for work that watches the index or the chosen session | 94 (notifications) |
+
+Selection is a set. One chosen row opens its session, and several stay chosen for 87's bulk actions.
+
 ## What the base does not do
 
 1. Signing with a stable identity needs a paid developer account. Until then each new build asks for Keychain access once.
