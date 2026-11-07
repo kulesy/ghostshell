@@ -2,7 +2,7 @@
 // Drives the Debug app through accessibility, in the background (XCUITest is not available here), and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--flow main|marks|chats|accounts]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--approvals-only] [--flow main|marks|chats|accounts|approvals]
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -400,6 +400,57 @@ async function chatFlow(bundle, appearance) {
   }
 }
 
+// Chats that stop on a prompt. The stub holds each chat's `pending` list, so the cards can be drawn without a model.
+async function approvalsFlow(bundle, appearance) {
+  const stub = await startChatStub();
+  console.log(`\n== ${appearance}: approval cards`);
+  const app = new App(bundle, { address: stub.address, appearance, tag: '7' });
+  const shown = async (row, title) => {
+    app.chooseRow(row);
+    return check(await until(title, () => app.texts().includes(title), 20), `the card "${title}" is drawn`);
+  };
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
+
+    await shown(4, 'Bash wants to run a command');
+    await sleep(800);
+    await app.both('approval-bash');
+    // The stub has no approve route, so the decision fails and the card keeps its buttons and shows why.
+    check(app.press('Deny'), 'Deny is pressed on the Bash card');
+    check(await until('error', () => app.texts().includes('The server did not accept that answer.') || app.texts().includes('That did not go through. Try again.') || app.texts().includes('That did not go through.')), 'a failed decision shows its reason on the card');
+    await sleep(500);
+    await app.shot(`7-approval-bash-error-${appearance}-default`);
+
+    await shown(5, 'Edit wants to change');
+    await sleep(800);
+    await app.both('approval-edit');
+
+    await shown(6, 'Claude is asking');
+    check(app.press('node:test'), 'an option is picked');
+    await sleep(800);
+    await app.both('approval-question');
+    check(app.press('Lint') && app.press('Types'), 'two checks are picked');
+    await sleep(600);
+    await app.both('approval-question-picked');
+
+    await shown(7, 'Claude has a plan');
+    await sleep(800);
+    await app.both('approval-plan');
+
+    await shown(8, 'Bash wants to run a command');
+    await sleep(800);
+    await app.both('approval-stacked');
+    app.signOutFromMenu();
+    check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the approvals stub');
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+}
+
 async function mainFlow(bundle, appearance, withChat) {
   const server = await startScratch({ claude: withChat });
   servers.add(server);
@@ -791,7 +842,7 @@ try {
     compileHelper();
     return built;
   });
-  const flows = argv.includes('--chats-only') ? ['chats'] : FLOW ? [FLOW] : ['main', 'marks', 'chats', 'accounts'];
+  const flows = argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--chats-only') ? ['chats'] : FLOW ? [FLOW] : ['main', 'marks', 'chats', 'accounts', 'approvals'];
   for (const appearance of APPEARANCES) {
     if (flows.includes('main')) {
       await mainFlow(bundle, appearance, !argv.includes('--no-chat'));
@@ -801,6 +852,7 @@ try {
     if (flows.includes('marks')) await marks(bundle, appearance);
     if (flows.includes('chats')) await chatFlow(bundle, appearance);
     if (flows.includes('accounts')) await accountsFlow(bundle, appearance);
+    if (flows.includes('approvals')) await approvalsFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);

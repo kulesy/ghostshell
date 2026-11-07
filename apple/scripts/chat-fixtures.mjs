@@ -100,6 +100,46 @@ function chats() {
     stream: { title: 'Plan the retry change', items: [user('Write out the fix for the upload race.', 3), reply('s0', 'Yes. I will lay it out in three parts.', 2.5), user('Go on, I am ready.', 1)], streaming: true },
     long: { title: 'Walk through the migration', items: long },
     empty: { title: 'A chat with nothing in it yet', items: [] },
+    ...approvalChats(),
+  };
+}
+
+// Chats that stop on a prompt. The `pending` array rides on the status frame, as the server sends it.
+const ask = (requestId, tool, input, extra = {}) => ({ requestId, tool, label: tool, input, always: false, at: NOW - 30_000, ...extra });
+const PLAN = `## Make the upload wait for the server
+
+1. Add \`await server.ready()\` to \`uploadFile\` in \`test/helpers.js\`.
+2. Retry the first request up to **5 times** with a 200 ms pause.
+3. Clear the temp folder after each run.
+
+Nothing outside \`test/\` changes. I will run the upload test 30 times to check it.`;
+function approvalChats() {
+  const chat = (title, pending, said = 'I need your go-ahead before I go on.') => ({
+    title, pending, items: [user('Go ahead and fix it.', 6), reply('p1', said, 5)],
+  });
+  const bash = ask('req-bash', 'Bash', { command: 'git push origin HEAD --force-with-lease', description: 'Push the branch' }, { always: true, description: 'Pushes the branch you are on.' });
+  const edit = ask('req-edit', 'Edit', {
+    file_path: 'test/helpers.js',
+    old_string: 'export async function uploadFile(path) {\n  const body = await fs.readFile(path);\n  return fetch(url, { method: "PUT", body });\n}',
+    new_string: 'export async function uploadFile(path) {\n  await server.ready();\n  const body = await fs.readFile(path);\n  return fetch(url, { method: "PUT", body });\n}',
+  }, { summary: 'test/helpers.js', always: true });
+  const question = ask('req-ask', 'AskUserQuestion', { questions: [
+    { question: 'Which test runner should the new tests use?', header: 'Runner', multiSelect: false, options: [
+      { label: 'node:test', description: 'Built in, no new dependency.', preview: "import test from 'node:test';\n\ntest('uploads a file', async () => {});" },
+      { label: 'vitest', description: 'Faster watch mode, one more dependency.' },
+    ] },
+    { question: 'Which checks should run before each commit?', header: 'Checks', multiSelect: true, options: [
+      { label: 'Lint', description: 'Style and unused code.' }, { label: 'Types' }, { label: 'Unit tests', description: 'The fast suite only.' },
+    ] },
+  ] });
+  const plan = ask('req-plan', 'ExitPlanMode', { plan: PLAN }, { always: true });
+  const longBash = ask('req-long', 'Bash', { command: Array.from({ length: 40 }, (_, i) => `echo "step ${i + 1}" && sleep 1`).join(' \\\n  && ') });
+  return {
+    'ask-bash': chat('Push the upload fix', [bash]),
+    'ask-edit': chat('Edit the upload helper', [edit]),
+    'ask-question': chat('Choose the test setup', [question]),
+    'ask-plan': chat('Plan the retry change', [plan]),
+    'ask-two': chat('Several things waiting', [bash, edit, longBash]),
   };
 }
 
@@ -120,7 +160,7 @@ const send = (res, name, data) => res.write(`event: ${name}\ndata: ${JSON.string
 function stream(chat, res, timers) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
   if (!chat.streaming) {
-    send(res, 'status', { state: 'idle', running: true, model: 'claude-sonnet-5-5', mode: 'default', live: '' });
+    send(res, 'status', { state: chat.pending ? 'waiting' : 'idle', running: true, model: 'claude-sonnet-5-5', mode: 'default', live: '', pending: chat.pending || [] });
     return;
   }
   let at = 0;
