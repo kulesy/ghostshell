@@ -90,9 +90,11 @@ public actor GhostShellClient {
     }
 
     /// Any call with a raw reply or body: DELETE, PATCH, a byte upload with `?path=` in `query`, a byte read. Cookie and Origin always come from the
-    /// address and token. A `contentType` with a control character, or a method outside GET, POST, PUT, PATCH and DELETE, is refused.
-    public func data(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil) async throws -> Data {
-        try await call(method, path, query: query, body: body, contentType: contentType)
+    /// address and token. A `contentType` with a control character, or a method outside GET, POST, PUT, PATCH and DELETE, is refused. So is an extra
+    /// header whose name is not plain token characters, whose value has a control character, or that is one the client sets itself.
+    public func data(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil,
+                     headers: [String: String] = [:]) async throws -> Data {
+        try await call(method, path, query: query, body: body, contentType: contentType, headers: headers)
     }
 
     /// Opens a stream and hands back its bytes. Reaching `api/sessions/<id>/events` this way has a side effect, see Endpoints/Sessions.swift.
@@ -122,10 +124,11 @@ public actor GhostShellClient {
 
     // MARK: Inside
 
-    private func call(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil) async throws -> Data {
+    private func call(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil,
+                      headers: [String: String] = [:]) async throws -> Data {
         await loadToken()
         guard let token else { throw GhostShellError.signedOut }
-        let request = try build(method, path, query: query, body: body, contentType: contentType, token: token)
+        let request = try build(method, path, query: query, body: body, contentType: contentType, headers: headers, token: token)
         let (data, response) = try await transport(request)
         if response.statusCode == 401 { await forget(); throw GhostShellError.signedOut }
         guard (200..<300).contains(response.statusCode) else {
@@ -162,13 +165,18 @@ public actor GhostShellClient {
     // The one place a request is made. NOTE: [7 Nov 2026] EK - strictOrigin in server.mjs refuses an owner route that arrives with no Origin,
     // so every non-GET carries one. Only the Cookie and the Origin come from the address and token, never from a caller.
     private nonisolated func build(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, contentType: String? = nil,
-                                   token: String?, accept: String = "application/json") throws -> URLRequest {
+                                   headers: [String: String] = [:], token: String?, accept: String = "application/json") throws -> URLRequest {
         guard ["GET", "POST", "PUT", "PATCH", "DELETE"].contains(method) else { throw GhostShellError.badPath(method) }
         if let contentType, contentType.isEmpty || contentType.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) {
             throw GhostShellError.badPath(contentType)
         }
+        for (name, value) in headers {
+            guard Self.isPlainHeader(name), !Self.reserved.contains(name.lowercased()),
+                  !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw GhostShellError.badPath(name) }
+        }
         var request = URLRequest(url: try address.url(for: path, query: query))
         request.httpMethod = method
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         request.setValue(accept, forHTTPHeaderField: "Accept")
         if method != "GET" { request.setValue(address.origin, forHTTPHeaderField: "Origin") }
         if let token {
@@ -221,6 +229,13 @@ public actor GhostShellClient {
             if text.hasPrefix("capcom="), isPlausible(String(text.dropFirst(7))) { return String(text.dropFirst(7)) }
         }
         return nil
+    }
+
+    // The headers the client sets itself, which a caller's extra header can never replace.
+    private static let reserved: Set<String> = ["cookie", "origin", "content-type", "content-length", "accept", "host", "authorization", "transfer-encoding"]
+
+    private static func isPlainHeader(_ name: String) -> Bool {
+        !name.isEmpty && name.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x41 && $0 <= 0x5A) || ($0 >= 0x61 && $0 <= 0x7A) || $0 == 0x2D }
     }
 
     // A token goes into a header, so only the characters a real one has are allowed.
