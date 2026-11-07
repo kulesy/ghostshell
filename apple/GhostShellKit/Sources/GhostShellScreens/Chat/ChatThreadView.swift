@@ -18,6 +18,7 @@ struct ChatThreadView: View {
     @State private var away = false
     @State private var visible: [String] = []
     @State private var anchor: String?
+    @State private var restoring: Task<Void, Never>?
 
     private static let near: CGFloat = 40
 
@@ -91,9 +92,7 @@ struct ChatThreadView: View {
             pinned = true
             position.scrollTo(edge: .bottom)
         }
-        .onChange(of: model.earlierCount) {
-            if let anchor { position.scrollTo(id: anchor, anchor: .top) }
-        }
+        .onChange(of: model.earlierCount) { restore() }
         .overlay(alignment: .bottomTrailing) {
             if away {
                 Button("Scroll to end", systemImage: "arrow.down") {
@@ -108,10 +107,27 @@ struct ChatThreadView: View {
         .accessibilityLabel("Messages")
     }
 
+    /// Puts the reader back on the row they were on. Rows not yet measured are sized by estimate, so one jump lands short and a few more settle it.
+    private func restore() {
+        guard let anchor else { return }
+        restoring?.cancel()
+        restoring = Task {
+            // The list of rows in view follows the jump a moment later, so the first tries are not judged by it.
+            for attempt in 0..<10 {
+                position.scrollTo(id: anchor, anchor: .top)
+                try? await Task.sleep(for: .milliseconds(120))
+                let rows = model.rows
+                guard !Task.isCancelled, let want = rows.firstIndex(where: { $0.id == anchor }),
+                      let seen = rows.firstIndex(where: { visible.contains($0.id) }) else { return }
+                if attempt >= 2, seen == want || seen == want - 1 { return }
+            }
+        }
+    }
+
     private func loadEarlier() {
         guard !model.loadingEarlier else { return }
-        anchor = model.rows.first { visible.contains($0.id) }?.id
-        Task { await model.loadEarlier() }
+        // The row is picked once the page has arrived, because a jump to the top reports which rows are in view a moment after it lands.
+        Task { await model.loadEarlier { anchor = model.rows.first { visible.contains($0.id) }?.id } }
     }
 
     /// The last group is the one still at work while a turn runs and no message waits to be sent.

@@ -161,13 +161,15 @@ final class ChatModel {
         }
     }
 
-    func loadEarlier() async {
+    /// `beforePutting` runs just before the older items go in front, so the thread can note which row the reader is on at that moment.
+    func loadEarlier(beforePutting note: () -> Void = {}) async {
         guard hasEarlier, !loadingEarlier, phase == .loaded, !closed else { return }
         loadingEarlier = true
         defer { loadingEarlier = false }
         do {
             let page = try await chat.client.messages(sessionID: chat.sessionID, before: start)
             guard !closed, !Task.isCancelled else { return }
+            note()
             thread.prepend(page.items)
             (start, hasEarlier) = (page.start, page.hasEarlier)
             rebuild()
