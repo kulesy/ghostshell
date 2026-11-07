@@ -43,7 +43,12 @@ private struct ChatLayout: View {
             ChatSlots.composer(chat)
         }
         .inspector(isPresented: $chat.filePanelOpen) { ChatSlots.filePanel(chat) }
-        .toolbar { ToolbarItemGroup { ChatSlots.toolbar(chat) } }
+        .toolbar {
+            ToolbarItemGroup {
+                ChatSlots.fileToolbar(chat)
+                ChatSlots.terminalToolbar(chat)
+            }
+        }
         .environment(\.openURL, OpenURLAction { url in
             guard let link = ChatLink(url: url) else { return .discarded }
             return ChatSlots.openLink(link, chat) ? .handled : .discarded

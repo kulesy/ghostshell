@@ -53,6 +53,8 @@ final class ChatContext {
     }
 
     /// The state a feature keeps for this chat, made on first use. Keyed by its type, so each feature has its own and the chat's files never name it.
+    /// It lasts one visit: opening another session makes a new `ChatContext` (`.id(sessionID)` in `ChatScreen`). State that must survive a switch, such
+    /// as the per-session draft in docs/adr/20261102-a-draft-for-each-session.md, belongs with `AppModel`.
     func store<T: AnyObject>(_ type: T.Type = T.self, make: @MainActor () -> T) -> T {
         if let held = stores[ObjectIdentifier(type)] as? T { return held }
         let fresh = make()

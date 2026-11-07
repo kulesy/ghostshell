@@ -46,8 +46,11 @@ enum ChatSlots {
     // https://github.com/kulesy/ghostshell/issues/84 (quoting a message) - the context menu items of a user or assistant message.
     @ViewBuilder static func messageActions(_ message: ChatItem, _ chat: ChatContext) -> some View { EmptyView() }
 
-    // https://github.com/kulesy/ghostshell/issues/89 and https://github.com/kulesy/ghostshell/issues/91 - toolbar buttons, such as the file panel and the terminal toggles.
-    @ViewBuilder static func toolbar(_ chat: ChatContext) -> some View { EmptyView() }
+    // https://github.com/kulesy/ghostshell/issues/89 - toolbar buttons, such as the file panel toggle.
+    @ViewBuilder static func fileToolbar(_ chat: ChatContext) -> some View { EmptyView() }
+
+    // https://github.com/kulesy/ghostshell/issues/91 - toolbar buttons, such as the terminal toggle.
+    @ViewBuilder static func terminalToolbar(_ chat: ChatContext) -> some View { EmptyView() }
 }
 
 /// The default for a file or picture: its name, with no fetch.

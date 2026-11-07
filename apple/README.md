@@ -80,7 +80,8 @@ A new Swift file edits none of these. Edit one only when the work needs it, and 
 6. `GhostShellKit/Sources/GhostShellKit/Models/SessionIndex.swift`: add new fields as optional so old servers still decode.
 7. `GhostShell/GhostShellApp.swift`: scenes and menu commands.
 8. `package.json`: the `apple:*` scripts.
-9. `apple/scripts/shots.mjs`: the app run. It takes a machine-wide lock (`/tmp/ghostshell-shots.lock`, a folder holding the owner pid), because System Events keystrokes are global. A second run fails at once with the owner's pid. A lock whose owner is dead is cleared.
+9. `GhostShellKit/Sources/GhostShellScreens/Chat/ChatSlots.swift`: where the later chat PBIs plug in. Each one replaces only its own slot body, so two PBIs merge cleanly.
+10. `apple/scripts/shots.mjs`: the app run. It takes a machine-wide lock (`/tmp/ghostshell-shots.lock`, a folder holding the owner pid), because System Events keystrokes are global. A second run fails at once with the owner's pid. A lock whose owner is dead is cleared.
 
 ## Folder map for later PBIs
 
@@ -88,7 +89,7 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 
 | PBI | Screens folder | Kit file |
 | --- | --- | --- |
-| [https://github.com/kulesy/ghostshell/issues/83](https://github.com/kulesy/ghostshell/issues/83) Chat | `Chat/` (replaces the stub) | `Chat.swift` |
+| [https://github.com/kulesy/ghostshell/issues/83](https://github.com/kulesy/ghostshell/issues/83) Chat | `Chat/` (built) | `Chat.swift` |
 | [https://github.com/kulesy/ghostshell/issues/84](https://github.com/kulesy/ghostshell/issues/84) Composer | `Composer/` | `Composer.swift` |
 | [https://github.com/kulesy/ghostshell/issues/85](https://github.com/kulesy/ghostshell/issues/85) Approvals | `Approvals/` | `Approvals.swift` |
 | [https://github.com/kulesy/ghostshell/issues/86](https://github.com/kulesy/ghostshell/issues/86) Sidebar | `Sidebar/` | `Sessions.swift` |
