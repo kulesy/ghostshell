@@ -15,7 +15,7 @@ struct ChatCodeBlock: Hashable {
     var text: String
 }
 
-/// Where the features that come after the chat plug in. Each slot returns its default now. The owning PBI replaces that one body with a call into its
+/// Where the features that come after the chat plug in. Each slot returns its default now. The owning PBI replaces its own slot bodies with a call into its
 /// own folder, and nothing else in the chat changes. A slot gets the `ChatContext` of the chat it is drawn in.
 @MainActor
 enum ChatSlots {

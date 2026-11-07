@@ -104,11 +104,29 @@ final class ChatMarkdownTests: XCTestCase {
 
     func testOddLineBreaksNeverCrashAListParse() {
         for sep in ["\u{2028}", "\u{2029}", "\u{85}", "\u{0B}", "\u{0C}"] {
-            XCTAssertEqual(parse("- a\(sep)b").count, sep == "\u{0B}" || sep == "\u{0C}" ? 1 : 2, sep.debugDescription)
+            // The server splits a line at the first three, so they end the item. \v and \f stay inside it, as they do on the web page.
+            let inside = sep == "\u{0B}" || sep == "\u{0C}"
+            XCTAssertEqual(parse("- a\(sep)b").count, inside ? 1 : 2, sep.debugDescription)
             _ = parse("1. a\(sep)- b\(sep)  - c")
+        }
+        for sep in ["\u{0B}", "\u{0C}"] {
+            XCTAssertEqual(parse("- a\(sep)b"), [.list(ordered: false, start: 1, items: [MDItem(text: [.text("a\(sep)b")], children: [])])])
         }
         // A separator the server treats as a line break splits the item, as it splits the line.
         XCTAssertEqual(parse("- a\u{2028}b"), [.list(ordered: false, start: 1, items: [MDItem(text: [.text("a")], children: [])]), .paragraph([.text("b")])])
+    }
+
+    func testListNestingIsCapped() {
+        let src = (0..<300).map { String(repeating: "  ", count: $0) + "- item \($0)" }.joined(separator: "\n")
+        var levels = 0, items = 0
+        var blocks = parse(src)
+        while case .list(_, _, let list)? = blocks.first {
+            levels += 1
+            items += list.count
+            blocks = list.last?.children ?? []
+        }
+        XCTAssertEqual(levels, 17)
+        XCTAssertEqual(items, 300)
     }
 
     func testTable() {

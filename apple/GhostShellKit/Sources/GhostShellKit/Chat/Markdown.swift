@@ -199,10 +199,11 @@ private struct BlockParser {
     let fileLinks: Bool
 
     private static let fence = Rx(#"^\s*(```+|~~~+)\s*([\w+-]*)"#)
-    private static let heading = Rx(#"^(#{1,6})\s+(.*)$"#)
+    private static let heading = Rx(#"^(#{1,6})\s+(.*)$"#, .dotMatchesLineSeparators)
     private static let rule = Rx(#"^\s*([-*_])(\s*\1){2,}\s*$"#)
     private static let listStart = Rx(#"^\s*([-*+]|\d+[.)])\s+"#)
-    private static let item = Rx(#"^(\s*)([-*+]|(\d+)[.)])\s+(.*)$"#)
+    // Lines are already split at every break the server knows, so what `.` can still meet is \v and \f, which the web page's `.` matches too.
+    private static let item = Rx(#"^(\s*)([-*+]|(\d+)[.)])\s+(.*)$"#, .dotMatchesLineSeparators)
     private static let quote = Rx(#"^\s*>"#)
     private static let quotePrefix = Rx(#"^\s*>\s?"#)
     private static let tableRow = Rx(#"^\s*\|.*\|\s*$"#)
@@ -250,7 +251,7 @@ private struct BlockParser {
                 flush(); out.append(.heading(level: h[1].count, inline(h[2]))); i += 1
             } else if Self.rule.matches(l) {
                 flush(); out.append(.rule); i += 1
-            } else if Self.listStart.matches(l), let (block, next) = list(lines, i) {
+            } else if Self.listStart.matches(l), let (block, next) = list(lines, i, depth: 0) {
                 flush()
                 out.append(block); i = next
             } else if depth < Self.maxDepth, Self.quote.matches(l) {
@@ -276,7 +277,7 @@ private struct BlockParser {
     }
 
     /// Nil when the line starts like an item but the item pattern disagrees, so the caller reads it as a paragraph.
-    private func list(_ lines: [String], _ start: Int) -> (MDBlock, Int)? {
+    private func list(_ lines: [String], _ start: Int, depth: Int) -> (MDBlock, Int)? {
         guard let first = Self.item.groups(lines[start]) else { return nil }
         let indent = first[1].count
         let ordered = !first[3].isEmpty
@@ -294,9 +295,10 @@ private struct BlockParser {
                 break
             }
             let m = Self.item.groups(l)
-            if let m, m[1].count == indent, !m[3].isEmpty == ordered {
+            // Past the cap a deeper item is read as a sibling, so a pasted staircase of indents cannot nest a view per level.
+            if let m, (m[1].count == indent && !m[3].isEmpty == ordered) || (depth >= Self.maxDepth && m[1].count > indent) {
                 items.append(MDItem(text: [], children: [])); items[items.count - 1].text = inline(m[4]); i += 1
-            } else if let m, m[1].count > indent, !items.isEmpty, let (sub, next) = list(lines, i) {
+            } else if let m, m[1].count > indent, !items.isEmpty, let (sub, next) = list(lines, i, depth: depth + 1) {
                 items[items.count - 1].children.append(sub); i = next
             } else if m == nil, l.first?.isWhitespace == true, !items.isEmpty {
                 // A wrapped line continues the item's text.
