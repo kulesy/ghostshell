@@ -15,7 +15,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const TEST_CWD = '/private/tmp/claude-501/gs-test-cwd';
+// A folder of its own inside the shared test folder, so its transcripts are only this app's chats.
+export const TEST_CWD = '/private/tmp/claude-501/capcom-test-cwd/swift-app';
 const TITLES = [
   'Fix the flaky upload test', 'Plan the release notes', 'Review the sign-in change', 'Tidy the settings page',
   'Add dark mode to the chart', 'Investigate slow startup', 'Write the migration guide', 'Check the nightly build',

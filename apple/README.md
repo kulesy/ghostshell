@@ -46,9 +46,9 @@ The first launch of a new build asks the Keychain for access to its own item. Th
 
 1. **Unit tests** run with `swift test` in `apple/GhostShellKit`. They use a stub `URLProtocol`, so they never open a socket.
 2. **Integration tests** talk to a real scratch server. They cover sign-in, a wrong password, the lockout, an `Origin` check on a POST, sign-out revoking the token, the session index, the `status` event and a 401 after revoke.
-3. **The app run** (`apple/scripts/shots.mjs`) launches the Debug app and drives it through System Events, because XCUITest is not available here. It signs in, checks the list, starts a real Haiku chat and checks that the row appears with no action in the window. It relaunches to check that the sign-in stays, then signs out.
+3. **The app run** (`apple/scripts/shots.mjs`) launches the Debug app and drives it through System Events, because XCUITest is not available here. It signs in, checks the list, starts a real Haiku chat and checks that the row appears with no action in the window. It relaunches to check that the sign-in stays, then signs out. A last pass signs in to a small stub that answers only sign-in and the list, because a chat waiting on an approval or a failed turn can't be had on demand, and it shows all four status marks.
 
-The server for these runs is `node server.mjs` with its own state folder, home folder and port. The password is written to a file with the server's own `writePassword`. `CAPCOM_CLAUDE` points at a wrapper that restores the real home folder, so the Haiku chat is real.
+The server for these runs is `node server.mjs` with its own state folder, home folder and port. The password is written to a file with the server's own `writePassword`. `CAPCOM_CLAUDE` points at a wrapper that restores the real home folder, so the Haiku chat is real. It runs in `/private/tmp/claude-501/capcom-test-cwd/swift-app`.
 
 ### Screenshots
 

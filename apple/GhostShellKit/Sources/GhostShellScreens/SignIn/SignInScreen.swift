@@ -59,7 +59,6 @@ public struct SignInScreen: View {
             .disabled(working || password.isEmpty)
         }
         .textFieldStyle(.roundedBorder)
-        .disabled(working)
         .frame(maxWidth: 320)
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -93,6 +92,7 @@ public struct SignInScreen: View {
                 password = ""
             } catch {
                 failure = error as? GhostShellError ?? .unreachable
+                if addressProblem == nil { password = "" }
                 focus = addressProblem == nil ? .password : .address
             }
             working = false

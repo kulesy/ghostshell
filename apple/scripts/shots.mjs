@@ -10,6 +10,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
@@ -92,12 +93,10 @@ class App {
     if (frontName() !== 'GhostShell') throw new Error('GhostShell is not the front app, so nothing was typed.');
     osa(`tell application "System Events"\n${command}\nend tell`);
   }
-  // One key at a time with a short gap. A burst typed into the password field right after a failed sign-in comes out scrambled.
-  type(text) { this.send(`repeat with ch in characters of ${JSON.stringify(text)}\nkeystroke ch\ndelay 0.05\nend repeat`); }
+  type(text) { this.send(`keystroke ${JSON.stringify(text)}`); }
   enter() { this.send('key code 36'); }
   // The system offers saved passwords in a small window over the field. Escape closes it, so Return reaches the form.
   submit() { this.send('key code 53'); this.send('key code 36'); }
-  selectAll() { this.send('keystroke "a" using command down'); }
   resize([w, h]) { events(`set size of (first window whose subrole is "AXStandardWindow") to {${w}, ${h}}`); }
 
   // The text of every static text in the window, one per line.
@@ -205,7 +204,6 @@ async function mainFlow(binary, appearance, withChat) {
     check(await until('wrong', () => app.texts().includes('That password did not match.')), 'a wrong password shows its message');
     await app.both('wrong-password');
 
-    app.selectAll();
     app.type(readPassword(server));
     app.submit();
     check(await until('rows', () => app.rows() === 8), 'signing in shows the 8 seeded sessions');
@@ -312,6 +310,33 @@ async function badAddresses(binary, appearance) {
   }
 }
 
+// A chat waiting on an approval or a failed turn can't be had on demand from a scratch server, so a stub answers the routes the list uses.
+async function marks(binary, appearance) {
+  console.log(`\n== ${appearance}: every status mark`);
+  const rows = [['Waiting on an approval', 'awaiting'], ['This turn failed', 'error'], ['Finished and unread', 'ready'], ['Still working', 'running'], ['Nothing to look at']]
+    .map(([title, dot], i) => ({ id: `mark-${i}`, title, dot, state: 'idle', sortAt: Date.now() - i * 60_000 }));
+  const stub = http.createServer((req, res) => {
+    req.resume();
+    if (req.url === '/login') res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
+    else res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ungrouped: rows }));
+  });
+  await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
+  const app = new App(binary, { address: `http://localhost:${stub.address().port}`, appearance, tag: '5' });
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('rows', () => app.rows() === rows.length), 'the list shows a row for each mark');
+    await app.both('list-marks');
+    app.signOutFromMenu();
+    check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the stub');
+  } finally {
+    await app.quit();
+    stub.closeAllConnections();
+    stub.close();
+  }
+}
+
 const cleanup = async () => {
   for (const child of apps) child.kill('SIGKILL');
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
@@ -328,6 +353,7 @@ try {
     await mainFlow(binary, appearance, !argv.includes('--no-chat'));
     await emptyAndLocked(binary, appearance);
     await badAddresses(binary, appearance);
+    await marks(binary, appearance);
   }
   console.log(failures.length ? `\n${failures.length} check(s) failed:\n${failures.map(f => `  ${f}`).join('\n')}` : '\nAll checks passed.');
   console.log(`Screenshots: ${OUT}`);
