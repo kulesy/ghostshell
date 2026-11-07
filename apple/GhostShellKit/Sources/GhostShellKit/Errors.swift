@@ -14,7 +14,7 @@ public enum GhostShellError: Error, Equatable, Sendable {
 extension GhostShellError: LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case .badAddress: "That is not an address GhostShell can use. Use https://, or http://localhost for this Mac."
+        case .badAddress: "That is not an address GhostShell can use. Use https, or localhost on this Mac."
         case .badPath: "That request was refused before it was sent."
         case .wrongPassword: "That password did not match."
         case .locked: "Too many tries. Wait 15 minutes."
