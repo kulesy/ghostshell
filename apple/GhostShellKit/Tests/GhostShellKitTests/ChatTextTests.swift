@@ -68,3 +68,45 @@ final class ChatTextTests: XCTestCase {
         XCTAssertEqual(ChatTime.untilMidnight(from: now, calendar: calendar), 60, accuracy: 0.5)
     }
 }
+
+final class ChatAgentTests: XCTestCase {
+    private func agent(_ id: String, _ json: String) -> Subagent {
+        try! JSONDecoder().decode(Subagent.self, from: Data(#"{"id":"\#(id)",\#(json)}"#.utf8))
+    }
+
+    func testARunningAgentsClockOnlyMovesEarlier() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let first = ChatAgents.heard(before: [], list: [agent("a", #""state":"running","ms":5000"#)], now: now)
+        XCTAssertEqual(first[0].elapsed(at: now), 5000)
+        let slow = ChatAgents.heard(before: first, list: [agent("a", #""state":"running","ms":1000"#)], now: now.addingTimeInterval(1))
+        XCTAssertEqual(slow[0].since, first[0].since)
+        XCTAssertEqual(slow[0].elapsed(at: now.addingTimeInterval(2)), 7000)
+    }
+
+    func testFinishedAgentsKeepTheServersTime() {
+        let done = ChatAgents.heard(before: [], list: [agent("a", #""state":"done","ms":4200"#)])
+        XCTAssertNil(done[0].since)
+        XCTAssertEqual(done[0].elapsed(), 4200)
+    }
+
+    func testPartsAndSummary() {
+        let list = ChatAgents.heard(before: [], list: [
+            agent("old", #""state":"done","startedAt":1,"endedAt":5"#), agent("new", #""state":"failed","startedAt":2,"endedAt":9"#),
+            agent("r1", #""state":"running","startedAt":3"#), agent("r2", #""state":"running","startedAt":8"#),
+        ])
+        let (running, finished) = ChatAgents.parts(list)
+        XCTAssertEqual(running.map(\.id), ["r2", "r1"])
+        XCTAssertEqual(finished.map(\.id), ["new", "old"])
+        XCTAssertEqual(ChatAgents.summaryLine(list), "2 running, 2 finished")
+        XCTAssertEqual(ChatAgents.summaryLine([]), "")
+    }
+}
+
+final class ChatClipTests: XCTestCase {
+    func testClipKeepsShortTextAndNotesWhatIsCut() {
+        XCTAssertEqual(ChatText.clip("a\nb", lines: 5), "a\nb")
+        XCTAssertEqual(ChatText.clip("a\nb\nc\nd", lines: 2), "a\nb\n... 2 more lines")
+        XCTAssertEqual(ChatText.clip("a\nb\nc", lines: 2), "a\nb\n... 1 more line")
+        XCTAssertTrue(ChatText.clip(String(repeating: "x", count: 50_000), lines: 5, characters: 100).hasSuffix("1 more line"))
+    }
+}

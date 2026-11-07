@@ -115,3 +115,27 @@ final class ChatMarkdownTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
 }
+
+final class ChatLinkTests: XCTestCase {
+    func testWebLinksPassAndRoundTrip() {
+        let url = URL(string: "https://example.com/a?b=1")!
+        XCTAssertEqual(ChatLink.web(url).url, url)
+        XCTAssertEqual(ChatLink(url: url), .web(url))
+        XCTAssertEqual(ChatLink(url: URL(string: "HTTP://example.com")!), .web(URL(string: "HTTP://example.com")!))
+    }
+
+    func testFileLinksRoundTripIncludingHomeAndSpaces() {
+        for link in [ChatLink.file(path: "/Users/me/a b.txt", line: 12), .file(path: "~/notes/x.md", line: nil), .file(path: "/tmp/a&b=c", line: 3)] {
+            let url = try! XCTUnwrap(link.url)
+            XCTAssertEqual(url.scheme, "ghostshell-file")
+            XCTAssertEqual(ChatLink(url: url), link)
+        }
+    }
+
+    func testEverythingElseIsRefused() {
+        for text in ["file:///etc/passwd", "javascript:alert(1)", "data:text/html,hi", "ftp://example.com/x", "mailto:a@b.c", "x-apple.systempreferences:", "https:///nohost",
+                     "ghostshell-file:open?path=../../etc/passwd", "ghostshell-file:open?path=relative/x", "ghostshell-file:open", "ghostshell-file://host/etc/passwd"] {
+            XCTAssertNil(ChatLink(url: URL(string: text)!), text)
+        }
+    }
+}

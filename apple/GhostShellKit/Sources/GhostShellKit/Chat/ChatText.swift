@@ -51,6 +51,18 @@ public enum ChatText {
     /// Text as an HTML parser would show it: CR and CRLF become LF.
     public static func lf(_ text: String) -> String { text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n") }
 
+    /// The first `lines` lines and `characters` characters of an output, with a note of how much is left, so a huge result never has to be laid out whole.
+    public static func clip(_ text: String, lines: Int = 40, characters: Int = 20_000) -> String {
+        let all = lf(text).split(separator: "\n", omittingEmptySubsequences: false)
+        var kept = all.prefix(lines).joined(separator: "\n")
+        var more = all.count - min(all.count, lines)
+        if kept.count > characters {
+            kept = String(kept.prefix(characters))
+            more = max(more, 1)
+        }
+        return more > 0 ? "\(kept)\n... \(more) more \(more == 1 ? "line" : "lines")" : kept
+    }
+
     private static let stars = Rx(#"[*`]+"#)
     private static let hashes = Rx(#"^#+\s*"#, .anchorsMatchLines)
     private static let space = Rx(#"\s+"#)
