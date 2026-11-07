@@ -830,6 +830,8 @@ function sameOrigin(req) {
 
 // NOTE: [23 Oct 2026] EK - The global check lets a request with no Origin through, so the routes that run something as the owner (the
 // terminal and the routine writes) insist on one. A browser always sends Origin with a cross-site write.
+// NOTE: [7 Nov 2026] EK - The native app is not a browser, so its client sets Origin by hand on every non-GET. If this check changes, change
+// apple/GhostShellKit/Sources/GhostShellKit/Client/GhostShellClient.swift to match, or its owner-route calls start failing with a 403.
 function strictOrigin(req) {
   if (!req.headers.origin || !sameOrigin(req)) return false;
   const site = req.headers['sec-fetch-site'];
@@ -2245,6 +2247,9 @@ const server = http.createServer(async (req, res) => {
     if (!auth.hasPassword()) return send(res, 503, page('setup.html'), 'text/html; charset=utf-8');
     const secure = overHttps(req);
     const agent = req.headers['user-agent'];
+    // NOTE: [7 Nov 2026] EK - The native app signs in here, not in a browser. It reads the `capcom` cookie off a 303 and tells a locked
+    // account from a wrong password by the words "Too many tries" in the 401 page. Change either and update
+    // apple/GhostShellKit/Sources/GhostShellKit/Client/GhostShellClient.swift, or every sign-in there reads as a wrong password.
     if (u.pathname === '/login' && req.method === 'POST') {
       const password = new URLSearchParams(await readBody(req)).get('password');
       const result = auth.verify(password);
