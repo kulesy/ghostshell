@@ -1,41 +1,53 @@
+import GhostShellKit
 import SwiftUI
 
-/// The stub thread, inside the layout the slots hang from. The chat PBI replaces the thread.
+/// A session's chat: the thread, the line that says what Claude is doing, and the layout the slots hang from.
 struct ChatScreen: View {
-    @Environment(AppModel.self) private var model
     let sessionID: String
-    @State private var chat: ChatContext?
+
+    var body: some View { ChatHost(sessionID: sessionID).id(sessionID) }
+}
+
+private struct ChatHost: View {
+    @Environment(AppModel.self) private var app
+    let sessionID: String
+    @State private var model: ChatModel?
 
     var body: some View {
-        let title = model.rows.first { $0.id == sessionID }?.title ?? ""
+        let title = app.rows.first { $0.id == sessionID }?.title ?? ""
         Group {
-            if let chat { ChatLayout(chat: chat, title: title) } else { Color.clear }
+            if let model { ChatLayout(model: model).environment(model) } else { Color.clear }
         }
         .navigationTitle(title.isEmpty ? "Untitled" : title)
-        .task(id: sessionID) {
-            guard let client = model.client else { return }
-            let fresh = ChatContext(sessionID: sessionID, client: client)
-            chat = fresh
-            defer { fresh.close() }
-            try? await Task.sleep(for: .seconds(86_400 * 365))
+        .task {
+            guard let client = app.client else { return }
+            let fresh = ChatModel(chat: ChatContext(sessionID: sessionID, client: client))
+            model = fresh
+            await fresh.run()
+            fresh.close()
         }
     }
 }
 
 private struct ChatLayout: View {
-    @Bindable var chat: ChatContext
-    let title: String
+    let model: ChatModel
 
     var body: some View {
+        @Bindable var chat = model.chat
         VStack(spacing: 0) {
-            Text(title.isEmpty ? "Untitled" : title)
-                .font(.title2)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ChatThreadView()
+            NoticeBar()
+            AgentStrip()
             if chat.terminalOpen { ChatSlots.terminal(chat) }
             ChatSlots.prompts(chat)
             ChatSlots.composer(chat)
         }
         .inspector(isPresented: $chat.filePanelOpen) { ChatSlots.filePanel(chat) }
         .toolbar { ToolbarItemGroup { ChatSlots.toolbar(chat) } }
+        .environment(\.openURL, OpenURLAction { url in
+            guard let link = ChatLink(url: url) else { return .discarded }
+            return ChatSlots.openLink(link, chat) ? .handled : .discarded
+        })
+        .task { await model.keepDay() }
     }
 }
