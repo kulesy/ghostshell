@@ -27,7 +27,7 @@ public final class AppModel {
     public private(set) var client: GhostShellClient?
     private var feed: SessionIndexFeed?
     private var tasks: [Task<Void, Never>] = []
-    private var visible = true
+    public private(set) var visible = true
 
     private static let addressKey = "serverAddress"
 

@@ -192,7 +192,7 @@ public struct SessionIndex: Hashable, Sendable, Decodable {
 }
 
 // A row or list the app cannot read is left out, so one odd entry never empties the whole index.
-private struct Lossy<T: Decodable>: Decodable {
+struct Lossy<T: Decodable>: Decodable {
     let value: T?
     init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }
