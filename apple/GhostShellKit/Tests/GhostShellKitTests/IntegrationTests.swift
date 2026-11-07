@@ -218,6 +218,16 @@ final class IntegrationTests: XCTestCase {
         XCTAssertGreaterThan(late, early, "a keep-alive arrived while idle")
     }
 
+    // A seeded session has no running chat here, so the server answers 409 and the client throws it rather than calling it answered elsewhere.
+    func testAnAnswerToASessionThatIsNotRunningIsA409() async throws {
+        let server = try scratch()
+        let client = try await signedIn(server)
+        let id = try await firstID(client)
+        do { _ = try await client.decide(sessionID: id, requestID: "no-such-request", .allow); XCTFail("the server took a decision for a chat that is not running") } catch {
+            XCTAssertEqual(error as? GhostShellError, .server(status: 409))
+        }
+    }
+
     func testAnAddressNobodyListensOnIsUnreachable() async throws {
         _ = try scratch()
         let client = GhostShellClient(address: try XCTUnwrap(ServerAddress("http://127.0.0.1:9")), store: MemoryTokenStore())
