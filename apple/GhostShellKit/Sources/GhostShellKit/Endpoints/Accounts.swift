@@ -3,12 +3,6 @@ import Foundation
 // NOTE: [8 Nov 2026] EK - These types mirror `accountsNow`, `bannersNow`, `contextFor` and the passkey handlers in server.mjs, which a comment there names in turn.
 // Decoding is lenient, so a field the server renames is dropped with no error and reads as empty.
 
-/// A word the server picks from a short list. A word this app does not know is kept in `.other`, never an error.
-public protocol ServerWord: Decodable { init(word: String) }
-extension ServerWord {
-    public init(from decoder: Decoder) throws { self.init(word: try decoder.singleValueContainer().decode(String.self)) }
-}
-
 public enum SignInStage: Hashable, Sendable, ServerWord {
     case idle, waiting, done, failed
     case other(String)
@@ -63,21 +57,6 @@ public enum ContextSource: Hashable, Sendable, ServerWord {
     public init(word: String) {
         self = switch word { case "process": .process; case "transcript": .transcript; case "none": .none; default: .other(word) }
     }
-}
-
-extension KeyedDecodingContainer {
-    func value<T: Decodable>(_ key: Key) -> T? { try? decode(T.self, forKey: key) }
-    /// A list where one row the app cannot read is left out.
-    func list<T: Decodable>(_ key: Key) -> [T] { ((try? decode([Lossy<T>].self, forKey: key)) ?? []).compactMap(\.value) }
-    /// The server counts times in milliseconds since 1970.
-    func millis(_ key: Key) -> Date? { (try? decode(Double.self, forKey: key)).map { Date(timeIntervalSince1970: $0 / 1000) } }
-    func iso(_ key: Key) -> Date? { (try? decode(String.self, forKey: key)).flatMap(parseISO) }
-    /// A whole number, which the server may write as 12 or 12.0.
-    func count(_ key: Key) -> Int? { (try? decode(Int.self, forKey: key)) ?? (try? decode(Double.self, forKey: key)).map { Int($0) } }
-}
-
-func parseISO(_ text: String) -> Date? {
-    (try? Date(text, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true))) ?? (try? Date(text, strategy: .iso8601))
 }
 
 /// An account named by id, as the banners and the notices name one.
@@ -204,7 +183,7 @@ public struct Account: Hashable, Sendable, Identifiable, Decodable {
     }
 }
 
-/// The sign-in banner's account, the "switched by itself" notice and the Chrome check all name accounts the same way.
+/// The account an automatic switch left, the one it went to, and when.
 public struct AutoSwitched: Hashable, Sendable, Decodable {
     public var at: Date?
     public var from: AccountRef?
@@ -481,12 +460,6 @@ private struct SignInBody: Encodable, Sendable { var account: String? }
 private struct UseBody: Encodable, Sendable { var `continue`: String? }
 private struct DetailBody: Encodable, Sendable { var detail: ContextDetail }
 private struct IDBody: Encodable, Sendable { var id: String }
-
-/// An id that goes into a path. The server's own pattern for an id is letters, digits, underscore and hyphen.
-private func pathID(_ id: String) throws -> String {
-    guard !id.isEmpty, id.unicodeScalars.allSatisfy({ $0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains($0) || $0 == "_" || $0 == "-") }) else { throw GhostShellError.badPath(id) }
-    return id
-}
 
 // Accounts, banners, the context meter and passkeys. The owner routes here are strict about Origin, which the client always sends.
 // NOTE: [8 Nov 2026] EK - Never call update, forceRestart, signIn, bannerSignIn, use, addAccount, setAutoSwitch or chromeOpen from a test against a real server.
