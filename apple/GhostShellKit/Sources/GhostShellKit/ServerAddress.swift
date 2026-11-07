@@ -25,14 +25,17 @@ public struct ServerAddress: Hashable, Sendable {
         // Check the raw host. `parts.host` decodes %3A and %40, and the decoded text reads as a different host once it is in a URL.
         guard let parts = URLComponents(string: candidate),
               let scheme = parts.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              var host = parts.percentEncodedHost?.lowercased(), !host.isEmpty,
+              var host = parts.percentEncodedHost?.lowercased(),
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil
         else { return nil }
-        if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        let bracketed = host.hasPrefix("[") && host.hasSuffix("]")
+        if bracketed { host = String(host.dropFirst().dropLast()) }
         let isV6 = host.contains(":")
-        guard isV6 ? Self.ipv6Bytes(host) != nil : host.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-") }) else { return nil }
+        guard !host.isEmpty, isV6 || !bracketed, isV6 ? Self.ipv6Bytes(host) != nil : host.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-") }) else { return nil }
         if scheme == "http", !Self.isLoopback(host) { return nil }
         if let port = parts.port, !(1...65535).contains(port) { return nil }
+        // A port too big for an Int comes back nil, which would send the request to the default port.
+        if parts.port == nil, let typed = parts.rangeOfPort, !typed.isEmpty { return nil }
 
         var segments: [String] = []
         for raw in parts.percentEncodedPath.split(separator: "/", omittingEmptySubsequences: true) {

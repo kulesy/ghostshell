@@ -32,7 +32,8 @@ final class ServerAddressTests: XCTestCase {
 
     func testRefusesAnEncodedHostAndAZoneOnAnIPv6Host() {
         for text in ["http://%3A%3A1%25%40127.0.0.1.example.com:4310%23/", "http://%3A%3A1%25%40evil.example%23/", "https://ghost.example%3A%40evil.example%23/",
-                     "%3A%3A1%25%40evil.example%23/", "https://ex%61mple.com", "http://[::1%25lo0]", "http://[::1%25x.127.0.0.1.example.com]", "[::1%25lo0]:4310"] {
+                     "%3A%3A1%25%40evil.example%23/", "https://ex%61mple.com", "http://[::1%25lo0]", "http://[::1%25x.127.0.0.1.example.com]", "[::1%25lo0]:4310",
+                     "[]", "[]:4310", "https://[]", "https://[example.com]", "https://example.com:18446744073709551616/", "http://localhost:9223372036854775808"] {
             XCTAssertNil(ServerAddress(text), text)
         }
     }
@@ -50,7 +51,8 @@ final class ServerAddressTests: XCTestCase {
             let text = ["http://", "https://", ""][next(3)] + (0...next(7)).map { _ in pieces[next(pieces.count)] }.joined()
             guard let address = ServerAddress(text) else { continue }
             let parts = try XCTUnwrap(URLComponents(url: address.baseURL, resolvingAgainstBaseURL: false), text)
-            let host = try XCTUnwrap(parts.percentEncodedHost, text).trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            let host = try XCTUnwrap(address.baseURL.host, text).trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            XCTAssertFalse(host.isEmpty, text)
             XCTAssertTrue(host.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || ".-:".contains($0)) }, text)
             XCTAssertTrue(parts.user == nil && parts.password == nil && parts.query == nil && parts.fragment == nil, text)
             if address.baseURL.scheme == "http" { XCTAssertNotNil(host.range(of: #"^(localhost|::1|127(\.[0-9]{1,3}){3})$"#, options: .regularExpression), text) }
