@@ -19,17 +19,18 @@ public struct ServerAddress: Hashable, Sendable {
         // With no scheme typed, a loopback host gets http and everything else https.
         var candidate = trimmed
         if !trimmed.contains("://") {
-            guard let guess = URLComponents(string: "https://" + trimmed), let host = guess.host else { return nil }
+            guard let guess = URLComponents(string: "https://" + trimmed), let host = guess.percentEncodedHost else { return nil }
             candidate = (Self.isLoopback(host) ? "http://" : "https://") + trimmed
         }
+        // Check the raw host. `parts.host` decodes %3A and %40, and the decoded text reads as a different host once it is in a URL.
         guard let parts = URLComponents(string: candidate),
               let scheme = parts.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              var host = parts.host?.lowercased(), !host.isEmpty,
+              var host = parts.percentEncodedHost?.lowercased(), !host.isEmpty,
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil
         else { return nil }
         if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
         let isV6 = host.contains(":")
-        guard isV6 || host.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-") }) else { return nil }
+        guard isV6 ? Self.ipv6Bytes(host) != nil : host.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-") }) else { return nil }
         if scheme == "http", !Self.isLoopback(host) { return nil }
         if let port = parts.port, !(1...65535).contains(port) { return nil }
 
@@ -43,10 +44,15 @@ public struct ServerAddress: Hashable, Sendable {
 
         let defaultPort = scheme == "https" ? 443 : 80
         let shownHost = isV6 ? "[\(host)]" : host
-        let shownPort = parts.port.flatMap { $0 == defaultPort ? nil : ":\($0)" } ?? ""
+        let port = parts.port == defaultPort ? nil : parts.port
+        let shownPort = port.map { ":\($0)" } ?? ""
         let origin = "\(scheme)://\(shownHost)\(shownPort)"
         let path = segments.map(Self.encode).map { "/" + $0 }.joined() + "/"
-        guard let url = URL(string: origin + path) else { return nil }
+        // The URL must parse back to exactly what was checked, because that is where the password and the token go.
+        guard let url = URL(string: origin + path), let built = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              built.scheme == scheme, built.percentEncodedHost?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) == host, built.port == port,
+              built.percentEncodedPath == path, built.user == nil, built.password == nil, built.query == nil, built.fragment == nil
+        else { return nil }
         self.baseURL = url
         self.origin = origin
         self.basePath = segments
@@ -67,6 +73,8 @@ public struct ServerAddress: Hashable, Sendable {
         guard var parts = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { throw bad }
         parts.percentEncodedPath = "/" + (basePath.map(Self.encode) + segments.map(Self.encode)).joined(separator: "/")
         parts.queryItems = query.isEmpty ? nil : query
+        // URLComponents leaves + alone, and the server's URLSearchParams reads it as a space.
+        parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         // The last check: whatever was built must still be this server, over this scheme, under this path.
         guard let url = parts.url, url.scheme == baseURL.scheme, url.host == baseURL.host, url.port == baseURL.port, url.path.hasPrefix(baseURL.path) else { throw bad }
         return url
@@ -85,10 +93,13 @@ public struct ServerAddress: Hashable, Sendable {
             guard inet_ntop(AF_INET, &v4, &text, socklen_t(INET_ADDRSTRLEN)) != nil, text.withUnsafeBufferPointer { String(cString: $0.baseAddress!) } == bare else { return false }
             return UInt32(bigEndian: v4.s_addr) >> 24 == 127
         }
+        return ipv6Bytes(bare) == [UInt8](repeating: 0, count: 15) + [1]
+    }
+
+    /// `inet_pton` on macOS accepts `::1%<anything>`, so only hex digits, colons and dots reach it.
+    private static func ipv6Bytes(_ host: String) -> [UInt8]? {
         var v6 = in6_addr()
-        if inet_pton(AF_INET6, bare, &v6) == 1 {
-            return withUnsafeBytes(of: &v6) { Array($0) } == [UInt8](repeating: 0, count: 15) + [1]
-        }
-        return false
+        guard host.allSatisfy({ $0.isASCII && ($0.isHexDigit || $0 == ":" || $0 == ".") }), inet_pton(AF_INET6, host, &v6) == 1 else { return nil }
+        return withUnsafeBytes(of: &v6) { Array($0) }
     }
 }

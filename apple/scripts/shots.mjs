@@ -49,7 +49,9 @@ function acquireLock() {
       process.exit(1);
     }
     // Stale: its owner is dead. Renaming is atomic, so only one run clears it.
-    try { fs.renameSync(LOCK, `${LOCK}.stale-${process.pid}`); fs.unlinkSync(path.join(`${LOCK}.stale-${process.pid}`, 'pid')); fs.rmdirSync(`${LOCK}.stale-${process.pid}`); } catch { /* another run got there first */ }
+    const stale = `${LOCK}.stale-${process.pid}`;
+    try { fs.renameSync(LOCK, stale); } catch { /* another run got there first */ }
+    fs.rmSync(stale, { recursive: true, force: true });
   }
   console.error(`Could not take ${LOCK}.`);
   process.exit(1);
