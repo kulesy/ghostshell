@@ -41,6 +41,9 @@ private struct MeterBody: View {
                     .help(r.tip)
                     .accessibilityLabel(r.label)
                     .popover(isPresented: $open, arrowEdge: .bottom) { ContextPopover(figure: figure, readout: r, state: state) }
+            } else {
+                // NOTE: [8 Nov 2026] EK - An empty toolbar item may not come back once its figure loads, so the slot keeps its size.
+                Color.clear.frame(width: 16, height: 16).accessibilityHidden(true)
             }
         }
         .task(id: trigger) {

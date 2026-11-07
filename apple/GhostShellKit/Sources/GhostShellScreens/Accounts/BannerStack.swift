@@ -31,7 +31,7 @@ public struct BannerStack: View {
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height = $0 }
                 }
                 .scrollBounceBehavior(.basedOnSize)
-                .frame(height: min(height, 300))
+                .frame(height: min(height, 220))
             }
         }
         .task(id: model.visible) {
