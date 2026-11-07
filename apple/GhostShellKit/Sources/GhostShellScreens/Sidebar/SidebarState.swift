@@ -23,9 +23,10 @@ final class SidebarState {
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        project = defaults.string(forKey: Self.projectKey)
+        // The folds load first because setting `project` runs its didSet, which saves, and would write empty folds over the stored ones.
         collapsed = Set(defaults.stringArray(forKey: Self.collapsedKey) ?? [])
         folded = Set(defaults.stringArray(forKey: Self.foldedKey) ?? [])
+        project = defaults.string(forKey: Self.projectKey)
     }
 
     func isOpen(_ id: String) -> Bool { !collapsed.contains(id) }

@@ -19,8 +19,11 @@ private struct SidebarHost: View {
     init(defaults: UserDefaults) { _state = State(initialValue: SidebarState(defaults: defaults)) }
 
     var body: some View {
+        @Bindable var state = state
         SidebarList()
             .environment(state)
+            .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader().environment(state) }
+            .searchable(text: $state.query, placement: .sidebar, prompt: "Search")
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if model.connection == .unreachable { UnreachableLine() }
             }
