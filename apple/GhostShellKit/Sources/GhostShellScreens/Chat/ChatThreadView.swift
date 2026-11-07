@@ -17,7 +17,8 @@ struct ChatThreadView: View {
     @State private var pinned = true
     @State private var away = false
     @State private var visible: [String] = []
-    @State private var anchor: String?
+    /// The items of the row the reader was on, so the row can be found again by what it draws even if its id changed.
+    @State private var anchorKeys: [String] = []
     @State private var restoring: Task<Void, Never>?
 
     private static let near: CGFloat = 40
@@ -93,7 +94,8 @@ struct ChatThreadView: View {
             position.scrollTo(edge: .bottom)
         }
         .onChange(of: model.earlierCount) { restore() }
-        .overlay(alignment: .bottomTrailing) {
+        // An inset, not an overlay, so the button has a strip of its own and never sits on a row's text.
+        .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) {
             if away {
                 Button("Scroll to end", systemImage: "arrow.down") {
                     pinned = true
@@ -109,7 +111,7 @@ struct ChatThreadView: View {
 
     /// Puts the reader back on the row they were on. Rows not yet measured are sized by estimate, so one jump lands short and a few more settle it.
     private func restore() {
-        guard let anchor else { return }
+        guard let anchor = ChatRow.id(holding: anchorKeys, in: model.rows) else { return }
         restoring?.cancel()
         restoring = Task {
             // The list of rows in view follows the jump a moment later, so the first tries are not judged by it.
@@ -127,7 +129,7 @@ struct ChatThreadView: View {
     private func loadEarlier() {
         guard !model.loadingEarlier else { return }
         // The row is picked once the page has arrived, because a jump to the top reports which rows are in view a moment after it lands.
-        Task { await model.loadEarlier { anchor = model.rows.first { visible.contains($0.id) }?.id } }
+        Task { await model.loadEarlier { anchorKeys = model.rows.first { visible.contains($0.id) }?.itemKeys ?? [] } }
     }
 
     /// The last group is the one still at work while a turn runs and no message waits to be sent.

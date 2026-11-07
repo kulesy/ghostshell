@@ -33,7 +33,7 @@ enum MarkdownText {
             case .text(let text):
                 out += run(text, style)
             case .code(let text):
-                var code = run("\u{2009}\(text)\u{2009}", style)
+                var code = run("\u{202F}\(text)\u{202F}", style)
                 code.font = style.bold ? ChatStyle.mono.bold() : ChatStyle.mono
                 code.backgroundColor = Color.secondary.opacity(0.16)
                 out += code
@@ -166,7 +166,7 @@ private struct TableView: View {
     }
 
     private func cellText(_ cell: [MDInline]) -> some View {
-        Text(MarkdownText.attributed(cell, font: font)).fixedSize(horizontal: false, vertical: true)
+        Text(MarkdownText.attributed(cell, font: font)).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

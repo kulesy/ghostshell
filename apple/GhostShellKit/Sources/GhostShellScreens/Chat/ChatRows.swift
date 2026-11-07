@@ -468,7 +468,7 @@ private struct DividerLine: View {
     var body: some View {
         HStack(spacing: 12) {
             Rectangle().fill(.quaternary).frame(height: 1)
-            Text(verbatim: text).font(ChatStyle.small).fontWeight(.medium).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center)
+            Text(verbatim: text).font(ChatStyle.small).fontWeight(.medium).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center).layoutPriority(1)
             Rectangle().fill(.quaternary).frame(height: 1)
         }
     }
