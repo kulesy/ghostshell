@@ -1,6 +1,6 @@
 # Build Capcom on Node's standard library and plain browser files
 
-- Status: Partly superseded by [Preact with htm for the front end](20261015-preact-htm-front-end.md)
+- Status: Partly superseded by [Preact with htm for the front end](20261015-preact-htm-front-end.md) and [a native Swift app](20261107-native-swift-app-keeps-the-node-server.md)
 - Deciders: Eli
 - Date: 2026-10-07
 - Tags: dependencies, build, supply-chain, launchd
@@ -31,6 +31,8 @@ Chosen option: "Node's built-in `http` and a plain page", because nothing needs 
 
 **Reviewed 2026-10-15.** The server keeps its empty dependency list. For the page, [Preact with htm](20261015-preact-htm-front-end.md) replaced the hand-written JavaScript on 2026-10-15, still with no build step. The rewrite is in progress.
 
+**Amended 2026-11-07.** The native Swift apps replace the page in steps, and they need a build. The server and the page keep everything above: no packages, no build step, and launchd runs the folder as it is. The Swift code keeps the same rule on packages and uses only Apple's SDKs. See [Replace the page with a native Swift app](20261107-native-swift-app-keeps-the-node-server.md).
+
 ### Consequences
 
 - ✅ launchd runs the folder as it is, and there are no packages to update.
@@ -54,4 +56,5 @@ Chosen option: "Node's built-in `http` and a plain page", because nothing needs 
 ## Links
 
 - Partly superseded by: [Preact with htm for the front end](20261015-preact-htm-front-end.md)
+- Partly superseded by: [a native Swift app](20261107-native-swift-app-keeps-the-node-server.md)
 - [Password sign-in and local bind](20261007-password-sign-in-and-local-bind.md)

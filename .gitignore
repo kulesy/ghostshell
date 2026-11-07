@@ -1,3 +1,11 @@
 .DS_Store
 node_modules/
 config.local.json
+
+# Swift app
+apple/build/
+apple/**/.build/
+apple/**/DerivedData/
+apple/**/xcuserdata/
+apple/**/.swiftpm/
+apple/screenshots/

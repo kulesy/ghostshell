@@ -94,6 +94,7 @@ GhostShell listens on 127.0.0.1 only. Anyone who signs in can run commands as yo
 | [Always on](docs/always-on.md) | The launchd agent and the small Capcom app that holds macOS permissions |
 | [Remote access](docs/remote-access.md) | Reaching GhostShell from a phone through a proxy, and what keeps it safe |
 | [The page](docs/front-end.md) | The Preact and htm front end, with no build step |
+| [The Swift app](apple/README.md) | The native Mac app that will replace the page: building, testing and adding a screen |
 
 The reasons behind the design are in [the decision records](docs/adr/README.md), one for each decision.
 
