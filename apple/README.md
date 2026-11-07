@@ -80,7 +80,7 @@ A new Swift file edits none of these. Edit one only when the work needs it, and 
 6. `GhostShellKit/Sources/GhostShellKit/Models/SessionIndex.swift`: add new fields as optional so old servers still decode.
 7. `GhostShell/GhostShellApp.swift`: scenes and menu commands.
 8. `package.json`: the `apple:*` scripts.
-9. `GhostShellKit/Sources/GhostShellScreens/Chat/ChatSlots.swift`: where the later chat PBIs plug in. Each one replaces only its own slot body, so two PBIs merge cleanly.
+9. `GhostShellKit/Sources/GhostShellScreens/Chat/ChatSlots.swift`: where the later chat PBIs plug in. Each one replaces only its own slot bodies, so two PBIs merge cleanly.
 10. `apple/scripts/shots.mjs`: the app run. It takes a machine-wide lock (`/tmp/ghostshell-shots.lock`, a folder holding the owner pid), because System Events keystrokes are global. A second run fails at once with the owner's pid. A lock whose owner is dead is cleared.
 
 ## Folder map for later PBIs

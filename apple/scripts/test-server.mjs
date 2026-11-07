@@ -35,7 +35,7 @@ function seed(projects, cwd, count = TITLES.length) {
     const stamp = new Date(now - (i * 37 + 3) * 60_000).toISOString();
     const lines = [
       { type: 'user', cwd, gitBranch: 'main', timestamp: stamp, message: { role: 'user', content: title }, uuid: crypto.randomUUID() },
-      { type: 'assistant', cwd, timestamp: stamp, message: { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] }, uuid: crypto.randomUUID() },
+      { type: 'assistant', cwd, timestamp: stamp, message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Done.' }] }, uuid: crypto.randomUUID() },
     ];
     fs.writeFileSync(file, lines.map(l => JSON.stringify(l)).join('\n') + '\n');
     const when = new Date(now - (i * 37 + 3) * 60_000);
