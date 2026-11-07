@@ -294,6 +294,21 @@ final class AccountRulesTests: XCTestCase {
         XCTAssertEqual(mergeContext(held: full, reply: full, detail: .full), full)
     }
 
+    func testShouldAskFull() {
+        let bare: ContextFigure = decode(#"{"source":"process","total":45000,"window":200000}"#)
+        let full: ContextFigure = decode(#"{"source":"process","total":45000,"window":200000,"categories":[{"id":"m","name":"Messages","tokens":1}]}"#)
+        let transcript: ContextFigure = decode(#"{"source":"transcript","total":45000,"window":200000}"#)
+        XCTAssertTrue(shouldAskFull(open: true, figure: bare, failedAt: nil))
+        // A different total failed before, so this one is still asked.
+        XCTAssertTrue(shouldAskFull(open: true, figure: bare, failedAt: 44000))
+        // The same total failed, so it is not asked again until the total moves or the popover reopens.
+        XCTAssertFalse(shouldAskFull(open: true, figure: bare, failedAt: 45000))
+        XCTAssertFalse(shouldAskFull(open: false, figure: bare, failedAt: nil))
+        XCTAssertFalse(shouldAskFull(open: true, figure: full, failedAt: nil))
+        XCTAssertFalse(shouldAskFull(open: true, figure: transcript, failedAt: nil))
+        XCTAssertFalse(shouldAskFull(open: true, figure: nil, failedAt: nil))
+    }
+
     func testPlanLabels() {
         func label(_ json: String) -> String { planLabel(decode(json)) }
         XCTAssertEqual(label(#"{"kind":"session"}"#), "Current session")

@@ -44,6 +44,12 @@ public func readout(_ c: ContextFigure) -> ContextReadout {
         line: known ? "\(pct ?? "") used · \(tick.map { "auto-compact at \(Int($0.rounded()))%" } ?? "auto-compact off")" : nil)
 }
 
+/// Whether the open popover should ask for the full count: only while the parts are missing and the last full ask has not failed for this total.
+public func shouldAskFull(open: Bool, figure: ContextFigure?, failedAt: Int?) -> Bool {
+    guard open, let figure, figure.source == .process, figure.categories == nil, let total = figure.total else { return false }
+    return failedAt != total
+}
+
 public struct ContextRow: Hashable, Sendable, Identifiable {
     public var id: String
     public var name: String

@@ -21,7 +21,6 @@ private struct MeterBody: View {
     /// What the chosen chat's row says, which is when its figure may have moved.
     private struct Trigger: Hashable {
         var visible: Bool
-        var open: Bool
         var rowState: SessionState?
         var dot: SessionDot?
         var activity: Date?
@@ -29,7 +28,16 @@ private struct MeterBody: View {
 
     private var trigger: Trigger {
         let row = model.rows.first { $0.id == sessionID }
-        return Trigger(visible: model.visible, open: open, rowState: row?.state, dot: row?.dot, activity: row?.lastActivityAt)
+        return Trigger(visible: model.visible, rowState: row?.state, dot: row?.dot, activity: row?.lastActivityAt)
+    }
+
+    private struct FullAsk: Hashable {
+        var ask: Bool
+        var total: Int?
+    }
+
+    private var fullAsk: FullAsk {
+        FullAsk(ask: shouldAskFull(open: open, figure: state.figure, failedAt: state.failedAt), total: state.figure?.total)
     }
 
     var body: some View {
@@ -48,13 +56,18 @@ private struct MeterBody: View {
         }
         .task(id: trigger) {
             guard model.visible, let client = model.client else { return }
-            await state.refresh(client, sessionID: sessionID, detail: open ? .full : .summary, throttled: !open)
+            await state.refresh(client, sessionID: sessionID, detail: .summary)
+        }
+        // Keyed on the total, not the row, so a chat that is working does not cancel the count in flight.
+        .task(id: fullAsk) {
+            guard fullAsk.ask, let client = model.client else { return }
+            await state.refresh(client, sessionID: sessionID, detail: .full, throttled: false)
         }
         .task(id: open) {
             guard open, let client = model.client else { return }
             await state.loadPlan(client, sessionID: sessionID)
         }
-        .onChange(of: open) { _, now in if !now { state.closePlan() } }
+        .onChange(of: open) { _, now in if !now { state.close() } }
     }
 
     @ViewBuilder private func face(_ r: ContextReadout) -> some View {
