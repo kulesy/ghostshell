@@ -102,9 +102,8 @@ public func planReset(_ resetsAt: Date, now: Date = Date(), calendar: Calendar =
         return "Resets in \([hours > 0 ? "\(hours) hr" : "", rest > 0 ? "\(rest) min" : ""].filter { !$0.isEmpty }.joined(separator: " "))"
     }
     let c = calendar.dateComponents([.weekday, .hour, .minute], from: resetsAt)
-    let days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     let hour = (c.hour ?? 0) % 12 == 0 ? 12 : (c.hour ?? 0) % 12
-    return "Resets \(days[(c.weekday ?? 1) - 1]) \(hour):\(String(format: "%02d", c.minute ?? 0)) \((c.hour ?? 0) < 12 ? "am" : "pm")"
+    return "Resets \(dayNames[(c.weekday ?? 1) - 1]) \(hour):\(String(format: "%02d", c.minute ?? 0)) \((c.hour ?? 0) < 12 ? "am" : "pm")"
 }
 
 public struct PlanRow: Hashable, Sendable, Identifiable {

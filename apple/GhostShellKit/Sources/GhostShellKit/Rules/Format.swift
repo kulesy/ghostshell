@@ -19,7 +19,7 @@ public func windowSize(_ n: Int) -> String {
 
 public func grouped(_ n: Int) -> String { n.formatted(.number.locale(Locale(identifier: "en_US"))) }
 
-private let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 private let monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 private func pad(_ n: Int) -> String { String(format: "%02d", n) }
 
