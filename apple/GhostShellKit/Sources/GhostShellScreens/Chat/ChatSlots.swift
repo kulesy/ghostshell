@@ -43,6 +43,9 @@ enum ChatSlots {
     // https://github.com/kulesy/ghostshell/issues/91 - in the head of each code block.
     @ViewBuilder static func runButton(_ code: ChatCodeBlock, _ chat: ChatContext) -> some View { EmptyView() }
 
+    // https://github.com/kulesy/ghostshell/issues/84 (quoting a message) - the context menu items of a user or assistant message.
+    @ViewBuilder static func messageActions(_ message: ChatItem, _ chat: ChatContext) -> some View { EmptyView() }
+
     // https://github.com/kulesy/ghostshell/issues/89 and https://github.com/kulesy/ghostshell/issues/91 - toolbar buttons, such as the file panel and the terminal toggles.
     @ViewBuilder static func toolbar(_ chat: ChatContext) -> some View { EmptyView() }
 }

@@ -17,13 +17,13 @@ final class ChatContext {
     let sessionID: String
     let client: GhostShellClient
     /// What the messages route says of the session: title, folder, branch, connectors.
-    internal(set) var session: ChatSessionInfo
+    var session: ChatSessionInfo
     /// The last status the stream or a send reported, including `pending` prompts. Nil until the first frame.
-    internal(set) var status: ChatStatus?
+    var status: ChatStatus?
     /// The server serves linked files for this chat. Until it says so, a path in a reply stays text.
-    internal(set) var fileLinks = false
+    var fileLinks = false
     /// The server has a terminal for this chat.
-    internal(set) var terminalAvailable = false
+    var terminalAvailable = false
     /// The inspector beside the thread, which draws `ChatSlots.filePanel`.
     var filePanelOpen = false
     /// The panel under the thread, which draws `ChatSlots.terminal`.
