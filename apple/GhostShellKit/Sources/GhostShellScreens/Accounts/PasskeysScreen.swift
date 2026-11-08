@@ -45,23 +45,26 @@ public struct PasskeysScreen: View {
     }
 
     private func row(_ passkey: Passkey) -> some View {
-        HStack(alignment: .firstTextBaseline) {
+        SideBySide {
             VStack(alignment: .leading, spacing: 3) {
                 Text(passkeyDevice(passkey)).font(.headline)
                 Text([passkey.rpId, "Added \(passkeyDate(passkey.created))", lastUsedWords(passkey.used)].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.callout).foregroundStyle(.secondary)
             }
+            #if os(macOS)
             Spacer(minLength: 8)
+            #endif
             if asking == passkey.id {
-                HStack(spacing: 6) {
+                SideBySide(alignment: .center, spacing: 6) {
                     Text("Remove this passkey?").font(.callout)
-                    Button("Keep") { asking = nil }
-                    Button("Remove", role: .destructive) { Task { await remove(passkey.id) } }
+                    Button("Keep") { asking = nil }.phoneTouch()
+                    Button("Remove", role: .destructive) { Task { await remove(passkey.id) } }.phoneTouch()
                 }
                 .controlSize(.small)
             } else {
                 Button("Remove") { asking = passkey.id }
                     .controlSize(.small)
+                    .phoneTouch()
                     .accessibilityLabel("Remove the passkey for \(passkey.device.isEmpty ? "an unknown browser" : passkey.device), added \(passkeyDate(passkey.created))")
             }
         }
@@ -69,7 +72,7 @@ public struct PasskeysScreen: View {
 
     private func load() async {
         guard let client = model.client, let origin = model.address?.origin else { return }
-        do { list = try await client.passkeys(origin: origin) } catch { problem = "Could not load passkeys: \(error.localizedDescription)" }
+        do { list = try await client.passkeys(origin: origin) } catch is CancellationError {} catch { problem = "Could not load passkeys: \(error.localizedDescription)" }
     }
 
     private func remove(_ id: String) async {

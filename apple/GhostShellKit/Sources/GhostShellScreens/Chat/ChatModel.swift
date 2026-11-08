@@ -63,7 +63,9 @@ final class ChatModel {
     func run(reconnects: ReconnectSignal? = nil) async {
         await load()
         guard !closed, !Task.isCancelled else { return }
-        for await raw in chat.client.eventStream(sessionID: chat.sessionID).events(restartedBy: reconnects.map { signal in { signal.nudges() } }) {
+        var nudges: (@Sendable () -> AsyncStream<Void>)?
+        if let reconnects { nudges = { reconnects.nudges() } }
+        for await raw in chat.client.eventStream(sessionID: chat.sessionID).events(restartedBy: nudges) {
             if closed { break }
             chat.publish(raw)
             handle(ChatEvent(raw))

@@ -1,3 +1,4 @@
+import Foundation
 import GhostShellKit
 import Observation
 #if os(macOS)

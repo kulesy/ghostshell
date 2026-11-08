@@ -10,6 +10,8 @@ This is the base. It has a project, sign-in, a shared client, a plain session li
 apple/
   GhostShell.xcodeproj/        Hand-written project. Folder-synced, so a new Swift file edits nothing in it.
   GhostShell/                  The thin Mac app target: entry point, assets, Debug-only test hooks.
+  GhostShelliPhone/            The thin iPhone app target: entry point, assets, Debug-only test hooks.
+  GhostShelliPhoneUITests/     XCUITests that drive the iPhone app in the Simulator.
   GhostShellKit/               A local Swift package with two libraries.
     Sources/GhostShellKit/       No UI. Foundation and Security only. Builds for macOS, iOS and watchOS.
     Sources/GhostShellScreens/   SwiftUI. Builds for macOS and iOS.
@@ -36,11 +38,23 @@ Xcode 16.4 and Node 20 are enough. Nothing needs signing. The app uses an ad hoc
 | `npm run apple:test` | Runs the unit tests, then the integration tests against scratch servers, then one Keychain round trip. `-- --unit` runs the unit tests only. |
 | `npm run apple:shot` | Runs the Debug app against scratch servers, drives it, checks the flow and saves screenshots. See below. |
 | `npm run apple:install` | Builds Release and copies it to `~/Applications/GhostShell.app`. An old copy moves to `~/junk`. `-- --dry-run` only reports. |
+| `npm run apple:ios-build` | Builds the iPhone app for the Simulator (Debug). Add `-- --release` for a Release device build with signing off, which is then searched for the Debug hooks like the Mac one. |
+| `npm run apple:ios-shot` | Runs the iPhone UI tests on an iPhone SE (3rd generation) and an iPhone 16 Pro, light and dark, and saves screenshots to `apple/screenshots/iphone`. See below. |
 | `npm run apple:server` | Starts a scratch server and prints its address and the path of its password file. It stops on Ctrl-C. |
 
 To run the app by hand, start `npm run apple:server`, open `apple/GhostShell.xcodeproj` in Xcode and run the GhostShell scheme. Type the printed address and the password from the file. The scratch server never touches port 4310 or your real state.
 
 The first launch of a new build asks the Keychain for access to its own item. The ad hoc signature changes with every build, so macOS asks again after each rebuild. A stable signature from a paid developer account ends that.
+
+## The iPhone app
+
+`GhostShelliPhone` is an iPhone-only target for iOS 18.0 and later (bundle id `com.kulesy.ghostshell.iphone`). It shows the same `RootView` as the Mac. The split view collapses to a stack, the navigator drives it and Back clears the navigator. Accounts, Passkeys and Sign Out are in the More menu at the end of the sidebar's toolbar. Sign-in takes the address and a password, with no passkey step. The Keychain, the client and the sign-in rules are the Mac's. It has no notifications, composer or entitlements yet.
+
+The stream reconnects at once when the app becomes active and when the network path changes to a usable one or to another interface (`ReconnectSignal` and `PathWatcher` in the Kit). A path report that changes nothing does nothing.
+
+`npm run apple:ios-shot` boots the Simulators with `simctl boot` and never opens the Simulator window, so it can run while the Mac is in use. It starts the chat stub behind a small proxy that adds the Accounts, banner and passkey routes and records every widget send and approval, then runs `GhostShelliPhoneUITests` through `xcodebuild`. The tests sign in, open a chat, scroll, go Back, tap the button in a widget (the stub must then have recorded exactly one send, which proves the owner click is counted on iOS), answer an approval, and open Accounts, Passkeys and Sign Out. They also check that the controls they touch are at least 44pt. `--device se|16pro`, `--only light|dark` and `--test <name>` narrow a run. The iPhone SE (3rd generation) simulator is created when it is missing. Every simulator the run booted is shut down at the end.
+
+A phone needs no paid account to run the app, but installing it is a signing step done once in Xcode. Open `apple/GhostShell.xcodeproj`, pick the GhostShelliPhone target, choose a free personal team under Signing, and run it on the phone. The project holds no team, so nothing in the repo changes.
 
 ## The test method
 
@@ -144,5 +158,5 @@ A slot view of 87 reads `OrganiseModel` from the environment. `OrganiseHost`, ap
 ## What the base does not do
 
 1. Signing with a stable identity needs a paid developer account. Until then each new build asks for Keychain access once.
-2. The iPhone and Watch targets are not in the project yet. The Kit already builds for both. The Watch library is type-checked only, because this machine has no watchOS runtime to link against.
+2. The Watch target is not in the project yet. The Kit already builds for it, but the Watch library is type-checked only, because this machine has no watchOS runtime to link against. The iPhone app has no composer, notifications or phone layout for the screens in https://github.com/kulesy/ghostshell/issues/114.
 3. The session list polls every 3 seconds while the window is visible, and keeps polling while hidden when notifications are on, so alerts arrive within a few seconds. The server has no push for the index. A push would replace `SessionIndexFeed` without touching its callers.

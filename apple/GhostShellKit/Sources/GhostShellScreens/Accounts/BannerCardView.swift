@@ -54,14 +54,14 @@ struct BannerCardView: View {
         if card.action != nil || card.force != nil || card.dismiss != nil {
             HStack(spacing: 6) {
                 if let action = card.action {
-                    Button(action.label, action: onAction).disabled(waiting || action.blocked)
+                    Button(action.label, action: onAction).disabled(waiting || action.blocked).phoneTouch()
                 }
                 if let force = card.force, let onForce {
                     // Force stays live while the update waits on running chats, the one time it is needed.
-                    Button(force, action: onForce).disabled(busy)
+                    Button(force, action: onForce).disabled(busy).phoneTouch()
                 }
                 if let dismiss = card.dismiss, let onDismiss {
-                    Button(dismiss, action: onDismiss).buttonStyle(.borderless).disabled(busy)
+                    Button(dismiss, action: onDismiss).buttonStyle(.borderless).disabled(busy).phoneTouch()
                 }
             }
             .controlSize(.small)

@@ -95,7 +95,13 @@ private struct AllInput: View {
 }
 
 private extension View {
-    func decisionButton() -> some View { buttonStyle(.bordered).controlSize(.regular) }
+    func decisionButton() -> some View {
+        #if os(iOS)
+        buttonStyle(.bordered).controlSize(.large)
+        #else
+        buttonStyle(.bordered).controlSize(.regular)
+        #endif
+    }
 }
 
 struct PermissionCard: View {

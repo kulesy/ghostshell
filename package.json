@@ -15,6 +15,8 @@
     "apple:test": "node apple/scripts/test.mjs",
     "apple:shot": "node apple/scripts/shots.mjs",
     "apple:install": "node apple/scripts/install.mjs",
+    "apple:ios-build": "node apple/scripts/iphone.mjs build",
+    "apple:ios-shot": "node apple/scripts/iphone.mjs shot",
     "apple:server": "node apple/scripts/test-server.mjs"
   },
   "engines": {
