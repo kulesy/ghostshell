@@ -60,7 +60,7 @@ exec ${JSON.stringify(real)} "$@"
 export function copyTranscript(server, id) {
   const link = path.join(server.home, '.claude', 'projects', folderName(TEST_CWD));
   const source = path.join(os.homedir(), '.claude', 'projects', folderName(TEST_CWD), `${id}.jsonl`);
-  fs.rmSync(link, { force: true });
+  fs.rmSync(link, { force: true, recursive: true });
   fs.mkdirSync(link);
   fs.copyFileSync(source, path.join(link, `${id}.jsonl`));
 }
