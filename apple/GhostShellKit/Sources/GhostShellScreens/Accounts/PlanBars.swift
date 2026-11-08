@@ -14,12 +14,23 @@ struct PlanBars: View {
                         Spacer(minLength: 8)
                         Text(row.text).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
                     }
-                    ProgressView(value: Double(min(max(row.percent, 0), 100)), total: 100).tint(tint(row.severity))
+                    bar(Double(min(max(row.percent, 0), 100)), tint(row.severity))
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(row.label), \(row.text)")
             }
         }
+    }
+
+    // A ProgressView tinted .primary draws almost no fill inside a dark popover, so the bar is drawn by hand like the context gauge.
+    private func bar(_ percent: Double, _ color: Color) -> some View {
+        GeometryReader { box in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.secondary.opacity(0.2))
+                Capsule().fill(color).frame(width: box.size.width * percent / 100)
+            }
+        }
+        .frame(height: 6)
     }
 
     private func tint(_ severity: PlanSeverity?) -> Color {
