@@ -87,7 +87,8 @@ export function chromeNote(accounts) {
 
 // The Account menu's items for something pinned to `pin` (an id, or none). `follows` says whom "Active account" runs as. `pick(id)` takes an id or null.
 // A signed out account cannot be picked, but stays marked when it is the pin, and a pin to an account no longer listed shows as removed.
-export function accountItems({ accounts, pin, follows, pick }) {
+// `pickOverflow(id)` takes an id or null. The overflow choices show under a pin that holds its own, with more than one account to choose from.
+export function accountItems({ accounts, pin, overflow = null, follows, pick, pickOverflow }) {
   const row = a => ({
     id: `account:${a.id}`,
     label: a.name,
@@ -96,10 +97,17 @@ export function accountItems({ accounts, pin, follows, pick }) {
     disabled: a.signedOut && a.id !== pin,
     run: a.id === pin ? undefined : () => pick(a.id),
   });
+  const spare = a => ({ ...row(a), id: `overflow:${a.id}`, checked: a.id === overflow, disabled: a.signedOut && a.id !== overflow, run: a.id === overflow ? undefined : () => pickOverflow(a.id) });
+  const others = (accounts ?? []).filter(a => a.id !== pin);
+  const pinName = accountName(accounts, pin);
+  const spill = pickOverflow && pin && pinName && (accounts?.length ?? 0) > 1
+    ? [{ group: `If ${pinName} runs out`, items: [...others.map(spare), { id: 'overflow:', label: `Stay on ${pinName}`, checked: !overflow, run: overflow ? () => pickOverflow(null) : undefined }] }]
+    : [];
   return [
     { id: 'account:', label: 'Active account', value: follows || null, checked: !pin, run: pin ? () => pick(null) : undefined },
     ...(accounts ?? []).map(row),
-    ...(pin && !accountName(accounts, pin) ? [{ id: `account:${pin}`, label: 'Removed account', checked: true }] : []),
+    ...(pin && !pinName ? [{ id: `account:${pin}`, label: 'Removed account', checked: true }] : []),
+    ...spill,
     { separator: true },
     { note: PICK_NOTE },
     { note: chromeNote(accounts) },
@@ -128,6 +136,16 @@ export function draftAccount({ ix, accounts, group, parent, pick }) {
 // Whom "Active account" runs as for a session row: nobody in particular when the session holds its own pin.
 const rowFollows = (accounts, row) => (row.accountPin ? '' : accountName(accounts, row.account));
 
+// The line a chat shows while it runs on the overflow of an account that is out of usage, or an empty string. It adds the Chrome limit when the survey proved
+// Chrome is on another account than the one the chat runs on.
+export function spillLine(row, accounts) {
+  const from = accountName(accounts, row?.accountSpill);
+  const to = accountName(accounts, row?.account);
+  if (!from || !to) return '';
+  const away = chromeOnName(accounts, accounts.find(a => a.id === row.account));
+  return `${from} is out of usage, so this session runs on ${to} until ${from} resets.${away ? ` Chrome is on ${away}, so it can't reach Chrome.` : ''}`;
+}
+
 // What the composer shows for a chat: whether it offers the pick, the chat's own pin, the account it runs on (for the label), and whom "Active account" follows.
 // `picked` is a draft's own pick, `group` the group it will start in and `parent` the session it will nest under. A group's own chat has a row for the label but no pick of its own.
 export function chatAccount({ ix, accounts, draft, id, group, parent, picked }) {
@@ -142,16 +160,16 @@ export function chatAccount({ ix, accounts, draft, id, group, parent, picked }) 
   }
   const row = findRow(ix, id);
   const pin = row?.accountPin ?? null;
-  return { offered: !!accounts && !!row && offersPick(ix, accounts, !!pin), pin, shown: rowFor(ix, id)?.account ?? null, follows: row ? rowFollows(accounts, row) : '' };
+  return { offered: !!accounts && !!row && offersPick(ix, accounts, !!pin), pin, overflow: pin ? row.accountOverflow ?? null : null, shown: rowFor(ix, id)?.account ?? null, follows: row ? rowFollows(accounts, row) : '' };
 }
 
 // The Account item of a menu, or nothing when there is no choice to make or the accounts are not known yet. `follows` is for the first item's value.
-export const accountMenu = ({ ix, accounts, pin, follows = '', pick, icon }) => (accounts && offersPick(ix, accounts, !!pin)
-  ? [{ label: 'Account', ...(icon && { icon }), value: pin ? accountName(accounts, pin) || 'Removed' : null, items: accountItems({ accounts, pin, follows, pick }) }]
+export const accountMenu = ({ ix, accounts, pin, overflow = null, follows = '', pick, pickOverflow, icon }) => (accounts && offersPick(ix, accounts, !!pin)
+  ? [{ label: 'Account', ...(icon && { icon }), value: pin ? accountName(accounts, pin) || 'Removed' : null, items: accountItems({ accounts, pin, overflow, follows, pick, pickOverflow }) }]
   : []);
 
 // A session row's Account item, which follows nobody when the row holds its own pin.
-export const rowAccountMenu = ({ ix, accounts, row, pick, icon }) => accountMenu({ ix, accounts, pin: row.accountPin, follows: accounts ? rowFollows(accounts, row) : '', pick, icon });
+export const rowAccountMenu = ({ ix, accounts, row, pick, pickOverflow, icon }) => accountMenu({ ix, accounts, pin: row.accountPin, overflow: row.accountOverflow ?? null, follows: accounts ? rowFollows(accounts, row) : '', pick, pickOverflow, icon });
 
 // The notice a chat shows: the refusal of a send while the list has not been read again since, otherwise what the chat's row says, and the status for a chat with no row.
 export const blockedNow = ({ row, status, refused, fresh }) => (refused && fresh ? refused : row ? row.blocked ?? null : status?.blocked ?? null);

@@ -183,7 +183,7 @@ test('a pin to Active account clears the pin through the route', { skip, timeout
   const page = await openPage(t, c, '#/');
   await rowMenu(page, 'live');
   await openSub(page, 'Account');
-  assert.deepEqual(await itemsOf(page, SUB), ['Active account', 'Main', 'Second (checked)']);
+  assert.deepEqual(await itemsOf(page, SUB), ['Active account', 'Main', 'Second (checked)', 'Main', 'Stay on Second (checked)']);
   await choose(page, SUB, 'Active account');
   await until(async () => (await rowOf(c, 'live')).accountPin === undefined);
 });
@@ -408,5 +408,99 @@ test('when the survey proves Chrome is on Main, the Account menu, the routine fo
   const plain = await openPage(t, lone, '#/accounts');
   await plain.until(`document.querySelectorAll('#accounts .account').length === 1`, 15_000);
   assert.equal(await plain.evaluate(`/Chrome/.test(document.querySelector('#accounts').textContent)`), false);
+  assert.deepEqual(page.problems, []);
+});
+
+// Opens a menu and its Account submenu, trying again until the page has read the accounts, since the first menu can open before they arrive.
+async function accountSub(page, open) {
+  for (let tries = 0; tries < 20; tries++) {
+    await open();
+    if ((await labels(page)).includes('Account')) return openSub(page, 'Account');
+    await page.press('Escape');
+    await new Promise(done => setTimeout(done, 250));
+  }
+  throw new Error('the Account item never appeared');
+}
+const post = (c, url, json) => request(c.s, 'POST', url, { headers: { connection: 'close', origin: c.s.origin, ...as(c.token) }, json });
+const pinTo = (c, kind, id, account, overflow) => post(c, '/api/layout/account', { kind, id, account, overflow });
+const spare = (page, heading, label) => page.evaluate(`(() => {
+  const group = [...document.querySelectorAll('${SUB} [role=group]')].find(g => g.getAttribute('aria-label') === ${JSON.stringify(heading)});
+  [...group.querySelectorAll('[role^=menuitem]')].find(el => el.querySelector('.menu-text').textContent === ${JSON.stringify(label)}).setAttribute('data-picked', '');
+})()`).then(() => page.click(`${SUB} [data-picked]`));
+
+test('the row menu of a pinned session picks and clears an overflow under the pinned account, and an unpinned one shows none', { skip, timeout }, async t => {
+  const c = await open({ accounts: { live: 'second' } });
+  const page = await openPage(t, c, '#/');
+  await accountSub(page, () => rowMenu(page, 'other'));
+  assert.deepEqual(await itemsOf(page, SUB), ['Active account (checked)', 'Main', 'Second'], 'no pin of its own, no overflow choices');
+  await page.press('Escape');
+  await accountSub(page, () => rowMenu(page, 'live'));
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('${SUB} [role=group] .menu-label')].map(el => el.textContent)`), ['If Second runs out']);
+  await shot(page, 'overflow-menu-session-none');
+  await spare(page, 'If Second runs out', 'Main');
+  await until(async () => (await rowOf(c, 'live')).accountOverflow === 'main');
+  await accountSub(page, () => rowMenu(page, 'live'));
+  assert.deepEqual(await itemsOf(page, SUB), ['Active account', 'Main', 'Second (checked)', 'Main (checked)', 'Stay on Second']);
+  await shot(page, 'overflow-menu-session-main');
+  await spare(page, 'If Second runs out', 'Stay on Second');
+  await until(async () => (await rowOf(c, 'live')).accountOverflow === undefined);
+  assert.equal((await rowOf(c, 'live')).accountPin, 'second', 'clearing the overflow keeps the pin');
+  assert.deepEqual(page.problems, []);
+});
+
+test('the group and project menus pick an overflow, and a single account shows none', { skip, timeout }, async t => {
+  const c = await open();
+  assert.equal((await pinTo(c, 'group', 'cg-b', 'second')).status, 200);
+  assert.equal((await pinTo(c, 'project', 'cp-a', 'second')).status, 200);
+  const page = await openPage(t, c, '#/');
+  await page.until(`!document.querySelector('.menu') && !!document.querySelector('.group-head[data-key="cg-b"]')`);
+  await accountSub(page, async () => {
+    await page.until(`!document.querySelector('.menu')`);
+    await rightClick(page, '.group-head[data-key="cg-b"]');
+    await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  });
+  await spare(page, 'If Second runs out', 'Main');
+  await until(async () => (await index(c)).groups.find(g => g.id === 'cg-b').overflow === 'main');
+  await page.until(`!document.querySelector('.menu')`);
+  await page.evaluate(`localStorage.setItem('capcom.projectsDocked', 'true')`);
+  await page.evaluate(`location.reload()`);
+  await page.until(`!!document.querySelector('button[aria-label="Actions for Proj"]')`, 15_000);
+  await page.click('button[aria-label="Actions for Proj"]');
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  await openSub(page, 'Account');
+  await spare(page, 'If Second runs out', 'Main');
+  await until(async () => (await index(c)).projects.find(p => p.id === 'cp-a').overflow === 'main');
+  assert.deepEqual(page.problems, []);
+
+  const one = await open({ one: true, accounts: { live: 'main' } });
+  const alone = await openPage(t, one, '#/');
+  await rowMenu(alone, 'live');
+  await openSub(alone, 'Account');
+  assert.equal(await alone.evaluate(`!!document.querySelector('${SUB} [role=group]')`), false);
+});
+
+test('a chat that spilled says so, adds the Chrome limit only when the survey proved it, and is silent otherwise', { skip, timeout }, async t => {
+  const c = await open({ chrome: true });
+  assert.equal((await pinTo(c, 'session', 'live', 'main', 'second')).status, 200);
+  const page = await openPage(t, c, '#/s/live');
+  await page.until(`!!document.querySelector('#model') && !document.querySelector('#model').disabled`, 15_000);
+  assert.equal(await page.evaluate(`!!document.querySelector('.account-hint')`), false, 'nothing spilled, nothing said');
+  assert.equal((await post(c, '/api/sessions/live/send', { text: 'hit the usage limit' })).status, 200);
+  await until(async () => (await rowOf(c, 'live')).accountSpill === 'main');
+  await page.until(`!!document.querySelector('.account-hint')`, 15_000);
+  assert.equal(await page.evaluate(`document.querySelector('.account-hint').textContent`), "Main is out of usage, so this session runs on Second until Main resets. Chrome is on Main, so it can't reach Chrome.");
+  await shot(page, 'spill-line-chrome');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a chat that spilled with no Chrome survey says only that it moved', { skip, timeout }, async t => {
+  const c = await open();
+  assert.equal((await pinTo(c, 'session', 'live', 'main', 'second')).status, 200);
+  assert.equal((await post(c, '/api/sessions/live/send', { text: 'hit the usage limit' })).status, 200);
+  await until(async () => (await rowOf(c, 'live')).accountSpill === 'main');
+  const page = await openPage(t, c, '#/s/live');
+  await page.until(`!!document.querySelector('.account-hint')`, 15_000);
+  assert.equal(await page.evaluate(`document.querySelector('.account-hint').textContent`), 'Main is out of usage, so this session runs on Second until Main resets.');
+  await shot(page, 'spill-line');
   assert.deepEqual(page.problems, []);
 });
