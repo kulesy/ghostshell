@@ -90,9 +90,12 @@ private struct MarkdownBlockView: View {
     var body: some View {
         switch block {
         case .paragraph(let inlines):
-            Text(MarkdownText.attributed(inlines, font: font)).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+            let text = MarkdownText.attributed(inlines, font: font)
+            Text(text).lineSpacing(4).fixedSize(horizontal: false, vertical: true).linkActions(text)
         case .heading(let level, let inlines):
-            Text(MarkdownText.attributed(inlines, font: Self.headingFont(level)))
+            let text = MarkdownText.attributed(inlines, font: Self.headingFont(level))
+            Text(text)
+                .linkActions(text)
                 .fontWeight(.semibold)
                 .padding(.top, 6)
                 .fixedSize(horizontal: false, vertical: true)
@@ -109,7 +112,8 @@ private struct MarkdownBlockView: View {
                             .font(font).monospacedDigit().foregroundStyle(.secondary)
                             .frame(minWidth: 18, alignment: .trailing)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(MarkdownText.attributed(item.text, font: font)).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                            let text = MarkdownText.attributed(item.text, font: font)
+                            Text(text).lineSpacing(4).fixedSize(horizontal: false, vertical: true).linkActions(text)
                             ForEach(Array(item.children.enumerated()), id: \.offset) { _, child in
                                 MarkdownBlockView(block: child, font: font, depth: depth + 1)
                             }
@@ -166,7 +170,8 @@ private struct TableView: View {
     }
 
     private func cellText(_ cell: [MDInline]) -> some View {
-        Text(MarkdownText.attributed(cell, font: font)).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+        let text = MarkdownText.attributed(cell, font: font)
+        return Text(text).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading).linkActions(text)
     }
 }
 
@@ -198,5 +203,25 @@ struct CodeBlockView: View {
             .scrollIndicators(.automatic)
         }
         .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+extension View {
+    /// Gives each link in `text` an accessibility action that opens it through the app's link handler. A link's own accessibility press hands its URL to the
+    /// system instead, so without these a person using VoiceOver, or a script driving the app, could not open a file link.
+    func linkActions(_ text: AttributedString) -> some View { modifier(LinkActions(text: text)) }
+}
+
+private struct LinkActions: ViewModifier {
+    @Environment(\.openURL) private var openURL
+    let text: AttributedString
+
+    func body(content: Content) -> some View {
+        let links = text.runs.compactMap { run in run.link.map { (url: $0, name: String(text[run.range].characters)) } }
+        content.accessibilityActions {
+            ForEach(Array(links.enumerated()), id: \.offset) { _, link in
+                Button("Open \(link.name)") { openURL(link.url) }
+            }
+        }
     }
 }

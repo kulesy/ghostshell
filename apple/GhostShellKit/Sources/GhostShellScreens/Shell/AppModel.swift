@@ -64,6 +64,8 @@ public final class AppModel {
     public func signOut() async {
         guard let old = client else { return }
         await old.signOut()
+        // Only this explicit sign-out empties the drafts. An expired sign-in keeps them, as the page does.
+        FileDrafts.forgetAll()
         if client === old { leave() }
     }
 

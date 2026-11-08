@@ -2,7 +2,7 @@ import XCTest
 @testable import GhostShellKit
 
 /// Answers every request from a closure and records what was asked. The token in these tests is fake.
-private final class Stub: URLProtocol, @unchecked Sendable {
+final class Stub: URLProtocol, @unchecked Sendable {
     typealias Reply = @Sendable (URLRequest) -> (status: Int, headers: [String: String], body: String, redirectTo: URL?)
     nonisolated(unsafe) static var reply: Reply = { _ in (200, [:], "{}", nil) }
     nonisolated(unsafe) static var seen: [URLRequest] = []
@@ -279,5 +279,43 @@ final class ClientTests: XCTestCase {
             XCTAssertEqual(count, 0, id)
         }
         XCTAssertEqual(Stub.requests().count, 0)
+    }
+
+    func testAJSONErrorSentenceReachesTheCallerCleanedAndCapped() async throws {
+        let long = String(repeating: "x", count: 400)
+        Stub.reset { request in
+            switch request.url?.lastPathComponent {
+            case "clean": return (403, [:], #"{"error": "  This chat does not link\u0007 to that file.\n "}"#, nil)
+            case "long": return (409, [:], #"{"error": "\#(long)"}"#, nil)
+            default: return (500, [:], #"{"error": "   "}"#, nil)
+            }
+        }
+        let store = MemoryTokenStore()
+        await signedIn(store)
+        let client = client(store)
+        do { _ = try await client.data("GET", "api/clean"); XCTFail("sent") } catch {
+            XCTAssertEqual(error as? GhostShellError, .refused(status: 403, message: "This chat does not link to that file."))
+            XCTAssertEqual(error.localizedDescription, "This chat does not link to that file.")
+        }
+        do { _ = try await client.data("GET", "api/long"); XCTFail("sent") } catch {
+            XCTAssertEqual(error as? GhostShellError, .refused(status: 409, message: String(long.prefix(300))))
+        }
+        do { _ = try await client.data("GET", "api/blank"); XCTFail("sent") } catch { XCTAssertEqual(error as? GhostShellError, .server(status: 500)) }
+    }
+
+    func testAnErrorBodyThatIsNotJSONWithAStringErrorStaysAServerError() async throws {
+        Stub.reset { request in
+            switch request.url?.lastPathComponent {
+            case "page": return (502, [:], "<html>Bad gateway</html>", nil)
+            case "number": return (400, [:], #"{"error": 7}"#, nil)
+            default: return (404, [:], "[]", nil)
+            }
+        }
+        let store = MemoryTokenStore()
+        await signedIn(store)
+        let client = client(store)
+        for (name, status) in [("page", 502), ("number", 400), ("list", 404)] {
+            do { _ = try await client.data("GET", "api/\(name)"); XCTFail("sent") } catch { XCTAssertEqual(error as? GhostShellError, .server(status: status), name) }
+        }
     }
 }

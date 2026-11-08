@@ -2,7 +2,7 @@
 // Drives the Debug app through accessibility, in the background (XCUITest is not available here), and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines|files] [--files-only] [--no-files]
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
+import { startFilesStub } from './files-fixtures.mjs';
 import { copyTranscript, startScratch, TEST_CWD } from './test-server.mjs';
 
 const argv = process.argv.slice(2);
@@ -20,7 +21,7 @@ const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? ''
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(option('--out') || path.join(here, '..', 'screenshots'));
 const FLOW = option('--flow');
-const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines'];
+const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files'];
 if (FLOW !== undefined && !FLOWS.includes(FLOW)) {
   console.error(`${FLOW ? `Unknown --flow ${FLOW}.` : '--flow needs a value.'} The flows are: ${FLOWS.join(', ')}.`);
   process.exit(2);
@@ -197,7 +198,10 @@ class App {
   // The text of every static text in the window, one per line.
   texts() { return this.findAll(node => node.role === 'AXStaticText' && node.value != null).map(node => `${node.value}\n`).join(''); }
   // With a value, the button must also report it, as the bell does with On and Off.
-  hasButton(name, value) { return !!this.find(node => node.role === 'AXButton' && node.desc === name && (value === undefined || node.value === value)); }
+  // A button's name is its description, or only its hover text for an icon-only button in the inspector.
+  label(node) { return node.desc || node.help || ''; }
+  hasButton(name, value) { return !!this.find(node => node.role === 'AXButton' && this.label(node) === name && (value === undefined || node.value === value)); }
+  hasText(text) { return this.texts().split('\n').some(line => line.includes(text)); }
   // What the app would have shown, one line per alert: "post <id> <kind> <title>", "withdraw <id>" or "badge <count|none>".
   alerts() {
     try { return fs.readFileSync(this.alertLog, 'utf8').split('\n').filter(Boolean); } catch { return []; }
@@ -235,7 +239,7 @@ class App {
     const matches = text => (prefix ? text?.startsWith(name) : text === name);
     const tree = this.tree();
     const sheet = tree.find(node => node.role === 'AXSheet')?.path.join();
-    const buttons = tree.filter(node => node.role === 'AXButton' && (matches(node.desc) || matches(node.title)));
+    const buttons = tree.filter(node => node.role === 'AXButton' && (matches(this.label(node)) || matches(node.title)));
     // An open alert is in front of the window, so its buttons win over a same-named button behind it.
     const button = buttons.find(node => sheet && node.path.join().startsWith(`${sheet},`)) ?? buttons[0];
     if (!button) return false;
@@ -410,6 +414,29 @@ class App {
       try { return fs.readFileSync(path.join(this.shotDir, 'clicked.txt'), 'utf8').trim() === `${this.clicks} ok`; } catch { return false; }
     }, 10);
     return check(done, `the app took click ${this.clicks}`);
+  }
+  // The chat comes through twice, the first copy with frames from before it scrolled. The last node that matches is the live one, and an
+  // action works on either, so nothing here needs a position.
+  // A link's own AXPress hands its URL to the system, which has no app for it, so the line of text that holds the link carries an action
+  // named "Open <link text>" that goes through the app's link handler.
+  clickLink(text) {
+    const nodes = this.tree();
+    const link = nodes.filter(node => node.role === 'AXLink' && node.title === text).at(-1);
+    const line = link && nodes.find(node => node.path.join() === link.path.slice(0, -1).join());
+    return !!line && this.act(line, `Open ${text}`);
+  }
+  // A picture tile's name is "View image 1 of 5, from a tool", or "View 2 more images" for the last. The nth (from 0) is pressed, in the order they sit.
+  clickTile(n) {
+    const tiles = new Map();
+    for (const node of this.findAll(node => node.role === 'AXButton' && /^View (image \d+ of \d+, from a tool|\d+ more images)$/.test(node.desc ?? ''))) tiles.set(node.desc, node);
+    const tile = [...tiles.values()].sort((a, b) => a.pos[0] - b.pos[0])[n];
+    return !!tile && this.act(tile);
+  }
+  // The file editor's text view, a text area named "File text".
+  fileText() { return this.findAll(node => node.role === 'AXTextArea' && node.desc === 'File text').at(-1); }
+  focusFileText() {
+    const field = this.fileText();
+    return !!field && this.set(field, 'AXFocused', true);
   }
   // Replaces the text of the first text field whose value is `was`.
   replaceField(was, text) {
@@ -1200,6 +1227,97 @@ async function routinesFlow(bundle, appearance) {
   }
 }
 
+async function filesFlow(bundle, appearance) {
+  const stub = await startFilesStub();
+  console.log(`\n== ${appearance}: linked files and pictures`);
+  const app = new App(bundle, { address: stub.address, appearance, tag: '10' });
+  const opens = async (what, link, shown, seconds = 20) => {
+    check(app.clickLink(link), `${what} has a link`);
+    return check(await until(what, () => app.hasText(shown), seconds), `${what} opens`);
+  };
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('rows', () => app.rows() === stub.rows.length), 'the files stub lists its chat');
+    app.chooseRow(rowOf(stub, 'files'));
+    check(await until('chat', () => app.hasText('All five match the notes.'), 20), 'the files chat shows its last message');
+    await sleep(1200);
+
+    // The tool result's pictures sit at the end of the chat, and the last tile reads "+2".
+    await app.shot(`10-tool-tiles-${appearance}`);
+    check(app.clickTile(0), 'the first tool tile is there');
+    check(await until('viewer', () => app.hasText('3 of 7'), 15), 'a tool tile opens the viewer on the whole chat\'s pictures');
+    await sleep(800);
+    await app.shot(`10-viewer-tool-${appearance}`);
+    check(app.press('Next image'), 'the viewer has a Next image button');
+    check(await until('next', () => app.hasText('4 of 7'), 10), 'the viewer steps to the next picture');
+    await sleep(600);
+    await app.shot(`10-viewer-next-${appearance}`);
+    check(app.press('Close'), 'the viewer has a Close button');
+    check(await until('viewer closed', () => !app.hasText('4 of 7'), 10), 'Close closes the viewer');
+
+    // The message the person sent, with two pictures and a file.
+    app.scrollChat(0);
+    await sleep(1000);
+    await app.shot(`10-attachments-${appearance}`);
+
+    await opens('a markdown file', 'NOTES.md:14', 'Upload notes');
+    await sleep(800);
+    // A file opened at a line shows its source, so the toggle offers the rendered view.
+    await app.both('file-markdown');
+    check(app.press('Show rendered'), 'a markdown file at a line offers its rendered view');
+    await sleep(800);
+    await app.shot(`10-file-markdown-rendered-${appearance}-default`);
+
+    await opens('a text file at a line', 'server.js:42', 'const RETRIES = 5;');
+    await sleep(800);
+    await app.both('file-text-line');
+
+    check(app.clickLink('report.pdf'), 'the PDF has a link');
+    await sleep(2500);
+    await app.shot(`10-file-pdf-${appearance}-default`);
+
+    check(app.clickLink('intro.wav'), 'the audio clip has a link');
+    check(await until('clips', () => app.hasText('1 of 2'), 15), 'an audio file lists the chat\'s clips');
+    await sleep(600);
+    await app.both('file-audio');
+
+    await opens('a binary file', 'archive.zip', 'ZIP file');
+    await sleep(600);
+    await app.shot(`10-file-binary-${appearance}-default`);
+
+    await opens('a missing file', 'gone.txt', 'There is no file at that path.');
+    await sleep(600);
+    await app.shot(`10-file-missing-${appearance}-default`);
+    // The panel keeps the sentence, so the alert's title is what goes.
+    check(app.press('OK'), 'the missing file alert has an OK button');
+    check(await until('alert closed', () => !app.hasText('Cannot open this file'), 10), 'the missing file alert closes');
+
+    // A save after the file changed on disk meets the server's 409.
+    await opens('a markdown file again', 'NOTES.md:14', 'Upload notes');
+    check(app.press('Edit'), 'a markdown file can be edited');
+    await sleep(800);
+    await app.shot(`10-file-editing-${appearance}-default`);
+    check(app.focusFileText(), 'the editor takes the text');
+    app.type('x');
+    stub.touch('/work/example/NOTES.md');
+    check(app.press('Save'), 'the editor has a Save button');
+    check(await until('conflict', () => app.hasText('This file changed on disk after you opened it, so nothing was saved.'), 15), 'a stale save says the file changed');
+    await sleep(600);
+    await app.shot(`10-file-conflict-${appearance}-default`);
+    // Keep editing leaves the draft in place. Drafts live in memory only.
+    check(app.press('Keep editing'), 'the conflict alert has a Keep editing button');
+    await sleep(800);
+
+    app.signOutFromMenu();
+    check(await until('signed out', () => app.hasText('Address'), 10), 'signed out of the files stub');
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+}
+
 const cleanup = async () => {
   for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
@@ -1215,7 +1333,7 @@ try {
     compileHelper();
     return built;
   });
-  const flows = argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? [FLOW] : FLOWS;
+  const flows = argv.includes('--files-only') ? ['files'] : argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? [FLOW] : FLOWS.filter(flow => flow !== 'files' || !argv.includes('--no-files'));
   for (const appearance of APPEARANCES) {
     if (flows.includes('main')) {
       await mainFlow(bundle, appearance, !argv.includes('--no-chat'));
@@ -1229,6 +1347,7 @@ try {
     if (flows.includes('approvals')) await approvalsFlow(bundle, appearance);
     if (flows.includes('organise')) await organiseFlow(bundle, appearance);
     if (flows.includes('routines')) await routinesFlow(bundle, appearance);
+    if (flows.includes('files')) await filesFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);

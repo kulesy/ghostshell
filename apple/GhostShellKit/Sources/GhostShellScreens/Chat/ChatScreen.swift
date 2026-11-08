@@ -42,13 +42,15 @@ private struct ChatLayout: View {
             ChatSlots.prompts(chat)
             ChatSlots.composer(chat)
         }
-        .inspector(isPresented: $chat.filePanelOpen) { ChatSlots.filePanel(chat) }
+        // NOTE: [8 Nov 2026] EK - Keep .toolbar before .inspector: AppKit throws when the toolbar item is inserted into the inspector's toolbar section.
         .toolbar {
             ToolbarItemGroup {
                 ChatSlots.fileToolbar(chat)
                 ChatSlots.terminalToolbar(chat)
             }
         }
+        .inspector(isPresented: $chat.filePanelOpen) { ChatSlots.filePanel(chat) }
+        .overlay { ChatSlots.viewer(chat) }
         .environment(\.openURL, OpenURLAction { url in
             guard let link = ChatLink(url: url) else { return .discarded }
             return ChatSlots.openLink(link, chat) ? .handled : .discarded

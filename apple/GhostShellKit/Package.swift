@@ -12,6 +12,6 @@ let package = Package(
     targets: [
         .target(name: "GhostShellKit"),
         .target(name: "GhostShellScreens", dependencies: ["GhostShellKit"]),
-        .testTarget(name: "GhostShellKitTests", dependencies: ["GhostShellKit"]),
+        .testTarget(name: "GhostShellKitTests", dependencies: ["GhostShellKit", "GhostShellScreens"]),
     ]
 )
