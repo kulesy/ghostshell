@@ -29,18 +29,19 @@ struct OrganiseHost: ViewModifier {
             } message: { ask in
                 Text(ask.detail)
             }
-            .sheet(item: $organise.naming) { NameSheet(naming: $0) }
+            .sheet(item: $organise.naming) { NameSheet(organise: organise, naming: $0) }
     }
 }
 
 /// One text field for a name, with Cancel and Save. Save is off while the name is empty or no different, as the page skips those.
 private struct NameSheet: View {
-    @Environment(OrganiseModel.self) private var organise
+    let organise: OrganiseModel
     let naming: OrganiseModel.Naming
     @State private var text: String
     @FocusState private var focused: Bool
 
-    init(naming: OrganiseModel.Naming) {
+    init(organise: OrganiseModel, naming: OrganiseModel.Naming) {
+        self.organise = organise
         self.naming = naming
         _text = State(initialValue: naming.text)
     }

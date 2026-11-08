@@ -3,10 +3,12 @@ import SwiftUI
 
 /// The toolbar button that makes a group in the view on show.
 struct NewGroupButton: View {
-    @Environment(OrganiseModel.self) private var organise
+    // Optional, because a toolbar item can be built where the host has not put the model in the environment yet.
+    @Environment(OrganiseModel.self) private var organise: OrganiseModel?
 
     var body: some View {
-        Button("New group", systemImage: "folder.badge.plus") { organise.newGroup() }
+        Button("New group", systemImage: "folder.badge.plus") { organise?.newGroup() }
+            .disabled(organise == nil)
             .help("New group")
     }
 }
