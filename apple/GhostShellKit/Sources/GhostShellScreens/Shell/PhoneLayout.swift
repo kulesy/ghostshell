@@ -17,6 +17,15 @@ struct SideBySide<Content: View>: View {
 }
 
 extension View {
+    /// The Mac's link button, which iOS does not have. A phone gets a borderless button in the tint.
+    func linkStyle() -> some View {
+        #if os(iOS)
+        buttonStyle(.borderless)
+        #else
+        buttonStyle(.link)
+        #endif
+    }
+
     /// A control a thumb has to hit is at least 44pt tall on a phone. Borderless keeps two buttons in one list row from both firing on a tap, and
     /// `boxed` gives a main action its outline. The Mac is left as it was.
     func phoneTouch(boxed: Bool = false) -> some View {
