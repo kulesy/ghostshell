@@ -189,6 +189,14 @@ final class RoutineDraftTests: XCTestCase {
         XCTAssertNotNil(d.localProblems["jitterSeconds"])
     }
 
+    func testAnAddWithAnUnreadableJitterIsReportedByLocalProblemsSoTheFormRefusesBeforeSending() {
+        var add = RoutineDraft(home: "/work")
+        (add.title, add.cron, add.prompt, add.jitterSeconds) = ("Morning", "30 7 * * 1-5", "Do it.", "soon")
+        XCTAssertEqual(add.localProblems, ["jitterSeconds": jitterProblem])
+        add.jitterSeconds = "30"
+        XCTAssertEqual(add.localProblems, [:])
+    }
+
     func testRefusedFieldsComeBackInTheFormsOrderAndIgnoreWhatItHasNoFieldFor() {
         let refusal = GhostShellError.refused(status: 400, message: "Nothing was saved.", problems: ["prompt": "Write the prompt.", "cwd": "No such folder.", "other": "x", "title": ""])
         let found = refusal.fields(in: routineFields)

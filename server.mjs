@@ -1396,6 +1396,8 @@ async function askLists(req, res, key, list) {
 // GET api/routines lists them and POST adds one. GET api/routines/<id>/prompt reads one's prompt, PATCH api/routines/<id> edits it and
 // DELETE removes it. POST api/routines/<id>/run runs one now, and POST api/routines/<id>/enabled switches it on or off.
 // A routine runs a prompt as the owner, so the writes take the terminal's stricter origin check.
+// NOTE: [8 Nov 2026] EK - The Swift app calls these routes, and scheduledApi's below, and decodes their replies in apple/GhostShellKit/Sources/GhostShellKit/Endpoints/Routines.swift and
+// Models/RoutineModels.swift, which name these handlers in turn. A moved route, body or reply shape breaks the Mac app's Routines screen.
 async function routinesApi(req, res, parts) {
   const [, , id, action] = parts;
   const adding = parts.length === 2;

@@ -1,6 +1,7 @@
 import Foundation
 
-// What the Scheduled sessions page and Home's Scheduled section say, ported from public/ui/scheduled-rules.js. Times are the Mac's, as the server writes them.
+// NOTE: [8 Nov 2026] EK - This file ports public/ui/scheduled-rules.js, which names it in turn. A change to a sentence or rule in one needs the same change in the other.
+// Times are the Mac's, as the server writes them.
 
 // NOTE: [8 Nov 2026] EK - This order copies FIELDS in public/ui/scheduled-rules.js, so the first refusal gets the focus as it does there.
 public let scheduledFields = ["title", "at", "cwd", "model", "effort", "mode", "group", "prompt"]

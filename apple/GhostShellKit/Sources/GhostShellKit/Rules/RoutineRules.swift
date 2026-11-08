@@ -1,7 +1,7 @@
 import Foundation
 
-// What the Routines page says, ported from public/ui/routine-rules.js with the page's own English. Times are words in the string's own offset, so a
-// device in another zone reads the time the schedule means.
+// NOTE: [8 Nov 2026] EK - This file ports public/ui/routine-rules.js, which names it in turn. A change to a sentence or rule in one needs the same change in the other.
+// Times are words in the string's own offset, so a device in another zone reads the time the schedule means.
 
 private let days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 private let shortDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -198,14 +198,6 @@ public let jitterProblem = "Use a whole number of seconds from 0 to 86399."
 
 // NOTE: [8 Nov 2026] EK - This order copies FIELDS in public/ui/routine-rules.js, so the first refusal gets the focus as it does there.
 public let routineFields = ["title", "heading", "cron", "jitterSeconds", "cwd", "model", "effort", "mode", "account", "file", "prompt"]
-
-extension GhostShellError {
-    /// The refused fields that the form has, in its order. The first one is the one to focus. Fields the form lacks and empty sentences are dropped.
-    public func fields(in order: [String]) -> [(field: String, sentence: String)] {
-        guard case .refused(_, _, let problems) = self else { return [] }
-        return order.compactMap { key in problems[key].flatMap { $0.isEmpty ? nil : (key, $0) } }
-    }
-}
 
 /// The jitter as a number, or nil when the text is not a whole number of seconds in range. Empty is 0.
 public func jitterOf(_ text: String) -> Int? {

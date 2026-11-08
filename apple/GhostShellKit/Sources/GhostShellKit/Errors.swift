@@ -30,3 +30,11 @@ extension GhostShellError: LocalizedError {
         }
     }
 }
+
+extension GhostShellError {
+    /// The refused fields that the form has, in its order. The first one is the one to focus. Fields the form lacks and empty sentences are dropped.
+    public func fields(in order: [String]) -> [(field: String, sentence: String)] {
+        guard case .refused(_, _, let problems) = self else { return [] }
+        return order.compactMap { key in problems[key].flatMap { $0.isEmpty ? nil : (key, $0) } }
+    }
+}

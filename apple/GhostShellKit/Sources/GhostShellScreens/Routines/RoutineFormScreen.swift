@@ -104,7 +104,11 @@ private struct RoutineFields: View {
                 Section { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
             }
             if !store.featuresLoaded {
-                Section { Label("Still asking the server what it offers. Save waits for the answer.", systemImage: "hourglass").foregroundStyle(.secondary) }
+                if let failure = store.featuresFailure {
+                    Section { Label("Could not check what this server supports: \(failure) Trying again.", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                } else {
+                    Section { Label("Still asking the server what it offers. Save waits for the answer.", systemImage: "hourglass").foregroundStyle(.secondary) }
+                }
             }
             Section {
                 FormField(label: "Title", message: problems["title"]) {
@@ -206,6 +210,7 @@ private struct RoutineFields: View {
     private var promptEditor: some View {
         VStack(alignment: .leading, spacing: 4) {
             TextEditor(text: $draft.prompt)
+                .disabled(!store.featuresLoaded)
                 .font(.body.monospaced())
                 .frame(minHeight: 14 * 17)
                 .scrollContentBackground(.hidden)

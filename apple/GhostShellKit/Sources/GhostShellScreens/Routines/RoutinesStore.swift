@@ -18,6 +18,8 @@ public final class RoutinesStore {
     public private(set) var features = ServerFeatures()
     /// False until the features call has answered. Every refresh tries it again, and the routine form does not save before it is true.
     public private(set) var featuresLoaded = false
+    /// Why the last features call failed, for the form to show while it keeps trying. Nil once it has answered.
+    public private(set) var featuresFailure: String?
     /// The server's own line when routines.json or scheduled.json cannot be read.
     public private(set) var problem: String?
     public private(set) var scheduledProblem: String?
@@ -45,6 +47,7 @@ public final class RoutinesStore {
         scheduled = nil
         features = ServerFeatures()
         featuresLoaded = false
+        featuresFailure = nil
         problem = nil
         scheduledProblem = nil
         failure = nil
@@ -68,9 +71,17 @@ public final class RoutinesStore {
     /// Loads both lists again. Screens call it after each write, so the result shows at once.
     public func refresh() async {
         guard let client else { return }
-        if !featuresLoaded, let loaded = try? await client.serverFeatures(), self.client === client {
-            features = loaded
-            featuresLoaded = true
+        if !featuresLoaded {
+            do {
+                let loaded = try await client.serverFeatures()
+                if self.client === client {
+                    features = loaded
+                    featuresLoaded = true
+                    featuresFailure = nil
+                }
+            } catch {
+                if self.client === client { featuresFailure = error.localizedDescription }
+            }
         }
         do {
             let list = try await client.routines()
