@@ -172,6 +172,28 @@ final class IntegrationTests: XCTestCase {
         XCTAssertFalse(none.hasEarlier)
     }
 
+    func testAPathTheChatDoesNotLinkIsRefusedWithTheServersSentence() async throws {
+        let server = try scratch()
+        let client = try await signedIn(server)
+        let id = try await firstID(client)
+        // The scratch sessions' only reply is "Done.", so no path is linked.
+        do {
+            _ = try await client.preview(sessionID: id, path: "/etc/hosts")
+            XCTFail("an unlinked path was previewed")
+        } catch GhostShellError.refused(let status, let message, _, _) {
+            XCTAssertEqual(status, 403)
+            XCTAssertEqual(message, "This chat does not link to that file.")
+        }
+        do {
+            _ = try await client.fileBytes(sessionID: id, path: "/etc/hosts")
+            XCTFail("an unlinked path was served")
+        } catch GhostShellError.refused(let status, _, _, _) {
+            XCTAssertEqual(status, 403)
+        }
+        let none = try await client.chatImages(sessionID: id)
+        XCTAssertTrue(none.isEmpty, "a chat with no pictures lists none")
+    }
+
     func testTheFeedReportsTheListThenStopsOnSignOut() async throws {
         let server = try scratch()
         let store = MemoryTokenStore()
@@ -225,7 +247,7 @@ final class IntegrationTests: XCTestCase {
         let id = try await firstID(client)
         do { _ = try await client.decide(sessionID: id, requestID: "no-such-request", .allow); XCTFail("the server took a decision for a chat that is not running") } catch {
             switch error as? GhostShellError {
-            case .server(status: 409)?, .refused(status: 409, _, _)?: break
+            case .server(status: 409)?, .refused(status: 409, _, _, _)?: break
             default: XCTFail("expected a 409, got \(error)")
             }
         }

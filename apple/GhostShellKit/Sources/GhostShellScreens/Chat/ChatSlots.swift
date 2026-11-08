@@ -26,13 +26,16 @@ enum ChatSlots {
     @ViewBuilder static func prompts(_ chat: ChatContext) -> some View { ApprovalPrompts(chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/89 - a tapped link. Return true when handled. Only a web link or a file link the server serves arrives.
-    static func openLink(_ link: ChatLink, _ chat: ChatContext) -> Bool { ChatLinks.openInBrowser(link) }
+    static func openLink(_ link: ChatLink, _ chat: ChatContext) -> Bool { FilesSlot.openLink(link, chat) }
 
     // https://github.com/kulesy/ghostshell/issues/89 - the files and pictures of a user message or a tool result. The default is a name chip and fetches nothing.
-    @ViewBuilder static func attachments(_ attachments: ChatAttachments, _ chat: ChatContext) -> some View { AttachmentChips(attachments: attachments) }
+    @ViewBuilder static func attachments(_ attachments: ChatAttachments, _ chat: ChatContext) -> some View { FilesSlot.attachments(attachments, chat) }
 
     // https://github.com/kulesy/ghostshell/issues/89 - the inspector beside the thread, shown while `chat.filePanelOpen`.
-    @ViewBuilder static func filePanel(_ chat: ChatContext) -> some View { EmptyView() }
+    @ViewBuilder static func filePanel(_ chat: ChatContext) -> some View { FilesSlot.panel(chat) }
+
+    // https://github.com/kulesy/ghostshell/issues/89 - over the whole chat, for the image viewer.
+    @ViewBuilder static func viewer(_ chat: ChatContext) -> some View { FilesSlot.viewer(chat) }
 
     // https://github.com/kulesy/ghostshell/issues/90 - a `*__show_widget` call with `input.widget_code`.
     @ViewBuilder static func widget(_ tool: ToolCall, _ chat: ChatContext) -> some View { WidgetView(tool: tool, chat: chat) }
@@ -47,7 +50,7 @@ enum ChatSlots {
     @ViewBuilder static func messageActions(_ message: ChatItem, _ chat: ChatContext) -> some View { EmptyView() }
 
     // https://github.com/kulesy/ghostshell/issues/89 - toolbar buttons, such as the file panel toggle.
-    @ViewBuilder static func fileToolbar(_ chat: ChatContext) -> some View { EmptyView() }
+    @ViewBuilder static func fileToolbar(_ chat: ChatContext) -> some View { FilesSlot.toolbar(chat) }
 
     // https://github.com/kulesy/ghostshell/issues/91 - toolbar buttons, such as the terminal toggle.
     @ViewBuilder static func terminalToolbar(_ chat: ChatContext) -> some View { EmptyView() }

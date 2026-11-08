@@ -68,7 +68,7 @@ final class RoutineIntegrationTests: XCTestCase {
             do {
                 _ = try await client.editRoutine(id: id, bad.request(against: RoutineBaseline(after, prompt: prompt)))
                 XCTFail("A folder that is not there should be refused.")
-            } catch GhostShellError.refused(let status, let message, let problems) {
+            } catch GhostShellError.refused(let status, let message, let problems, _) {
                 XCTAssertEqual(status, 400)
                 XCTAssertFalse(message.isEmpty)
                 XCTAssertNotNil(problems["cwd"], "\(problems)")
@@ -124,7 +124,7 @@ final class RoutineIntegrationTests: XCTestCase {
             do {
                 _ = try await client.editScheduled(id: id, past.request(against: saved))
                 XCTFail("A time in the past should be refused.")
-            } catch GhostShellError.refused(let status, let message, let problems) {
+            } catch GhostShellError.refused(let status, let message, let problems, _) {
                 XCTAssertEqual(status, 400)
                 XCTAssertNotNil(problems["at"], "\(problems)")
             }

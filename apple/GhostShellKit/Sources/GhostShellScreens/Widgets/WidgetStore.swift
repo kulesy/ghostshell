@@ -29,7 +29,7 @@ final class WidgetStore {
                     chat.apply(status: status)
                     chat.refresh()
                     return nil
-                } catch GhostShellError.refused(_, let message, _) {
+                } catch GhostShellError.refused(_, let message, _, _) {
                     return message
                 } catch {
                     return WidgetController.failed

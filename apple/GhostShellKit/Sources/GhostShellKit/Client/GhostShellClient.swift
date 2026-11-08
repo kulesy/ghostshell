@@ -134,24 +134,29 @@ public actor GhostShellClient {
         return data
     }
 
-    // A 400, 409 or 404 carries the server's own words in `{error}`, and the screens show them as they are. A refused form also carries `{problems}`.
+    // A refusal carries the server's own words in `{error}` (see `send(res, status, { error })` in server.mjs), and the screens show them as they are,
+    // cleaned first: control characters and line breaks (also U+2028 and U+2029) dropped, trimmed, capped at 300. A refused form also carries `{problems}`.
     // NOTE: [8 Nov 2026] EK - The server's "Not found" is its answer for a route it lacks, so it stays `.server(404)`. BannersState reads that as a server with no banners.
     private static func refusal(_ status: Int, _ body: Data) -> GhostShellError {
         struct Words: Decodable {
-            var error: String?, itself: Bool?, subs: Int?
+            var error: String?, itself: Bool?, subs: Int?, changed: Bool?
             var problems: [String: String]?
-            private enum Key: String, CodingKey { case error, itself = "self", subs, problems }
+            private enum Key: String, CodingKey { case error, itself = "self", subs, problems, changed }
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: Key.self)
                 (error, problems) = (try? c.decode(String.self, forKey: .error), try? c.decode([String: String].self, forKey: .problems))
                 (itself, subs) = (try? c.decode(Bool.self, forKey: .itself), try? c.decode(Int.self, forKey: .subs))
+                changed = try? c.decode(Bool.self, forKey: .changed)
             }
         }
-        let reply = try? JSONDecoder().decode(Words.self, from: body)
-        guard [400, 404, 409].contains(status), let words = reply?.error, !words.isEmpty,
-              !(status == 404 && words == "Not found") else { return .server(status: status) }
+        let reply = try? JSONDecoder().decode(Words.self, from: body.prefix(20_000))
+        guard [400, 403, 404, 409, 413, 415, 507].contains(status), let raw = reply?.error,
+              !(status == 404 && raw == "Not found") else { return .server(status: status) }
+        let clean = String(String.UnicodeScalarView(raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) && !CharacterSet.newlines.contains($0) }))
+        let words = String(clean.trimmingCharacters(in: .whitespacesAndNewlines).prefix(300))
+        if words.isEmpty { return .server(status: status) }
         if status == 409, reply?.itself != nil || reply?.subs != nil { return .running(itself: reply?.itself ?? false, subs: reply?.subs ?? 0, message: words) }
-        return .refused(status: status, message: words, problems: reply?.problems ?? [:])
+        return .refused(status: status, message: words, problems: reply?.problems ?? [:], changed: reply?.changed == true)
     }
 
     // The one place a request is made. NOTE: [7 Nov 2026] EK - strictOrigin in server.mjs refuses an owner route that arrives with no Origin,

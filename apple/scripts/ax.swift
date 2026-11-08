@@ -2,7 +2,7 @@
 // It sends no key or mouse event and never activates the app, so the app can stay in the background.
 //
 //   ax tree  <pid>                          every node under the first standard window, depth first, as JSON
-//   ax act   <pid> <target> [action]        perform an action (default AXPress)
+//   ax act   <pid> <target> [action]        perform an action (default AXPress). A name the app gave an action works too
 //   ax set   <pid> <target> <attr> <json>   set an attribute: a string, number, boolean or a [x, y] / [w, h] pair
 //   ax type  <pid> <text>                   append text to the focused element's value
 //   ax menu  <pid> <bar item> <item>        press an item in the app's menu bar
@@ -84,7 +84,12 @@ case "tree":
     out(nodes)
 case "act":
     guard args.count >= 3 else { fail("usage: ax act <pid> <target> [action]") }
-    out(result(AXUIElementPerformAction(target(app, args[2]), (args.count > 3 ? args[3] : "AXPress") as CFString)))
+    let element = target(app, args[2]), wanted = args.count > 3 ? args[3] : "AXPress"
+    // An app's own named action is listed as "Name:<name>\nTarget:...", so it is found by its name.
+    var names: CFArray?
+    AXUIElementCopyActionNames(element, &names)
+    let named = (names as? [String])?.first { $0.hasPrefix("Name:\(wanted)\n") } ?? wanted
+    out(result(AXUIElementPerformAction(element, named as CFString)))
 case "set":
     guard args.count >= 5 else { fail("usage: ax set <pid> <target> <attr> <json>") }
     let raw = json(args[4])
