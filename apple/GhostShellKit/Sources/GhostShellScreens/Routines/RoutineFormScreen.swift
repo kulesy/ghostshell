@@ -105,7 +105,7 @@ private struct RoutineFields: View {
             }
             if !store.featuresLoaded {
                 if let failure = store.featuresFailure {
-                    Section { Label("Could not check what this server supports: \(failure) Trying again.", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                    Section { Label("Could not check what this server supports, so Save waits until it answers. \(failure)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
                 } else {
                     Section { Label("Still asking the server what it offers. Save waits for the answer.", systemImage: "hourglass").foregroundStyle(.secondary) }
                 }
