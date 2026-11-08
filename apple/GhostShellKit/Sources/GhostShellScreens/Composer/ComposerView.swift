@@ -83,7 +83,7 @@ private struct SendButton: View {
                 if model.sending {
                     ProgressView().controlSize(.small).tint(scheme == .dark ? .black : .white)
                 } else {
-                    Image(systemName: stop ? "stop.fill" : "arrow.up").font(.system(size: 11, weight: .bold)).foregroundStyle(.background)
+                    Image(systemName: stop ? "stop.fill" : "arrow.up").font(.system(size: 11, weight: .bold)).foregroundStyle(stop || model.canSend ? AnyShapeStyle(.background) : AnyShapeStyle(.secondary))
                 }
             }
             .frame(width: 24, height: 24)

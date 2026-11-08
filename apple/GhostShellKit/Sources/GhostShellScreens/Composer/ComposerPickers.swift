@@ -12,7 +12,14 @@ struct ComposerPickers: View {
             effortMenu
             modeMenu
         }
-        .task(id: model.folder) { await model.loadModels() }
+        .task(id: model.folder) {
+            // A typed folder probes the CLI on the server, so wait for typing to pause.
+            if model.chat == nil {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+            }
+            await model.loadModels()
+        }
     }
 
     private func look(_ name: String, _ symbol: String) -> some View {
