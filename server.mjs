@@ -545,6 +545,10 @@ function subCtx(sessionId) {
     unarchive: id => { editableRow(id); return CHANGES.archived(id, false).subs ?? 0; },
     rename: (id, title) => { editableRow(id); return CHANGES.rename(id, title); },
     move: (id, group) => { editableRow(id); CHANGES.move(id, group); },
+    // The same calls as the project and group add routes, so a name is cleaned and limited the same way.
+    projects: () => layout.read().projects.map(({ id, name }) => ({ id, name })),
+    addProject: name => layout.addProject(name),
+    addGroup: (name, project) => layout.addGroup(name, project),
     // Whether a move into `group` (a name or an id) would change the account the session runs on, and the account's name if so. A move that
     // cannot be worked out counts as a change, so the owner is asked. The move also takes the session out from under its parent.
     moveAccount(id, group) {
