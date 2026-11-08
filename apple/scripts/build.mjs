@@ -24,17 +24,16 @@ export function build({ release = false } = {}) {
   return app;
 }
 
-export function checkNoHooks(app) {
-  const folder = path.join(app, 'Contents', 'MacOS');
+// The Mac bundle keeps its binaries in Contents/MacOS. An iOS bundle is flat, so scripts/iphone.mjs names its binaries itself.
+export function checkNoHooks(app, files = fs.readdirSync(path.join(app, 'Contents', 'MacOS')).map(name => path.join(app, 'Contents', 'MacOS', name))) {
   const found = new Set();
-  for (const name of fs.readdirSync(folder)) {
-    const file = path.join(folder, name);
+  for (const file of files) {
     const strings = spawnSync('strings', ['-a', file], { encoding: 'utf8', maxBuffer: 1 << 28 }).stdout;
     const symbols = spawnSync('nm', [file], { encoding: 'utf8', maxBuffer: 1 << 28 }).stdout;
     for (const word of HOOKS) if (strings.includes(word) || symbols.includes(word)) found.add(word);
   }
   if (found.size) throw new Error(`The binary holds Debug hooks: ${[...found].join(', ')}`);
-  console.error(`Release check: none of ${HOOKS.length} hook words is in ${fs.readdirSync(folder).length} binaries (strings and nm).`);
+  console.error(`Release check: none of ${HOOKS.length} hook words is in ${files.length} binaries (strings and nm).`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -59,12 +59,13 @@ public struct AccountsScreen: View {
     private func addForm(_ list: AccountList) -> some View {
         let clean = cleanName(name)
         return Section("Add an account") {
-            HStack {
+            SideBySide(alignment: .center) {
                 TextField("Name", text: $name, prompt: Text("Name, such as Work"))
                     .onChange(of: name) { _, text in if text.count > addNameLimit { name = String(text.prefix(addNameLimit)) } }
                     .onSubmit { add(clean, list) }
                 Button("Add and sign in") { add(clean, list) }
                     .disabled(clean.isEmpty || list.waiting || state.pending.contains("add"))
+                    .phoneTouch(boxed: true)
             }
             Text("Signing in opens a page in the browser on the Mac. Approve it with the Claude account you want to add.").font(.caption).foregroundStyle(.secondary)
             if let words = state.refused["add"] { Notice(text: words) }
@@ -92,7 +93,7 @@ struct AccountRow: View {
         let same = account.sameAs == nil ? "" : sameAccountWords(account, in: list)
         let plan = planRows(account.plan?.limits)
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            SideBySide {
                 VStack(alignment: .leading, spacing: 3) {
                     if renaming { renameForm } else { title }
                     let meta = [account.email, account.planType].compactMap { $0 }.filter { !$0.isEmpty }
@@ -101,7 +102,9 @@ struct AccountRow: View {
                     if !pins.isEmpty { Text(pins).font(.callout).foregroundStyle(.secondary) }
                     if !noChrome.isEmpty { Text(noChrome).font(.callout).foregroundStyle(.secondary) }
                 }
+                #if os(macOS)
                 Spacer(minLength: 8)
+                #endif
                 actions(waiting: waiting)
             }
             if let out = account.out { Notice(text: outWords(out)) }
@@ -134,8 +137,8 @@ struct AccountRow: View {
                 .labelsHidden()
                 .onChange(of: draft) { _, text in if text.count > renameLimit { draft = String(text.prefix(renameLimit)) } }
                 .onSubmit(save)
-            Button("Save", action: save).disabled(cleanName(draft).isEmpty)
-            Button("Cancel") { renaming = false }
+            Button("Save", action: save).disabled(cleanName(draft).isEmpty).phoneTouch()
+            Button("Cancel") { renaming = false }.phoneTouch()
         }
     }
 
@@ -149,16 +152,18 @@ struct AccountRow: View {
         let busy = state.pending.contains(account.id)
         HStack(spacing: 6) {
             if !account.active && !account.signedOut {
-                Button("Switch to this") { run { try await $0.use(account: account.id) } }.disabled(busy)
+                Button("Switch to this") { run { try await $0.use(account: account.id) } }.disabled(busy).phoneTouch(boxed: true)
             }
             if needsSignIn(account) {
                 Button(waiting ? "Waiting for the Mac" : "Sign in") { run { try await $0.signIn(account: account.id) } }
                     .disabled(busy || waiting || list.waiting)
+                    .phoneTouch(boxed: true)
             }
             if !renaming {
                 Button("Rename") { draft = account.name; renaming = true }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Rename \(account.name)")
+                    .phoneTouch()
             }
         }
         .controlSize(.small)
@@ -175,7 +180,7 @@ struct AccountRow: View {
             ForEach(account.chats) { chat in
                 HStack {
                     Button { model.navigator.openSession(chat.id) } label: { Text(chat.title.isEmpty ? "Untitled" : chat.title).lineLimit(1) }
-                        .buttonStyle(.plain).foregroundStyle(.tint)
+                        .buttonStyle(.plain).foregroundStyle(.tint).phoneTouch()
                     Spacer(minLength: 8)
                     Text(chatStateWords(chat.state)).font(.caption).foregroundStyle(.secondary)
                 }

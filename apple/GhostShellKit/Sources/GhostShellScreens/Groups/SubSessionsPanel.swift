@@ -84,7 +84,7 @@ private struct ToastBar: View {
         HStack(spacing: 8) {
             Text(toast.text).font(.callout).foregroundStyle(toast.problem ? Color.red : .primary).lineLimit(2)
             Spacer(minLength: 4)
-            if let undo = toast.undo { Button(toast.problem ? "Retry" : "Undo") { dismiss(); undo() }.buttonStyle(.link) }
+            if let undo = toast.undo { Button(toast.problem ? "Retry" : "Undo") { dismiss(); undo() }.linkStyle() }
             Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 14).padding(.vertical, 8)

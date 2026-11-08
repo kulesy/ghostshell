@@ -24,7 +24,7 @@ final class AccountsState {
     func load(_ client: GhostShellClient) async {
         asked += 1
         let ticket = asked
-        do { take(ticket, try await client.accounts()); problem = "" } catch { problem = error.localizedDescription }
+        do { take(ticket, try await client.accounts()); problem = "" } catch is CancellationError {} catch { problem = error.localizedDescription }
     }
 
     /// Asks the running chats for their plan usage. A failure leaves what is shown as it was.

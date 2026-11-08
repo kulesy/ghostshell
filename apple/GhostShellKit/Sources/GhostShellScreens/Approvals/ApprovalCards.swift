@@ -32,9 +32,10 @@ private struct CardFrame<Content: View, Actions: View>: View {
             if let error = state.error {
                 Text(verbatim: error).font(ChatStyle.small).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 8) {
-                actions
-                if state.busy { ProgressView().controlSize(.small) }
+            // Three long labels don't fit side by side on a 375pt phone, so they stack rather than break mid-word.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { actions; busyMark }
+                VStack(alignment: .leading, spacing: 8) { actions; busyMark }
             }
             .disabled(state.busy)
         }
@@ -44,6 +45,10 @@ private struct CardFrame<Content: View, Actions: View>: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: title))
+    }
+
+    @ViewBuilder private var busyMark: some View {
+        if state.busy { ProgressView().controlSize(.small) }
     }
 }
 
@@ -95,7 +100,13 @@ private struct AllInput: View {
 }
 
 private extension View {
-    func decisionButton() -> some View { buttonStyle(.bordered).controlSize(.regular) }
+    func decisionButton() -> some View {
+        #if os(iOS)
+        buttonStyle(.bordered).controlSize(.large)
+        #else
+        buttonStyle(.bordered).controlSize(.regular)
+        #endif
+    }
 }
 
 struct PermissionCard: View {

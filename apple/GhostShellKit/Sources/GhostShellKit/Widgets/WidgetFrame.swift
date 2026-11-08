@@ -20,9 +20,11 @@ public enum WidgetFrame {
     }
 
     /// The outer page: a bare, transparent frame around the widget's document. It has no script and no policy of its own, because a srcdoc frame inherits
-    /// its parent's policy and the widget's own CDN loads would break.
+    /// its parent's policy and the widget's own CDN loads would break. The viewport line makes a phone lay the page out at its own width, which a Mac ignores.
     public static func host(document: String, title: String) -> String {
-        "<!doctype html><html><head><meta charset=\"utf-8\"><style>"
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+            + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            + "<style>"
             + "html,body{margin:0;padding:0;background:transparent;overflow:hidden;height:100%}"
             + "iframe{display:block;border:0;width:100%;height:100%;background:transparent}"
             + "</style></head><body>"

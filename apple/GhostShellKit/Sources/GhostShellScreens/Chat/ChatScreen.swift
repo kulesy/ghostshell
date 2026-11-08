@@ -26,7 +26,7 @@ private struct ChatHost: View {
             guard let client = app.client else { return }
             let fresh = ChatModel(chat: ChatContext(sessionID: sessionID, client: client))
             model = fresh
-            await fresh.run()
+            await fresh.run(reconnects: app.reconnects)
             fresh.close()
         }
     }

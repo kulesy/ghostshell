@@ -9,17 +9,54 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000001 /* GhostShellKit in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000020 /* GhostShellKit */; };
 		A10000000000000000000002 /* GhostShellScreens in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000021 /* GhostShellScreens */; };
+		A10000000000000000000110 /* GhostShellKit in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000120 /* GhostShellKit */; };
+		A10000000000000000000111 /* GhostShellScreens in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000121 /* GhostShellScreens */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A10000000000000000000153 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000070 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000150;
+			remoteInfo = GhostShelliPhone;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A10000000000000000000010 /* GhostShell.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GhostShell.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10000000000000000000100 /* GhostShelliPhone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GhostShelliPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000101 /* GhostShelliPhoneUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GhostShelliPhoneUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A10000000000000000000103 /* Exceptions for "GhostShelliPhone" folder in "GhostShelliPhone" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A10000000000000000000150 /* GhostShelliPhone */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A10000000000000000000012 /* GhostShell */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = GhostShell;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000102 /* GhostShelliPhone */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A10000000000000000000103 /* Exceptions for "GhostShelliPhone" folder in "GhostShelliPhone" target */,
+			);
+			path = GhostShelliPhone;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000104 /* GhostShelliPhoneUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = GhostShelliPhoneUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -34,6 +71,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000000000000000000130 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000110 /* GhostShellKit in Frameworks */,
+				A10000000000000000000111 /* GhostShellScreens in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000131 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -41,6 +94,8 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000012 /* GhostShell */,
+				A10000000000000000000102 /* GhostShelliPhone */,
+				A10000000000000000000104 /* GhostShelliPhoneUITests */,
 				A10000000000000000000011 /* Info.plist */,
 				A10000000000000000000041 /* Products */,
 			);
@@ -50,6 +105,8 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000010 /* GhostShell.app */,
+				A10000000000000000000100 /* GhostShelliPhone.app */,
+				A10000000000000000000101 /* GhostShelliPhoneUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -81,6 +138,51 @@
 			productReference = A10000000000000000000010 /* GhostShell.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A10000000000000000000150 /* GhostShelliPhone */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000160 /* Build configuration list for PBXNativeTarget "GhostShelliPhone" */;
+			buildPhases = (
+				A10000000000000000000132 /* Sources */,
+				A10000000000000000000130 /* Frameworks */,
+				A10000000000000000000134 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000102 /* GhostShelliPhone */,
+			);
+			name = GhostShelliPhone;
+			packageProductDependencies = (
+				A10000000000000000000120 /* GhostShellKit */,
+				A10000000000000000000121 /* GhostShellScreens */,
+			);
+			productName = GhostShelliPhone;
+			productReference = A10000000000000000000100 /* GhostShelliPhone.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A10000000000000000000151 /* GhostShelliPhoneUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000161 /* Build configuration list for PBXNativeTarget "GhostShelliPhoneUITests" */;
+			buildPhases = (
+				A10000000000000000000133 /* Sources */,
+				A10000000000000000000131 /* Frameworks */,
+				A10000000000000000000135 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A10000000000000000000152 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000104 /* GhostShelliPhoneUITests */,
+			);
+			name = GhostShelliPhoneUITests;
+			productName = GhostShelliPhoneUITests;
+			productReference = A10000000000000000000101 /* GhostShelliPhoneUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -93,6 +195,13 @@
 				TargetAttributes = {
 					A10000000000000000000050 = {
 						CreatedOnToolsVersion = 16.4;
+					};
+					A10000000000000000000150 = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					A10000000000000000000151 = {
+						CreatedOnToolsVersion = 16.4;
+						TestTargetID = A10000000000000000000150;
 					};
 				};
 			};
@@ -115,12 +224,28 @@
 			projectRoot = "";
 			targets = (
 				A10000000000000000000050 /* GhostShell */,
+				A10000000000000000000150 /* GhostShelliPhone */,
+				A10000000000000000000151 /* GhostShelliPhoneUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A10000000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000134 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000135 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -137,7 +262,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000000000000000000132 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000133 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A10000000000000000000152 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000150 /* GhostShelliPhone */;
+			targetProxy = A10000000000000000000153 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A10000000000000000000080 /* Debug */ = {
@@ -225,6 +372,104 @@
 			};
 			name = Release;
 		};
+		A10000000000000000000182 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GhostShelliPhone/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GhostShell;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kulesy.ghostshell.iphone;
+				PRODUCT_NAME = GhostShelliPhone;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A10000000000000000000183 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GhostShelliPhone/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GhostShell;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kulesy.ghostshell.iphone;
+				PRODUCT_NAME = GhostShelliPhone;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		A10000000000000000000184 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kulesy.ghostshell.iphone.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = GhostShelliPhone;
+			};
+			name = Debug;
+		};
+		A10000000000000000000185 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kulesy.ghostshell.iphone.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = GhostShelliPhone;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -246,6 +491,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A10000000000000000000160 /* Build configuration list for PBXNativeTarget "GhostShelliPhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000182 /* Debug */,
+				A10000000000000000000183 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000161 /* Build configuration list for PBXNativeTarget "GhostShelliPhoneUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000184 /* Debug */,
+				A10000000000000000000185 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -261,6 +524,14 @@
 			productName = GhostShellKit;
 		};
 		A10000000000000000000021 /* GhostShellScreens */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GhostShellScreens;
+		};
+		A10000000000000000000120 /* GhostShellKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GhostShellKit;
+		};
+		A10000000000000000000121 /* GhostShellScreens */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GhostShellScreens;
 		};

@@ -1,3 +1,4 @@
+import Foundation
 import GhostShellKit
 import Observation
 #if os(macOS)
@@ -56,6 +57,7 @@ public final class SessionNotifier {
             pendingOpen = nil
             open(sessionID: id)
         }
+        #if os(macOS)
         if model.watchesWhileHidden != (signedIn && on) {
             model.watchesWhileHidden = signedIn && on
             // Stops App Nap from stretching the hidden 3-second poll.
@@ -66,6 +68,7 @@ public final class SessionNotifier {
                 self.activity = nil
             }
         }
+        #endif
 
         guard signedIn, on, model.index != nil else {
             if let old = baseline, !old.isEmpty { poster.withdraw(Array(old.keys)) }

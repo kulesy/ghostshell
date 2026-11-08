@@ -11,6 +11,12 @@ public struct SignInScreen: View {
 
     private enum Field { case address, password }
 
+    #if os(iOS)
+    private static let addressPrompt = "https://your-mac.your-tailnet.ts.net"
+    #else
+    private static let addressPrompt = "http://localhost:4310"
+    #endif
+
     public init() {}
 
     // Where an error shows follows what the person can change: a bad or unreachable address sits under the address, a refused password under the password.
@@ -29,7 +35,7 @@ public struct SignInScreen: View {
             }
             VStack(alignment: .leading, spacing: 16) {
                 field("Address", problem: addressProblem) {
-                    TextField("Address", text: $address, prompt: Text("http://localhost:4310"))
+                    TextField("Address", text: $address, prompt: Text(Self.addressPrompt))
                         .focused($focus, equals: .address)
                         .submitLabel(.next)
                         .onSubmit { focus = .password }
