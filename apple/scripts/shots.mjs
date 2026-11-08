@@ -491,10 +491,13 @@ class App {
   async keys(...names) {
     return withLock(KEYS_LOCK, async () => {
       this.keying = true;
-      const r = this.run('keys', ...names);
-      await sleep(800);
-      this.keying = false;
-      return check(r.ok === true, `keys ${names.join(' ')} were sent`);
+      try {
+        const r = this.run('keys', ...names);
+        await sleep(800);
+        return check(r.ok === true, `keys ${names.join(' ')} were sent`);
+      } finally {
+        this.keying = false;
+      }
     });
   }
   // SwiftUI puts a button's label in its description, its help or its title depending on the style, so all three are read.

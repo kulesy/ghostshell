@@ -1,5 +1,5 @@
 // Drives a running app through its accessibility tree, by exact pid. shots.mjs compiles this into apple/build/ax.
-// It sends no key or mouse event and never activates the app, so the app can stay in the background.
+// Apart from `keys`, it sends no key or mouse event and never activates the app, so the app can stay in the background.
 //
 //   ax tree  <pid>                          every node under the first standard window, depth first, as JSON
 //   ax act   <pid> <target> [action]        perform an action (default AXPress). A name the app gave an action works too
@@ -137,13 +137,17 @@ case "pick":
 case "keys":
     guard args.count >= 3 else { fail("usage: ax keys <pid> <key>...") }
     let codes: [String: CGKeyCode] = ["return": 36, "tab": 48, "escape": 53, "down": 125, "up": 126]
+    // Every name is checked before the app comes to the front, so a typo can't leave it there.
+    let keys: [(code: CGKeyCode, shift: Bool)] = args.dropFirst(2).map { spec in
+        let shift = spec.hasPrefix("shift-")
+        guard let code = codes[shift ? String(spec.dropFirst(6)) : spec] else { fail("unknown key \(spec)") }
+        return (code, shift)
+    }
     let before = NSWorkspace.shared.frontmostApplication
     AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
     for _ in 0..<30 where NSWorkspace.shared.frontmostApplication?.processIdentifier != pid { Thread.sleep(forTimeInterval: 0.1) }
     Thread.sleep(forTimeInterval: 0.4)
-    for spec in args.dropFirst(2) {
-        let shift = spec.hasPrefix("shift-")
-        guard let code = codes[shift ? String(spec.dropFirst(6)) : spec] else { fail("unknown key \(spec)") }
+    for (code, shift) in keys {
         for down in [true, false] {
             let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
             if shift { event.flags = .maskShift }
