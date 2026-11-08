@@ -130,6 +130,33 @@ final class TerminalStoreTests: XCTestCase {
         chat.close()
     }
 
+    /// The three runs the shots fixture serves (a long one, a coloured failure with nulls, one still running) come out of the store whole.
+    func testTheSnapshotTheShotsFixtureServesFillsThePanelsRuns() async throws {
+        let lines = (1...2500).map { "build step \($0): compiled module-\($0).js\n" }
+        let base: [String: Any] = ["cwd": "/work/example", "source": "panel", "signal": NSNull(), "stopped": false, "truncated": false, "delivered": NSNull()]
+        func make(_ id: String, _ command: String, running: Bool, output: [[String: String]]) -> [String: Any] {
+            base.merging(["id": id, "command": command, "startedAt": 1_000.5, "endedAt": running ? NSNull() : 2_000.5, "exitCode": running ? NSNull() : 0,
+                          "running": running, "output": output]) { $1 }
+        }
+        let long = stride(from: 0, to: lines.count, by: 250).map { ["stream": "out", "text": lines[$0..<min($0 + 250, lines.count)].joined()] }
+        let body = try JSONSerialization.data(withJSONObject: ["cwd": "/work/example", "home": "/Users/example", "runs": [
+            make("r1", "npm run build", running: false, output: long),
+            make("r2", "npm test", running: false, output: [["stream": "out", "text": "\u{1B}[32m\u{2713}\u{1B}[0m uploads a file\n"], ["stream": "err", "text": "Error: ENOTEMPTY\n"]]),
+            make("r3", "npm run dev", running: true, output: [["stream": "out", "text": "> example@1.0.0 dev\n"]]),
+        ]])
+        TerminalStub.reset { _ in (200, String(decoding: body, as: UTF8.self)) }
+        let (store, chat) = await makeStore()
+        store.start()
+        try await wait("loaded") { store.state.ready }
+        XCTAssertEqual(store.state.runs.map(\.command), ["npm run build", "npm test", "npm run dev"])
+        XCTAssertEqual(store.state.runs.map(\.running), [false, false, true])
+        XCTAssertEqual(store.state.runs.map(\.pending), [false, false, false])
+        XCTAssertEqual(TerminalRules.textOf(store.state.runs[0].output), lines.joined())
+        XCTAssertEqual(TerminalRules.textOf(store.state.runs[2].output), "> example@1.0.0 dev\n")
+        XCTAssertEqual(store.state.runs.map(\.key), ["r1", "r2", "r3"])
+        chat.close()
+    }
+
     func testACommandOverTheLimitIsRefusedBeforeItIsSent() async throws {
         TerminalStub.reset { _ in (200, "{}") }
         let (store, chat) = await makeStore()
