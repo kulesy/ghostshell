@@ -126,6 +126,63 @@ The retry makes five attempts with a short pause between them. That covers the s
 
 The temp folder is cleared after each run so a second run cannot read the first run's file. `.split(' ');
 
+const TERM_REPLY = `Run the tests first, then the build. Both blocks have a Run button.
+
+\`\`\`bash
+npm test -- upload
+\`\`\`
+
+\`\`\`bash
+npm run build && echo built
+\`\`\`
+
+A console block runs only its command lines, which are marked, and a long one wraps so none of it is out of sight:
+
+\`\`\`console
+$ docker run --rm -it -v "$PWD":/work -w /work -e NODE_ENV=production -e API_URL=https://example.com/api/v1/things node:20 npm run build -- --mode production --sourcemap
+vite v5.4.0 building for production...
+$ npm test -- upload \\
+  --reporter=spec
+\`\`\`
+
+This one holds a hidden character, so its Run button stays off:
+
+\`\`\`sh
+echo hello\u200B
+\`\`\`
+
+And this one is not a command:
+
+\`\`\`js
+await server.ready();
+\`\`\``;
+
+function termItems() {
+  return [
+    user('Run the upload test and show me what the build says.', 6),
+    reply('t1', TERM_REPLY, 5),
+  ];
+}
+
+// The runs the terminal panel opens with: a long one, a failed one in colour, and one still running.
+function termRuns() {
+  const lines = Array.from({ length: 2500 }, (_, i) => `build step ${i + 1}: compiled module-${i + 1}.js in ${(i * 7) % 90 + 10} ms\n`);
+  const chunks = [];
+  for (let i = 0; i < lines.length; i += 250) chunks.push({ stream: 'out', text: lines.slice(i, i + 250).join('') });
+  chunks.push({ stream: 'out', text: 'done: 2500 modules, a very long final line that wraps because it runs on well past the edge of the panel, with a path /work/example/dist/assets/index-3f9a1c.js and then some more words\n' });
+  const base = { cwd: '/work/example', source: 'panel', signal: null, stopped: false, truncated: false, delivered: null };
+  return [
+    { ...base, id: 'r1', command: 'npm run build', startedAt: NOW - 400_000, endedAt: NOW - 392_000, exitCode: 0, running: false, output: chunks },
+    { ...base, id: 'r2', command: 'npm test', startedAt: NOW - 200_000, endedAt: NOW - 197_800, exitCode: 1, running: false, output: [
+      { stream: 'out', text: '\x1b[1mRunning 14 tests\x1b[0m\n\x1b[44;97m INFO \x1b[0m using \x1b[4mtest/upload.test.js\x1b[0m\n\x1b[32m\u2713\x1b[0m uploads a file \x1b[90m(41 ms)\x1b[0m\n\x1b[32m\u2713\x1b[0m retries five times\n\x1b[31m\u2717 clears the temp folder\x1b[0m\n  \x1b[33mwarning:\x1b[0m folder still held \x1b[38;5;208m(orange)\x1b[0m \x1b[38;2;80;160;255m(rgb)\x1b[0m \x1b[3mitalic\x1b[0m \x1b[7minverse\x1b[0m\n' },
+      { stream: 'err', text: "Error: ENOTEMPTY: directory not empty, rmdir 'tmp/run-1'\n" },
+    ] },
+    { ...base, id: 'r3', command: 'npm run dev', startedAt: Date.now() - 95_000, endedAt: null, exitCode: null, running: true, output: [
+      { stream: 'out', text: '> example@1.0.0 dev\n> vite\n\n  VITE v5.4.0  ready in 312 ms\n\n  \u279c  Local:   http://localhost:5173/\n' },
+    ] },
+  ];
+}
+
 function chats() {
   const rich = richItems();
   const long = longItems();
@@ -134,6 +191,7 @@ function chats() {
     stream: { title: 'Plan the retry change', items: [user('Write out the fix for the upload race.', 3), reply('s0', 'Yes. I will lay it out in three parts.', 2.5), user('Go on, I am ready.', 1)], streaming: true },
     long: { title: 'Walk through the migration', items: long },
     empty: { title: 'A chat with nothing in it yet', items: [] },
+    term: { title: 'Check the build output', items: termItems(), terminal: true },
     widgets: { title: 'Revenue by region', items: [
       user('Show me Q4 revenue by region.', 12),
       reply('w1', 'Here is the breakdown. North leads and East is the smallest.', 11),
@@ -196,7 +254,7 @@ function pageOf(chat, url) {
   let hi = items.length;
   if (after !== null) lo = Math.min(Number(after) / 100, items.length);
   else if (before !== null) { hi = Math.min(Number(before) / 100, items.length); lo = Math.max(0, hi - PAGE); } else lo = Math.max(0, items.length - PAGE);
-  return { items: items.slice(lo, hi), start: lo * 100, end: items.length * 100, hasEarlier: lo > 0, reset: false, fileLinks: false, terminal: false,
+  return { items: items.slice(lo, hi), start: lo * 100, end: items.length * 100, hasEarlier: lo > 0, reset: false, fileLinks: false, terminal: chat.terminal === true,
     session: { id: '', title: chat.title, cwd: '/work/example', branch: 'main', connectors: {} } };
 }
 
@@ -219,12 +277,33 @@ function stream(chat, res, timers) {
   }, 350));
 }
 
+const json = (res, body) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+
+// The terminal routes of the chat that has one. A run answers as finished, because the pictures only need to see it land.
+function terminalRoute(route, req, res, requests) {
+  if (!route) return void json(res, { cwd: '/work/example', home: '/Users/example', runs: termRuns() });
+  let raw = '';
+  req.on('data', chunk => { raw += chunk; });
+  req.on('end', () => {
+    const body = raw ? JSON.parse(raw) : {};
+    requests.push({ route, body });
+    if (route === 'stop') {
+      const run = termRuns().find(r => r.id === body.run) ?? termRuns()[2];
+      return void json(res, { run: { ...run, running: false, stopped: true, endedAt: Date.now(), exitCode: null, signal: 'SIGTERM' } });
+    }
+    if (route !== 'run') return void json(res, route === 'clear' ? { cwd: '/work/example', runs: [] } : { ok: true });
+    json(res, { run: { id: `r${requests.length + 10}`, command: body.command, cwd: '/work/example', source: body.source, startedAt: Date.now() - 1200, endedAt: Date.now(),
+      exitCode: 0, signal: null, stopped: false, running: false, truncated: false, delivered: null, output: [{ stream: 'out', text: `\x1b[32mran\x1b[0m ${body.command}\n` }] } });
+  });
+}
+
 export async function startChatStub() {
   const all = chats();
   const rows = Object.entries(all).map(([id, chat], i) => ({ id, title: chat.title, dot: null, state: 'idle', sortAt: Date.now() - i * 60_000 }));
   const timers = [];
   // Every message a widget sent, so a script can count them.
   const sends = [];
+  const requests = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const vendor = /^\/vendor\/(tabler-icons\.(?:woff2|min\.css))$/.exec(url.pathname);
@@ -242,6 +321,8 @@ export async function startChatStub() {
       });
       return;
     }
+    const t = /^\/api\/sessions\/([^/]+)\/terminal(?:\/(run|input|stop|clear))?$/.exec(url.pathname);
+    if (t && all[t[1]]?.terminal) return void terminalRoute(t[2], req, res, requests);
     req.resume();
     if (url.pathname === '/login') return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
     if (url.pathname === '/api/sessions') return void res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ungrouped: rows }));
@@ -267,6 +348,7 @@ export async function startChatStub() {
     address: `http://localhost:${server.address().port}`,
     rows,
     sends,
+    requests,
     stop: () => { timers.splice(0).forEach(clearInterval); server.closeAllConnections(); server.close(); },
   };
 }
