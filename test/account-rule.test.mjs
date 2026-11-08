@@ -1,7 +1,7 @@
 // The rule for which account work runs on. See docs/adr/20261104-pin-work-to-an-account.md.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountFor, blockedBy, blockedError, blockedMessage } from '../lib/account-rule.mjs';
+import { accountFor, blockedBy, blockedError, blockedMessage, spillOf } from '../lib/account-rule.mjs';
 
 // `known` maps a session id to its facts, so a test lays out only the sessions it needs.
 const data = ({ known = {}, routines = {}, groups = {}, projects = {}, active = 'main' } = {}) => ({
@@ -182,4 +182,49 @@ test('a grandparent whose own parent inherits from a group is named for the grou
   const got = accountFor({ id: 'self', parent: 'mid' }, d);
   assert.deepEqual([got.from, got.via, got.pin], ['parent', 'mid', { kind: 'group', id: 'g1' }]);
   assert.match(blockedMessage(blockedBy(got, states({ out: ['second'] }), nameOf)), /^The group of the session it sits under \(group:g1\)/);
+});
+
+test('the overflow of the holder whose pin was chosen comes back with the result, and a parent carries its holder\'s overflow up', () => {
+  const d = data({
+    known: { up: { pin: 'a', overflow: 'b' }, plain: {} },
+    routines: { r1: { account: 'a', overflow: 'b' } },
+    groups: { g1: { account: 'a', overflow: 'b', project: 'p1' }, g2: { project: 'p1' } },
+    projects: { p1: { account: 'a', overflow: 'c' } },
+  });
+  assert.equal(accountFor({ id: 's', pin: 'a', overflow: 'b' }, d).overflow, 'b');
+  assert.equal(accountFor({ id: 's', group: 'g1' }, d).overflow, 'b');
+  assert.equal(accountFor({ id: 's', group: 'g2' }, d).overflow, 'c', 'the project\'s, since the group holds no pin');
+  assert.equal(accountFor({ id: 's', parent: 'up' }, d).overflow, 'b');
+  assert.equal(accountFor({ id: 's', routine: 'r1' }, d).overflow, undefined, 'a routine has none');
+  assert.equal(accountFor({ id: 's', pin: 'z', group: 'g1' }, d).overflow, undefined, 'the session\'s own pin does not borrow its group\'s overflow');
+});
+
+test('a result without an overflow has no overflow key, and an overflow equal to its pin or not an id is none', () => {
+  const d = data({ groups: { g1: { account: 'a', overflow: 'a' }, g2: { account: 'a', overflow: 7 } } });
+  assert.ok(!('overflow' in accountFor({ id: 's', pin: 'a' }, d)));
+  assert.ok(!('overflow' in accountFor({ id: 's', group: 'g1' }, d)));
+  assert.ok(!('overflow' in accountFor({ id: 's', group: 'g2' }, d)));
+  assert.ok(!('overflow' in accountFor({ id: 's' }, d)));
+});
+
+const spill = ({ out = [], usable = ['main', 'second', 'third'] } = {}) => ({ isOut: id => out.includes(id), usable: id => usable.includes(id) && !out.includes(id) });
+const pinned = { account: 'second', from: 'session', via: 's', pin: { kind: 'session', id: 's' }, overflow: 'main' };
+
+test('a pinned account that is out spills to its usable overflow and names the account it left', () => {
+  assert.deepEqual(spillOf(pinned, spill({ out: ['second'] })), { ...pinned, account: 'main', spilled: 'second' });
+});
+
+test('nothing spills without an overflow, from the active account, while the pin has usage, or when the overflow is out, signed out or unchecked', () => {
+  const { overflow, ...bare } = pinned;
+  assert.equal(spillOf(bare, spill({ out: ['second'] })), bare);
+  const active = { account: 'second', from: 'active', via: null, pin: null };
+  assert.equal(spillOf(active, spill({ out: ['second'] })), active);
+  assert.equal(spillOf(pinned, spill()), pinned);
+  assert.equal(spillOf(pinned, spill({ out: ['second', 'main'] })), pinned, 'two spent accounts stay on the pin');
+  assert.equal(spillOf(pinned, spill({ out: ['second'], usable: ['second', 'third'] })), pinned, 'the overflow is signed out or not checked yet');
+});
+
+test('a spilled result stays blocked by nothing, and a signed out pin blocks before it can spill', () => {
+  const states = { list: [{ id: 'main', name: 'Main' }, { id: 'second', name: 'Second' }], signedOut: a => a.id === 'second', checked: () => true };
+  assert.equal(blockedBy(pinned, states, () => '').reason, 'signed-out');
 });

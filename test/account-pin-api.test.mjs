@@ -449,3 +449,141 @@ test('a group\'s own chat carries its account and block on the index, and a sess
   assert.deepEqual([nested.from, nested.pin, nested.fromName], ['parent', { kind: 'group', id: 'cg-a' }, 'Work']);
   assert.match(nested.message, /^The group of the session it sits under \(Work\) is pinned to Second/);
 });
+
+const layoutOf = c => JSON.parse(fs.readFileSync(c.s.layout, 'utf8'));
+const weeklyFull = () => ({ kind: 'weekly_all', group: 'weekly', percent: 100, severity: 'critical', resets_at: new Date(Date.now() + 3 * DAY).toISOString(), scope: null, is_active: true });
+const pinTo = (c, kind, id, account, overflow) => post(c, '/api/layout/account', { kind, id, account, overflow });
+const continues = c => calls(c).filter(x => x.user === 'Continue.').length;
+const settled = ms => new Promise(done => setTimeout(done, ms));
+
+test('the pin route sets, keeps, replaces and clears an overflow, and refuses one equal to the pin, unknown or signed out', async () => {
+  const c = await open();
+  assert.deepEqual((await pinTo(c, 'session', 'live', 'main', 'second')).body(), { kind: 'session', id: 'live', account: 'main', overflow: 'second' });
+  assert.equal((await pinTo(c, 'group', 'cg-b', 'main', 'second')).status, 200);
+  assert.equal((await pinTo(c, 'project', 'cp-a', 'main', 'second')).status, 200);
+  assert.deepEqual(layoutOf(c).overflow, { live: 'second' });
+  const ix = await index(c);
+  assert.equal(ix.groups.find(g => g.id === 'cg-b').overflow, 'second');
+  assert.equal(ix.projects.find(p => p.id === 'cp-a').overflow, 'second');
+  assert.deepEqual((await rowOf(c, 'live')).accountOverflow, 'second');
+
+  assert.equal((await pin(c, 'session', 'live', 'main')).status, 200);
+  assert.equal(layoutOf(c).overflow.live, 'second', 'a body without overflow keeps it');
+  assert.equal((await pinTo(c, 'session', 'live', 'main', 'main')).status, 400, 'equal to the pin');
+  assert.equal((await pinTo(c, 'session', 'live', 'main', 7)).status, 400);
+  assert.equal((await pinTo(c, 'session', 'live', 'main', 'gone')).status, 404);
+  assert.equal(layoutOf(c).overflow.live, 'second', 'nothing was written');
+
+  assert.equal((await pinTo(c, 'session', 'live', 'main', null)).status, 200);
+  assert.equal(layoutOf(c).overflow?.live, undefined);
+  assert.equal((await rowOf(c, 'live')).accountOverflow, undefined);
+
+  await pinTo(c, 'session', 'live', 'main', 'second');
+  assert.equal((await pinTo(c, 'session', 'live', 'second')).status, 200);
+  assert.equal(layoutOf(c).overflow?.live, undefined, 'a pin changed to the overflow drops it');
+  await pinTo(c, 'session', 'live', 'main', 'second');
+  assert.equal((await pinTo(c, 'session', 'live', null, 'second')).status, 200);
+  assert.equal(layoutOf(c).overflow?.live, undefined, 'clearing the pin clears it');
+  assert.equal(layoutOf(c).accounts.live, undefined);
+
+  await signOutSecond(c);
+  const refused = await pinTo(c, 'session', 'other', 'main', 'second');
+  assert.deepEqual([refused.status, refused.body().error], [409, 'Second is signed out. Sign it in first.']);
+  assert.equal(layoutOf(c).overflow?.other, undefined);
+});
+
+test('a pin with no overflow, and a single pinned row, gain no fields', async () => {
+  const c = await open();
+  await pin(c, 'session', 'live', 'main');
+  const live = await rowOf(c, 'live');
+  assert.deepEqual([live.accountSpill, live.accountOverflow], [undefined, undefined]);
+  assert.ok(!('overflow' in (await index(c)).groups.find(g => g.id === 'cg-b')));
+  const f = layoutOf(c);
+  assert.ok(!('overflow' in f));
+});
+
+test('a turn that runs out on the pinned account carries on by itself on the overflow, with the mark lasting to the reset, and a session that finds the overflow out too stays put', async () => {
+  const c = await open();
+  fs.writeFileSync(path.join(c.s.home, 'plan-usage.json'), JSON.stringify([weeklyFull()]));
+  const reset = Date.parse(weeklyFull().resets_at);
+  await pinTo(c, 'session', 'live', 'main', 'second');
+  await say(c, 'live', 'finish the turn');
+  await until(() => startsOn(c, null) === 1);
+
+  await say(c, 'live', 'hit the usage limit');
+  await until(() => continues(c) === 1);
+  await until(() => startsOn(c, c.dir) === 1);
+  const main = (await accountsOf(c)).accounts.find(a => a.id === 'main');
+  assert.ok(Math.abs(main.out.until - reset) < 2000, 'the mark runs to the reset the plan gave');
+  assert.ok(calls(c).some(x => x.control === 'get_usage'), 'the chat that ran out was asked');
+  const live = await rowOf(c, 'live');
+  assert.deepEqual([live.account, live.accountSpill, live.accountFrom, live.accountPin, live.accountOverflow], ['second', 'main', 'session', 'main', 'second']);
+  assert.equal(live.blocked, undefined);
+
+  // Second runs out as well: the session resolves back to its pin, which is out too, and nothing is sent.
+  await say(c, 'live', 'hit the usage limit');
+  await until(async () => (await accountsOf(c)).accounts.find(a => a.id === 'second').out);
+  await settled(700);
+  assert.equal(continues(c), 1, 'no second spill message reached the CLI');
+  assert.equal(startsOn(c, null), 1, 'no ping-pong back to the pinned account');
+  const stuck = await rowOf(c, 'live');
+  assert.deepEqual([stuck.account, stuck.accountSpill], ['main', undefined]);
+});
+
+test('a session in a pinned group spills with its group\'s overflow, a chat that is waiting on an approval is left running, and a session with no overflow stays where it is', async () => {
+  const c = await open({ sessions: [{ id: 'busy', title: 'Busy', source: 'cli', ago: 5, group: 'cg-b' }, { id: 'plain', title: 'Plain', source: 'cli', ago: 6 }] });
+  await pinTo(c, 'group', 'cg-b', 'main', 'second');
+  await say(c, 'busy', 'ask for approval');
+  await until(async () => (await rowOf(c, 'busy')).state === 'waiting');
+  await say(c, 'loosely', 'finish the turn');
+  await until(() => startsOn(c, null) === 2);
+
+  await say(c, 'loosely', 'hit the usage limit');
+  await until(() => continues(c) === 1);
+  await until(() => startsOn(c, c.dir) === 1);
+  const loosely = await rowOf(c, 'loosely');
+  assert.deepEqual([loosely.account, loosely.accountSpill, loosely.accountFrom, loosely.accountPin, loosely.accountOverflow], ['second', 'main', 'group', undefined, undefined]);
+  assert.equal(calls(c).filter(x => x.closed).length, 1, 'only the chat that ran out was stopped, and the one waiting on an approval ran on');
+  assert.equal((await rowOf(c, 'busy')).state, 'waiting');
+
+  await say(c, 'plain', 'finish the turn');
+  await say(c, 'plain', 'hit the usage limit');
+  await until(async () => (await accountsOf(c)).accounts.find(a => a.id === 'main').out);
+  const before = continues(c);
+  await settled(500);
+  assert.equal(continues(c), before);
+  const plain = await rowOf(c, 'plain');
+  assert.deepEqual([plain.account, plain.accountSpill], ['main', undefined]);
+});
+
+test('a pin to a signed out account still blocks when it has an overflow, and does not spill', async () => {
+  const c = await open();
+  await pinTo(c, 'session', 'live', 'second', 'main');
+  await say(c, 'live', 'finish the turn');
+  await until(() => startsOn(c, c.dir) === 1);
+  await say(c, 'live', 'hit the usage limit');
+  await until(() => continues(c) === 1);
+  await until(() => startsOn(c, null) === 1);
+  assert.deepEqual([(await rowOf(c, 'live')).account, (await rowOf(c, 'live')).accountSpill], ['main', 'second']);
+  await say(c, 'live', 'finish the turn');
+  await until(async () => (await rowOf(c, 'live')).state === 'idle');
+
+  signedIn(c.s, c.dir, false);
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 409, 'the check of Second finds it signed out');
+  const blocked = await rowOf(c, 'live');
+  assert.equal(blocked.blocked?.reason, 'signed-out');
+  assert.deepEqual([blocked.account, blocked.accountSpill], ['second', undefined], 'a signed out pin blocks and does not spill');
+  const refused = await say(c, 'live', 'finish the turn');
+  assert.equal(refused.status, 409);
+  assert.match(refused.body().error, /is pinned to Second, which is signed out/);
+});
+
+test('a move that gains or drops an overflow asks the owner and names it', async () => {
+  const c = await open({ sessions: [{ id: 'solo', title: 'Solo', ago: 7, group: 'cg-b' }, { id: 'plain', title: 'Plain', ago: 8, group: 'cg-a' }] });
+  await pinTo(c, 'group', 'cg-b', 'second', 'main');
+  await pin(c, 'group', 'cg-a', 'second');
+  assert.equal(await moveAsk(c, 'plain', { session_id: 'plain', group: 'Loose' }), 'move "Plain" [plain] to "Loose", which runs it on Second, with Main taking over while that account is out of usage', 'a move that gains one');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'move "Solo" [solo] to "Work", which runs it on Second, with no overflow account', 'a move that drops one');
+  await pin(c, 'session', 'solo', 'second');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'allowed', 'its own pin decides, wherever it goes');
+});
