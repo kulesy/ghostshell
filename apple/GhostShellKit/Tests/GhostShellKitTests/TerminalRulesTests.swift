@@ -195,6 +195,16 @@ final class TerminalRulesTests: XCTestCase {
         XCTAssertFalse(runs[0].pending)
     }
 
+    func testASummaryThatTakesAPendingRunRaisesItsRevisionSoTheBlockRedraws() {
+        var pending = TerminalRun(waiting: "ls", cwd: "/h/x", source: .panel, key: "local-1", now: 5)
+        pending.revision = 3
+        let summary = run("abc", "ls", output: [.init(stream: "out", text: "hi\n")])
+        XCTAssertGreaterThan(TerminalRules.upsertRun([pending], summary)[0].revision, pending.revision)
+        let replaced = TerminalRules.replaceRuns(held: [pending], summaries: [summary])
+        XCTAssertEqual(replaced[0].key, "local-1")
+        XCTAssertGreaterThan(replaced[0].revision, pending.revision)
+    }
+
     func testAnOlderAccountOfAFinishedRunIsIgnored() {
         let done = run("a", running: false)
         XCTAssertEqual(TerminalRules.upsertRun([done], run("a", running: true)), [done])

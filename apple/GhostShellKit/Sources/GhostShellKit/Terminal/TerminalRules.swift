@@ -215,6 +215,7 @@ public enum TerminalRules {
         if let waiting = next.firstIndex(where: { $0.pending && $0.command == incoming.command && $0.source == incoming.source }) {
             var merged = incoming
             merged.key = next[waiting].key
+            merged.revision = next[waiting].revision + 1
             merged.pending = false
             next[waiting] = merged
             return next
@@ -238,7 +239,9 @@ public enum TerminalRules {
                 run.output = mergeOutput(held: was.output, tail: summary.output)
                 run.revision = was.revision + 1
             } else if let n = waiting.firstIndex(where: { $0.command == summary.command && $0.source == summary.source }) {
-                run.key = waiting.remove(at: n).key
+                let placeholder = waiting.remove(at: n)
+                run.key = placeholder.key
+                run.revision = placeholder.revision + 1
             }
             run.pending = false
             return run
