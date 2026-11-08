@@ -31,6 +31,7 @@ struct ComposerView: View {
         .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 12)
         .frame(maxWidth: .infinity)
         .background(.bar)
+        .layoutPriority(1)
         .task(id: model.wantsCommands) { if model.wantsCommands { await model.loadCommands() } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { model.attach(urls: urls); model.requestFocus() }
@@ -108,7 +109,8 @@ private struct ErrorLine: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            Text(verbatim: text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            // The minimum width stops the window's minimum height being measured at a width of 0, where fixedSize gives each letter a line.
+            Text(verbatim: text).textSelection(.enabled).frame(minWidth: 200, maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
             Button("Dismiss", systemImage: "xmark", action: dismiss).labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
         }
         .font(ChatStyle.small)

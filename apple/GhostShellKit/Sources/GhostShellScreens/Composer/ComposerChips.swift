@@ -4,18 +4,26 @@ import SwiftUI
 /// The quotes and attachments above the box, each with a button that removes it.
 struct ComposerChips: View {
     let model: ComposerModel
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
-        let quotes = model.quotes
-        let attachments = model.attachments
-        if !quotes.isEmpty || !attachments.isEmpty {
-            ChipFlow(spacing: 8) {
-                ForEach(quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
-                ForEach(attachments) { item in
-                    if item.isPicture { PictureChip(item: item) { model.remove(item) } } else { FileChip(item: item) { model.remove(item) } }
-                }
+        if !model.quotes.isEmpty || !model.attachments.isEmpty {
+            // About two rows. Past that the chips scroll, and a small window shrinks the area before the box.
+            ScrollView(.vertical) {
+                chips.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: min(contentHeight, 112))
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var chips: some View {
+        ChipFlow(spacing: 8) {
+            ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
+            ForEach(model.attachments) { item in
+                if item.isPicture { PictureChip(item: item) { model.remove(item) } } else { FileChip(item: item) { model.remove(item) } }
+            }
         }
     }
 }
