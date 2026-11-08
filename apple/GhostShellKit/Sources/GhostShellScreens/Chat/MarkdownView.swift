@@ -67,10 +67,16 @@ enum MarkdownText {
     }
 }
 
-/// A reply's Markdown blocks: headings, lists, quotes, code with a label and Copy, and tables.
+private extension EnvironmentValues {
+    @Entry var codeCanRun = false
+}
+
+/// A reply's Markdown blocks: headings, lists, quotes, code with a label and Copy, and tables. `canRun` lets a code block draw the Run slot, which
+/// only a finished reply of the assistant does, as on the page. A streaming reply and a thinking block never do.
 struct MarkdownView: View {
     let blocks: [MDBlock]
     var font: Font = ChatStyle.body
+    var canRun = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -79,6 +85,7 @@ struct MarkdownView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .environment(\.codeCanRun, canRun)
     }
 }
 
@@ -175,18 +182,28 @@ private struct TableView: View {
     }
 }
 
-/// A fenced block: its language, Copy, and the feature slot for Run, above the code, which scrolls sideways rather than wrapping.
+/// A fenced block: its language, Copy, and the feature slot for Run, above the code, which scrolls sideways rather than wrapping. A block with a Run
+/// button wraps instead, with its command lines marked, so the owner sees all of what Run would run.
 struct CodeBlockView: View {
     @Environment(ChatModel.self) private var model
+    @Environment(\.codeCanRun) private var canRun
     let block: ChatCodeBlock
     @State private var copied = false
+
+    private var wraps: Bool {
+        #if os(macOS)
+        canRun && model.chat.terminalAvailable && TerminalRules.runnableBlock(language: block.language, text: block.text) != nil
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 if !block.language.isEmpty { Text(block.language).font(ChatStyle.monoSmall).foregroundStyle(.secondary) }
                 Spacer(minLength: 0)
-                ChatSlots.runButton(block, model.chat)
+                if canRun { ChatSlots.runButton(block, model.chat) }
                 Button(copied ? "Copied" : "Copy") {
                     ChatLinks.copy(block.text)
                     copied = true
@@ -196,13 +213,40 @@ struct CodeBlockView: View {
                 .accessibilityLabel("Copy code")
             }
             .padding(.leading, 14).padding(.trailing, 10).padding(.top, 6)
-            ScrollView(.horizontal) {
-                Text(block.text).font(ChatStyle.mono).lineSpacing(3).textSelection(.enabled).fixedSize(horizontal: true, vertical: true)
+            if wraps {
+                Text(Self.marked(block)).font(ChatStyle.mono).lineSpacing(3).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14).padding(.vertical, 8)
+            } else {
+                ScrollView(.horizontal) {
+                    Text(block.text).font(ChatStyle.mono).lineSpacing(3).textSelection(.enabled).fixedSize(horizontal: true, vertical: true)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                }
+                .scrollIndicators(.automatic)
             }
-            .scrollIndicators(.automatic)
         }
         .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Puts each command line, with the lines a backslash joins to it, on a darker ground so the owner sees all of what Run would run.
+    private static func marked(_ block: ChatCodeBlock) -> AttributedString {
+        let ranges = TerminalRules.commandLines(language: block.language, text: block.text)
+        guard !ranges.isEmpty else { return AttributedString(block.text) }
+        let lines = block.text.components(separatedBy: "\n")
+        let ground = Color.secondary.opacity(0.25)
+        var out = AttributedString()
+        for (n, line) in lines.enumerated() {
+            let inCommand = ranges.contains { $0.contains(n) }
+            var piece = AttributedString(line)
+            if inCommand { piece.backgroundColor = ground }
+            out += piece
+            if n < lines.count - 1 {
+                var newline = AttributedString("\n")
+                if inCommand, ranges.contains(where: { $0.contains(n + 1) }) { newline.backgroundColor = ground }
+                out += newline
+            }
+        }
+        return out
     }
 }
 

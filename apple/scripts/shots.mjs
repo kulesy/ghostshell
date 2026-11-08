@@ -22,7 +22,7 @@ const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? ''
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(option('--out') || path.join(here, '..', 'screenshots'));
 const FLOW = option('--flow');
-const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups'];
+const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups', 'terminal'];
 if (FLOW !== undefined && !FLOWS.includes(FLOW)) {
   console.error(`${FLOW ? `Unknown --flow ${FLOW}.` : '--flow needs a value.'} The flows are: ${FLOWS.join(', ')}.`);
   process.exit(2);
@@ -233,6 +233,18 @@ class App {
   // The chat is the last vertical scroll bar in the window, after the sidebar's. 0 is the top and 1 the end.
   scrollChat(to) {
     const bar = this.findAll(node => node.role === 'AXScrollBar' && node.orientation === 'AXVerticalOrientation').at(-1);
+    return !!bar && this.set(bar, 'AXValue', to);
+  }
+  // The terminal panel's scroll area, which holds its own vertical bar.
+  terminalBar() {
+    const nodes = this.tree();
+    const panel = nodes.find(node => node.desc === 'Terminal output');
+    return panel && nodes.find(node => node.role === 'AXScrollBar' && node.orientation === 'AXVerticalOrientation' && node.path.join().startsWith(`${panel.path.join()},`));
+  }
+  // The thread's bar when the terminal panel is open: the last vertical bar that is not the panel's.
+  scrollThread(to) {
+    const mine = this.terminalBar()?.path.join();
+    const bar = this.findAll(node => node.role === 'AXScrollBar' && node.orientation === 'AXVerticalOrientation' && node.path.join() !== mine).at(-1);
     return !!bar && this.set(bar, 'AXValue', to);
   }
   // Presses the first button whose description or title is `name`, or starts with it. An alert's buttons are in the window's contents too.
@@ -1390,6 +1402,89 @@ async function groupsFlow(bundle, appearance) {
   }
 }
 
+// The terminal panel under a chat. The stub answers the terminal routes and records each call, so Run, Stop and a typed line are checked on the wire.
+async function terminalFlow(bundle, appearance) {
+  const stub = await startChatStub();
+  console.log(`\n== ${appearance}: the terminal`);
+  const app = new App(bundle, { address: stub.address, appearance, tag: '12' });
+  const toggle = () => app.find(node => node.role === 'AXButton' && app.label(node) === 'Terminal');
+  const input = () => app.find(node => ['AXTextField', 'AXTextArea'].includes(node.role) && /^(Send to|Command in|That command)/.test(node.desc ?? ''));
+  const called = (route, test) => stub.requests.some(r => r.route === route && test(r.body));
+  try {
+    await signInToChatStub(app, stub);
+
+    app.chooseRow(rowOf(stub, 'term'));
+    const hasRun = await until('term', () => app.hasButton('Run in terminal'), 20);
+    check(hasRun, 'a command block shows its Run button');
+    check(toggle()?.enabled === true, 'the Terminal toggle is on in a chat that has a terminal');
+    check(app.hasButton('Run in terminal, unavailable because the block holds hidden characters'), 'a block with a hidden character shows a Run button that is off');
+    await sleep(800);
+    await app.both('term-chat');
+    app.scrollChat(0);
+    await sleep(1200);
+    await app.both('term-blocks-top');
+    app.scrollChat(1);
+    await sleep(1200);
+    await app.both('term-blocks-end');
+
+    check(app.press('Terminal'), 'the toolbar has a Terminal button');
+    check(await until('panel', () => app.hasText('npm run dev'), 20), 'the terminal panel shows its runs');
+    check(app.hasButton('Stop command'), 'a running command has a Stop button');
+    check(await until('bottom', () => (app.terminalBar()?.value ?? 0) > 0.95, 10), 'the panel opens scrolled to its last output');
+    check(app.hasText('localhost:5173'), 'the last run\'s output is in the panel');
+    await sleep(1200);
+    await app.both('term-panel');
+    app.resize(MIN_SIZE);
+    await sleep(2500);
+    await app.shot(`${app.tag}-term-panel-min-settled-${appearance}`);
+    app.resize(DEFAULT_SIZE);
+    await sleep(1200);
+    app.scrollThread(0);
+    await sleep(1200);
+    await app.shot(`${app.tag}-term-panel-thread-top-${appearance}`);
+
+    check(app.press('Run in terminal'), 'a block can be run');
+    check(await until('ran', () => called('run', body => body.source === 'block' && body.command === 'npm test -- upload'), 10), 'the Run button sends the block as a block run');
+    await sleep(1200);
+    await app.both('term-after-run');
+
+    const field = await until('input', () => input(), 10) && input();
+    check(!!field, 'the panel has its input line');
+    // A key press needs the app in front, so the line is set through accessibility and sent with the panel's own Send line button.
+    check(!!field && app.set(field, 'AXFocused', true) && app.set(field, 'AXValue', 'echo hi'), 'a line is typed into the input');
+    await sleep(600);
+    await app.both('term-typed');
+    check(app.press('Send line'), 'the Send line button is pressed');
+    // The fixture's last run is still going, so the line goes to it as input and no command starts.
+    check(await until('typed', () => called('input', body => body.run === 'r3' && body.text === 'echo hi\n'), 10), 'a typed line is sent to the running command as input');
+    await sleep(1200);
+    await app.both('term-after-input');
+
+    check(app.press('Stop command'), 'Stop is pressed');
+    check(await until('stopped', () => called('stop', body => body.run === 'r3'), 10), 'Stop sends the running command\'s id');
+    await sleep(1200);
+    await app.both('term-after-stop');
+
+    // The file panel is the inspector beside the thread and the terminal sits under the thread, so both can be open and each keeps its controls.
+    check(app.clickLink('NOTES.md'), 'the reply has a file link');
+    check(await until('file', () => app.hasText('Run the upload test, then the build.'), 15), 'the file opens in its panel');
+    await sleep(1200);
+    check(!!input() && !!toggle() && app.hasButton('Hide file'), 'the terminal input and both toolbar buttons are there with the file panel open');
+    await app.both('term-with-file');
+
+    app.chooseRow(rowOf(stub, 'rich'));
+    check(await until('rich', () => app.hasText('Why is the upload test flaky? It fails about one run in five.'), 20), 'a chat with no terminal opens');
+    check(toggle()?.enabled === false, 'the Terminal toggle is off in a chat that has no terminal');
+    await sleep(800);
+    await app.both('term-toggle-off');
+    app.signOutFromMenu();
+    check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the chat stub');
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+}
+
 const cleanup = async () => {
   for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
@@ -1421,6 +1516,7 @@ try {
     if (flows.includes('routines')) await routinesFlow(bundle, appearance);
     if (flows.includes('files')) await filesFlow(bundle, appearance);
     if (flows.includes('groups')) await groupsFlow(bundle, appearance);
+    if (flows.includes('terminal')) await terminalFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);
