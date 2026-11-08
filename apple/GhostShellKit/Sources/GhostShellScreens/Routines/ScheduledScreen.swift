@@ -88,6 +88,7 @@ private struct ScheduledRow: View {
             VStack(alignment: .leading, spacing: 8) { info; controls }
         }
         .padding(.vertical, 6)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .contextMenu { ScheduledMenu(entry: s, askDelete: askDelete) }
         .accessibilityElement(children: .contain)
     }

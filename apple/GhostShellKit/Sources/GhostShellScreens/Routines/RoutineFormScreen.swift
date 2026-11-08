@@ -120,7 +120,7 @@ private struct RoutineFields: View {
                     }
                 }
             }
-            Section("Schedule") {
+            Section {
                 FormField(label: "Schedule", hint: "Five fields: minute, hour, day of the month, month and day of the week, in this Mac's time. For example 30 7 * * 1-5.",
                           message: problems["cron"] ?? previewProblem) {
                     VStack(alignment: .leading, spacing: 6) {
@@ -239,7 +239,7 @@ private struct RoutineFields: View {
                 if let words = scheduleWords(cron, jitterSeconds: jitter ?? 0) { Text(words).font(.callout) }
                 switch preview {
                 case .fires(let times):
-                    Text("Next \(times.map { fireTime($0) }.joined(separator: ", "))").font(.callout).foregroundStyle(.secondary)
+                    Text("Next \(times.map { fireTime($0) }.joined(separator: " · "))").font(.callout).foregroundStyle(.secondary)
                 case .never where jitter != nil:
                     Text("This schedule never fires.").font(.callout).foregroundStyle(.secondary)
                 default: EmptyView()

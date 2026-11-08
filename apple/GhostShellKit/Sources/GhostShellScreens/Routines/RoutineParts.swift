@@ -39,7 +39,7 @@ extension View {
     func noteBar() -> some View { overlay(alignment: .bottom) { NoteBar() } }
 }
 
-/// A form row: the label, the control, then the hint and the server's message for the field in red.
+/// A form row: the label above the control, then the hint and the server's message for the field in red, all down one leading edge like the web page's Field.
 struct FormField<Control: View>: View {
     let label: String
     var hint: String?
@@ -47,17 +47,16 @@ struct FormField<Control: View>: View {
     @ViewBuilder var control: Control
 
     var body: some View {
-        LabeledContent(label) {
-            VStack(alignment: .leading, spacing: 4) {
-                control
-                if let hint { Text(hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                if let message {
-                    Label(message, systemImage: "exclamationmark.circle.fill")
-                        .font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.subheadline.weight(.medium))
+            control.multilineTextAlignment(.leading)
+            if let hint { Text(hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if let message {
+                Label(message, systemImage: "exclamationmark.circle.fill")
+                    .font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
     }
 }
