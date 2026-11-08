@@ -38,7 +38,6 @@ public struct RootView: View {
             if let detail = model.navigator.detail { detail } else { EmptyDetail() }
         }
         .toolbar {
-            // NOTE: [8 Nov 2026] EK - The chat PBI may move the context meter into the chat screen's own toolbar.
             if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
         }
     }

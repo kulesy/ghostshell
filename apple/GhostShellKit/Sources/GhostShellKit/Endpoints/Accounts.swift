@@ -11,14 +11,6 @@ public enum SignInStage: Hashable, Sendable, ServerWord {
     }
 }
 
-public enum ChatState: Hashable, Sendable, ServerWord {
-    case idle, working, waiting
-    case other(String)
-    public init(word: String) {
-        self = switch word { case "idle": .idle; case "working": .working; case "waiting": .waiting; default: .other(word) }
-    }
-}
-
 public enum PlanSeverity: Hashable, Sendable, ServerWord {
     case normal, warning, critical
     case other(String)
