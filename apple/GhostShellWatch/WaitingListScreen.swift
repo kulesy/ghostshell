@@ -34,6 +34,7 @@ struct WaitingListScreen: View {
             }
         }
         .navigationTitle("GhostShell")
+        .navigationBarTitleDisplayMode(.inline)
         // Polls only while the app is on screen. The phone is woken by each ask, so a hidden watch app asks for nothing.
         .task(id: phase == .active) {
             guard phase == .active else { return }
@@ -54,10 +55,10 @@ private struct RowLabel: View {
             HStack(spacing: 4) {
                 Image(systemName: row.dot == .awaiting ? "exclamationmark.bubble.fill" : "checkmark.circle.fill")
                     .foregroundStyle(row.dot == .awaiting ? .orange : .green)
-                Text(row.dot.words)
-                if !row.line.isEmpty { Text(row.line).foregroundStyle(.secondary).lineLimit(1) }
+                Text(row.dot.words).fixedSize()
             }
             .font(.caption2)
+            if !row.line.isEmpty { Text(row.line).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
         }
         .accessibilityElement(children: .combine)
     }

@@ -2,8 +2,8 @@
 import Foundation
 import GhostShellKit
 
-/// Hooks for the scripted test run, compiled into Debug builds only. `apple/scripts/build.mjs` fails a Release build that holds one of these words.
-/// Launch arguments: -GSDefaultsSuite, -GSWatchFixture (list, phone, server or signedout), -GSWatchOpen <session id>, -GSWatchOpenTitle, -GSWatchDraft <text>, -GSWatchSend 1, -GSWatchTap <option>.
+/// Hooks for the scripted test run, compiled into Debug builds only. `apple/scripts/watch.mjs` fails a Release build that holds one of these words.
+/// Launch arguments: -GSDefaultsSuite, -GSWatchFixture (list, phone, server or signedout), -GSWatchOpen <session id> (s5 has no known state), -GSWatchOpenTitle, -GSWatchDraft <text>, -GSWatchSend 1, -GSWatchTap <option>.
 enum DebugHooks {
     private static var args: UserDefaults { .standard }
 
@@ -56,6 +56,7 @@ struct FixtureRelay: Relay {
                            latest: "The test fails because it starts the upload before the server has finished its setup. I can wait for the **ready** event instead."),
         "s2": WatchSession(id: "s2", title: "Clean up the build folder", state: .waiting,
                            prompts: [WatchPrompt(kind: .permission, title: "Bash wants to run a command", text: "rm -rf apple/build")]),
+        "s5": WatchSession(id: "s5", title: "Rename the settings screen", state: nil, latest: "I renamed the screen and updated its two links."),
         "s3": WatchSession(id: "s3", title: "Draft the sprint review email", state: .idle,
                            latest: "The draft is in your Drafts folder. It covers the four finished PBIs and the two that carried over. Do you want a shorter version for the team chat?"),
     ]

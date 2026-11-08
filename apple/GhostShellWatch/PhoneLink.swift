@@ -29,7 +29,7 @@ final class PhoneLink: NSObject, Relay, WCSessionDelegate, @unchecked Sendable {
             } errorHandler: { _ in
                 once.finish(WatchResponse(.problem(.phoneUnreachable)))
             }
-            // With the phone shut down the watchOS 11.5 Simulator called neither handler for over 30 seconds, so the ask gives up on its own.
+            // The reply handlers can go uncalled, so the ask times out itself.
             // A reply that lands later is harmless: the kept reply goes again with the same replyID, which the phone answers once.
             Task {
                 try? await Task.sleep(for: Self.timeout)

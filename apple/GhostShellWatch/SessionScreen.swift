@@ -17,7 +17,7 @@ struct SessionScreen: View {
                 let holding = model.keptReply(for: row.id) != nil
                 if holding { ReplyBox(row: row, question: question, draft: $draft) }
                 content
-                if !holding && !blocked { ReplyBox(row: row, question: question, draft: $draft) }
+                if !holding && !blocked { replyOrCheck }
             }
             .padding(.horizontal, 2)
         }
@@ -46,6 +46,21 @@ struct SessionScreen: View {
 
     /// A card only the iPhone or Mac can answer leaves no reply box, since a message would wait behind the card.
     private var blocked: Bool { question == nil && !prompts.isEmpty }
+
+    /// A plain reply goes through /send and queues behind a pending card, so the box waits until the session has loaded with a known state.
+    @ViewBuilder private var replyOrCheck: some View {
+        switch model.session {
+        case .loading, .problem:
+            EmptyView()
+        case .loaded(let session) where session.state == nil:
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Couldn't check for a question. Try again.").font(.footnote).foregroundStyle(.secondary)
+                Button("Try again") { Task { await model.refreshSession(row.id) } }
+            }
+        case .loaded:
+            ReplyBox(row: row, question: question, draft: $draft)
+        }
+    }
 
     @ViewBuilder private var content: some View {
         switch model.session {
