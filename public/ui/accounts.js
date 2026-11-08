@@ -3,7 +3,7 @@
 import { api } from './api.js';
 import { Banner } from './banner.js';
 import { accountList, loadAccounts, useAccounts } from './account-list.js';
-import { accountItems, autoBanner, blockedNow, blockedPlan, chromeBanner, needsSignIn, outBanner, pinnedChromeWords, pinnedStay, pinnedWords, planAsOf, rowFor, sameAccountWords, signInLine, SWITCH_LEAVES_PINS, waitingWords } from './account-rules.js';
+import { accountItems, autoBanner, blockedNow, blockedPlan, chromeBanner, needsSignIn, outBanner, pinnedChromeWords, pinnedStay, pinnedWords, planAsOf, rowFor, sameAccountWords, signInLine, spillLine, SWITCH_LEAVES_PINS, waitingWords } from './account-rules.js';
 import { Button, useRefusal } from './banners.js';
 import { Plan } from './context.js';
 import { planRows } from './context-rules.js';
@@ -229,13 +229,23 @@ export function SwitchAndContinue({ ctrl, on }) {
     return () => { live = false; };
   }, [on]);
   if (!on) return null;
-  const stays = pinnedStay(rowFor(ix, ctrl.id), accounts);
+  const row = rowFor(ix, ctrl.id);
+  if (row?.accountSpill) return null;
+  const stays = pinnedStay(row, accounts);
   if (stays) return html`<div class="notice-action"><p class="quiet account-hint">${stays}</p></div>`;
   if (!target) return null;
   const go = async () => {
     try { await api(`api/accounts/${enc(target.id)}/use`, { continue: ctrl.id }); ctrl.notice(''); } catch (e) { ctrl.notice(e.message); }
   };
   return html`<div class="notice-action"><${Button} action=${{ label: `Switch to ${target.name} and continue`, variant: 'outline' }} onClick=${go} /></div>`;
+}
+
+// Above the prompt box while the chat runs on the overflow of its pinned account, which is out of usage. It stands in for the pin's own line.
+export function SpillNotice({ ctrl }) {
+  const ix = useStore(sessionIndex, s => s.ix);
+  const accounts = useAccounts(ix);
+  const words = spillLine(rowFor(ix, ctrl.id), accounts);
+  return words ? html`<div class="notice-action"><p class="quiet account-hint">${words}</p></div>` : null;
 }
 
 // Above the prompt box when the chat's pin blocks it: the server's words, and the buttons that fix it at the level that holds the pin.

@@ -2,7 +2,7 @@
 // the one sign-in at a time, and what is asked of the CLI and when. Every part that touches the machine is a fake, and the clock is one the test moves.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { INFO_MS, makeAccountLogins, OUT_MS, RESTARTING, SIGN_IN_WAITING } from '../lib/account-logins.mjs';
+import { INFO_MS, makeAccountLogins, OUT_MS, resetOf, RESTARTING, SIGN_IN_WAITING } from '../lib/account-logins.mjs';
 
 const START = Date.parse('2026-11-02T00:00:00Z');
 const DAY = 86_400_000;
@@ -257,4 +257,63 @@ test('one banner shows at a time, and the next shows once that one is fixed', as
 test('an id in use that no account has is ignored', async () => {
   const r = await checked(rig({ ids: ['main', 'second'], used: ['gone', 'second', 'second'] }));
   assert.deepEqual(shown(r), ['main', 'Main', false]);
+});
+
+test('an out mark moved to a reset lasts until it, a reset in the past leaves the hour, and a clean turn still clears it', async () => {
+  const r = await checked(rig({ ids: ['main', 'second'] }));
+  r.logins.markUsage('second', 'out');
+  r.logins.outUntil('second', r.at - 1);
+  r.logins.outUntil('second', Number.NaN);
+  r.at += OUT_MS - 1;
+  assert.equal(r.logins.isOut('second'), true, 'the hour stands without a usable reset');
+  r.at = START;
+  r.logins.markUsage('second', 'out');
+  r.logins.outUntil('second', START + 3 * 60 * MIN);
+  r.at += OUT_MS + 1;
+  assert.equal(r.logins.isOut('second'), true, 'longer than an hour');
+  assert.equal(r.logins.isUsable('second'), false);
+  assert.equal(r.logins.view()[1].out.text, 'out');
+  r.at = START + 3 * 60 * MIN;
+  assert.deepEqual([r.logins.isOut('second'), r.logins.isUsable('second')], [false, true]);
+
+  r.at = START;
+  r.logins.markUsage('second', 'out');
+  r.logins.outUntil('second', START + 20 * MIN);
+  r.at += 20 * MIN;
+  assert.equal(r.logins.isOut('second'), false, 'a reset sooner than the hour ends the mark then');
+  r.logins.markUsage('second', 'out');
+  r.logins.outUntil('second', r.at + 5 * 60 * MIN);
+  r.logins.markUsage('second', null);
+  assert.equal(r.logins.isOut('second'), false);
+  r.logins.outUntil('second', r.at + 5 * 60 * MIN);
+  assert.equal(r.logins.isOut('second'), false, 'a late reset does not bring a cleared mark back');
+});
+
+test('a new mark replaces the reset of the old one, and an unknown account is neither out nor usable', async () => {
+  const r = await checked(rig({ ids: ['main', 'second'] }));
+  r.logins.markUsage('second', 'out');
+  r.logins.outUntil('second', START + 5 * 60 * MIN);
+  r.logins.markUsage('second', 'out again');
+  r.at += OUT_MS;
+  assert.equal(r.logins.isOut('second'), false);
+  r.logins.outUntil('gone', START + 5 * 60 * MIN);
+  assert.deepEqual([r.logins.isOut('gone'), r.logins.isUsable('gone')], [false, false]);
+});
+
+test('an account is usable only once checked, signed in and not out', async () => {
+  const r = rig({ ids: ['main', 'second'], who: { second: { loggedIn: false } } });
+  r.noEnd = true;
+  assert.equal(r.logins.isUsable('main'), false, 'not checked yet');
+  await r.logins.refreshAll();
+  assert.deepEqual([r.logins.isUsable('main'), r.logins.isUsable('second')], [true, false]);
+});
+
+test('the reset of a plan answer is the latest among the unscoped limits at 100 percent', () => {
+  const limit = (percent, resetsAt, scope = null) => ({ kind: 'k', group: 'g', percent, resetsAt, scope });
+  assert.equal(resetOf([limit(100, '2026-11-09T05:00:00.000Z'), limit(100, '2026-11-12T00:00:00.000Z'), limit(40, '2026-11-20T00:00:00.000Z')]), Date.parse('2026-11-12T00:00:00.000Z'));
+  assert.equal(resetOf([limit(99, '2026-11-12T00:00:00.000Z')]), null);
+  assert.equal(resetOf([limit(100, null)]), null);
+  assert.equal(resetOf([limit(100, '2026-11-09T05:00:00.000Z'), limit(100, '2026-11-14T00:00:00.000Z', 'Opus')]), Date.parse('2026-11-09T05:00:00.000Z'), 'a model-scoped limit does not stretch the mark');
+  assert.equal(resetOf([limit(100, '2026-11-14T00:00:00.000Z', 'Opus')]), null);
+  assert.equal(resetOf(null), null);
 });

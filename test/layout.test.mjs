@@ -912,3 +912,54 @@ test('a layout file with a pin that is not an account id loads without it, and o
   assert.deepEqual(f.layout.read().accounts, { s1: 'second' });
   assert.match(folder({ ...OLD, accounts: [] }).layout.read().problem ?? '', /accounts/);
 });
+
+test('a pin takes an overflow, keeps it when none is sent, replaces it, drops it when the pin moves to it, and loses it with the pin', () => {
+  const f = folder({ ...WITH_PROJECTS, later: { kept: true } });
+  const group = WITH_PROJECTS.groups[0].id;
+  const project = WITH_PROJECTS.projects[0].id;
+  f.layout.setAccount('session', 's1', 'second', 'main');
+  f.layout.setAccount('group', group, 'second', 'main');
+  f.layout.setAccount('project', project, 'second', 'third');
+  assert.deepEqual(f.onDisk().overflow, { s1: 'main' });
+  assert.equal(f.onDisk().groups.find(g => g.id === group).overflow, 'main');
+  assert.equal(f.layout.read().projects.find(p => p.id === project).overflow, 'third');
+  assert.deepEqual(f.onDisk().later, { kept: true });
+
+  f.layout.setAccount('session', 's1', 'second');
+  f.layout.setAccount('group', group, 'second');
+  assert.deepEqual([f.onDisk().overflow, f.onDisk().groups.find(g => g.id === group).overflow], [{ s1: 'main' }, 'main'], 'no overflow in the call keeps it');
+  f.layout.setAccount('session', 's1', 'second', 'third');
+  assert.deepEqual(f.onDisk().overflow, { s1: 'third' });
+  f.layout.setAccount('session', 's1', 'second', null);
+  assert.equal('overflow' in f.onDisk(), false, 'null clears it, and an empty map is not written');
+
+  f.layout.setAccount('session', 's1', 'second', 'main');
+  f.layout.setAccount('session', 's1', 'main');
+  assert.deepEqual([f.onDisk().accounts, 'overflow' in f.onDisk()], [{ s1: 'main' }, false], 'a pin moved to its overflow drops it');
+  f.layout.setAccount('group', group, 'third');
+  assert.equal(f.layout.read().groups.find(g => g.id === group).overflow, 'main', 'another pin keeps it');
+  f.layout.setAccount('group', group, 'main');
+  assert.equal('overflow' in f.layout.read().groups.find(g => g.id === group), false);
+
+  f.layout.setAccount('session', 's1', 'second', 'main');
+  f.layout.setAccount('project', project, 'second', 'main');
+  f.layout.setAccount('session', 's1', null);
+  f.layout.setAccount('project', project, null);
+  f.layout.setAccount('group', group, null);
+  assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, later: { kept: true } });
+});
+
+test('an overflow equal to the pin or not an id is refused, and nothing is written', () => {
+  const f = folder(WITH_PROJECTS);
+  backdate(f);
+  assert.throws(() => f.layout.setAccount('session', 's1', 'second', 'second'), { status: 400 });
+  for (const overflow of ['', 7, {}]) assert.throws(() => f.layout.setAccount('session', 's1', 'second', overflow), { status: 400 }, JSON.stringify(overflow));
+  assert.equal(rewritten(f), false);
+});
+
+test('a layout file with an overflow that is not an account id loads without it, and one with overflow as a list is refused', () => {
+  const f = folder({ ...OLD, overflow: { s1: 'second', s2: '', s3: 7 } });
+  assert.deepEqual(f.layout.read().overflow, { s1: 'second' });
+  assert.equal('overflow' in folder(OLD).layout.read(), false);
+  assert.match(folder({ ...OLD, overflow: [] }).layout.read().problem ?? '', /overflow/);
+});

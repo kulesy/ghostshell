@@ -586,9 +586,10 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   }
 
   // The Account submenu of a session, group or project, from the one rule the composer uses too.
-  const pinMenu = (kind, id, pin, row = null) => {
+  const pinMenu = (kind, id, pin, row = null, overflow = null) => {
     const pick = account => change('api/layout/account', { kind, id, account });
-    return row ? rowAccountMenu({ ix, accounts, row, pick, icon: icons.circleUser }) : pinItems({ ix, accounts, pin, pick, icon: icons.circleUser });
+    const pickOverflow = spare => change('api/layout/account', { kind, id, account: pin, overflow: spare });
+    return row ? rowAccountMenu({ ix, accounts, row, pick, pickOverflow, icon: icons.circleUser }) : pinItems({ ix, accounts, pin, overflow, pick, pickOverflow, icon: icons.circleUser });
   };
 
   // The row that takes the focus once `ids` leave: the one above them at their level of the tree, or else the next one in the list.
@@ -1217,7 +1218,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
           ...(at >= 0 && at < ids.length - 1 ? [{ label: 'Move down', icon: icons.arrowDown, run: () => orderGroup(g, ids[at + 1], 'after') }] : []),
         ],
         moves.map(m => ({ ...m, icon: icons.folderInput })),
-        pinMenu('group', g.id, g.account),
+        pinMenu('group', g.id, g.account, null, g.overflow),
         [{ label: 'Delete group', icon: icons.trash, danger: true, run: () => deleteGroup(g) }],
       ].filter(part => part.length);
       return { label: `Actions for ${g.name}`, items: parts.flatMap((part, n) => (n ? [{ separator: true }, ...part] : part)) };
@@ -1233,7 +1234,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       items: [
         { label: 'New group here', icon: icons.folderPlus, run: () => tree.newGroup(p, [scopeOf(p.id), '.add']) },
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'rename', project: p.id }) },
-        ...pinMenu('project', p.id, p.account),
+        ...pinMenu('project', p.id, p.account, null, p.overflow),
         { separator: true },
         { label: 'Delete project', icon: icons.trash, danger: true, run: () => deleteProject(p) },
       ],

@@ -40,9 +40,9 @@ import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { lockHolder } from './lib/restart.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
-import { makeAccountLogins } from './lib/account-logins.mjs';
+import { makeAccountLogins, resetOf } from './lib/account-logins.mjs';
 import { browserSeen, makeChromeCheck, openChromeSettings, SURVEY_MS } from './lib/chrome-check.mjs';
-import { accountFor, blockedBy, blockedError, blockedMessage } from './lib/account-rule.mjs';
+import { accountFor, blockedBy, blockedError, blockedMessage, spillOf } from './lib/account-rule.mjs';
 import { groupNamed } from './lib/layout-tools.mjs';
 import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
@@ -178,10 +178,10 @@ function accountData(index) {
     // A group's chat takes its group's pin. A session is known when it has a transcript or Capcom started it.
     facts(id) {
       const group = own.groups.find(g => g.session === id);
-      if (group) return { pin: own.accounts[id], group: group.id };
+      if (group) return { pin: own.accounts[id], overflow: own.overflow?.[id], group: group.id };
       const t = transcriptFor(id);
       if (!t && !started().has(id)) return null;
-      return { pin: own.accounts[id], routine: routineOf(id, t), group: own.assignments[id], parent: links()(id) };
+      return { pin: own.accounts[id], overflow: own.overflow?.[id], routine: routineOf(id, t), group: own.assignments[id], parent: links()(id) };
     },
     // The words for where a pin came from, from names already in the stores.
     nameOf(from, via) {
@@ -193,15 +193,25 @@ function accountData(index) {
   };
 }
 
+// The rule's answer for `self` and what stops it. Work pinned to an account that is out of usage moves to the pin's overflow, unless the pin blocks it: a signed-out
+// pinned account blocks the work and never spills. See docs/adr/20261109-spill-pinned-work-to-an-overflow-account.md.
+function settle(self, d, states = accountStates()) {
+  const pinned = d.anyPin || self.pin ? accountFor(self, d) : { account: d.active, from: 'active', via: null };
+  const blocked = blockedBy(pinned, states, d.nameOf);
+  return { got: blocked ? pinned : spillOf(pinned, { isOut: accountLogins.isOut, usable: accountLogins.isUsable }), blocked };
+}
+
 // What the rule makes of `self`, ready for the runner: the account's id, where it came from, its environment, what stops it and how to prepare it.
+// `spilled` is the pinned account the work left, when it did.
 function resolveAccount(self, d = accountData()) {
-  const got = d.anyPin || self.pin ? accountFor(self, d) : { account: d.active, from: 'active', via: null };
+  const { got, blocked } = settle(self, d);
   const account = accounts.find(got.account);
   return {
     id: got.account,
     from: got.from,
+    spilled: got.spilled,
     env: account && accounts.envFor(account),
-    blocked: blockedBy(got, accountStates(), d.nameOf),
+    blocked,
     prepare: () => account && accounts.prepare(account),
   };
 }
@@ -253,10 +263,13 @@ function accountRows(index) {
   if (!many && !d.anyPin) return;
   const states = accountStates();
   for (const r of [...index.rows.values(), ...index.groupSessions.values()]) {
-    const got = accountFor({ id: r.id, ...d.facts(r.id) }, d);
-    const blocked = withWords(blockedBy(got, states, d.nameOf));
-    if (!many && !blocked && !d.own.accounts[r.id]) continue;
-    Object.assign(r, { account: got.account, accountFrom: got.from }, d.own.accounts[r.id] && { accountPin: d.own.accounts[r.id] }, blocked && { blocked });
+    const settled = settle({ id: r.id, ...d.facts(r.id) }, d, states);
+    const { got } = settled;
+    const blocked = withWords(settled.blocked);
+    const pin = d.own.accounts[r.id];
+    const overflow = d.own.overflow?.[r.id];
+    if (!many && !blocked && !pin) continue;
+    Object.assign(r, { account: got.account, accountFrom: got.from }, got.spilled && { accountSpill: got.spilled }, pin && { accountPin: pin }, pin && overflow && overflow !== pin && { accountOverflow: overflow }, blocked && { blocked });
   }
 }
 
@@ -381,8 +394,8 @@ function buildIndex({ archived = false } = {}) {
     const sort = groupSort(g.id);
     // A group's own chat carries what accountRows worked out for it, so its notice reads the same as a session's.
     const chat = g.session && groupSessions.get(g.session);
-    const session = chat ? { id: g.session, state: chat.state, ...(chat.account && { account: chat.account, accountFrom: chat.accountFrom }), ...(chat.accountPin && { accountPin: chat.accountPin }), ...(chat.blocked && { blocked: chat.blocked }) } : null;
-    return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, ...(g.account && { account: g.account }), sort, session, archived: archivedIn.get(g.id) ?? 0, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
+    const session = chat ? { id: g.session, state: chat.state, ...(chat.account && { account: chat.account, accountFrom: chat.accountFrom }), ...(chat.accountSpill && { accountSpill: chat.accountSpill }), ...(chat.accountPin && { accountPin: chat.accountPin }), ...(chat.accountOverflow && { accountOverflow: chat.accountOverflow }), ...(chat.blocked && { blocked: chat.blocked }) } : null;
+    return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, ...(g.account && { account: g.account }), ...(g.account && g.overflow && { overflow: g.overflow }), sort, session, archived: archivedIn.get(g.id) ?? 0, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
   });
   // A routine's runs go newest first, and the routines go by their latest run.
   const byLatest = comparator(sorts.routines);
@@ -398,7 +411,7 @@ function buildIndex({ archived = false } = {}) {
   return {
     station: cfg.station,
     problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
-    projects: own.projects.map(({ id, name, account }) => ({ id, name, ...(account && { account }) })),
+    projects: own.projects.map(({ id, name, account, overflow }) => ({ id, name, ...(account && { account }), ...(account && overflow && { overflow }) })),
     pinned,
     groups,
     routines: [...routines.values()].sort((a, b) => byLatest(a.latest, b.latest)),
@@ -562,7 +575,9 @@ function subCtx(sessionId) {
         const now = accountFor({ id, ...facts, group: picked.id, parent: null }, d);
         // A pin on the active account's own id still holds through a switch, and the sessions below can follow a head or be relinked off a nested session's pin, so both ask.
         const below = belowNow(id, { archived: false }).length + Object.keys(leaving(id).relink ?? {}).length;
-        return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || below > 0, to: accounts.find(now.account)?.name, active: now.from === 'active', below };
+        // The card compares the overflows the pins hold and not the spilled account of the moment.
+        const spills = (was.overflow ?? null) !== (now.overflow ?? null);
+        return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || spills || below > 0, to: accounts.find(now.account)?.name, active: now.from === 'active', below, ...(spills && { spills, overflow: now.overflow ? accounts.find(now.overflow)?.name ?? 'another account' : null }) };
       } catch {
         return { changes: true };
       }
@@ -960,6 +975,22 @@ async function askPlan(account, first) {
   return null;
 }
 
+// A turn ended on `id` out of usage (`text`) or cleanly (null). The mark lasts until the reset of the limit that ran out, read from the chat that ran out, and the
+// hour stands without an answer. Then a session that now spills to its overflow carries on there. See docs/adr/20261109-spill-pinned-work-to-an-overflow-account.md.
+async function heardUsage(id, text, chat) {
+  accountLogins.markUsage(id, text);
+  if (!text || !chat || chat.id.startsWith('new-')) return;
+  const reset = resetOf(await askPlan(id, chat).catch(() => null));
+  if (reset) accountLogins.outUntil(id, reset);
+  // The answer took a moment, so the chat may have been sent to since, which already moved it off `id`. A turn is never cut, and a chat with a job or an approval waiting keeps its process.
+  if (chat.account !== id || chat.state !== 'idle' || chat.pending.size) return;
+  const now = accountOfChat(chat);
+  if (now.blocked || now.spilled !== id || !accountLogins.isUsable(now.id)) return;
+  chat.retire(true);
+  if (chat.proc?.stdin.writable && chat.account !== now.id) return;
+  chat.send('Continue.');
+}
+
 // The account is named once more than one is listed, since the figures are that account's and not the one in the sidebar.
 async function planFor(id) {
   const own = getChat(id);
@@ -1341,31 +1372,35 @@ async function editStructure(req, res, change) {
 }
 
 // POST api/layout/account pins a session, group or project to an account with { kind, id, account }, and clears the pin when account is null.
-// A pin to an account that is signed out is refused, as a switch to one is. It runs work as the owner, so it takes the stricter origin check.
+// An optional `overflow` names the account that takes the work while the pinned one is out of usage: an id sets it, null clears it and leaving it out keeps it.
+// A pin or an overflow on an account that is signed out is refused, as a switch to one is. It runs work as the owner, so it takes the stricter origin check.
 // The chats of other accounts that are idle stop at once, and the rest as they go idle.
 async function pinAccount(req, res) {
   if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
   const body = await readJson(req, 10_000);
   if (!body) return send(res, 400, { error: 'Send a JSON body.' });
   if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
-  const { kind, id, account } = body;
+  const { kind, id, account, overflow } = body;
   if (!['session', 'group', 'project'].includes(kind)) return send(res, 400, { error: 'Pin a session, a group or a project.' });
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Which one?' });
   if (account !== null && typeof account !== 'string') return send(res, 400, { error: 'Name an account, or null to clear the pin.' });
+  if (overflow !== undefined && overflow !== null && typeof overflow !== 'string') return send(res, 400, { error: 'Name an account, or null to clear the overflow.' });
+  if (overflow && overflow === account) return send(res, 400, { error: 'The overflow must be another account than the pin.' });
   try {
     if (kind === 'session') editableRow(id);
-    if (account !== null) {
-      const found = accounts.find(account);
+    // Clearing the pin clears the overflow, so a stray overflow in that body is not checked.
+    for (const wanted of account === null ? [] : [account, overflow].filter(Boolean)) {
+      const found = accounts.find(wanted);
       if (!found) return send(res, 404, { error: 'Unknown account.' });
       await accountLogins.refresh(found);
       if (accountLogins.state(found).signedOut) return send(res, 409, { error: `${found.name} is signed out. Sign it in first.` });
     }
-    layout.setAccount(kind, id, account);
+    layout.setAccount(kind, id, account, account === null ? undefined : overflow);
   } catch (e) {
     return send(res, e.status || 500, { error: e.message });
   }
   retireOtherAccounts();
-  return send(res, 200, { kind, id, account });
+  return send(res, 200, { kind, id, account, ...(overflow !== undefined && account !== null && { overflow }) });
 }
 
 // What the CLI lists under `key` for a session or a folder, named in the body as `id` or `cwd`. A chat with a process answers from its own
@@ -1756,7 +1791,7 @@ const accountLogins = makeAccountLogins({
   restarting: () => ['updating', 'restarting'].includes(updates.state().stage),
 });
 onAuthFailure(accountLogins.authFailed);
-onUsage(accountLogins.markUsage);
+onUsage(heardUsage);
 
 // After a switch, whether Chrome's Claude extension is on the new account, and the banner that says to move it when it is not.
 const chromeCheck = makeChromeCheck({

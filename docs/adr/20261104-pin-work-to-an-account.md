@@ -1,6 +1,6 @@
 # Pin a session, group, project or routine to one Claude account
 
-- Status: Accepted
+- Status: Accepted, amended 2026-11-09
 - Deciders: Eli
 - Date: 2026-11-04
 - Tags: accounts, cli, layout, routines, usage, banners
@@ -29,6 +29,8 @@ The accounts already live side by side, each in its own config folder, and a ses
 ## Decision Outcome
 
 Chosen option: "Pins in the existing stores, resolved by one pure rule when a process starts", because a pin then moves, renames and disappears with the thing it belongs to, and a process start is already the one moment an account can change.
+
+**Amended 2026-11-09.** Falling back to another account is allowed when the owner opts in. A pin can name an overflow account, and work moves to it while the pinned account is out of usage (see [Let a pin name an overflow account](20261109-spill-pinned-work-to-an-overflow-account.md)). A pin with no overflow still never falls back, and a signed-out pinned account still blocks.
 
 ### Where a pin lives
 
@@ -130,3 +132,4 @@ The pin routes sit behind the password and the strict origin check. So does `POS
 - Builds on [Show banners in the sidebar for Claude's sign-in ending and for merged changes waiting](20261102-banners-for-sign-in-and-updates.md), whose sign-in banner now covers each account in use
 - Builds on [Show plan usage in the context popover from the CLI's own figures](20261031-plan-usage-from-the-cli.md), whose popover now follows the session's account
 - Builds on [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md), whose runs can now hold a pin
+- Amended by [Let a pin name an overflow account that takes its work while the pinned one is out of usage](20261109-spill-pinned-work-to-an-overflow-account.md), which lets the owner choose a fallback on the pin

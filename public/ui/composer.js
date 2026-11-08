@@ -140,7 +140,7 @@ export function Composer({ ctrl }) {
   const look = buttonOf({ model, effort: s.effort, fast: s.fast, listed: models });
   const popModel = (button, entry) => setShown(open => (open && !entry ? null : { id: `composer-${++opened.current}`, anchor: button, entry }));
   // A pick hands the focus back to the button, as Radix's menus do, so a keyboard is not left on a menu that has gone.
-  const pickSetting = (kind, value) => { shown.anchor.focus({ preventScroll: true }); ctrl.pick(kind, value); };
+  const pickSetting = (kind, value, ...more) => { shown.anchor.focus({ preventScroll: true }); ctrl.pick(kind, value, ...more); };
   // The account a chat runs on is picked here too, for a new session or one the list holds. A group's own chat takes its group's pin instead.
   const ix = useStore(sessionIndex, st => st.ix);
   const accounts = useAccounts(ix);
@@ -148,7 +148,7 @@ export function Composer({ ctrl }) {
   const draftParent = useStore(ctrl.store, st => st.parent ?? null);
   const mine = chatAccount({ ix, accounts, draft, id: ctrl.id, group: draftGroupId, parent: draftParent, picked: s.account ?? null });
   const accountPart = mine.offered
-    ? [{ separator: true }, ...accountMenu({ ix, accounts, pin: mine.pin, follows: mine.follows, pick: value => pickSetting('account', value) })]
+    ? [{ separator: true }, ...accountMenu({ ix, accounts, pin: mine.pin, overflow: mine.overflow, follows: mine.follows, pick: value => pickSetting('account', value), ...(!draft && { pickOverflow: value => pickSetting('overflow', value, mine.pin) }) })]
     : [];
   const modelItems = shown ? [...modelMenu({ model, effort: s.effort, fast: s.fast, listed: models, error: modelsError, pick: pickSetting }), ...accountPart] : null;
 

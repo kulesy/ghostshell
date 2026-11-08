@@ -354,8 +354,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   }
 
   // Pins `at` ({ kind, id }) to an account or clears it. The notice for a pin that blocked this chat goes, and a refusal throws for the caller to show.
-  async function repin(at, account) {
-    await api('api/layout/account', { ...at, account });
+  async function repin(at, account, overflow) {
+    await api('api/layout/account', { ...at, account, ...(overflow !== undefined && { overflow }) });
     store.set({ refused: null });
     patchStatus({ blocked: null });
     await refreshIndex();
@@ -385,9 +385,13 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // The change shows at once and applies from Claude's next request, even mid-turn. When Claude refuses it, the page shows the status
   // Capcom answers with, which holds a later pick that went through, and puts the old value back only when there is none.
   // `kind` is 'model', 'effort' or 'fast', and fast mode's value is true or false.
-  async function pick(kind, value) {
+  async function pick(kind, value, pinned) {
     if (kind === 'account' && !draft) {
       try { await repin({ kind: 'session', id }, value); } catch (err) { notice(err.message); }
+      return;
+    }
+    if (kind === 'overflow' && !draft) {
+      try { await repin({ kind: 'session', id }, pinned, value); } catch (err) { notice(err.message); }
       return;
     }
     const patch = kind === 'model' ? { model: value, shownModel: value } : { [kind]: value };

@@ -1,7 +1,7 @@
 // Run with `npm test`. What the account picks and notices show, as rules that need no page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountChoices, accountItems, accountLabel, accountMenu, blockedNow, blockedPlan, CHROME_NOTE, chatAccount, chromeNote, draftAccount, offersPick, pinnedChromeWords, pinnedStay, pinnedWords, rowAccountMenu, rowFor, SWITCH_LEAVES_PINS } from '../public/ui/account-rules.js';
+import { accountChoices, accountItems, accountLabel, accountMenu, blockedNow, blockedPlan, CHROME_NOTE, chatAccount, chromeNote, draftAccount, offersPick, pinnedChromeWords, pinnedStay, pinnedWords, rowAccountMenu, rowFor, spillLine, SWITCH_LEAVES_PINS } from '../public/ui/account-rules.js';
 
 const ON = { features: { accountPins: true } };
 const MAIN = { id: 'main', name: 'Main' };
@@ -227,4 +227,67 @@ test('the Accounts page line appears only for an account with a pin and a proven
   assert.equal(pinnedChromeWords({ ...NO_CHROME, pinned: { sessions: 0, groups: 0, projects: 0, routines: 0 } }, list), '', 'nothing pinned, nothing to reach Chrome');
   assert.equal(pinnedChromeWords({ ...MAIN, pinned }, list), '', 'the account Chrome is on');
   assert.equal(pinnedChromeWords({ ...SECOND, pinned }, [MAIN, SECOND]), '', 'no proof');
+});
+
+const THIRD = { id: 'third', name: 'Third' };
+const overflowOf = items => items.find(i => i.group);
+
+test('a pin that holds its own shows the overflow choices under it, with Stay on the pinned account marked when there is none', () => {
+  const picked = [];
+  const items = accountItems({ accounts: [MAIN, SECOND, THIRD], pin: 'second', follows: '', pick: () => {}, pickOverflow: id => picked.push(id) });
+  const group = overflowOf(items);
+  assert.equal(group.group, 'If Second runs out');
+  assert.deepEqual(group.items.map(i => i.label), ['Main', 'Third', 'Stay on Second']);
+  assert.deepEqual(group.items.filter(i => i.checked).map(i => i.label), ['Stay on Second']);
+  group.items[0].run();
+  assert.equal(group.items[2].run, undefined);
+  assert.deepEqual(picked, ['main']);
+});
+
+test('the overflow in use is marked, can be run again to stay put, and has no run of its own', () => {
+  const picked = [];
+  const group = overflowOf(accountItems({ accounts: [MAIN, SECOND], pin: 'second', overflow: 'main', follows: '', pick: () => {}, pickOverflow: id => picked.push(id) }));
+  assert.deepEqual(group.items.filter(i => i.checked).map(i => i.label), ['Main']);
+  assert.equal(group.items[0].run, undefined);
+  group.items[1].run();
+  assert.deepEqual(picked, [null]);
+});
+
+test('no overflow choices without more than one account, a pin of its own, or a way to pick, and none for a removed pin', () => {
+  const ask = o => overflowOf(accountItems({ follows: '', pick: () => {}, pickOverflow: () => {}, ...o }));
+  assert.equal(ask({ accounts: [SECOND], pin: 'second' }), undefined);
+  assert.equal(ask({ accounts: [MAIN, SECOND], pin: null }), undefined);
+  assert.equal(ask({ accounts: [MAIN, SECOND], pin: 'second', pickOverflow: undefined }), undefined);
+  assert.equal(ask({ accounts: [MAIN], pin: 'gone' }), undefined);
+});
+
+test('overflow choices carry No Chrome by the account pick rule, and a signed out account cannot be chosen', () => {
+  const accounts = [{ ...MAIN, chromeOn: 'second' }, SECOND, { ...THIRD, signedOut: true }];
+  const group = overflowOf(accountItems({ accounts, pin: 'second', follows: '', pick: () => {}, pickOverflow: () => {} }));
+  const [main, third] = group.items;
+  assert.equal(main.value, 'No Chrome');
+  assert.equal(!!main.disabled, false);
+  assert.deepEqual([third.value, third.disabled], ['Signed out', true]);
+});
+
+test('the Account menus pass the overflow of a row, a group or a project through, and the row menu keeps the pick', () => {
+  const row = { accountPin: 'second', accountOverflow: 'main', account: 'second' };
+  const [menu] = rowAccountMenu({ ix: ON, accounts: [MAIN, SECOND], row, pick: () => {}, pickOverflow: () => {} });
+  assert.deepEqual(overflowOf(menu.items).items.filter(i => i.checked).map(i => i.label), ['Main']);
+  const [other] = accountMenu({ ix: ON, accounts: [MAIN, SECOND], pin: 'second', overflow: 'main', pick: () => {}, pickOverflow: () => {} });
+  assert.deepEqual(overflowOf(other.items).items.filter(i => i.checked).map(i => i.label), ['Main']);
+});
+
+test('a chat reads its overflow from its row, and a chat without a pin of its own has none', () => {
+  const ix = { ...ON, pinned: [], groups: [], ungrouped: [], other: [], routines: [], started: [{ id: 'a', account: 'second', accountPin: 'second', accountOverflow: 'main' }, { id: 'b', account: 'main' }] };
+  assert.equal(chatAccount({ ix, accounts: [MAIN, SECOND], id: 'a' }).overflow, 'main');
+  assert.equal(chatAccount({ ix, accounts: [MAIN, SECOND], id: 'b' }).overflow, null);
+});
+
+test('the spill line names both accounts, adds Chrome when the survey proved the account it runs on cannot reach it, and is empty for a row that did not spill', () => {
+  const row = { account: 'main', accountSpill: 'second' };
+  assert.equal(spillLine(row, [MAIN, SECOND]), 'Second is out of usage, so this session runs on Main until Second resets.');
+  assert.equal(spillLine(row, [{ ...MAIN, chromeOn: 'second' }, SECOND]), "Second is out of usage, so this session runs on Main until Second resets. Chrome is on Second, so it can't reach Chrome.");
+  assert.equal(spillLine({ account: 'main' }, [MAIN, SECOND]), '');
+  assert.equal(spillLine(row, [MAIN]), '', 'an account no longer listed has no line');
 });
