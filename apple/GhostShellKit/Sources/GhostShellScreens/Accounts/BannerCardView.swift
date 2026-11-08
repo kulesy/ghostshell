@@ -20,7 +20,7 @@ struct BannerCardView: View {
             if !card.steps.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(card.steps.enumerated()), id: \.offset) { n, step in
-                        Text("\(n + 1). \(step)").font(.caption).fixedSize(horizontal: false, vertical: true)
+                        Text(verbatim: "\(n + 1). \(step)").font(.caption).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Text(card.caution).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -57,7 +57,8 @@ struct BannerCardView: View {
                     Button(action.label, action: onAction).disabled(waiting || action.blocked)
                 }
                 if let force = card.force, let onForce {
-                    Button(force, action: onForce).disabled(waiting)
+                    // Force stays live while the update waits on running chats, the one time it is needed.
+                    Button(force, action: onForce).disabled(busy)
                 }
                 if let dismiss = card.dismiss, let onDismiss {
                     Button(dismiss, action: onDismiss).buttonStyle(.borderless).disabled(busy)

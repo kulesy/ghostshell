@@ -33,10 +33,14 @@ final class ContextState {
             if ticket > drawn {
                 drawn = ticket
                 figure = mergeContext(held: figure, reply: reply, detail: detail)
-                if detail == .full { failedAt = reply.categories == nil ? reply.total : nil }
+                // The popover compares against the figure it shows, which may be the held process figure.
+                if detail == .full { failedAt = figure?.categories == nil ? figure?.total : nil }
                 return
             }
-            if !retry { return }
+            if !retry {
+                if detail == .full, figure?.categories == nil { failedAt = figure?.total }
+                return
+            }
             retry = false
         }
     }

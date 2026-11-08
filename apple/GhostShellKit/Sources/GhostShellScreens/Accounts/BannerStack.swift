@@ -32,6 +32,7 @@ public struct BannerStack: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .frame(height: min(height, 220))
+                .overlay(alignment: .bottom) { if height > 220 { Divider() } }
             }
         }
         .task(id: model.visible) {
