@@ -485,6 +485,18 @@ class App {
   // The composer. Everything goes through accessibility except the keys its text view reads off the key event (Shift+Enter, and the slash list's Tab and Escape).
   composerBox() { return this.findAll(node => node.role === 'AXTextArea').at(-1); }
   composerText() { return String(this.composerBox()?.value ?? '').replace(/\n$/, ''); }
+  // The composer's parts that are missing, empty or outside the window, so a prompt stack above it can't push any of them out of view.
+  composerGaps() {
+    const nodes = this.tree();
+    const win = nodes[0];
+    const inside = n => !!n?.pos && !!n.size && n.size[0] > 0 && n.size[1] > 0 && n.pos[0] >= win.pos[0] - 1 && n.pos[1] >= win.pos[1] - 1
+      && n.pos[0] + n.size[0] <= win.pos[0] + win.size[0] + 1 && n.pos[1] + n.size[1] <= win.pos[1] + win.size[1] + 1;
+    const button = part => nodes.find(n => ['AXButton', 'AXMenuButton', 'AXPopUpButton'].includes(n.role) && [n.desc, n.help, n.title].some(text => text?.includes(part)));
+    const box = this.composerBox();
+    const parts = { box, 'a box tall enough to type in': box && box.size[1] >= 16 ? box : null, Send: button('Send'), Attach: button('Attach files'),
+      Model: button('Model: '), Effort: button('Effort: '), Permissions: button('Permission mode: '), 'a chip': button('Remove screenshot.png') };
+    return Object.entries(parts).filter(([, node]) => !inside(node)).map(([name]) => name);
+  }
   focusComposer() { const box = this.composerBox(); return !!box && this.set(box, 'AXFocused', true); }
   setComposer(text) { const box = this.composerBox(); return !!box && this.set(box, 'AXFocused', true) && this.set(box, 'AXValue', text); }
   // The one step that takes the focus: under the keys lock, ax activates the app, posts the keys to its pid and gives the focus back.
@@ -864,6 +876,10 @@ async function composerFlow(bundle, appearance) {
     check(await until('error', () => app.hasText('Not sent: That message is too long for this session.'), 10), 'a refused send shows the server\'s sentence');
     check(app.composerText() === 'reject this one', 'a refused send puts the text back');
     await sleep(400);
+    app.resize(MIN_SIZE);
+    await sleep(1000);
+    const errorGaps = app.composerGaps();
+    if (!check(errorGaps.length === 0, `the composer stays whole with an error, chips and a draft at the smallest window${errorGaps.length ? ` (missing or cut off: ${errorGaps.join(', ')})` : ''}`)) console.log(app.tree().filter(n => n.pos && n.size && (n.pos[0] > 640 || n.path.length === 0)).map(n => `${n.role} ${n.desc ?? ''} ${n.pos} ${n.size} ${n.path.join('.')}`).join('\n'));
     await app.both('composer-error');
     app.setComposer('');
 
@@ -882,6 +898,22 @@ async function composerFlow(bundle, appearance) {
     if (!check(items.includes('Haiku 5.5'), 'the model menu lists the models')) { console.log(items); app.dump(); }
     app.closeMenu();
     await sleep(400);
+
+    // A stack of approval cards above a tall composer, at the smallest window.
+    app.chooseRow(rowOf(stub, 'ask-two'));
+    check(await until('cards', () => app.hasText('Bash wants to run a command'), 20), 'the chat with three prompts opens');
+    app.attachFile(path.join(dir, 'screenshot.png'));
+    check(await until('picture chip', () => app.hasButtonLike('Remove screenshot.png'), 10), 'a picture is attached under the cards');
+    app.attachFile(path.join(dir, 'release-notes.txt'));
+    check(await until('file chip', () => app.hasButtonLike('Remove release-notes.txt'), 10), 'a file is attached under the cards');
+    app.setComposer('Run it once the checks pass');
+    app.resize(MIN_SIZE);
+    await sleep(1000);
+    const gaps = app.composerGaps();
+    if (!check(gaps.length === 0, `the composer stays whole under the cards at the smallest window${gaps.length ? ` (missing or cut off: ${gaps.join(', ')})` : ''}`)) app.dump();
+    await app.both('composer-approval');
+    app.setComposer('');
+    for (const chip of app.buttonsLike('Remove ')) app.act(chip);
 
     // Stop on a busy chat.
     app.chooseRow(rowOf(stub, 'stream'));
