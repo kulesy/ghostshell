@@ -15,8 +15,15 @@ enum DebugHooks {
         case "dark": NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
         default: break
         }
-        if let folder = args.string(forKey: "GSShotDir") { ShotWatcher.start(folder: URL(fileURLWithPath: folder)) }
-        return AppModel(store: store, defaults: defaults, address: args.string(forKey: "GSAddress"))
+        let shotDir = args.string(forKey: "GSShotDir")
+        if let shotDir {
+            ShotWatcher.start(folder: URL(fileURLWithPath: shotDir))
+            // A regular test app is fronted by macOS when a sibling test app quits. An accessory app is not.
+            NSApplication.shared.setActivationPolicy(.accessory)
+        }
+        let model = AppModel(store: store, defaults: defaults, address: args.string(forKey: "GSAddress"))
+        model.ignoresOcclusion = shotDir != nil
+        return model
     }
 }
 
