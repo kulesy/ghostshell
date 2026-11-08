@@ -13,7 +13,7 @@ apple/
   GhostShelliPhone/            The thin iPhone app target: entry point, assets, Debug-only test hooks.
   GhostShelliPhoneUITests/     XCUITests that drive the iPhone app in the Simulator.
   GhostShellKit/               A local Swift package with two libraries.
-    Sources/GhostShellKit/       No UI. Foundation and Security only. Builds for macOS, iOS and watchOS.
+    Sources/GhostShellKit/       No UI. Foundation, Security and Network only. Builds for macOS, iOS and watchOS.
     Sources/GhostShellScreens/   SwiftUI. Builds for macOS and iOS.
     Tests/GhostShellKitTests/    Unit, integration and Keychain tests.
   Info.plist                   Only the local-network exception for http://localhost.

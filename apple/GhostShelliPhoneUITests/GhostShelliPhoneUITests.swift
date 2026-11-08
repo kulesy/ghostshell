@@ -135,6 +135,11 @@ final class GhostShelliPhoneUITests: XCTestCase {
         back(app)
         open(app, "Approve the retry plan", expecting: "Claude has a plan")
         shot("07-approval-plan")
+        for name in ["Approve plan", "Always allow", "Keep planning"] { assertTouchable(app.buttons[name].firstMatch, name) }
+        // The dock scrolls once it passes half the chat, so the last button must be reachable by a swipe on the SE.
+        app.buttons["Approve plan"].firstMatch.swipeUp()
+        XCTAssertTrue(app.buttons["Keep planning"].firstMatch.isHittable, app.debugDescription)
+        shot("07b-approval-plan-buttons")
         back(app)
         open(app, "Push the upload fix", expecting: "Bash wants to run a command")
         shot("08-approval-bash")
