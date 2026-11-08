@@ -62,12 +62,22 @@ public enum TerminalRules {
         return RunnableBlock(command: command, hidden: hasHiddenCharacters(text))
     }
 
+    /// The lines of a console block that are commands, as line numbers with `to` included, and none for a block that runs as written. The page
+    /// draws them apart from the output, so the wrapped tail of a long command is seen to be part of it.
+    public static func commandLines(language: String?, text: String) -> [ClosedRange<Int>] {
+        let all = lines(of: text)
+        let kind = (language ?? "").lowercased()
+        guard readsAsConsole(kind, all.filter { !jsTrim($0).isEmpty }) else { return [] }
+        return promptCommands(all).map { $0.from...$0.to }
+    }
+
     // Split on "\n" by scalar, because a Character joins "\r\n" and the page splits it in two.
     private static func lines(of text: String) -> [String] {
         text.unicodeScalars.split(separator: "\n", omittingEmptySubsequences: false).map { String(String.UnicodeScalarView($0)) }
     }
 
-    private static func isPrompt(_ line: String) -> Bool { jsTrimStart(line).hasPrefix("$ ") }
+    // By scalar: String.hasPrefix compares characters, so "$ " followed by a combining mark would not match as the page's startsWith does.
+    private static func isPrompt(_ line: String) -> Bool { jsTrimStart(line).unicodeScalars.starts(with: "$ ".unicodeScalars) }
 
     private static func readsAsConsole(_ kind: String, _ filled: [String]) -> Bool {
         kind == "console" || (shellBlocks.contains(kind) && filled.allSatisfy(isPrompt)) || (kind.isEmpty && filled.count == 1 && isPrompt(filled[0]))
@@ -216,18 +226,22 @@ public enum TerminalRules {
     }
 
     /// The runs after the server sends all of them: each summary joined to the run held for it, and the runs still waiting for the server at the end.
+    /// A run waiting for the server goes once a summary the app did not know matches its command and source, which is the server's run for it.
     public static func replaceRuns(held: [TerminalRun], summaries: [TerminalRun]) -> [TerminalRun] {
         let byID = Dictionary(held.compactMap { run in run.id.map { ($0, run) } }, uniquingKeysWith: { first, _ in first })
+        var waiting = held.filter(\.pending)
         var runs = summaries.map { summary -> TerminalRun in
             var run = summary
             if let was = summary.id.flatMap({ byID[$0] }) {
                 run.key = was.key
                 run.output = mergeOutput(held: was.output, tail: summary.output)
+            } else if let n = waiting.firstIndex(where: { $0.command == summary.command && $0.source == summary.source }) {
+                run.key = waiting.remove(at: n).key
             }
             run.pending = false
             return run
         }
-        runs += held.filter(\.pending)
+        runs += waiting
         return Array(runs.suffix(runsKept))
     }
 

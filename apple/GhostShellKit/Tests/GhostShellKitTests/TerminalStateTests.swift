@@ -132,6 +132,16 @@ final class TerminalStateTests: XCTestCase {
         XCTAssertFalse(state.runs[0].pending)
     }
 
+    func testASnapshotThatLandsAfterARunStartedLeavesOneRowForIt() throws {
+        var state = TerminalState()
+        _ = state.begin(command: "ls", source: .block, key: "local-1", now: 5)
+        _ = state.begin(command: "pwd", source: .panel, key: "local-2", now: 5)
+        state.apply(.state(cwd: "/h", home: "/h", runs: [try decoded(runJSON("a").replacingOccurrences(of: #""source":"panel""#, with: #""source":"block""#))]))
+        XCTAssertEqual(state.runs.map(\.command), ["ls", "pwd"])
+        XCTAssertEqual(state.runs.map(\.key), ["local-1", "local-2"])
+        XCTAssertEqual(state.runs.map(\.pending), [false, true], "only the run the server has no row for yet is still waiting")
+    }
+
     func testARefusedCommandLeavesNoRow() {
         var state = TerminalState()
         _ = state.begin(command: "ls", source: .panel, key: "local-1", now: 5)
@@ -147,14 +157,38 @@ final class TerminalStateTests: XCTestCase {
         XCTAssertEqual(state.runs[0].output, [.init(stream: "in", text: "yes\n^D\n")])
     }
 
+    private func snapshotRun(_ text: String) throws -> TerminalRun {
+        try decoded(runJSON("a").replacingOccurrences(of: #""output":[]"#, with: #""output":[{"stream":"out","text":"\#(text)"}]"#))
+    }
+
+    private func out(_ text: String) -> TerminalEvent { .output(run: "a", chunks: [.init(stream: "out", text: text)]) }
+
     func testTheSnapshotThatAlreadyHoldsAnOutputEventDropsIt() throws {
         var state = TerminalState()
-        let snapshot = try decoded(runJSON("a", extra: "").replacingOccurrences(of: #""output":[]"#, with: #""output":[{"stream":"out","text":"hello\n"}]"#))
-        state.apply(.state(cwd: "/h", home: "/h", runs: [snapshot]))
-        state.apply(.output(run: "a", chunks: [.init(stream: "out", text: "hello\n")]), dedupe: true)
-        XCTAssertEqual(TerminalRules.textOf(state.runs[0].output), "hello\n")
-        state.apply(.output(run: "a", chunks: [.init(stream: "out", text: "more\n")]), dedupe: true)
+        state.apply(.state(cwd: "/h", home: "/h", runs: [try snapshotRun("hello\\n")]))
+        state.applyHeld([out("hello\n"), out("more\n")])
         XCTAssertEqual(TerminalRules.textOf(state.runs[0].output), "hello\nmore\n")
+    }
+
+    func testTwoHeldEventsTheSnapshotHoldsAreEachDroppedOnce() throws {
+        var state = TerminalState()
+        state.apply(.state(cwd: "/h", home: "/h", runs: [try snapshotRun("one\\ntwo\\n")]))
+        state.applyHeld([out("one\n"), out("two\n"), out("three\n")])
+        XCTAssertEqual(TerminalRules.textOf(state.runs[0].output), "one\ntwo\nthree\n")
+    }
+
+    func testARepeatedChunkTheSnapshotLacksIsKept() throws {
+        var state = TerminalState()
+        state.apply(.state(cwd: "/h", home: "/h", runs: [try snapshotRun(".")]))
+        state.applyHeld([out("."), out(".")])
+        XCTAssertEqual(TerminalRules.textOf(state.runs[0].output), "..", "the snapshot holds one dot, so one of the two held dots is new")
+    }
+
+    func testHeldEventsOfAnotherRunAreNotDropped() throws {
+        var state = TerminalState()
+        state.apply(.state(cwd: "/h", home: "/h", runs: [try snapshotRun("x\\n"), try decoded(runJSON("b"))]))
+        state.applyHeld([.output(run: "b", chunks: [.init(stream: "out", text: "x\n")])])
+        XCTAssertEqual(TerminalRules.textOf(state.runs[1].output), "x\n")
     }
 
     func testClearKeepsWhatIsStillRunning() throws {

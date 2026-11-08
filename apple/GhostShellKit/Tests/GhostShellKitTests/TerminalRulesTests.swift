@@ -49,6 +49,19 @@ final class TerminalRulesTests: XCTestCase {
         XCTAssertEqual(command("bash", "echo $ "), "echo $")
     }
 
+    func testAPromptFollowedByACombiningMarkStillReadsAsAPrompt() {
+        XCTAssertEqual(command("bash", "$ \u{0301}ls"), "\u{0301}ls")
+        XCTAssertNotNil(block("console", "$ \u{034F}x"))
+        XCTAssertNotNil(block("console", "$ \u{FE0F}x"))
+    }
+
+    func testTheCommandLinesOfAConsoleBlock() {
+        XCTAssertEqual(TerminalRules.commandLines(language: "console", text: "$ cd app\nok\n$ docker run \\\n  -it app\nstarted"), [0...0, 2...3])
+        XCTAssertEqual(TerminalRules.commandLines(language: "bash", text: "$ npm install"), [0...0])
+        XCTAssertEqual(TerminalRules.commandLines(language: "bash", text: "npm install\nls"), [])
+        XCTAssertEqual(TerminalRules.commandLines(language: "js", text: "$ x"), [])
+    }
+
     func testALongCommandHasNoRunButton() {
         XCTAssertEqual(command("bash", String(repeating: "x", count: 100_000))?.count, 100_000)
         XCTAssertNil(block("bash", String(repeating: "x", count: 100_001)))

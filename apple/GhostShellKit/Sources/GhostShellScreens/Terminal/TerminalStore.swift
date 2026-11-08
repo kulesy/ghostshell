@@ -30,7 +30,7 @@ final class TerminalStore {
     /// Listens to the chat's one stream and reads the snapshot. Safe to call again.
     ///
     /// The stream is opened first and its frames wait until the snapshot is in. A frame sent in the moment between the server taking the snapshot and
-    /// this app reading it would otherwise be lost, and one the snapshot already holds is dropped by `dedupe`.
+    /// this app reading it would otherwise be lost, and the ones the snapshot already holds are dropped by `applyHeld`.
     func start() {
         guard !started, let chat else { return }
         started = true
@@ -48,7 +48,7 @@ final class TerminalStore {
             } catch {
                 state.error = TerminalFailure.words(error, step: .read)
             }
-            for event in waiting { state.apply(event, dedupe: true) }
+            state.applyHeld(waiting)
             waiting = []
             loaded = true
         }

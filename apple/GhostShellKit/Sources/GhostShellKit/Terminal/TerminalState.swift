@@ -65,9 +65,8 @@ public struct TerminalState: Equatable, Sendable {
 
     public init() {}
 
-    /// The server's account of a change. With `dedupe`, an output event whose words the run already ends with is dropped, because the snapshot
-    /// taken a moment after the stream opened already holds them.
-    public mutating func apply(_ event: TerminalEvent, dedupe: Bool = false) {
+    /// The server's account of a change.
+    public mutating func apply(_ event: TerminalEvent) {
         switch event {
         case .state(let cwd, let home, let runs):
             ready = true
@@ -80,7 +79,6 @@ public struct TerminalState: Equatable, Sendable {
             if was?.running == true, !incoming.running { say(TerminalRules.endedAloud(incoming)) }
         case .output(let id, let chunks):
             guard let n = runs.firstIndex(where: { $0.id == id }) else { return }
-            if dedupe, TerminalRules.textOf(runs[n].output).hasSuffix(chunks.map(\.text).joined()) { return }
             runs[n].output = TerminalRules.appendChunks(runs[n].output, chunks)
         case .cwd(let dir):
             cwd = dir
@@ -92,6 +90,26 @@ public struct TerminalState: Equatable, Sendable {
     /// The snapshot a GET returned, which says the same as a `state` event.
     public mutating func apply(_ snapshot: TerminalSnapshot) {
         apply(.state(cwd: snapshot.cwd, home: snapshot.home, runs: snapshot.runs))
+    }
+
+    /// The events that arrived while the snapshot was being read. The snapshot already ends with the first few output events of a run, so those
+    /// are dropped and the rest are appended, which keeps a repeated chunk (a progress dot) that the snapshot did not hold.
+    public mutating func applyHeld(_ events: [TerminalEvent]) {
+        var skip: [String: Int] = [:]
+        var heldText: [String: [String]] = [:]
+        for case .output(let id, let chunks) in events { heldText[id, default: []].append(chunks.map(\.text).joined()) }
+        for (id, texts) in heldText {
+            guard let run = runs.first(where: { $0.id == id }) else { continue }
+            let have = TerminalRules.textOf(run.output)
+            skip[id] = (1...texts.count).reversed().first { have.hasSuffix(texts.prefix($0).joined()) } ?? 0
+        }
+        for event in events {
+            if case .output(let id, _) = event, let left = skip[id], left > 0 {
+                skip[id] = left - 1
+                continue
+            }
+            apply(event)
+        }
     }
 
     /// Draws a command at once, before the server has answered, because the first one after the server starts can wait a couple of seconds.
