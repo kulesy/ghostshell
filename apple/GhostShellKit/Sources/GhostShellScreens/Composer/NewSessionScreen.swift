@@ -8,7 +8,7 @@ public struct NewSessionScreen: View {
     public init() {}
 
     public var body: some View {
-        if let client = app.client { NewSessionBody(client: client, navigator: app.navigator) } else { Color.clear }
+        if let client = app.client { NewSessionBody(client: client, app: app) } else { Color.clear }
     }
 }
 
@@ -17,9 +17,9 @@ private struct NewSessionBody: View {
     @State private var model: ComposerModel
     @State private var folders: [String] = []
 
-    init(client: GhostShellClient, navigator: Navigator) {
+    init(client: GhostShellClient, app: AppModel) {
         self.client = client
-        _model = State(initialValue: ComposerModel.newSession(client: client) { navigator.openSession($0) })
+        _model = State(initialValue: ComposerModel.newSession(client: client, refreshIndex: { [app] in await app.refreshIndex() }) { app.navigator.openSession($0) })
     }
 
     var body: some View {

@@ -230,7 +230,7 @@ final class IntegrationTests: XCTestCase {
         do {
             _ = try await client.stop(sessionID: id)
             XCTFail("stop answered for a session nothing is running")
-        } catch GhostShellError.refused(let status, _) {
+        } catch GhostShellError.refused(let status, _, _, _) {
             XCTAssertEqual(status, 409)
         }
     }

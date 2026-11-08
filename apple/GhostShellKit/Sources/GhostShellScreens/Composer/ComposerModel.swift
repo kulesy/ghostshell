@@ -28,6 +28,8 @@ final class ComposerModel {
     let chat: ChatContext?
     private let store = ComposerStore.shared
     @ObservationIgnored private let started: (String) -> Void
+    /// Reads the session list again after a write, so the sidebar does not wait for the next poll.
+    @ObservationIgnored private let refreshIndex: @MainActor () async -> Void
 
     var fresh = Fresh()
     /// The folder a new session starts in.
@@ -47,21 +49,22 @@ final class ComposerModel {
     private var dismissed: String?
     private var chosen: (query: String?, at: Int) = (nil, 0)
 
-    private init(client: GhostShellClient, chat: ChatContext?, started: @escaping (String) -> Void) {
+    private init(client: GhostShellClient, chat: ChatContext?, refreshIndex: @escaping @MainActor () async -> Void, started: @escaping (String) -> Void) {
         self.client = client
         self.chat = chat
+        self.refreshIndex = refreshIndex
         self.started = started
         text = ComposerStore.shared.text(for: chat?.sessionID ?? DraftTexts.new)
     }
 
     /// The composer of an open chat, made on first use.
-    static func of(_ chat: ChatContext) -> ComposerModel {
-        chat.store(ComposerModel.self) { ComposerModel(client: chat.client, chat: chat, started: { _ in }) }
+    static func of(_ chat: ChatContext, refreshIndex: @escaping @MainActor () async -> Void) -> ComposerModel {
+        chat.store(ComposerModel.self) { ComposerModel(client: chat.client, chat: chat, refreshIndex: refreshIndex, started: { _ in }) }
     }
 
     /// The composer of the New Session screen. `started` hears the id of the session the server made.
-    static func newSession(client: GhostShellClient, started: @escaping (String) -> Void) -> ComposerModel {
-        ComposerModel(client: client, chat: nil, started: started)
+    static func newSession(client: GhostShellClient, refreshIndex: @escaping @MainActor () async -> Void, started: @escaping (String) -> Void) -> ComposerModel {
+        ComposerModel(client: client, chat: nil, refreshIndex: refreshIndex, started: started)
     }
 
     var draftID: String { chat?.sessionID ?? DraftTexts.new }
@@ -191,10 +194,11 @@ final class ComposerModel {
                 if let now = chat.status { reply.fast = now.fast }
                 chat.apply(status: reply)
                 chat.refresh()
+                await refreshIndex()
                 return true
             } catch {
                 chat.endSending(mine)
-                notice = "Not sent: \(ComposerWords.failure(error))"
+                notice = "Not sent: \(error.localizedDescription)"
                 return false
             }
         }
@@ -204,17 +208,22 @@ final class ComposerModel {
                                         effort: fresh.touched.contains("effort") ? fresh.effort : nil,
                                         fast: fresh.touched.contains("fast") ? fresh.fast : nil)
         do {
-            started(try await client.startSession(request))
+            let id = try await client.startSession(request)
+            await refreshIndex()
+            started(id)
             return true
         } catch {
-            notice = "Not started: \(ComposerWords.failure(error))"
+            notice = "Not started: \(error.localizedDescription)"
             return false
         }
     }
 
     func stop() async {
         guard let chat else { return }
-        do { chat.apply(status: try await client.stop(sessionID: chat.sessionID)) } catch { notice = ComposerWords.failure(error) }
+        do {
+            chat.apply(status: try await client.stop(sessionID: chat.sessionID))
+            await refreshIndex()
+        } catch { notice = error.localizedDescription }
     }
 
     // MARK: Changing a setting
@@ -240,7 +249,7 @@ final class ComposerModel {
         } catch {
             // Only the setting that was tried goes back, so a change the stream reported meanwhile stays.
             if var now = chat.status, let before { change(&now, Self.previous(setting, in: before)); chat.apply(status: now) }
-            notice = ComposerWords.failure(error)
+            notice = error.localizedDescription
         }
     }
 

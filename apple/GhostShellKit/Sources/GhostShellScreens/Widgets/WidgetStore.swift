@@ -7,9 +7,11 @@ final class WidgetStore {
     private var controllers: [String: WidgetController] = [:]
     private let icons: WidgetIcons
     private let client: GhostShellClient
+    private let refreshIndex: @MainActor () async -> Void
 
-    init(client: GhostShellClient) {
+    init(client: GhostShellClient, refreshIndex: @escaping @MainActor () async -> Void) {
         self.client = client
+        self.refreshIndex = refreshIndex
         icons = WidgetIcons.shared(for: client.address)
     }
 
@@ -21,7 +23,7 @@ final class WidgetStore {
         let sessionID = chat.sessionID
         let made = WidgetController(
             code: code, title: tool.input["title"]?.string, mode: mode,
-            sendPrompt: { [weak chat] text in
+            sendPrompt: { [weak chat, refreshIndex] text in
                 guard let chat else { return WidgetController.failed }
                 // A widget's button sends its text as the owner's message, in the mode the prompt box would use, and shows as a sending bubble like a typed one.
                 let mine = chat.beginSending(SendingMessage(text: text))
@@ -30,6 +32,7 @@ final class WidgetStore {
                     if let now = chat.status { reply.fast = now.fast }
                     chat.apply(status: reply)
                     chat.refresh()
+                    await refreshIndex()
                     return nil
                 } catch GhostShellError.refused(_, let message, _, _) {
                     chat.endSending(mine)

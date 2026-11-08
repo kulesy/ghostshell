@@ -195,20 +195,27 @@ final class ComposerNSTextView: NSTextView {
 }
 #else
 
-/// On iPhone a plain growing field. Return makes a new line, because there is no Shift key to tell a send from one.
+/// On iPhone a plain growing field. Return makes a new line, because there is no Shift key to tell a send from one, and Send is the button beside it.
+/// A paste of a picture is not caught here, so a photo comes in through the picker. The caret is taken to be at the end, which is where the slash list is typed.
 struct ComposerTextView: View {
     let model: ComposerModel
     let text: String
     let settle: ComposerModel.Settle
     let focusRequests: Int
     let autofocus: Bool
+    @FocusState private var focus: Bool
 
     var body: some View {
         @Bindable var model = model
         TextField("Message", text: $model.text, axis: .vertical)
             .font(ChatStyle.body)
             .lineLimit(1...8)
+            .focused($focus)
+            .autocorrectionDisabled(model.text.hasPrefix("/"))
             .accessibilityLabel("Message")
+            .onChange(of: model.text, initial: true) { _, now in model.caret = now.utf16.count }
+            .onChange(of: focus) { _, now in model.focused = now }
+            .onChange(of: focusRequests) { focus = true }
     }
 }
 #endif

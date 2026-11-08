@@ -199,12 +199,6 @@ extension GhostShellClient {
 
     // MARK: A new session
 
-    /// The folders to start in: home first, then the ones used lately.
-    public func folders() async throws -> [String] {
-        let reply: FoldersReply = try await get("api/folders")
-        return reply.folders
-    }
-
     public func defaults(cwd: String) async throws -> SessionDefaults {
         try await get("api/defaults", query: [URLQueryItem(name: "cwd", value: cwd)])
     }
@@ -228,7 +222,6 @@ extension GhostShellClient {
     private struct ModeReply: Decodable, Sendable { let mode: String }
     private struct CommandsReply: Decodable, Sendable { let commands: [SlashCommand] }
     private struct ModelsReply: Decodable, Sendable { let models: [ListedModel] }
-    private struct FoldersReply: Decodable, Sendable { let folders: [String] }
     private struct NewReply: Decodable, Sendable { let id: String }
 
     private static let unreserved = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")

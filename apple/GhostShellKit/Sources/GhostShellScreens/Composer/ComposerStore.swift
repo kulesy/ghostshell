@@ -164,7 +164,7 @@ final class ComposerStore {
             update(id, in: draft) { ($0.file, $0.size, $0.working) = (saved, saved.size, false) }
         } catch {
             remove(id, from: draft)
-            notice("\(item.name) could not be uploaded. \(ComposerWords.failure(error))")
+            notice("\(item.name) could not be uploaded. \(error.localizedDescription)")
         }
     }
 }

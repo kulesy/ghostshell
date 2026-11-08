@@ -5,10 +5,11 @@ import SwiftUI
 struct WidgetView: View {
     let tool: ToolCall
     let chat: ChatContext
+    @Environment(AppModel.self) private var app
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let store = chat.store(WidgetStore.self) { WidgetStore(client: chat.client) }
+        let store = chat.store(WidgetStore.self) { WidgetStore(client: chat.client, refreshIndex: { [app] in await app.refreshIndex() }) }
         let mode: WidgetMode = scheme == .dark ? .dark : .light
         let widget = store.controller(for: tool, chat: chat, mode: mode)
         WidgetBody(widget: widget, mode: mode)

@@ -1,6 +1,9 @@
 import GhostShellKit
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import PhotosUI
+#endif
 
 /// The prompt box under a thread, and on the New Session screen: the quotes and attachments, the text, the slash list and a footer with the
 /// attach button, the pickers and Send. It stays inside the thread's column.
@@ -10,6 +13,9 @@ struct ComposerView: View {
     var autofocus = false
     @State private var importing = false
     @State private var targeted = false
+    #if os(iOS)
+    @State private var photos: [PhotosPickerItem] = []
+    #endif
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -28,7 +34,7 @@ struct ComposerView: View {
             if model.menuOpen { SlashMenu(model: model).offset(y: -(SlashMenu.height(for: model.matches.count) + 6)) }
         }
         .frame(maxWidth: ChatStyle.column)
-        .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 12)
+        .padding(.horizontal, Self.sidePadding).padding(.top, 8).padding(.bottom, 12)
         .frame(maxWidth: .infinity)
         .background(.bar)
         .layoutPriority(1)
@@ -42,6 +48,7 @@ struct ComposerView: View {
             if let path = note.object as? String { model.attach(urls: [URL(fileURLWithPath: path)]) }
         }
         #endif
+        #if os(macOS)
         .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
             for provider in providers {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
@@ -50,7 +57,14 @@ struct ComposerView: View {
             }
             return true
         }
+        #endif
     }
+
+    #if os(iOS)
+    private static let sidePadding: CGFloat = 8
+    #else
+    private static let sidePadding: CGFloat = 20
+    #endif
 
     private var field: some View {
         ZStack(alignment: .topLeading) {
@@ -63,13 +77,46 @@ struct ComposerView: View {
         .font(ChatStyle.body)
     }
 
+    #if os(iOS)
+    private func attach(_ picked: [PhotosPickerItem]) async {
+        var items: [Incoming] = []
+        for (n, item) in picked.enumerated() {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            items.append(Incoming(name: "Photo \(n + 1).\(item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg")", data: data))
+        }
+        if items.count < picked.count { model.notice = "Some of those photos could not be read." }
+        if !items.isEmpty { model.attach(items) }
+    }
+    #endif
+
+    /// The side of a control: 24pt under a pointer, 44pt for a thumb.
+    nonisolated static let hit: CGFloat = {
+        #if os(iOS)
+        44
+        #else
+        24
+        #endif
+    }()
+
     private func footer(compact: Bool) -> some View {
         HStack(spacing: 4) {
-            Button { importing = true } label: { Image(systemName: "plus").font(.system(size: 13, weight: .medium)).frame(width: 24, height: 24).contentShape(Rectangle()) }
+            Button { importing = true } label: { Image(systemName: "plus").font(.system(size: 13, weight: .medium)).frame(width: Self.hit, height: Self.hit).contentShape(Rectangle()) }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
                 .help("Attach files")
                 .accessibilityLabel("Attach files")
+            #if os(iOS)
+            PhotosPicker(selection: $photos, maxSelectionCount: 5, matching: .images) {
+                Image(systemName: "photo").font(.system(size: 13, weight: .medium)).frame(width: Self.hit, height: Self.hit).contentShape(Rectangle())
+            }
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Attach photos")
+            .onChange(of: photos) { _, picked in
+                guard !picked.isEmpty else { return }
+                photos = []
+                Task { await attach(picked) }
+            }
+            #endif
             ComposerPickers(model: model, compact: compact)
             Spacer(minLength: 8)
             SendButton(model: model)
@@ -94,6 +141,8 @@ private struct SendButton: View {
                 }
             }
             .frame(width: 24, height: 24)
+            .frame(width: ComposerView.hit, height: ComposerView.hit)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!stop && !model.canSend)
@@ -112,6 +161,9 @@ private struct ErrorLine: View {
             // The minimum width stops the window's minimum height being measured at a width of 0, where fixedSize gives each letter a line.
             Text(verbatim: text).textSelection(.enabled).frame(minWidth: 200, maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
             Button("Dismiss", systemImage: "xmark", action: dismiss).labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
+                #if os(iOS)
+                .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                #endif
         }
         .font(ChatStyle.small)
         .accessibilityElement(children: .contain)
@@ -120,13 +172,15 @@ private struct ErrorLine: View {
 
 /// The slot's body: the chat's composer, made on first use and kept for the visit.
 struct ComposerHost: View {
+    @Environment(AppModel.self) private var app
     let chat: ChatContext
 
-    var body: some View { ComposerView(model: ComposerModel.of(chat), autofocus: true) }
+    var body: some View { ComposerView(model: ComposerModel.of(chat) { [app] in await app.refreshIndex() }, autofocus: true) }
 }
 
 /// "Quote" in the menu of a user or assistant message. It adds the whole message to the quotes every composer in the app shows.
 struct QuoteMenuItem: View {
+    @Environment(AppModel.self) private var app
     let message: ChatItem
     let chat: ChatContext
 
@@ -134,7 +188,7 @@ struct QuoteMenuItem: View {
         if let text {
             Button("Quote", systemImage: "quote.opening") {
                 ComposerStore.shared.addQuote(text, fromID: chat.sessionID, fromTitle: chat.session.title)
-                ComposerModel.of(chat).requestFocus()
+                ComposerModel.of(chat) { [app] in await app.refreshIndex() }.requestFocus()
             }
         }
     }

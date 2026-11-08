@@ -29,6 +29,9 @@ struct ComposerPickers: View {
         .font(ChatStyle.small)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 6).padding(.vertical, 3)
+        #if os(iOS)
+        .frame(minWidth: 44, minHeight: 44)
+        #endif
         .contentShape(Rectangle())
     }
 

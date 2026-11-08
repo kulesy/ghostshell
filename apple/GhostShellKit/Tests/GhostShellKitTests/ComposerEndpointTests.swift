@@ -83,7 +83,7 @@ final class ComposerEndpointTests: XCTestCase {
         ComposerStub.reset { _ in (400, #"{"error":"Image 2 is not a PNG, JPEG, GIF or WebP."}"#) }
         do { _ = try await client().sendMessage(OutgoingMessage(text: "x"), to: "s"); XCTFail("sent") } catch {
             XCTAssertEqual(error as? GhostShellError, .refused(status: 400, message: "Image 2 is not a PNG, JPEG, GIF or WebP."))
-            XCTAssertEqual(ComposerWords.failure(error), "Image 2 is not a PNG, JPEG, GIF or WebP.")
+            XCTAssertEqual(error.localizedDescription, "Image 2 is not a PNG, JPEG, GIF or WebP.")
         }
     }
 
@@ -91,7 +91,13 @@ final class ComposerEndpointTests: XCTestCase {
         ComposerStub.reset { _ in (409, "") }
         do { _ = try await client().stop(sessionID: "s"); XCTFail("stopped") } catch {
             XCTAssertEqual(error as? GhostShellError, .server(status: 409))
-            XCTAssertEqual(ComposerWords.failure(error), "That session is not running here.")
+        }
+    }
+
+    func testATooBigUploadKeepsTheServersSentence() async throws {
+        ComposerStub.reset { _ in (413, #"{"error":"That file is over the 25 MB limit."}"#) }
+        do { _ = try await client().uploadFile(Data("x".utf8), name: "big.bin", type: ""); XCTFail("uploaded") } catch {
+            XCTAssertEqual(error as? GhostShellError, .refused(status: 413, message: "That file is over the 25 MB limit."))
         }
     }
 
