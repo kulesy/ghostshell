@@ -195,6 +195,14 @@ final class TerminalStateTests: XCTestCase {
         XCTAssertEqual(TerminalRules.textOf(state.runs[0].output), "..", "the snapshot holds one dot, so one of the two held dots is new")
     }
 
+    func testAHeldStateEventThatComesFirstDoesNotMakeTheOutputRepeat() throws {
+        var state = TerminalState()
+        state.apply(.state(cwd: "/h", home: "/h", runs: [try snapshotRun("one\\n")]))
+        // The held state already ends with "two", so the output event after it is a repeat of that.
+        state.applyHeld([.state(cwd: "/h", home: "/h", runs: [try snapshotRun("one\\ntwo\\n")]), out("two\n"), out("three\n")])
+        XCTAssertEqual(TerminalRules.textOf(state.runs[0].output), "one\ntwo\nthree\n")
+    }
+
     func testTheHoldDropsItsEventsPastTheCapAndSaysSo() {
         var hold = TerminalHold()
         for n in 0..<TerminalHold.cap { hold.add(.cwd("/\(n)")) }

@@ -94,23 +94,33 @@ public struct TerminalState: Equatable, Sendable {
     }
 
     /// The events that arrived while the snapshot was being read. The snapshot already ends with the first few output events of a run, so those
-    /// are dropped and the rest are appended, which keeps a repeated chunk (a progress dot) that the snapshot did not hold.
+    /// are dropped and the rest are appended, which keeps a repeated chunk (a progress dot) that the snapshot did not hold. How many to drop is
+    /// worked out when the first output event of a run is reached, so an earlier held `state`, `run` or `cleared` event has already rewritten the run.
     public mutating func applyHeld(_ events: [TerminalEvent]) {
         var skip: [String: Int] = [:]
-        var heldText: [String: [String]] = [:]
-        for case .output(let id, let chunks) in events { heldText[id, default: []].append(chunks.map(\.text).joined()) }
-        for (id, texts) in heldText {
-            guard let run = runs.first(where: { $0.id == id }) else { continue }
-            let have = TerminalRules.textOf(run.output)
-            skip[id] = (1...texts.count).reversed().first { have.hasSuffix(texts.prefix($0).joined()) } ?? 0
-        }
-        for event in events {
-            if case .output(let id, _) = event, let left = skip[id], left > 0 {
-                skip[id] = left - 1
-                continue
+        for (n, event) in events.enumerated() {
+            if case .output(let id, _) = event {
+                if skip[id] == nil { skip[id] = alreadyHeld(id, in: events[n...]) }
+                if let left = skip[id], left > 0 {
+                    skip[id] = left - 1
+                    continue
+                }
             }
             apply(event)
+            switch event {
+            case .state, .run, .cleared: skip = [:]
+            case .output, .cwd: break
+            }
         }
+    }
+
+    /// How many of the first output events for `id` in `events` the run's output already ends with.
+    private func alreadyHeld(_ id: String, in events: ArraySlice<TerminalEvent>) -> Int {
+        var texts: [String] = []
+        for case .output(id, let chunks) in events { texts.append(chunks.map(\.text).joined()) }
+        guard !texts.isEmpty, let run = runs.first(where: { $0.id == id }) else { return 0 }
+        let have = TerminalRules.textOf(run.output)
+        return (1...texts.count).reversed().first { have.hasSuffix(texts.prefix($0).joined()) } ?? 0
     }
 
     /// Draws a command at once, before the server has answered, because the first one after the server starts can wait a couple of seconds.
