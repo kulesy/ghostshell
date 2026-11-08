@@ -101,7 +101,7 @@ struct TerminalInput: View {
         if mods == .control {
             let run = shown.run
             if press.key == KeyEquivalent("c"), caret.empty {
-                if let id = run?.id { Task { await store.stop(id) } } else { store.setInput("") }
+                if let id = run?.id { Task { await store.stop(id) } } else { replaceInput("") }
                 return .handled
             }
             if press.key == KeyEquivalent("d"), state.input.isEmpty, let id = run?.id {
@@ -116,10 +116,16 @@ struct TerminalInput: View {
         return .ignored
     }
 
+    // A selection holds indices into the text it was made in. Writing new text under a held one makes SwiftUI trap in the text view, so it is dropped first.
+    private func replaceInput(_ text: String, to pin: TerminalRules.InputPin? = nil) {
+        selection = nil
+        store.setInput(text, to: pin)
+    }
+
     private func recall(_ direction: Int) -> KeyPress.Result {
         guard let next = TerminalRules.recall(list: TerminalRules.historyOf(state.runs), at: walk.at, draft: walk.draft, text: state.input, direction: direction) else { return .ignored }
         walk = Walk(at: next.at, draft: next.draft)
-        store.setInput(next.text)
+        replaceInput(next.text)
         return .handled
     }
 
@@ -132,17 +138,17 @@ struct TerminalInput: View {
         }
         walk = Walk()
         if let id = target.run?.id {
-            store.setInput("")
+            replaceInput("")
             Task { await store.input(id, text: text + "\n") }
             return
         }
         let command = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { return }
-        store.setInput("")
+        replaceInput("")
         Task {
             guard let problem = await store.run(command, source: .panel) else { return }
             store.report(problem)
-            if store.state.input.isEmpty { store.setInput(text, to: TerminalRules.InputPin(run: nil)) }
+            if store.state.input.isEmpty { replaceInput(text, to: TerminalRules.InputPin(run: nil)) }
         }
     }
 }
