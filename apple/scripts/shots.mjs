@@ -251,6 +251,16 @@ repeat with e in els
   end try
 end repeat`);
   }
+  // What the View menu says about the other views: "View", "View, another view needs you" or "View, another view is working".
+  viewMenu() {
+    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+repeat with e in els
+  try
+    if role of e is "AXPopUpButton" and description of e starts with "View" then return description of e
+  end try
+end repeat
+return ""`).stdout.trim();
+  }
   // Picks a project (or Home) from the View menu in the sidebar's header. A project's item reads "Name (count)", and the menu is described "View, another view needs you" while one does.
   pickView(name) {
     this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
@@ -571,6 +581,12 @@ async function marks(binary, appearance) {
     app.pickView('Website');
     check(await until('project', () => app.headings() === 2 && lines().some(help => help.includes('Projects/web'))), 'the Website view shows Pinned and its own group, and not Release');
     await app.both('project-view');
+    check(app.viewMenu() === 'View, another view needs you', 'Home needs you, so the View menu carries the waiting lamp');
+
+    // With nothing in Home waiting, its one working chat lights the green lamp instead.
+    index.groups[0].sessions[0].children[0].state = 'idle';
+    check(await until('working lamp', () => app.viewMenu() === 'View, another view is working'), 'a working view lights the working lamp when none waits');
+    await app.both('project-view-working');
 
     // A project with no groups and nothing pinned says "No groups yet" once. Pinned rows show in every view, so the stub drops its own first.
     index.pinned = [];

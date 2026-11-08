@@ -94,6 +94,18 @@ final class SidebarOutlineTests: XCTestCase {
         XCTAssertTrue(SidebarOutline.sections(SessionIndex(), view: nil).isEmpty)
     }
 
+    func testIdleRoutinesSortNumericallyIgnoringCaseWithTiesById() throws {
+        let idle = [IdleRoutine(id: "a", title: "Job 10"), IdleRoutine(id: "c", title: "job 2"), IdleRoutine(id: "b", title: "Job 2")]
+        let routines = try XCTUnwrap(SidebarOutline.sections(SessionIndex(), view: nil, idleRoutines: idle).first)
+        XCTAssertEqual(routines.buckets.first?.idle.map(\.id), ["b", "c", "a"])
+    }
+
+    func testARoutineWhoseOnlyRunIsPinnedOrGroupedIsNotIdle() throws {
+        let ix = try index(#"{"pinned": [{"id": "p", "routine": "nightly"}], "groups": [{"id": "g", "name": "G", "project": null, "sessions": [{"id": "r", "routine": "weekly"}]}]}"#)
+        let idle = [IdleRoutine(id: "nightly", title: "Nightly"), IdleRoutine(id: "weekly", title: "Weekly")]
+        XCTAssertEqual(SidebarOutline.sections(ix, view: nil, idleRoutines: idle).map(\.id), ["pinned", "g"], "no Routines section, since neither routine is idle")
+    }
+
     func testHolderNamesTheViewThatHoldsASession() throws {
         let ix = try index(sample)
         XCTAssertEqual(SidebarOutline.holder(of: "pa", in: ix), .view("p1"))
@@ -202,6 +214,9 @@ final class SidebarOutlineTests: XCTestCase {
         XCTAssertEqual(SidebarOutline.count(of: "p1", in: ix), 2)
         XCTAssertTrue(SidebarOutline.othersWaiting(shown: nil, in: ix))
         XCTAssertFalse(SidebarOutline.othersWaiting(shown: "p1", in: ix))
+        XCTAssertEqual(SidebarOutline.othersLamp(shown: nil, in: ix), .waiting, "waiting outranks working")
+        XCTAssertEqual(SidebarOutline.othersLamp(shown: "p1", in: ix), .working)
+        XCTAssertNil(SidebarOutline.othersLamp(shown: "p2", in: try index(#"{"projects": [{"id": "p2", "name": "B"}]}"#)))
     }
 
     func testTurnStartIsInWholeSecondsSoTwoPollsOfOneTurnAreEqual() {

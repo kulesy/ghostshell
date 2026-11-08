@@ -122,9 +122,11 @@ The two sidebar PBIs share one folder. Split the work by file inside `Sidebar/`.
 | `HeadingSlot` | Modifiers on each heading | 87 (drop target) |
 | `HomeTopSectionsSlot` | Whole sections at the top of Home | 92 (Scheduled) |
 | `IdleRoutineRowSlot` | The row for a routine that has never run, drawn in its routine bucket | 92 (idle routines) |
-| `SidebarWatchSlot` | Modifiers on the whole sidebar, for work that watches the index or the chosen session | 94 (notifications) |
+| `SidebarWatchSlot` | Modifiers on the whole sidebar, for work that watches the index or the chosen session | 92 (idle routines), 94 (notifications) |
 
-Idle routines reach the sidebar through `SidebarState.idleRoutines`. 92's `SidebarWatchSlot` modifier fetches `/api/routines` and sets it, so it never edits the outline or the sections.
+Idle routines reach the sidebar through `SidebarState.idleRoutines`, because the index never carries a routine that has not run. 92 shares one store between its Routines screen and its `SidebarWatchSlot` modifier. The modifier fetches `/api/routines` and sets `idleRoutines`, and a routine made or deleted in the screen updates it through the same store, so neither edits the outline or the sections.
+
+Notifications (94) also need the window-visibility handling in `AppModel` and `RootView`, because `SessionIndexFeed` pauses while the window is hidden and a watcher on the index sees nothing then.
 
 Selection is a set. One chosen row opens its session, and several stay chosen for 87's bulk actions.
 

@@ -22,7 +22,7 @@ struct SidebarHeader: View {
     }
 }
 
-/// Home and the projects. A project that has gone reads as Home. A view with a session that needs you shows a lamp, and a project shows its count.
+/// Home and the projects. A project that has gone reads as Home. A view with a session that needs you or one that works shows a lamp, and a project shows its count.
 private struct ViewMenu: View {
     @Environment(AppModel.self) private var model
     @Environment(SidebarState.self) private var state
@@ -30,11 +30,11 @@ private struct ViewMenu: View {
     var body: some View {
         let index = model.index ?? SessionIndex()
         let shown = SidebarOutline.view(state.project, in: index)
-        let otherNeedsYou = SidebarOutline.othersWaiting(shown: shown, in: index)
+        let others = SidebarOutline.othersLamp(shown: shown, in: index)
         Menu {
             Picker("View", selection: Binding(get: { shown }, set: { state.project = $0 })) {
-                item("Home", nil, shown: shown, in: index).tag(String?.none)
-                ForEach(index.projects) { item($0.name, $0.id, shown: shown, in: index).tag(String?.some($0.id)) }
+                item("Home", nil, in: index).tag(String?.none)
+                ForEach(index.projects) { item($0.name, $0.id, in: index).tag(String?.some($0.id)) }
             }
             .pickerStyle(.inline)
             Divider()
@@ -44,18 +44,32 @@ private struct ViewMenu: View {
         }
         .menuStyle(.borderlessButton)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // A menu label keeps one image and one text, so the lamp sits beside the menu's own chevron.
+        // A menu label keeps one image and one text, so the lamp sits beside the menu's own chevron. 28pt is the width the borderless menu
+        // keeps for that chevron, measured on a 2x shot.
         .overlay(alignment: .trailing) {
-            if otherNeedsYou { Image(systemName: "circle.fill").font(.system(size: 7)).foregroundStyle(.orange).padding(.trailing, 28).allowsHitTesting(false) }
+            if let others { Image(systemName: "circle.fill").font(.system(size: 7)).foregroundStyle(others.color).padding(.trailing, 28).allowsHitTesting(false) }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .accessibilityLabel(otherNeedsYou ? "View, another view needs you" : "View")
+        .accessibilityLabel(others.map { $0 == .waiting ? "View, another view needs you" : "View, another view is working" } ?? "View")
     }
 
-    // A menu item draws text and an image only, so the lamp is an image and the count is in the text.
-    @ViewBuilder private func item(_ name: String, _ id: String?, shown: String?, in index: SessionIndex) -> some View {
+    // A menu item draws text and an image only, so the lamp is a coloured image and the count is in the text. Like the page's rail, every view shows its own lamp.
+    @ViewBuilder private func item(_ name: String, _ id: String?, in index: SessionIndex) -> some View {
         let text = id.map { "\(name) (\(SidebarOutline.count(of: $0, in: index)))" } ?? name
-        if id != shown, SidebarOutline.lamp(of: id, in: index) == .waiting { Label(text, systemImage: "circle.fill") } else { Text(text) }
+        if let lamp = SidebarOutline.lamp(of: id, in: index) { Label { Text(text) } icon: { dot(lamp) } } else { Text(text) }
     }
+
+    // A menu draws a symbol in one template colour, so the lamp is drawn once as a picture that keeps its own.
+    @MainActor private func dot(_ lamp: ViewLamp) -> Image {
+        let renderer = ImageRenderer(content: Circle().fill(lamp.color).frame(width: 8, height: 8))
+        renderer.scale = 2
+        guard let picture = renderer.cgImage else { return Image(systemName: "circle.fill") }
+        return Image(decorative: picture, scale: 2).renderingMode(.original)
+    }
+}
+
+private extension ViewLamp {
+    /// The page's colours: warning for waiting, success for working.
+    var color: Color { self == .waiting ? .orange : .green }
 }

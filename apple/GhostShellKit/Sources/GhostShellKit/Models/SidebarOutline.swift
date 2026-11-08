@@ -138,17 +138,24 @@ public enum SidebarOutline {
             latest.title = run.title ?? latest.title
             return (latest.title, OutlineRoutine(id: run.name, latest: latest, earlier: run.earlier), clean(run.heading))
         }
-        let ran = Set(all.map(\.routine.id))
-        let idle = idle.filter { !ran.contains($0.id) }.sorted { $0.title.compare($1.title, locale: .current) == .orderedAscending }
+        // A run that is pinned or in a group still counts, as the page's unrunRoutines has it.
+        let ran = Set(all.map(\.routine.id)).union(index.rows.compactMap(\.routine))
+        let idle = idle.filter { !ran.contains($0.id) }.sorted { a, b in
+            let order = headingOrder(a.title, b.title)
+            return order == .orderedSame ? a.id < b.id : order == .orderedAscending
+        }
         guard !all.isEmpty || !idle.isEmpty else { return [] }
         let ordered = all.sorted { before($0.routine.latest, $1.routine.latest) }
-        let named = Set(ordered.compactMap(\.heading) + idle.compactMap { clean($0.heading) }).sorted {
-            $0.compare($1, options: [.caseInsensitive, .diacriticInsensitive, .numeric], range: nil, locale: Locale(identifier: "en")) == .orderedAscending
-        }
+        let named = Set(ordered.compactMap(\.heading) + idle.compactMap { clean($0.heading) }).sorted { headingOrder($0, $1) == .orderedAscending }
         let buckets = ([nil] + named).map { heading in
             RoutineBucket(heading: heading, routines: ordered.filter { $0.heading == heading }.map(\.routine), idle: idle.filter { clean($0.heading) == heading })
         }
         return [OutlineSection(id: "routines", title: "Routines", kind: .routines, buckets: buckets.filter { !$0.routines.isEmpty || !$0.idle.isEmpty }, count: all.count + idle.count)]
+    }
+
+    // Case-insensitive and numeric, so "Job 2" comes before "Job 10".
+    private static func headingOrder(_ a: String, _ b: String) -> ComparisonResult {
+        a.compare(b, options: [.caseInsensitive, .diacriticInsensitive, .numeric], range: nil, locale: Locale(identifier: "en"))
     }
 
     private static func clean(_ heading: String?) -> String? { heading.flatMap { $0.isEmpty ? nil : $0 } }
@@ -160,8 +167,12 @@ public enum SidebarOutline {
         func has(_ rows: [SessionRow]) -> Bool { withKids(rows).contains { $0.id == id } }
         if has(index.pinned) { return .everyView }
         if let group = index.groups.first(where: { has($0.sessions) }) { return .view(view(group.project, in: index)) }
-        let runs = index.routines.flatMap { ($0.latest.map { [$0] } ?? []) + $0.earlier }
-        return has(runs) || has(index.started) || has(index.ungrouped) || has(index.other) ? .view(nil) : .none
+        return has(homeLoose(index)) ? .view(nil) : .none
+    }
+
+    /// The rows Home holds outside any group and Pinned: every routine run, Started here, Ungrouped and Terminal and other.
+    private static func homeLoose(_ index: SessionIndex) -> [SessionRow] {
+        index.routines.flatMap { ($0.latest.map { [$0] } ?? []) + $0.earlier } + index.started + index.ungrouped + index.other
     }
 
     // MARK: Families
@@ -209,16 +220,19 @@ public enum SidebarOutline {
     /// The sessions in a project, nested ones included, as the page counts them.
     public static func count(of project: String, in index: SessionIndex) -> Int { viewRows(project, in: index).count }
 
-    /// Whether a view other than `shown` has a session that needs you.
-    public static func othersWaiting(shown: String?, in index: SessionIndex) -> Bool {
-        ([nil] + index.projects.map { Optional($0.id) }).contains { $0 != shown && lamp(of: $0, in: index) == .waiting }
+    /// The lamp across the views other than `shown`: waiting if one needs you, else working if one runs.
+    public static func othersLamp(shown: String?, in index: SessionIndex) -> ViewLamp? {
+        let lamps = ([nil] + index.projects.map { Optional($0.id) }).filter { $0 != shown }.compactMap { lamp(of: $0, in: index) }
+        return lamps.contains(.waiting) ? .waiting : lamps.contains(.working) ? .working : nil
     }
+
+    /// Whether a view other than `shown` has a session that needs you.
+    public static func othersWaiting(shown: String?, in index: SessionIndex) -> Bool { othersLamp(shown: shown, in: index) == .waiting }
 
     private static func viewRows(_ view: String?, in index: SessionIndex) -> [SessionRow] {
         if view == nil {
-            let runs = index.routines.flatMap { ($0.latest.map { [$0] } ?? []) + $0.earlier }
             let homeGroups = index.groups.filter { self.view($0.project, in: index) == nil }.flatMap(\.sessions)
-            return withKids(runs + homeGroups + index.started + index.ungrouped + index.other)
+            return withKids(homeGroups + homeLoose(index))
         }
         return withKids(index.groups.filter { self.view($0.project, in: index) == view }.flatMap(\.sessions))
     }
