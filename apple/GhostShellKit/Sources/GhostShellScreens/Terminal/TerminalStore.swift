@@ -17,10 +17,15 @@ final class TerminalStore {
     @ObservationIgnored private let sessionID: String
     @ObservationIgnored private let client: GhostShellClient
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var stopped = false
     @ObservationIgnored private var sequence = 0
-    @ObservationIgnored private var waiting: [TerminalEvent] = []
+    @ObservationIgnored private var hold = TerminalHold()
     @ObservationIgnored private var loaded = false
     @ObservationIgnored private var loading = false
+    @ObservationIgnored private var streamTask: Task<Void, Never>?
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
+    /// How long a snapshot that could not be read waits before it is read again.
+    @ObservationIgnored var retryAfter = Duration.seconds(3)
 
     init(chat: ChatContext) {
         self.chat = chat
@@ -28,41 +33,56 @@ final class TerminalStore {
         client = chat.client
     }
 
-    /// Listens to the chat's one stream and reads the snapshot. Safe to call again, and a snapshot that failed is read again by the next call or
-    /// after a few seconds.
+    /// Listens to the chat's one stream and reads the snapshot. Safe to call again. A snapshot that the server could not give (unreachable or a 5xx)
+    /// is read again after a few seconds until the store stops. A refusal is final, so only the next call reads again.
     ///
     /// The stream is opened first and its frames wait until the snapshot is in. A frame sent in the moment between the server taking the snapshot and
     /// this app reading it would otherwise be lost, and the ones the snapshot already holds are dropped by `applyHeld`.
     func start() {
-        guard let chat else { return }
+        guard let chat, !stopped else { return }
         if !started {
             started = true
             let stream = chat.events()
-            Task { [weak self] in
+            streamTask = Task { [weak self] in
                 for await frame in stream {
-                    guard let self, let event = TerminalEvent.decode(frame) else { continue }
-                    if loaded { state.apply(event) } else { waiting.append(event) }
+                    guard let self else { return }
+                    guard let event = TerminalEvent.decode(frame) else { continue }
+                    if loaded { state.apply(event) } else { hold.add(event) }
                 }
+                self?.stop()
             }
         }
         guard !loaded, !loading else { return }
         loading = true
-        Task { [weak self] in
-            guard let self else { return }
+        loadTask = Task { [weak self] in await self?.load() }
+    }
+
+    /// Ends the stream and any read still waiting. The chat's stream ending (the chat left the screen) does this.
+    func stop() {
+        stopped = true
+        streamTask?.cancel()
+        loadTask?.cancel()
+    }
+
+    private func load() async {
+        defer { loading = false }
+        while !Task.isCancelled {
             do {
-                state.apply(try await client.terminalSnapshot(sessionID: sessionID))
-            } catch {
-                state.error = TerminalFailure.words(error, step: .read)
-                loading = false
-                try? await Task.sleep(for: .seconds(3))
-                start()
+                let snapshot = try await client.terminalSnapshot(sessionID: sessionID)
+                // Events were dropped while this was read, so it may lack some of them. Read again, holding from now.
+                if hold.overflowed { hold.reset(); continue }
+                state.apply(snapshot)
+                state.error = ""
+                state.applyHeld(hold.events)
+                hold.reset()
+                loaded = true
                 return
+            } catch {
+                guard !Task.isCancelled else { return }
+                state.error = TerminalFailure.words(error, step: .read)
+                guard TerminalFailure.isTemporary(error) else { return }
+                try? await Task.sleep(for: retryAfter)
             }
-            loading = false
-            state.error = ""
-            state.applyHeld(waiting)
-            waiting = []
-            loaded = true
         }
     }
 

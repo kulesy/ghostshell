@@ -2,7 +2,7 @@ import XCTest
 @testable import GhostShellKit
 
 /// A stub of the network that answers from a closure and records what was asked. The token in these tests is fake.
-private final class TerminalStub: URLProtocol, @unchecked Sendable {
+final class TerminalStub: URLProtocol, @unchecked Sendable {
     typealias Reply = @Sendable (URLRequest) -> (status: Int, body: String)
     nonisolated(unsafe) static var reply: Reply = { _ in (200, "{}") }
     nonisolated(unsafe) static var seen: [(request: URLRequest, body: Data)] = []
@@ -195,6 +195,31 @@ final class TerminalStateTests: XCTestCase {
         XCTAssertEqual(TerminalRules.textOf(state.runs[0].output), "..", "the snapshot holds one dot, so one of the two held dots is new")
     }
 
+    func testTheHoldDropsItsEventsPastTheCapAndSaysSo() {
+        var hold = TerminalHold()
+        for n in 0..<TerminalHold.cap { hold.add(.cwd("/\(n)")) }
+        XCTAssertEqual(hold.events.count, TerminalHold.cap)
+        XCTAssertFalse(hold.overflowed)
+        hold.add(.cwd("/over"))
+        XCTAssertTrue(hold.overflowed)
+        XCTAssertTrue(hold.events.isEmpty)
+        hold.add(.cwd("/after"))
+        XCTAssertTrue(hold.events.isEmpty, "nothing is held for a snapshot that will be read again")
+        hold.reset()
+        hold.add(.cwd("/fresh"))
+        XCTAssertEqual(hold.events, [.cwd("/fresh")])
+        XCTAssertFalse(hold.overflowed)
+    }
+
+    func testOnlyAnUnreachableOrFailedServerIsAskedAgain() {
+        XCTAssertTrue(TerminalFailure.isTemporary(GhostShellError.unreachable))
+        XCTAssertTrue(TerminalFailure.isTemporary(GhostShellError.server(status: 503)))
+        for error in [GhostShellError.server(status: 0), .server(status: 403), .server(status: 415), .refused(status: 400, message: "no terminal"),
+                      .refused(status: 404, message: "no session"), .signedOut, .wrongPassword] {
+            XCTAssertFalse(TerminalFailure.isTemporary(error), "\(error)")
+        }
+    }
+
     func testHeldEventsOfAnotherRunAreNotDropped() throws {
         var state = TerminalState()
         state.apply(.state(cwd: "/h", home: "/h", runs: [try snapshotRun("x\\n"), try decoded(runJSON("b"))]))
@@ -302,6 +327,14 @@ final class TerminalStateTests: XCTestCase {
             } catch {
                 XCTAssertEqual(TerminalFailure.words(error, step: step), words, "\(status)")
             }
+        }
+        TerminalStub.reset { _ in (409, "") }
+        let client = await signedInClient()
+        do {
+            _ = try await client.runCommand(sessionID: "s1", command: "ls", source: .panel)
+            XCTFail("answered 409")
+        } catch {
+            XCTAssertEqual(TerminalFailure.words(error, step: .run), "The session's folder does not exist on this Mac.", "a 409 with no body")
         }
         XCTAssertEqual(TerminalFailure.words(GhostShellError.unreachable, step: .run), GhostShellError.unreachable.localizedDescription)
     }

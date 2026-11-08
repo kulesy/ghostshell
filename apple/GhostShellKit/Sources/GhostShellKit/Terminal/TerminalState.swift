@@ -156,3 +156,28 @@ public struct TerminalState: Equatable, Sendable {
         announceCount += 1
     }
 }
+
+/// The events held until the snapshot is in. Past `cap` they are dropped, and `overflowed` says the snapshot must be read again, because it may
+/// lack some of what was dropped.
+public struct TerminalHold: Equatable, Sendable {
+    public static let cap = 2000
+    public private(set) var events: [TerminalEvent] = []
+    public private(set) var overflowed = false
+
+    public init() {}
+
+    public mutating func add(_ event: TerminalEvent) {
+        guard !overflowed else { return }
+        if events.count >= Self.cap {
+            events = []
+            overflowed = true
+        } else {
+            events.append(event)
+        }
+    }
+
+    public mutating func reset() {
+        events = []
+        overflowed = false
+    }
+}

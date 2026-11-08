@@ -42,6 +42,15 @@ extension GhostShellClient {
 public enum TerminalFailure {
     public enum Step: Sendable { case read, run, input, stop, clear }
 
+    /// Only a server that could not be reached, or that failed, is worth asking again. A refusal gives the same answer next time.
+    public static func isTemporary(_ error: Error) -> Bool {
+        switch error as? GhostShellError {
+        case .unreachable: true
+        case .server(let status): status >= 500
+        default: false
+        }
+    }
+
     public static func words(_ error: Error, step: Step) -> String {
         guard case GhostShellError.server(let status) = error else { return error.localizedDescription }
         switch (status, step) {
