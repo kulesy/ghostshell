@@ -144,10 +144,6 @@ struct TerminalRunBlock: View, Equatable {
     private var live: Bool { run.running && !run.pending }
     private var state: TerminalRules.RunState { TerminalRules.runState(run) }
 
-    /// Changes whenever the output does, so a redraw of the lines waits on this and not on the output's whole text. The run's revision rises with
-    /// every append, because an output held at its cap keeps the same size.
-    private var signature: [Int] { [run.revision, run.output.count] }
-
     var body: some View {
         let styler = AnsiStyler(colorScheme)
         VStack(alignment: .leading, spacing: 0) {
@@ -169,11 +165,10 @@ struct TerminalRunBlock: View, Equatable {
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(state == .failed ? styler.danger.opacity(0.4) : Color.secondary.opacity(0.3)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Command \(run.command.split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? "")")
-        .task(id: signature) { await draw() }
+        .task(id: run.revision) { await draw() }
     }
 
-    /// The first draw is at once, and after that at most one every 100 ms counted from the last, off the main thread. A change cancels the draw
-    /// waiting and the next one waits only for what is left of the 100 ms, so output that never pauses still draws, and the last change always does.
+    /// Draws at most once every 100 ms, so output that never pauses cannot starve the main thread, and the last change always draws.
     private func draw() async {
         if let lastDraw {
             let wait = Duration.milliseconds(100) - lastDraw.duration(to: .now)
