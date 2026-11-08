@@ -308,10 +308,12 @@ test('an account is usable only once checked, signed in and not out', async () =
   assert.deepEqual([r.logins.isUsable('main'), r.logins.isUsable('second')], [true, false]);
 });
 
-test('the reset of a plan answer is the latest among the limits at 100 percent', () => {
-  const limit = (percent, resetsAt) => ({ kind: 'k', group: 'g', percent, resetsAt });
+test('the reset of a plan answer is the latest among the unscoped limits at 100 percent', () => {
+  const limit = (percent, resetsAt, scope = null) => ({ kind: 'k', group: 'g', percent, resetsAt, scope });
   assert.equal(resetOf([limit(100, '2026-11-09T05:00:00.000Z'), limit(100, '2026-11-12T00:00:00.000Z'), limit(40, '2026-11-20T00:00:00.000Z')]), Date.parse('2026-11-12T00:00:00.000Z'));
   assert.equal(resetOf([limit(99, '2026-11-12T00:00:00.000Z')]), null);
   assert.equal(resetOf([limit(100, null)]), null);
+  assert.equal(resetOf([limit(100, '2026-11-09T05:00:00.000Z'), limit(100, '2026-11-14T00:00:00.000Z', 'Opus')]), Date.parse('2026-11-09T05:00:00.000Z'), 'a model-scoped limit does not stretch the mark');
+  assert.equal(resetOf([limit(100, '2026-11-14T00:00:00.000Z', 'Opus')]), null);
   assert.equal(resetOf(null), null);
 });

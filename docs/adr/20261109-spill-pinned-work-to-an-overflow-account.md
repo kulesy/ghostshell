@@ -66,7 +66,7 @@ Other chats on the spent account are left alone. A chat mid-turn finishes its tu
 
 ### When it goes back
 
-The out mark used to count for an hour. It now lasts until the reset of the limit that ran out. When the mark lands, GhostShell asks the chat that ran out for its plan figures, and the mark keeps the latest reset among the limits at 100%. Without an answer, or with no limit at 100%, the mark keeps its hour. A clean turn on the account clears the mark, as before.
+The out mark used to count for an hour. It now lasts until the reset of the limit that ran out. When the mark lands, GhostShell asks the chat that ran out for its plan figures, and the mark keeps the latest reset among the limits at 100% that cover every model. Without an answer, or with no limit at 100%, the mark keeps its hour. A clean turn on the account clears the mark, as before.
 
 Once the mark ends, the rule answers the pinned account again, and each process starts there. Nothing running is stopped: an idle process on the overflow moves at the session's next message, and a turn on the overflow finishes there. If the pinned account is still spent after a fallback hour, the next turn runs out at once and spills again.
 
