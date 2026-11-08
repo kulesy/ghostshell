@@ -355,4 +355,23 @@ final class TerminalIntegrationTests: XCTestCase {
         }
         _ = try await client.clearTerminal(sessionID: id)
     }
+
+    func testARunningCommandIsStoppedAndAnUnknownRunIsRefusedWith404() async throws {
+        let (client, id) = try await signedIn()
+        let started = try await client.runCommand(sessionID: id, command: "sleep 30", source: .panel)
+        XCTAssertTrue(started.running)
+        let stopped = try await client.stopCommand(sessionID: id, run: try XCTUnwrap(started.id))
+        XCTAssertEqual(stopped.id, started.id)
+        XCTAssertTrue(stopped.stopped)
+        do {
+            _ = try await client.stopCommand(sessionID: id, run: "no-such-run")
+            XCTFail("the server stopped a run it does not have")
+        } catch {
+            XCTAssertEqual(error as? GhostShellError, .server(status: 404))
+            XCTAssertEqual(TerminalFailure.words(error, step: .stop), "No such command in this session.")
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        let left = try await client.clearTerminal(sessionID: id)
+        XCTAssertFalse(left.runs.contains { $0.id == started.id && $0.running })
+    }
 }
