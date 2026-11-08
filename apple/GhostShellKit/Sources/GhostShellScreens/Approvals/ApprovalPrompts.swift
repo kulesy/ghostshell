@@ -21,6 +21,8 @@ struct ApprovalPrompts: View {
                     .frame(maxWidth: ChatStyle.column)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16).padding(.vertical, 10)
+                    // The title, an error line, the buttons and the padding take about 150pt, so the rest is the body's.
+                    .environment(\.approvalBodyCap, max(cap - 150, 60))
                 }
                 .frame(maxHeight: cap)
                 .fixedSize(horizontal: false, vertical: true)

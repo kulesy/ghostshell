@@ -4,12 +4,18 @@ import SwiftUI
 // Every string a card shows came from the server or the model, so it goes through `Text(verbatim:)` and never as Markdown. Only a plan is Markdown.
 // No button here takes a keyboard shortcut or the default action, so Return in the composer can never approve anything.
 
-/// The frame all three cards share: a waiting lamp, a title, the body and the buttons.
+extension EnvironmentValues {
+    /// How tall a card's body may grow before it scrolls, so the card's buttons stay in the prompt stack's view.
+    @Entry var approvalBodyCap: CGFloat = 280
+}
+
+/// The frame all three cards share: a waiting lamp, a title, the body and the buttons. Only the body scrolls, as on the page.
 private struct CardFrame<Content: View, Actions: View>: View {
     let title: String
     let state: ApprovalCardState
     @ViewBuilder var content: Content
     @ViewBuilder var actions: Actions
+    @Environment(\.approvalBodyCap) private var bodyCap
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -17,7 +23,12 @@ private struct CardFrame<Content: View, Actions: View>: View {
                 Circle().fill(.orange).frame(width: 8, height: 8).accessibilityHidden(true)
                 Text(verbatim: title).font(ChatStyle.body).fontWeight(.semibold).textSelection(.enabled)
             }
-            content
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 10) { content }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: bodyCap)
+            .fixedSize(horizontal: false, vertical: true)
             if let error = state.error {
                 Text(verbatim: error).font(ChatStyle.small).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
