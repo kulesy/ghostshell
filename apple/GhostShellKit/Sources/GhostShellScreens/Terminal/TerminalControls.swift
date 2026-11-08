@@ -1,3 +1,4 @@
+#if os(macOS)
 import GhostShellKit
 import SwiftUI
 
@@ -44,3 +45,4 @@ struct TerminalRunButton: View {
         Task { if let problem = await terminal.run(runnable.command, source: .block) { terminal.report(problem) } }
     }
 }
+#endif

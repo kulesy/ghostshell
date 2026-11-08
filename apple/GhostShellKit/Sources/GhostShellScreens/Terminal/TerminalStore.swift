@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import GhostShellKit
 import Observation
@@ -142,3 +143,4 @@ final class TerminalStore {
 
     func report(_ words: String) { state.error = words }
 }
+#endif

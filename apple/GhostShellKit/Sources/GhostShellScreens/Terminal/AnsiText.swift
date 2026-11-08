@@ -1,3 +1,4 @@
+#if os(macOS)
 import GhostShellKit
 import SwiftUI
 
@@ -94,3 +95,4 @@ extension ChatStyle {
     /// A run's output and command: 12pt monospaced, as on the page.
     static let terminal = Font.system(size: 12, design: .monospaced)
 }
+#endif

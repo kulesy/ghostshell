@@ -191,7 +191,11 @@ struct CodeBlockView: View {
     @State private var copied = false
 
     private var wraps: Bool {
+        #if os(macOS)
         canRun && model.chat.terminalAvailable && TerminalRules.runnableBlock(language: block.language, text: block.text) != nil
+        #else
+        false
+        #endif
     }
 
     var body: some View {

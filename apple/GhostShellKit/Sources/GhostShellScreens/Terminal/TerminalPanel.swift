@@ -1,3 +1,4 @@
+#if os(macOS)
 import GhostShellKit
 import SwiftUI
 
@@ -252,3 +253,4 @@ private struct Lamp: View {
             .accessibilityHidden(true)
     }
 }
+#endif
