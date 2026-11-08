@@ -5,13 +5,16 @@ import SwiftUI
 @main
 struct GhostShelliPhoneApp: App {
     @State private var model: AppModel
+    private let watchLink: WatchLink
 
     init() {
         #if DEBUG
-        _model = State(initialValue: DebugHooks.makeModel())
+        let model = DebugHooks.makeModel()
         #else
-        _model = State(initialValue: AppModel(store: KeychainTokenStore()))
+        let model = AppModel(store: KeychainTokenStore())
         #endif
+        _model = State(initialValue: model)
+        watchLink = WatchLink(model: model)
     }
 
     // NOTE: [8 Nov 2026] EK - No SessionNotifier and no NotificationSettings here. Alerts need push, which needs a paid team, so the phone has no bell.

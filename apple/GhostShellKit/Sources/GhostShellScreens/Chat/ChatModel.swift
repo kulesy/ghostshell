@@ -218,19 +218,14 @@ final class ChatModel {
 
     // MARK: Events
 
-    private func patchStatus(_ change: (inout ChatStatus) -> Void) {
-        var status = chat.status ?? ChatStatus()
-        change(&status)
-        chat.status = status
-    }
-
     private static func began(_ work: ChatWork?) -> Date? { work.map { Date().addingTimeInterval(-Double($0.turnMs) / 1000) } }
 
     private func handle(_ event: ChatEvent) {
+        var status = chat.status ?? ChatStatus()
+        if status.apply(event) { chat.apply(status: status) }
         switch event {
         case .status(let status):
             ended = false
-            chat.apply(status: status)
             live = status.live
             think = status.think
             work = status.work
@@ -241,7 +236,6 @@ final class ChatModel {
             // A fresh stream after a failed read means the server is reachable again.
             if case .failed = phase { Task { await retry() } } else { fetchNew() }
         case .state(let state):
-            patchStatus { $0.state = state }
             if state == .idle { (work, turnStart) = (nil, nil) } else { (outside, outsideStart) = (nil, nil) }
         case .delta(let text):
             let fresh = ended
@@ -272,22 +266,6 @@ final class ChatModel {
             agents = ChatAgents.heard(before: agents, list: list)
         case .changed:
             fetchNew()
-        case .approval(let prompt):
-            patchStatus { $0.pending = $0.pending.filter { $0.requestID != prompt.requestID } + [prompt] }
-        case .approvalResolved(let id):
-            patchStatus { $0.pending = $0.pending.filter { $0.requestID != id } }
-        case .hold(let hold):
-            patchStatus { $0.holds = $0.holds.filter { $0.id != hold.id } + [hold] }
-        case .holdEnded(let id):
-            patchStatus { $0.holds = $0.holds.filter { $0.id != id } }
-        case .mode(let mode):
-            patchStatus { $0.mode = mode }
-        case .model(let model):
-            patchStatus { ($0.model, $0.shownModel) = (model, model) }
-        case .effort(let effort):
-            patchStatus { $0.effort = effort }
-        case .fast(let fast):
-            patchStatus { $0.fast = fast }
         case .turnEnd(let failed, let message):
             ended = true
             if failed { notice = message ?? "The last turn ended with an error." }
@@ -295,9 +273,8 @@ final class ChatModel {
         case .error(let message):
             notice = message
         case .exit:
-            patchStatus { ($0.running, $0.state, $0.pending, $0.holds) = (false, .idle, [], []) }
             (work, turnStart) = (nil, nil)
-        case .terminal, .other:
+        case .approval, .approvalResolved, .hold, .holdEnded, .mode, .model, .effort, .fast, .terminal, .other:
             break
         }
     }

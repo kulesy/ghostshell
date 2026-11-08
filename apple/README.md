@@ -12,8 +12,9 @@ apple/
   GhostShell/                  The thin Mac app target: entry point, assets, Debug-only test hooks.
   GhostShelliPhone/            The thin iPhone app target: entry point, assets, Debug-only test hooks.
   GhostShelliPhoneUITests/     XCUITests that drive the iPhone app in the Simulator.
+  GhostShellWatch/             The watch app: screens, the link to the iPhone, Debug-only test hooks. It uses GhostShellKit only.
   GhostShellKit/               A local Swift package with two libraries.
-    Sources/GhostShellKit/       No UI. Foundation, Security and Network only. Builds for macOS, iOS and watchOS.
+    Sources/GhostShellKit/       No UI. Foundation, Security and Network only. Builds for macOS, iOS and watchOS. `Watch/` holds the relay between the watch and the iPhone.
     Sources/GhostShellScreens/   SwiftUI. Builds for macOS and iOS.
     Tests/GhostShellKitTests/    Unit, integration and Keychain tests.
   Info.plist                   Only the local-network exception for http://localhost.
@@ -39,6 +40,7 @@ Xcode 16.4 and Node 20 are enough. Nothing needs signing. The app uses an ad hoc
 | `npm run apple:shot` | Runs the Debug app against scratch servers, drives it, checks the flow and saves screenshots. See below. |
 | `npm run apple:install` | Builds Release and copies it to `~/Applications/GhostShell.app`. An old copy moves to `~/junk`. `-- --dry-run` only reports. |
 | `npm run apple:ios-build` | Builds the iPhone app for the Simulator (Debug). Add `-- --release` for a Release device build with signing off, which is then searched for the Debug hooks like the Mac one. |
+| `npm run apple:watch-build` | Builds the watch app for the Simulator (Debug). Add `-- --release` for a Release device build with signing off, which is then searched for the Debug hooks. The iPhone app embeds the watch app, so `apple:ios-build` builds it too. |
 | `npm run apple:ios-shot` | Runs the iPhone UI tests on an iPhone SE (3rd generation) and an iPhone 16 Pro, light and dark, and saves screenshots to `apple/screenshots/iphone`. See below. |
 | `npm run apple:server` | Starts a scratch server and prints its address and the path of its password file. It stops on Ctrl-C. |
 
@@ -84,6 +86,27 @@ The Debug hooks are launch arguments: `-GSKeychainService`, `-GSAddress`, `-GSDe
 
 Opening a session's `events` stream marks that session read. Open it only for the session the person is looking at, never for each row.
 
+## The watch app
+
+`GhostShellWatch` is a watchOS 11.0 app (bundle id `com.kulesy.ghostshell.iphone.watchkitapp`) that the iPhone app embeds. It lists the sessions waiting on the owner, opens one to show its question or Claude's latest message, answers a question card, and sends a typed or dictated reply.
+
+The watch talks only to the iPhone app, over WatchConnectivity. The iPhone makes each server call with its own token through `AppModel.client`, so the watch holds no token, no address and no `GhostShellClient`. The watch has no Tailscale, and watchOS limits what an app may open for itself, so a request from the watch would fail on the road the owner uses. WatchConnectivity needs no entitlement, so a free personal team signs it.
+
+1. `GhostShellKit/Watch/WatchRelay.swift` is the wire protocol: a versioned request (waiting, one session, reply, answer) and response, as JSON under the key `gs`.
+2. `WatchRelayHandler` runs on the iPhone. It checks every field and maps each request onto the client's existing calls (`sessionIndex`, `messages`, the first `status` frame of `eventStream`, `sendPrompt`, `decide`). It turns errors into the watch's three unreachable states: "Can't reach your iPhone", "Your iPhone can't reach GhostShell" and "Sign in on your iPhone".
+3. `WatchOutbox` keeps a typed reply on the watch before it is sent and removes it only when the iPhone says the server took it. A reply or answer survives a relaunch and has Send again and Discard. Each carries an id, and the iPhone remembers the last 50 it delivered, so asking twice sends one message.
+4. `GhostShelliPhone/WatchLink.swift` is the iPhone's side of WatchConnectivity. It starts in the app's `init`, because a message from the watch can launch the iPhone app in the background with no scene.
+
+A question card is answered with `decide`, never as a message. `/send` does not look at a pending card, and the CLI holds a message sent mid-turn until the tool finishes, so a reply typed into a session that waits on a question would queue behind the card and leave it open. The watch shows a question with one single-choice part as tappable options (44pt) with a field for the owner's own answer, and sends the same `answers` dictionary the Mac's Approvals screen builds (`Approvals.answers`, keyed by the question's text). A multi-select or multi-part question says "Answer this one on your iPhone or Mac". A permission or a plan is read-only on the watch with a line saying where to answer, and a session waiting on one has no reply box. The reply box also waits until the session has loaded with a known state, so a status frame that missed the iPhone's 6 second wait shows "Couldn't check for a question. Try again." in its place. A 410 shows "Already answered elsewhere", drops the kept answer and refreshes.
+
+The list polls through the iPhone every 5 seconds and a session every 8, only while the watch app is active. Opening a session's `events` stream marks it read, so the iPhone opens it only for the session the watch is showing.
+
+Debug builds read launch arguments to drive the app in the Simulator: `-GSWatchFixture` (`list`, `phone`, `server` or `signedout`) serves canned answers with no iPhone, `-GSWatchOpen <session id>` with `-GSWatchOpenTitle`, `-GSWatchDraft <text>`, `-GSWatchSend 1`, `-GSWatchTap <option>` (answers the open question as its button does) and `-GSDefaultsSuite`. A Release build has none of them, and `apple:watch-build -- --release` checks that.
+
+To check the whole road in the Simulator, pair a watch and an iPhone simulator with `xcrun simctl pair`, boot both with `simctl boot`, sign the iPhone Debug app in to a scratch server with `-GSKeychainService`, `-GSDefaultsSuite` and `-GSAddress`, install `GhostShellWatch.app` on the watch with `simctl install` and launch it with the arguments above. The Simulator cannot dictate, so type the reply by launch argument. It also cannot say whether a real watch reaches the server through the iPhone's Tailscale, so that needs the real devices.
+
+A watch needs no paid account either. Open `apple/GhostShell.xcodeproj`, choose a free personal team under Signing for the GhostShelliPhone and GhostShellWatch targets, and run GhostShelliPhone on the phone with the watch paired. A free team signs for 7 days, so the app stops opening after a week and running it from Xcode again installs it afresh.
+
 ## Files that are still shared
 
 A new Swift file edits none of these. Edit one only when the work needs it, and keep the change small.
@@ -126,7 +149,7 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 | [https://github.com/kulesy/ghostshell/issues/94](https://github.com/kulesy/ghostshell/issues/94) Notifications | `Notifications/`, plus app-level code in `apple/GhostShell/` | `GhostShellKit/Notifications/SessionAlerts.swift` |
 | [https://github.com/kulesy/ghostshell/issues/81](https://github.com/kulesy/ghostshell/issues/81) iPhone target | A new `apple/GhostShelliPhone/` folder next to `GhostShell/`. It edits the project file. | none |
 | [https://github.com/kulesy/ghostshell/issues/95](https://github.com/kulesy/ghostshell/issues/95) Push | App-level code in the iPhone and Mac targets | `Push.swift` |
-| [https://github.com/kulesy/ghostshell/issues/82](https://github.com/kulesy/ghostshell/issues/82) Watch | A new `apple/GhostShellWatch/` folder. It uses `GhostShellKit` only. It edits the project file. | none |
+| [https://github.com/kulesy/ghostshell/issues/82](https://github.com/kulesy/ghostshell/issues/82) Watch | `GhostShellWatch/` (built) | `Watch/WatchRelay.swift`, `Watch/WatchRelayHandler.swift`, `Watch/WatchOutbox.swift` |
 
 86 and 87 split the sidebar work: 86 is in `Sidebar/` and 87 is in `Organise/`.
 
@@ -158,5 +181,5 @@ A slot view of 87 reads `OrganiseModel` from the environment. `OrganiseHost`, ap
 ## What the base does not do
 
 1. Signing with a stable identity needs a paid developer account. Until then each new build asks for Keychain access once.
-2. The Watch target is not in the project yet. The Kit already builds for it, but the Watch library is type-checked only, because this machine has no watchOS runtime to link against. The iPhone app has no composer, notifications or phone layout for the screens in https://github.com/kulesy/ghostshell/issues/114.
+2. The watch app has been run only in the Simulator, paired with an iPhone Simulator, and not on a real watch. It cannot dictate in the Simulator, and the Simulator cannot show whether a watch reaches the server through the iPhone's Tailscale. The iPhone app has no composer, notifications or phone layout for the screens in https://github.com/kulesy/ghostshell/issues/114.
 3. The session list polls every 3 seconds while the window is visible, and keeps polling while hidden when notifications are on, so alerts arrive within a few seconds. The server has no push for the index. A push would replace `SessionIndexFeed` without touching its callers.
