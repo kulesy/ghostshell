@@ -65,6 +65,9 @@ public final class AppModel {
         if client === old { leave() }
     }
 
+    /// Looks at the server's list now. A screen calls it after a change so the list does not wait for the next look.
+    public func refreshIndex() async { await feed?.refresh() }
+
     /// The window calls this as it shows and hides, so a hidden app stops asking the server.
     public func setVisible(_ shown: Bool) {
         let shown = shown || ignoresOcclusion

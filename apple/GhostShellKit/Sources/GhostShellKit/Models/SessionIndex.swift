@@ -51,12 +51,17 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
     public var group: String?
     public var parent: String?
     public var routine: String?
+    /// The app the session came from: `capcom`, `desktop` or `cli`. It decides which loose list the session goes back to.
+    public var source: String?
+    /// The account the session runs on, and the account it is pinned to when it holds its own pin.
+    public var account: String?
+    public var accountPin: String?
     public var children: [SessionRow]
     /// When the open turn began by this device's clock, present while a turn runs. The server sends how long it has run, so this is that long ago.
     public var turnStart: Date?
 
     private enum Key: String, CodingKey {
-        case id, title, cwd, branch, state, dot, lastActivityAt, sortAt, pinned, archived, group, parent, routine, children, turnMs
+        case id, title, cwd, branch, state, dot, lastActivityAt, sortAt, pinned, archived, group, parent, routine, source, account, accountPin, children, turnMs
     }
 
     /// Only the id is required. Anything else the server leaves out or words differently reads as empty.
@@ -75,16 +80,20 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
         group = try? c.decode(String.self, forKey: .group)
         parent = try? c.decode(String.self, forKey: .parent)
         routine = try? c.decode(String.self, forKey: .routine)
+        source = try? c.decode(String.self, forKey: .source)
+        account = try? c.decode(String.self, forKey: .account)
+        accountPin = try? c.decode(String.self, forKey: .accountPin)
         children = lossy(c, .children)
         turnStart = (try? c.decode(Double.self, forKey: .turnMs)).map { Self.turnStart(ms: $0) }
     }
 
     public init(id: String, title: String = "", cwd: String = "", branch: String = "", state: SessionState = .idle, dot: SessionDot? = nil,
                 lastActivityAt: Date? = nil, sortAt: Date? = nil, pinned: Bool = false, archived: Bool = false, group: String? = nil,
-                parent: String? = nil, routine: String? = nil, children: [SessionRow] = [], turnStart: Date? = nil) {
+                parent: String? = nil, routine: String? = nil, source: String? = nil, account: String? = nil, accountPin: String? = nil, children: [SessionRow] = [], turnStart: Date? = nil) {
         (self.id, self.title, self.cwd, self.branch, self.state, self.dot) = (id, title, cwd, branch, state, dot)
         (self.lastActivityAt, self.sortAt, self.pinned, self.archived) = (lastActivityAt, sortAt, pinned, archived)
-        (self.group, self.parent, self.routine, self.children, self.turnStart) = (group, parent, routine, children, turnStart)
+        (self.group, self.parent, self.routine, self.source, self.children, self.turnStart) = (group, parent, routine, source, children, turnStart)
+        (self.account, self.accountPin) = (account, accountPin)
     }
 
     // The server sends how long the turn has run, so the start moves with every poll. Whole seconds keep two polls of one turn equal, and the feed skips an equal index.
@@ -99,20 +108,48 @@ public struct SessionGroup: Hashable, Sendable, Identifiable, Decodable {
     /// The project this group belongs to, or nil for Home.
     public var project: String?
     public var sessions: [SessionRow]
+    /// The group's own chat, when it has one. Deleting the group stops it if it is running.
+    public var session: SessionRow?
 
-    private enum Key: String, CodingKey { case id, name, project, sessions }
+    private enum Key: String, CodingKey { case id, name, project, sessions, session }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         id = try c.decode(String.self, forKey: .id)
         name = (try? c.decode(String.self, forKey: .name)) ?? ""
         project = try? c.decode(String.self, forKey: .project)
         sessions = lossy(c, .sessions)
+        session = try? c.decode(SessionRow.self, forKey: .session)
+    }
+
+    public init(id: String, name: String, project: String? = nil, sessions: [SessionRow] = [], session: SessionRow? = nil) {
+        (self.id, self.name, self.project, self.sessions, self.session) = (id, name, project, sessions, session)
     }
 }
 
 public struct SessionProject: Hashable, Sendable, Identifiable, Decodable {
     public var id: String
     public var name: String
+    public init(id: String, name: String) { (self.id, self.name) = (id, name) }
+}
+
+/// Which edits the server takes, so the app offers only those, as the page does. A flag the server does not send reads as false.
+public struct SessionFeatures: Hashable, Sendable, Decodable {
+    public var many: Bool
+    public var groupEdits: Bool
+    public var groupRename: Bool
+    public var accountPins: Bool
+
+    private enum Key: String, CodingKey { case many, groupEdits, groupRename, accountPins }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Key.self)
+        many = (try? c.decode(Bool.self, forKey: .many)) ?? false
+        groupEdits = (try? c.decode(Bool.self, forKey: .groupEdits)) ?? false
+        groupRename = (try? c.decode(Bool.self, forKey: .groupRename)) ?? false
+        accountPins = (try? c.decode(Bool.self, forKey: .accountPins)) ?? false
+    }
+    public init(many: Bool = false, groupEdits: Bool = false, groupRename: Bool = false, accountPins: Bool = false) {
+        (self.many, self.groupEdits, self.groupRename, self.accountPins) = (many, groupEdits, groupRename, accountPins)
+    }
 }
 
 public struct RoutineRuns: Hashable, Sendable, Identifiable, Decodable {
@@ -146,8 +183,9 @@ public struct SessionIndex: Hashable, Sendable, Decodable {
     public var started: [SessionRow]
     public var ungrouped: [SessionRow]
     public var other: [SessionRow]
+    public var features: SessionFeatures?
 
-    private enum Key: String, CodingKey { case station, problem, projects, pinned, groups, routines, started, ungrouped, other }
+    private enum Key: String, CodingKey { case station, problem, projects, pinned, groups, routines, started, ungrouped, other, features }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         station = (try? c.decode(String.self, forKey: .station)) ?? ""
@@ -159,12 +197,13 @@ public struct SessionIndex: Hashable, Sendable, Decodable {
         started = lossy(c, .started)
         ungrouped = lossy(c, .ungrouped)
         other = lossy(c, .other)
+        features = try? c.decode(SessionFeatures.self, forKey: .features)
     }
 
     public init(station: String = "", problem: String? = nil, projects: [SessionProject] = [], pinned: [SessionRow] = [], groups: [SessionGroup] = [], routines: [RoutineRuns] = [],
-                started: [SessionRow] = [], ungrouped: [SessionRow] = [], other: [SessionRow] = []) {
+                started: [SessionRow] = [], ungrouped: [SessionRow] = [], other: [SessionRow] = [], features: SessionFeatures? = nil) {
         (self.station, self.problem, self.projects, self.pinned, self.groups, self.routines) = (station, problem, projects, pinned, groups, routines)
-        (self.started, self.ungrouped, self.other) = (started, ungrouped, other)
+        (self.started, self.ungrouped, self.other, self.features) = (started, ungrouped, other, features)
     }
 
     /// Every session once, children included, newest first. The plain list reads this. Groups, pins and routines read the lists above.

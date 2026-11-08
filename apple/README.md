@@ -95,7 +95,7 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 | [https://github.com/kulesy/ghostshell/issues/84](https://github.com/kulesy/ghostshell/issues/84) Composer | `Composer/` | `Composer.swift` |
 | [https://github.com/kulesy/ghostshell/issues/85](https://github.com/kulesy/ghostshell/issues/85) Approvals | `Approvals/` (built) | `Approvals.swift`, `Rules/ApprovalRules.swift` |
 | [https://github.com/kulesy/ghostshell/issues/86](https://github.com/kulesy/ghostshell/issues/86) Sidebar | `Sidebar/` | `Sessions.swift` |
-| [https://github.com/kulesy/ghostshell/issues/87](https://github.com/kulesy/ghostshell/issues/87) Sidebar | `Sidebar/` | `Sessions.swift` |
+| [https://github.com/kulesy/ghostshell/issues/87](https://github.com/kulesy/ghostshell/issues/87) Organise | `Organise/` (built) | `Layout.swift` |
 | [https://github.com/kulesy/ghostshell/issues/88](https://github.com/kulesy/ghostshell/issues/88) Groups | `Groups/` | `Groups.swift` |
 | [https://github.com/kulesy/ghostshell/issues/89](https://github.com/kulesy/ghostshell/issues/89) Files | `Files/` | `Files.swift` |
 | [https://github.com/kulesy/ghostshell/issues/90](https://github.com/kulesy/ghostshell/issues/90) Widgets | `Widgets/` | `Widgets.swift` |
@@ -107,7 +107,7 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 | [https://github.com/kulesy/ghostshell/issues/95](https://github.com/kulesy/ghostshell/issues/95) Push | App-level code in the iPhone and Mac targets | `Push.swift` |
 | [https://github.com/kulesy/ghostshell/issues/82](https://github.com/kulesy/ghostshell/issues/82) Watch | A new `apple/GhostShellWatch/` folder. It uses `GhostShellKit` only. It edits the project file. | none |
 
-The two sidebar PBIs share one folder. Split the work by file inside `Sidebar/`.
+86 and 87 split the sidebar work: 86 is in `Sidebar/` and 87 is in `Organise/`.
 
 ## Sidebar slots
 
@@ -131,6 +131,8 @@ Idle routines reach the sidebar through `SidebarState.idleRoutines`, because the
 `SessionIndexFeed` pauses while the window is hidden, so notifications (94) keep it running through `AppModel.watchesWhileHidden`.
 
 Selection is a set. One chosen row opens its session, and several stay chosen for 87's bulk actions.
+
+A slot view of 87 reads `OrganiseModel` from the environment. `OrganiseHost`, applied in `SidebarScreen.swift`, provides it and shows its alerts and name sheets, so a slot view built outside the sidebar needs the model as an optional. After any write, a feature calls `AppModel.refreshIndex()` so the sidebar does not wait for the next poll.
 
 ## What the base does not do
 

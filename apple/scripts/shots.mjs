@@ -302,6 +302,94 @@ class App {
     const button = this.findAll(node => node.role === 'AXButton')[n - 1];
     return !!button && this.act(button);
   }
+  // Polls the tree for up to 2 seconds for a node.
+  waitFor(test, tries = 10) {
+    for (let attempt = 0; attempt < tries; attempt += 1) {
+      const node = this.find(test);
+      if (node) return node;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
+    return undefined;
+  }
+  // The items directly under a menu, with dividers left out.
+  menuItemsOf(menu) {
+    const under = menu.path.join();
+    return this.findAll(node => node.role === 'AXMenuItem' && node.title && node.path.length === menu.path.length + 1 && node.path.slice(0, -1).join() === under);
+  }
+  // Cancels an open menu and waits until it has left the tree, so the next one is not mistaken for it.
+  closeMenu() {
+    const menu = this.find(node => node.role === 'AXMenu');
+    if (!menu) return false;
+    this.act(menu, 'AXCancel');
+    for (let attempt = 0; attempt < 10 && this.find(node => node.role === 'AXMenu'); attempt += 1) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    return true;
+  }
+  // The nth session row, counted from 0, or the section heading whose title starts with a name.
+  rowNode(kind, nth) {
+    if (kind !== 'heading') return this.sessionRowNodes()[nth];
+    return this.findAll(node => node.role === 'AXRow' && node.kid(0, 0, 0)?.role === 'AXHeading' && node.kid(0, 0, 0).desc?.startsWith(nth))[0];
+  }
+  // Opens the right-click menu of the nth row or heading, then lists its items (no path) or presses down the path, opening each submenu on the way.
+  // The app answers AXShowMenu late and with an error while the menu is open, so the answer is ignored and the tree is watched for the menu instead.
+  rowMenu(kind, nth, ...path) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const done = this.openMenu(kind, nth, ...path);
+      if (done && (done === true || done.length)) return done;
+      this.closeMenu();
+    }
+    return path.length ? false : [];
+  }
+  openMenu(kind, nth, ...path) {
+    const row = this.rowNode(kind, nth);
+    if (!row) return path.length ? false : [];
+    const inRow = node => node.role === 'AXMenu' && node.path.length > row.path.length && node.path.slice(0, row.path.length).join() === row.path.join();
+    let menu;
+    for (const target of kind === 'heading' ? [row.kid(0, 0), row.kid(0, 0, 0)] : [row.kid(0, 0), row.kid(0, 0)]) {
+      if (!target) continue;
+      this.run('act', JSON.stringify(target.path), 'AXShowMenu');
+      menu = this.waitFor(inRow, 15);
+      if (menu) break;
+    }
+    if (!menu) return path.length ? false : [];
+    if (!path.length) return this.menuItemsOf(menu).map(item => item.title);
+    for (const [i, name] of path.entries()) {
+      const item = this.menuItemsOf(menu).find(entry => entry.title === name || entry.title.startsWith(name));
+      if (!item || !this.act(item)) return false;
+      if (i < path.length - 1) {
+        menu = this.waitFor(node => node.role === 'AXMenu' && node.path.length === item.path.length + 1 && node.path.slice(0, -1).join() === item.path.join());
+        if (!menu) return false;
+      }
+    }
+    return true;
+  }
+  // The names of a row's or heading's menu items. The menu is closed again.
+  menuItems(kind, nth) {
+    const items = this.rowMenu(kind, nth);
+    this.closeMenu();
+    return items;
+  }
+  // The names of the View menu's items. The menu is closed again.
+  viewItems() {
+    const popup = this.viewPopup();
+    if (!popup || !this.act(popup)) return [];
+    const menu = this.waitFor(node => node.role === 'AXMenu' && node.path.length === popup.path.length + 1 && node.path.slice(0, -1).join() === popup.path.join());
+    const items = menu ? this.menuItemsOf(menu).map(item => item.title) : [];
+    this.closeMenu();
+    return items;
+  }
+  // Selects several session rows at once through each row's Select item, because accessibility can only select one row.
+  selectRows(...indexes) {
+    return indexes.every(index => this.rowMenu('row', index, 'Select'));
+  }
+  selectedCount() { return this.sessionRowNodes().filter(node => node.selected === true).length; }
+  // The sheet on show, and the text field in it.
+  sheet() { return this.find(node => node.role === 'AXSheet'); }
+  fillSheet(text) {
+    const sheet = this.sheet();
+    const under = sheet?.path.join();
+    const field = this.find(node => node.role === 'AXTextField' && under && node.path.join().startsWith(`${under},`));
+    return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
+  }
   menu(bar, item) { return this.run('menu', bar, item).ok === true; }
   signOutFromMenu() { return this.menu('File', 'Sign Out'); }
 
@@ -845,6 +933,61 @@ async function accountsFlow(bundle, appearance) {
   }
 }
 
+// Organising from the sidebar: a new group, a row's menu, a rename field, a selection of three, a move into the group, and deleting the group.
+async function organiseFlow(bundle, appearance) {
+  console.log(`\n== ${appearance}: organise sessions, groups and selections`);
+  const server = await startScratch();
+  servers.add(server);
+  const app = new App(bundle, { address: server.address, appearance, tag: '8' });
+  try {
+    await app.launch();
+    app.type(readPassword(server));
+    app.submit();
+    check(await until('rows', () => app.sessionRows().length === 8), 'signing in shows the 8 seeded sessions');
+    const before = app.headings();
+
+    check(app.press('New group'), 'the toolbar has a New group button');
+    check(await until('sheet', () => !!app.sheet()), 'New group asks for a name in a sheet');
+    check(app.fillSheet('Release work'), 'the sheet takes the name');
+    await app.both('new-group-sheet');
+    check(app.press('Save'), 'Save is pressed in the sheet');
+    check(await until('made', () => app.headings() === before + 1 && !app.sheet()), 'the new group shows as a heading straight away');
+
+    const items = app.menuItems('row', 0);
+    console.log('row menu:', items.join(' | '));
+    check(['Rename', 'Move to', 'Pin', 'Archive'].every(name => items.some(item => item.startsWith(name))), 'a session row menu offers rename, move, pin and archive');
+    check(app.rowMenu('row', 0, 'Rename\u2026'), 'Rename is pressed in the row menu');
+    check(await until('rename', () => app.texts().includes('Rename session')), 'Rename opens a field holding the title');
+    await app.both('rename-field');
+    check(app.press('Cancel') && await until('closed', () => !app.sheet()), 'Cancel closes the rename field');
+
+    check(app.selectRows(0, 1, 2) && await until('selected', () => app.selectedCount() === 3), 'three rows can be selected together');
+    await app.both('multi-selection');
+    const bulk = app.menuItems('row', 1);
+    console.log('selection menu:', bulk.join(' | '));
+    check(bulk.some(item => item.startsWith('Archive 3 sessions')), 'a row inside the selection offers the bulk archive');
+
+    check(app.rowMenu('row', 1, 'Move to', 'Release work'), 'Move to Release work is pressed in the selection menu');
+    check(await until('moved', () => app.sessionRows().length === 8 && app.headings() === before + 1), 'moving three rows into the group keeps all eight rows');
+    await app.both('moved-into-group');
+
+    check(app.rowMenu('heading', 'Release work', 'Delete group\u2026'), 'Delete group is pressed in the heading menu');
+    check(await until('ask', () => app.texts().includes('3 sessions become ungrouped')), 'Delete group asks first, naming the group and its three sessions');
+    await app.both('delete-group-confirm');
+    check(app.press('Delete group'), 'the question is confirmed');
+    check(await until('gone', () => app.headings() === before && !app.texts().includes('Release work')), 'the group is gone and its sessions stay');
+    await app.both('after-delete');
+
+    const views = app.viewItems();
+    console.log('view menu:', views.join(' | '));
+    check(views.some(item => item.startsWith('New project')), 'the View menu offers New project');
+    app.signOutFromMenu();
+  } finally {
+    await app.quit();
+    await server.stop();
+  }
+}
+
 const cleanup = async () => {
   for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
@@ -860,7 +1003,7 @@ try {
     compileHelper();
     return built;
   });
-  const flows = argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--chats-only') ? ['chats'] : FLOW ? [FLOW] : ['main', 'marks', 'chats', 'accounts', 'approvals'];
+  const flows = argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--chats-only') ? ['chats'] : FLOW ? [FLOW] : ['main', 'marks', 'chats', 'accounts', 'approvals', 'organise'];
   for (const appearance of APPEARANCES) {
     if (flows.includes('main')) {
       await mainFlow(bundle, appearance, !argv.includes('--no-chat'));
@@ -871,6 +1014,7 @@ try {
     if (flows.includes('chats')) await chatFlow(bundle, appearance);
     if (flows.includes('accounts')) await accountsFlow(bundle, appearance);
     if (flows.includes('approvals')) await approvalsFlow(bundle, appearance);
+    if (flows.includes('organise')) await organiseFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);

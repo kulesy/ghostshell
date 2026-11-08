@@ -68,4 +68,21 @@ final class FeedTests: XCTestCase {
         await feed.stop()
         XCTAssertGreaterThan(later, still)
     }
+
+    func testAnOlderLookAnsweringLateDoesNotPutTheOldIndexBack() async throws {
+        let order = Script([.success(index("old")), .success(index("new"))])
+        let feed = SessionIndexFeed(interval: .seconds(60)) {
+            let first = await order.calls == 0
+            let found = try await order.next()
+            if first { try await Task.sleep(for: .milliseconds(80)) }
+            return found
+        }
+        let slow = Task { await feed.refresh() }
+        try await Task.sleep(for: .milliseconds(20))
+        await feed.refresh()
+        await slow.value
+        await feed.stop()
+        let seen = await collect(feed, count: 2)
+        XCTAssertEqual(seen, [.connection(.live), .index(index("new"))])
+    }
 }
