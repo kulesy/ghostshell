@@ -1,7 +1,7 @@
 import Foundation
 
-// NOTE: [8 Nov 2026] EK - These rules follow the page (public/ui/tree.js, many-rules.js, pick.js, close.js, group-rules.js), and the server holds the same
-// ones for `api/layout/*`. Where the page's words are shown to a person they are copied exactly.
+// These rules follow the page (public/ui/tree.js, many-rules.js, pick.js, close.js, group-rules.js), and the server holds the same ones for `api/layout/*`.
+// Where the page's words are shown to a person they are copied exactly.
 
 /// One place a session can be moved to. `section` is `pinned`, `routines`, a loose list (`started`, `ungrouped`, `other`) or a group's id.
 public struct PlaceTarget: Hashable, Sendable, Identifiable {
@@ -11,7 +11,6 @@ public struct PlaceTarget: Hashable, Sendable, Identifiable {
     public init(label: String, section: String) { (self.label, self.section) = (label, section) }
 }
 
-/// An entry of the Move to menu: a place, or a project's name with its groups under it.
 public enum PlaceEntry: Hashable, Sendable, Identifiable {
     case place(PlaceTarget)
     case project(name: String, items: [PlaceTarget])
@@ -23,7 +22,6 @@ public enum PlaceEntry: Hashable, Sendable, Identifiable {
     }
 }
 
-/// Where a group can go from where it is.
 public struct GroupMove: Hashable, Sendable, Identifiable {
     public var label: String
     /// The project to move to, or nil for Home.
@@ -62,13 +60,11 @@ public enum OrganiseRules {
         return every(index).first { $0.id == id }
     }
 
-    /// The row a session shows under, or itself when it is not nested.
     public static func root(_ index: SessionIndex, _ id: String) -> SessionRow? {
         let row = find(index, id)
         return find(index, row?.parent) ?? row
     }
 
-    /// Every session below `id`, at any depth.
     public static func descendants(_ rows: [SessionRow], of id: String) -> [SessionRow] {
         var seen: Set<String> = [id]
         var found: [SessionRow] = []
@@ -93,7 +89,6 @@ public enum OrganiseRules {
 
     // MARK: One session
 
-    /// Where a session can go from where it is, in sidebar order, with its own place left out.
     public static func sessionTargets(_ index: SessionIndex, _ row: SessionRow) -> [PlaceEntry] {
         let own = row.pinned ? nil : row.group
         let placed = row.pinned || row.group != nil
@@ -123,7 +118,6 @@ public enum OrganiseRules {
         return list.filter { $0.id != row.id && $0.id != row.parent && $0.routine == nil }
     }
 
-    /// Whether a drop on `section` leaves the row where it is, so nothing is sent.
     public static func staysPut(_ index: SessionIndex, _ row: SessionRow, section: String) -> Bool {
         if row.parent != nil { return false }
         if section == "pinned" { return row.pinned }
@@ -152,7 +146,6 @@ public enum OrganiseRules {
         return ids.compactMap { find(index, $0) }.filter { $0.parent.map(picked.contains) != true }
     }
 
-    /// The sentence for a nest that cannot be, or nil.
     public static func refuseNest(_ index: SessionIndex, _ ids: [String], under parent: String) -> String? {
         let top = root(index, parent)
         return ids.contains(parent) || (top.map { ids.contains($0.id) } ?? false) ? nestSelf : nil
@@ -166,7 +159,6 @@ public enum OrganiseRules {
         return PlaceTarget(label: noGroup, section: "ungrouped")
     }
 
-    /// Where the picked rows can go, leaving a place out only when every one of them is there already.
     public static func manyTargets(_ index: SessionIndex, _ rows: [SessionRow]) -> [PlaceEntry] {
         func all(_ place: String) -> Bool { rows.allSatisfy { placeOf($0) == place } }
         let placed = { (r: SessionRow) in r.pinned || r.group != nil || r.parent != nil }
@@ -179,12 +171,10 @@ public enum OrganiseRules {
         return entries
     }
 
-    /// The sessions the picked ones can be nested under: the top level sessions, no routine run, that are not picked.
     public static func manyNestTargets(_ index: SessionIndex, _ ids: [String]) -> [SessionRow] {
         topLists(index).flatMap { $0 }.filter { !ids.contains($0.id) && $0.routine == nil }
     }
 
-    /// What a Move to place means for the server: Pinned, a group, or each session's loose list.
     public static func target(_ index: SessionIndex, section: String) -> ManyTarget {
         section == "pinned" ? .pinned : .group(index.groups.contains { $0.id == section } ? section : nil)
     }
@@ -196,7 +186,6 @@ public enum OrganiseRules {
         return index.groups.first { $0.id == section }?.name ?? looseTarget(rows).label
     }
 
-    /// Whether a write of the picked rows to `to` would change nothing, so nothing is sent.
     public static func changesNothing(_ index: SessionIndex, _ ids: [String], _ to: ManyTarget) -> Bool {
         let rows = carried(index, ids)
         switch to {
@@ -218,13 +207,11 @@ public enum OrganiseRules {
 
     // MARK: Groups and projects
 
-    /// Where a group can go from where it is: Home when it is in a project, and each project it is not in.
     public static func moveTargets(_ projects: [SessionProject], _ group: SessionGroup) -> [GroupMove] {
         (group.project != nil ? [GroupMove(label: "Move to Home", project: nil)] : [])
             + projects.filter { $0.id != group.project }.map { GroupMove(label: "Move to \($0.name)", project: $0.id) }
     }
 
-    /// The groups of a view in sidebar order. Home is `nil`.
     public static func groups(_ index: SessionIndex, view: String?) -> [SessionGroup] {
         let shown = SidebarOutline.view(view, in: index)
         return index.groups.filter { SidebarOutline.view($0.project, in: index) == shown }
@@ -242,7 +229,6 @@ public enum OrganiseRules {
         return parts.joined(separator: " ")
     }
 
-    /// What the question before a project is deleted says.
     public static func deleteDetail(_ project: SessionProject, in index: SessionIndex) -> String {
         let n = index.groups.filter { $0.project == project.id }.count
         return n == 0 ? "It has no groups." : "Its \(n == 1 ? "group moves" : "\(n) groups move") to Home. No group or session is deleted."
@@ -280,7 +266,6 @@ public enum OrganiseRules {
 
     private static func sentence(_ text: String) -> String { text.last.map { ".!?".contains($0) } == true ? text : "\(text)." }
 
-    /// The note once a batch has been archived, or part of it. `reason` is the first refusal.
     public static func archiveNote(archived: Int, total: Int, stopped: Int = 0, subs: Int = 0, reason: String = "") -> String {
         let stops = stopped > 0 ? "\(subs > 0 ? "," : "") and stopped \(stopped)" : ""
         if archived == total { return "Archived \(sessions(total))\(withSubs(subs))\(stops)." }

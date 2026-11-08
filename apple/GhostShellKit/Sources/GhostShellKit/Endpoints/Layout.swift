@@ -1,9 +1,8 @@
 import Foundation
 
-// NOTE: [8 Nov 2026] EK - These calls mirror the `api/layout/*` routes in server.mjs and the page's own calls in public/app.js and public/ui/sessions-list.js.
-// The server wants `null` for "no group", "no parent" and "Home", so those bodies write the key out; a Swift optional would leave it off.
+// These calls mirror the `api/layout/*` routes in server.mjs and the page's own calls in public/app.js.
 
-/// A key that is written as `null` when empty.
+// NOTE: [8 Nov 2026] EK - The server wants `null` for "no group", "no parent" and "Home", so those bodies write the key out. A Swift optional would leave it off.
 private struct Maybe: Encodable, Sendable {
     var value: String?
     func encode(to encoder: Encoder) throws {
@@ -19,7 +18,6 @@ private struct IDName: Encodable, Sendable { var id: String; var name: String }
 private struct IDOnly: Encodable, Sendable { var id: String }
 private struct Empty: Encodable, Sendable {}
 
-/// What an account pin can sit on. The Mac app pins sessions only.
 public enum PinKind: String, Hashable, Sendable, Encodable { case session, group, project }
 
 private struct AccountBody: Encodable, Sendable {
@@ -131,7 +129,6 @@ private struct ManyBody: Encodable, Sendable {
     }
 }
 
-/// What an archive answered: whether it stopped a running chat, and how many sub sessions went with the session.
 public struct ArchiveReply: Hashable, Sendable, Decodable {
     public var stopped: Bool
     public var stoppedCount: Int
@@ -145,7 +142,7 @@ public struct ArchiveReply: Hashable, Sendable, Decodable {
     }
 }
 
-/// What a write of several sessions answered. `undo` is the token `api/layout/many/undo` takes, which this app does not use yet.
+/// `undo` is the token `api/layout/many/undo` takes, which this app does not use yet.
 public struct ManyReply: Hashable, Sendable, Decodable {
     public var undo: String?
     public var count: Int
@@ -157,7 +154,6 @@ public struct ManyReply: Hashable, Sendable, Decodable {
     }
 }
 
-/// A group or project the server made.
 public struct MadeFolder: Hashable, Sendable, Decodable {
     public var id: String
     public var name: String
@@ -169,7 +165,6 @@ public struct MadeFolder: Hashable, Sendable, Decodable {
     }
 }
 
-/// What deleting a group answered: whether its chat was running and so stopped.
 public struct RemovedGroup: Hashable, Sendable, Decodable {
     public var stopped: Bool
     private enum Key: String, CodingKey { case stopped }
@@ -190,23 +185,21 @@ extension GhostShellClient {
         try await send("api/layout/pin", json: PinBody(id: id, pinned: true))
     }
 
-    /// Moves a session to a group, or with a nil `group` to the loose list of its own app. That also unpins it.
+    /// A nil `group` also unpins the session.
     public func moveSession(_ id: String, group: String?) async throws {
         try await send("api/layout/move", json: MoveBody(id: id, group: group))
     }
 
-    /// Nests a session under `parent`, or takes it out of its parent when `parent` is nil.
     public func nestSession(_ id: String, parent: String?) async throws {
         try await send("api/layout/nest", json: NestBody(id: id, parent: parent))
     }
 
-    /// With `stop` true the server stops a running chat as it archives. With false it refuses with a 409 when one is running.
+    /// With `stop` false a running chat in the family is refused, which throws `.running`.
     @discardableResult
     public func archiveSession(_ id: String, archived: Bool = true, stop: Bool = true) async throws -> ArchiveReply {
         try await post("api/layout/archive", json: ArchiveBody(id: id, archived: archived, refuseIfRunning: !stop))
     }
 
-    /// Interrupts the turn a session is running.
     public func stopSession(_ id: String) async throws {
         try await send("api/sessions/\(try pathID(id))/stop", json: Empty())
     }
@@ -216,7 +209,7 @@ extension GhostShellClient {
         try await post("api/layout/many", json: ManyBody(ids: ids, to: target))
     }
 
-    /// Pins a session to an account, or with a nil `account` clears the pin so it follows the active account. The server refuses an account that is signed out.
+    /// The server refuses an account that is signed out.
     public func pinAccount(_ kind: PinKind = .session, id: String, account: String?) async throws {
         try await send("api/layout/account", json: AccountBody(kind: kind, id: id, account: account))
     }
@@ -232,7 +225,6 @@ extension GhostShellClient {
         try await send("api/layout/group/rename", json: IDName(id: id, name: name))
     }
 
-    /// Moves a group to a project, or with a nil `project` to Home.
     public func moveGroup(_ id: String, project: String?) async throws {
         try await send("api/layout/group/move", json: GroupMoveBody(id: id, project: project))
     }
