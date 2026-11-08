@@ -409,6 +409,30 @@ test('no one character, wherever it sits, gets a new name past the duplicate che
   assert.deepEqual(subs.calls, []);
 });
 
+test('a group whose name holds a character that draws nothing, as the sidebar can make, blocks a new name that reads the same with that character as a space or gone', () => {
+  const subs = subsFor();
+  const blank = new Set(['\u2800', '\u3164']);
+  for (let point = 0; point <= 0x10FFFF; point++) {
+    if (point >= 0xD800 && point <= 0xDFFF) continue;
+    const one = String.fromCodePoint(point);
+    const groups = [{ id: 'cg-x', name: `Dep${one}loy` }];
+    const card = layoutSummary('create_group', { name: groups[0].name }, subs, groups);
+    for (const name of ['Dep loy', 'Deploy']) {
+      const looks = layoutSummary('create_group', { name }, subs, groups) === card || (blank.has(one) && name === 'Dep loy');
+      if (looks) assert.throws(() => createGroup({ name }, subs, groups), /\[cg-x\]/, `U+${point.toString(16)} against ${name}`);
+    }
+  }
+  assert.deepEqual(subs.calls, []);
+});
+
+test('an emoji joined into one picture blocks the same emoji written apart', () => {
+  const subs = subsFor();
+  const groups = [{ id: 'cg-f', name: 'Family \u{1F468}\u200D\u{1F469}\u200D\u{1F467}' }];
+  refused(() => createGroup({ name: 'Family \u{1F468} \u{1F469} \u{1F467}' }, subs, groups), /\[cg-f\]/);
+  refused(() => createGroup({ name: 'Family \u{1F468}\u{1F469}\u{1F467}' }, subs, groups), /\[cg-f\]/);
+  assert.deepEqual(subs.calls, []);
+});
+
 test('a new name keeps the joiners inside an emoji', () => {
   const subs = subsFor();
   for (const name of ['\u{1F9D1}\u200D\u{1F4BB} Dev', '\u2699\uFE0F Ops']) assert.equal(createGroup({ name }, subs, []).startsWith('Created'), true);
