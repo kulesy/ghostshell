@@ -2,7 +2,7 @@
 // Drives the Debug app through System Events (XCUITest is not available here) and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only]
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -12,7 +12,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from './build.mjs';
-import { startScratch, TEST_CWD } from './test-server.mjs';
+import { startChatStub } from './chat-fixtures.mjs';
+import { copyTranscript, startScratch, TEST_CWD } from './test-server.mjs';
 
 const argv = process.argv.slice(2);
 const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
@@ -160,16 +161,45 @@ repeat with e in els
 end repeat
 return n`).stdout.trim());
   }
-  chooseFirstRow() {
+  chooseRow(index = 0) {
     this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+set n to 0
 repeat with e in els
   try
     if role of e is "AXRow" then
-      set selected of e to true
-      return
+      if n is ${index} then
+        set selected of e to true
+        return
+      end if
+      set n to n + 1
     end if
   end try
 end repeat`);
+  }
+  chooseFirstRow() { this.chooseRow(0); }
+  // The chat is the last vertical scroll bar in the window, after the sidebar's. 0 is the top and 1 the end.
+  scrollChat(to) {
+    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+set bar to missing value
+repeat with e in els
+  try
+    if role of e is "AXScrollBar" and orientation of e is "AXVerticalOrientation" then set bar to e
+  end try
+end repeat
+if bar is not missing value then set value of bar to ${to}`);
+  }
+  // Presses the first button whose title or description is exactly `name`.
+  press(name) {
+    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+repeat with e in els
+  try
+    if role of e is "AXButton" and (description of e is ${JSON.stringify(name)} or title of e is ${JSON.stringify(name)}) then
+      perform action "AXPress" of e
+      return "yes"
+    end if
+  end try
+end repeat
+return "no"`).stdout.trim() === 'yes';
   }
   signOutFromMenu() { this.events('click menu item "Sign Out" of menu 1 of menu bar item "File" of menu bar 1'); }
 
@@ -221,6 +251,60 @@ async function signInDirect(server) {
   return /capcom=([0-9a-f]+)/.exec(response.headers.get('set-cookie') || '')?.[1];
 }
 
+async function chatFlow(binary, appearance) {
+  const stub = await startChatStub();
+  console.log(`\n== ${appearance}: reading chats`);
+  const app = new App(binary, { address: stub.address, appearance, tag: '6' });
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
+
+    app.chooseRow(0);
+    check(await until('rich', () => app.texts().includes('Why is the upload test flaky? It fails about one run in five.'), 20), 'a rich chat shows its first message');
+    await sleep(800);
+    await app.both('chat-rich');
+    app.scrollChat(0.35);
+    await sleep(800);
+    await app.shot(`6-chat-rich-middle-${appearance}`);
+    app.resize(MIN_SIZE);
+    await sleep(700);
+    app.scrollChat(0.35);
+    await sleep(800);
+    await app.shot(`6-chat-rich-middle-min-${appearance}`);
+    app.resize(DEFAULT_SIZE);
+    await sleep(700);
+
+    app.chooseRow(1);
+    check(await until('stream', () => app.texts().includes('Go on, I am ready.'), 20), 'a streaming chat shows its last message');
+    await sleep(5000);
+    await app.both('chat-streaming');
+
+    app.chooseRow(2);
+    check(await until('long', () => app.texts().includes('Question 600: what does step 600 of the migration do?'), 20), 'a long chat opens at its end');
+    await sleep(800);
+    await app.both('chat-long-end');
+    app.resize(DEFAULT_SIZE);
+    await sleep(700);
+    app.scrollChat(0);
+    await sleep(2500);
+    await app.shot(`6-chat-long-scrolled-up-${appearance}`);
+    app.scrollChat(0);
+    await sleep(2500);
+    await app.shot(`6-chat-long-scrolled-up-again-${appearance}`);
+
+    app.chooseRow(3);
+    check(await until('empty', () => app.texts().includes('Nothing here yet'), 20), 'an empty chat says so');
+    await app.both('chat-empty');
+    app.signOutFromMenu();
+    check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the chat stub');
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+}
+
 async function mainFlow(binary, appearance, withChat) {
   const server = await startScratch({ claude: withChat });
   servers.add(server);
@@ -262,7 +346,12 @@ async function mainFlow(binary, appearance, withChat) {
       }, 90);
       check(finished, 'the chat finishes');
       await sleep(4000);
+      copyTranscript(server, id);
       await app.both('list-chat-finished');
+      app.chooseRow(0);
+      check(await until('real chat', () => app.texts().includes('Reply with the single word ok.'), 20), 'the finished Haiku chat reads back in the window');
+      await sleep(800);
+      await app.both('chat-real');
       await ownerCall(server, 'logout', undefined, token);
     }
 
@@ -392,10 +481,13 @@ try {
   const app = build({ release: false });
   const binary = path.join(app, 'Contents', 'MacOS', 'GhostShell');
   for (const appearance of APPEARANCES) {
-    await mainFlow(binary, appearance, !argv.includes('--no-chat'));
-    await emptyAndLocked(binary, appearance);
-    await badAddresses(binary, appearance);
-    await marks(binary, appearance);
+    if (!argv.includes('--chats-only')) {
+      await mainFlow(binary, appearance, !argv.includes('--no-chat'));
+      await emptyAndLocked(binary, appearance);
+      await badAddresses(binary, appearance);
+      await marks(binary, appearance);
+    }
+    await chatFlow(binary, appearance);
   }
   console.log(failures.length ? `\n${failures.length} check(s) failed:\n${failures.map(f => `  ${f}`).join('\n')}` : '\nAll checks passed.');
   console.log(`Screenshots: ${OUT}`);

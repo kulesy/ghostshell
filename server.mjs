@@ -969,6 +969,7 @@ const outsideKey = o => (o ? JSON.stringify([o.startedAt, o.tokens, o.tools.map(
 
 const EVENT_BACKLOG = 8 * 1024 * 1024;
 
+// NOTE: [8 Nov 2026] EK - The Swift app decodes these events in apple/GhostShellKit/Sources/GhostShellKit/Endpoints/Chat.swift, which names this handler in turn. Decoding is lenient, so a renamed event or field is dropped there with no error.
 function events(req, res, id) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
   // A page that stops reading is dropped once this much waits for it, and its EventSource reconnects to a fresh snapshot.

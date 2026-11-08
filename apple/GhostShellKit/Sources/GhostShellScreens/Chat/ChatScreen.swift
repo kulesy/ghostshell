@@ -1,15 +1,58 @@
+import GhostShellKit
 import SwiftUI
 
-/// A stub. It shows the chosen session's title and nothing else. The chat PBI replaces this file.
+/// A session's chat: the thread, the line that says what Claude is doing, and the layout the slots hang from.
 struct ChatScreen: View {
-    @Environment(AppModel.self) private var model
     let sessionID: String
 
+    var body: some View { ChatHost(sessionID: sessionID).id(sessionID) }
+}
+
+private struct ChatHost: View {
+    @Environment(AppModel.self) private var app
+    let sessionID: String
+    @State private var model: ChatModel?
+
     var body: some View {
-        let title = model.rows.first { $0.id == sessionID }?.title ?? ""
-        Text(title.isEmpty ? "Untitled" : title)
-            .font(.title2)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle(title.isEmpty ? "Untitled" : title)
+        let title = app.rows.first { $0.id == sessionID }?.title ?? ""
+        Group {
+            if let model { ChatLayout(model: model).environment(model) } else { Color.clear }
+        }
+        .navigationTitle(title.isEmpty ? "Untitled" : title)
+        .task {
+            guard let client = app.client else { return }
+            let fresh = ChatModel(chat: ChatContext(sessionID: sessionID, client: client))
+            model = fresh
+            await fresh.run()
+            fresh.close()
+        }
+    }
+}
+
+private struct ChatLayout: View {
+    let model: ChatModel
+
+    var body: some View {
+        @Bindable var chat = model.chat
+        VStack(spacing: 0) {
+            ChatThreadView()
+            NoticeBar()
+            AgentStrip()
+            if chat.terminalOpen { ChatSlots.terminal(chat) }
+            ChatSlots.prompts(chat)
+            ChatSlots.composer(chat)
+        }
+        .inspector(isPresented: $chat.filePanelOpen) { ChatSlots.filePanel(chat) }
+        .toolbar {
+            ToolbarItemGroup {
+                ChatSlots.fileToolbar(chat)
+                ChatSlots.terminalToolbar(chat)
+            }
+        }
+        .environment(\.openURL, OpenURLAction { url in
+            guard let link = ChatLink(url: url) else { return .discarded }
+            return ChatSlots.openLink(link, chat) ? .handled : .discarded
+        })
+        .task { await model.keepDay() }
     }
 }

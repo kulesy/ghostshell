@@ -35,7 +35,7 @@ function seed(projects, cwd, count = TITLES.length) {
     const stamp = new Date(now - (i * 37 + 3) * 60_000).toISOString();
     const lines = [
       { type: 'user', cwd, gitBranch: 'main', timestamp: stamp, message: { role: 'user', content: title }, uuid: crypto.randomUUID() },
-      { type: 'assistant', cwd, timestamp: stamp, message: { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] }, uuid: crypto.randomUUID() },
+      { type: 'assistant', cwd, timestamp: stamp, message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Done.' }] }, uuid: crypto.randomUUID() },
     ];
     fs.writeFileSync(file, lines.map(l => JSON.stringify(l)).join('\n') + '\n');
     const when = new Date(now - (i * 37 + 3) * 60_000);
@@ -54,6 +54,15 @@ i=0
 while [ $i -lt $n ]; do a=$1; shift; i=$((i+1)); [ "$a" = "--chrome" ] || set -- "$@" "$a"; done
 exec ${JSON.stringify(real)} "$@"
 `, { mode: 0o755 });
+}
+
+// The server's transcript index skips a folder that is a symlink, so a finished test chat is copied in as a plain file to be read back.
+export function copyTranscript(server, id) {
+  const link = path.join(server.home, '.claude', 'projects', folderName(TEST_CWD));
+  const source = path.join(os.homedir(), '.claude', 'projects', folderName(TEST_CWD), `${id}.jsonl`);
+  fs.rmSync(link, { force: true });
+  fs.mkdirSync(link);
+  fs.copyFileSync(source, path.join(link, `${id}.jsonl`));
 }
 
 export async function startScratch({ empty = false, claude = false, base = '/private/tmp/claude-501/gs-scratch' } = {}) {
