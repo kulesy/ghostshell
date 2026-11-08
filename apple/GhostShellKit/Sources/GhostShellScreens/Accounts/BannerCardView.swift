@@ -52,13 +52,13 @@ struct BannerCardView: View {
     @ViewBuilder private var buttons: some View {
         let waiting = busy || card.action?.busy == true
         if card.action != nil || card.force != nil || card.dismiss != nil {
-            HStack(spacing: 6) {
+            SideBySide(alignment: .center, spacing: 6) {
                 if let action = card.action {
-                    Button(action.label, action: onAction).disabled(waiting || action.blocked).phoneTouch()
+                    Button(action.label, action: onAction).disabled(waiting || action.blocked).phoneTouch(boxed: true)
                 }
                 if let force = card.force, let onForce {
                     // Force stays live while the update waits on running chats, the one time it is needed.
-                    Button(force, action: onForce).disabled(busy).phoneTouch()
+                    Button(force, action: onForce).disabled(busy).phoneTouch(boxed: true)
                 }
                 if let dismiss = card.dismiss, let onDismiss {
                     Button(dismiss, action: onDismiss).buttonStyle(.borderless).disabled(busy).phoneTouch()
