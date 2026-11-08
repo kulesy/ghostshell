@@ -214,8 +214,13 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
         openFile(app, line: "Notes: NOTES.md:14", header: "NOTES.md")
         XCTAssertTrue(contains(app, "The upload test fails about one run in five").waitForExistence(timeout: 10), "The markdown is rendered\n\(app.debugDescription)")
-        for name in ["Edit", "Show rendered", "Close"] { XCTAssertTrue(app.buttons[name].firstMatch.exists, "\(name) is on the panel") }
+        for name in ["Edit", "Show rendered", "Close", "Save to Files"] { assertTouchable(app.buttons[name].firstMatch, name) }
         shot("files-2-markdown")
+        // The panel is a pushed step of its own, so Back returns to the chat and Show file pushes it again.
+        back(app)
+        XCTAssertTrue(app.buttons["Show file"].firstMatch.waitForExistence(timeout: 5), "Back leaves the panel for the chat\n\(app.debugDescription)")
+        app.buttons["Show file"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 5), "Show file pushes the panel again")
         app.buttons["Close"].firstMatch.tap()
         XCTAssertTrue(app.buttons["Show file"].firstMatch.waitForExistence(timeout: 5), "The toolbar can bring the file back")
 
@@ -230,12 +235,25 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.buttons["Close"].firstMatch.tap()
 
         openFile(app, line: "A short intro: intro.wav", header: "intro.wav")
-        XCTAssertTrue(app.buttons["Pause"].firstMatch.waitForExistence(timeout: 10) || app.buttons["Play"].firstMatch.exists, "The clip has a play control")
+        let play = app.buttons.matching(NSPredicate(format: "label IN {'Play', 'Pause'}")).firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 10), "The clip has a play control")
+        assertTouchable(play, "Play")
         shot("files-5-audio")
         app.buttons["Close"].firstMatch.tap()
 
         openFile(app, line: "The bundle: archive.zip", header: "archive.zip")
         shot("files-6-binary")
+        let saves = app.buttons.matching(NSPredicate(format: "label == 'Save to Files'")).allElementsBoundByIndex
+        XCTAssertFalse(saves.isEmpty, "A file with no preview can be saved to Files")
+        for save in saves { assertTouchable(save, "Save to Files") }
+        saves.last?.tap()
+        XCTAssertTrue(contains(app, "archive.zip").waitForExistence(timeout: 10), "The save sheet offers the file's own name\n\(app.debugDescription)")
+        sleep(1)
+        shot("files-6b-save-to-files")
+        // The system's Files sheet has no Cancel on this OS, so a drag down from its top edge puts it away.
+        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+        top.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 10), "The panel is back under the sheet\n\(app.debugDescription)")
         app.buttons["Close"].firstMatch.tap()
 
         tapLink(app, line: "An old log: gone.txt")
@@ -254,8 +272,11 @@ final class GhostShelliPhoneUITests: XCTestCase {
         editor.tap()
         editor.typeText("Typed on the phone. ")
         shot("files-8-editor")
+        for name in ["Save", "Cancel"] { assertTouchable(app.buttons[name].firstMatch, name) }
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "The keyboard is up while typing")
         app.buttons["Save"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Saved NOTES.md"].waitForExistence(timeout: 10), "Saving says so\n\(app.debugDescription)")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "Saving puts the keyboard away")
         shot("files-9-saved")
     }
 
@@ -267,6 +288,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Next image"].firstMatch.waitForExistence(timeout: 10), app.debugDescription)
         sleep(1)
         shot("files-10-viewer")
+        for name in ["Previous image", "Next image", "Close"] { assertTouchable(app.buttons[name].firstMatch, name) }
+        XCTAssertFalse(app.navigationBars.firstMatch.isHittable, "The viewer covers the chat's own bar, so it fills the screen")
         app.buttons["Next image"].firstMatch.tap()
         sleep(1)
         shot("files-11-viewer-next")
@@ -275,6 +298,20 @@ final class GhostShelliPhoneUITests: XCTestCase {
         shot("files-12-viewer-swiped")
         app.buttons["Close"].firstMatch.tap()
         XCTAssertFalse(app.buttons["Next image"].firstMatch.exists, "Close puts the viewer away")
+    }
+
+    func testAnAttachedFileChipOpensTheFile() throws {
+        let app = openFilesChat()
+        let chip = app.buttons.matching(NSPredicate(format: "label CONTAINS 'spec.pdf'")).firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 10), "The attached file is a button\n\(app.debugDescription)")
+        assertTouchable(chip, "The spec.pdf chip")
+        chip.tap()
+        XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 10), "The chip opens the panel\n\(app.debugDescription)")
+        // A path no reply links is refused by the server, and the panel says so.
+        XCTAssertTrue(app.staticTexts["This chat does not link to that file."].firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+        shot("files-13-attachment-chip")
+        back(app)
+        XCTAssertTrue(app.buttons["Show file"].firstMatch.waitForExistence(timeout: 5) || chip.exists, "Back returns to the chat")
     }
 
     // MARK: Widgets
@@ -287,10 +324,12 @@ final class GhostShelliPhoneUITests: XCTestCase {
         sleep(2)
         shot("widgets-1-chart")
         XCTAssertGreaterThan(app.webViews.count, 0, "The widget draws in a web view")
-        app.webViews.element(boundBy: 0).press(forDuration: 1.2)
+        // A long press in the widget selects the word under it and offers the system's callout with Copy.
+        app.webViews.element(boundBy: app.webViews.count - 1).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(forDuration: 1.3)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 5), "A long press in a widget offers Copy\n\(app.debugDescription)")
         sleep(1)
         shot("widgets-2-long-press")
-        app.tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97)).tap()
         back(app)
 
         open(app, "A widget that asks first", expecting: "Show me a widget that tries to send a message on its own.")
@@ -309,16 +348,31 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
     }
 
+    /// The icon is named in capitals on a phone, because a list header uppercases its text, so the name is matched without case.
+    private func headingIcon(_ app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Open the Release chat")).firstMatch
+    }
+
     private func openGroupChat(_ app: XCUIApplication) {
-        let icon = app.descendants(matching: .any)["Open the Release chat"].firstMatch
-        if icon.waitForExistence(timeout: 3) {
-            icon.tap()
-        } else {
-            // The icon is not in the accessibility tree, so it is tapped where it is drawn, left of the count.
-            let heading = rowStarting(app, "Release").frame
-            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: heading.maxX - 73, dy: heading.midY)).tap()
-        }
+        let icon = headingIcon(app)
+        XCTAssertTrue(icon.waitForExistence(timeout: 5), "The heading's chat icon is a button\n\(app.debugDescription)")
+        icon.tap()
         XCTAssertTrue(app.segmentedControls.buttons["Sub sessions"].firstMatch.waitForExistence(timeout: 15), "The group chat opens\n\(app.debugDescription)")
+    }
+
+    func testAGroupHeadingOpensItsChatFromTheIconAndTheLongPress() throws {
+        let app = launch(stub: "groups")
+        signIn(app, expecting: "A session outside the group")
+        assertTouchable(headingIcon(app), "The heading's chat icon")
+        let heading = rowStarting(app, "Release")
+        heading.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).press(forDuration: 1.0)
+        let item = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Open group chat")).firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "A long press on the heading offers Open group chat\n\(app.debugDescription)")
+        XCTAssertTrue(app.buttons["Cancel"].firstMatch.exists)
+        shot("groups-1b-heading-menu")
+        assertTouchable(item, "Open group chat")
+        item.tap()
+        XCTAssertTrue(app.segmentedControls.buttons["Sub sessions"].firstMatch.waitForExistence(timeout: 15), "The menu opens the group chat\n\(app.debugDescription)")
     }
 
     func testAGroupChatShowsItsChipsAndSubSessions() throws {
@@ -332,6 +386,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The first Start is refused by the stub, which says so under the chip.
         XCTAssertTrue(app.buttons["Start"].firstMatch.waitForExistence(timeout: 5), "A suggested task has Start\n\(app.debugDescription)")
         XCTAssertTrue(app.buttons["Dismiss"].firstMatch.exists)
+        for name in ["Start", "Dismiss"] { assertTouchable(app.buttons[name].firstMatch, name) }
         app.buttons["Start"].firstMatch.tap()
         sleep(2)
         shot("groups-3-chip-start")
@@ -341,20 +396,29 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(reply.waitForExistence(timeout: 10), app.debugDescription)
         sleep(1)
         shot("groups-4-sub-sessions")
+        let details = app.buttons["Details of Draft the release notes"].firstMatch
+        assertTouchable(reply, "Reply")
+        assertTouchable(details, "Details")
         reply.tap()
         let box = app.textViews["Message to Draft the release notes"].firstMatch
+        XCTAssertTrue(box.waitForExistence(timeout: 5), app.debugDescription)
+        assertTouchable(app.buttons["Cancel"].firstMatch, "Cancel")
+        assertTouchable(app.buttons["Send"].firstMatch, "Send")
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertFalse(box.waitForExistence(timeout: 2), "Cancel puts the reply box away")
+        reply.tap()
         XCTAssertTrue(box.waitForExistence(timeout: 5), app.debugDescription)
         box.tap()
         box.typeText("Hello from the phone")
         shot("groups-5-reply-box")
         app.keyboards.buttons["return"].firstMatch.tap()
+        XCTAssertTrue((box.value as? String)?.contains("\n") == true, "Return adds a newline\n\(box.value ?? "")")
         XCTAssertTrue(app.buttons["Send"].firstMatch.exists, "Send is the send route")
         shot("groups-6-after-return")
         app.buttons["Send"].firstMatch.tap()
         sleep(2)
         shot("groups-7-after-send")
 
-        let details = app.buttons["Details of Draft the release notes"].firstMatch
         XCTAssertTrue(details.exists)
         details.tap()
         sleep(1)
