@@ -66,21 +66,29 @@ struct TerminalPanel: View {
             .accessibilityHidden(true)
     }
 
+    /// Narrow columns drop the title word and keep the icon. The path's ideal width is 0 so it truncates before either does.
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            headerRow(Label("Terminal", systemImage: "terminal").labelStyle(.titleAndIcon))
+            headerRow(Label("Terminal", systemImage: "terminal").labelStyle(.iconOnly))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 4)
+    }
+
+    private func headerRow(_ title: some View) -> some View {
         HStack(spacing: 8) {
-            Label("Terminal", systemImage: "terminal").font(ChatStyle.small.weight(.medium)).labelStyle(.titleAndIcon)
+            title.font(ChatStyle.small.weight(.medium)).lineLimit(1).fixedSize()
             Text(TerminalRules.inHome(state.cwd, home: state.home))
                 .font(ChatStyle.monoSmall).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                .frame(idealWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .help(state.cwd)
-            Spacer(minLength: 8)
             Button("Clear") { Task { await store.clear() } }
-                .buttonStyle(.borderless).font(ChatStyle.small)
+                .buttonStyle(.borderless).font(ChatStyle.small).lineLimit(1).fixedSize()
                 .disabled(state.runs.allSatisfy(\.running))
                 .help("Clear finished commands")
             Button { chat.terminalOpen = false } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless).help("Close the terminal").accessibilityLabel("Close terminal")
         }
-        .padding(.horizontal, 12).padding(.vertical, 4)
     }
 
     private var runs: some View {
