@@ -89,13 +89,14 @@ final class ScheduledRulesTests: XCTestCase {
         XCTAssertEqual(wallClock(LocalTime("2026-11-09T09:00:00-03:30")!.date, in: TimeZone(secondsFromGMT: -12_600)!), "2026-11-09T09:00")
     }
 
+    // +05:30 is a zone a test Mac is unlikely to be in, so the entry's zone and .current differ.
     func testAnEditOpensAndResendsTheServersWallClockWhateverTheMacsZoneIs() throws {
-        let was = entry(at: "2026-11-09T09:00:00+10:00")
+        let was = entry(at: "2026-11-09T09:00:00+05:30")
         var draft = ScheduledDraft(was, now: now)
-        XCTAssertEqual(draft.zone.secondsFromGMT(), 10 * 3600)
+        XCTAssertEqual(draft.zone.secondsFromGMT(), 5 * 3600 + 1800)
         XCTAssertEqual(wallClock(draft.at, in: draft.zone), "2026-11-09T09:00")
         XCTAssertNil(try json(draft.request(against: was))["at"], "an unchanged time is not sent")
-        draft.at = LocalTime("2026-11-09T10:30:00+10:00")!.date
+        draft.at = LocalTime("2026-11-09T10:30:00+05:30")!.date
         XCTAssertEqual(try json(draft.request(against: was))["at"] as? String, "2026-11-09T10:30")
     }
 

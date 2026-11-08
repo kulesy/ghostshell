@@ -239,7 +239,8 @@ private struct RoutineFields: View {
                 if let words = scheduleWords(cron, jitterSeconds: jitter ?? 0) { Text(words).font(.callout) }
                 switch preview {
                 case .fires(let times):
-                    Text("Next \(times.map { fireTime($0) }.joined(separator: " · "))").font(.callout).foregroundStyle(.secondary)
+                    // Non-breaking spaces, so a narrow form wraps only between times.
+                    Text("Next \(times.map { fireTime($0).replacingOccurrences(of: " ", with: "\u{00A0}") }.joined(separator: " · "))").font(.callout).foregroundStyle(.secondary)
                 case .never where jitter != nil:
                     Text("This schedule never fires.").font(.callout).foregroundStyle(.secondary)
                 default: EmptyView()
