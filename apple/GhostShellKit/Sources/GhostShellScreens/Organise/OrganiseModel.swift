@@ -66,7 +66,7 @@ final class OrganiseModel {
     }
 
     private func ask(_ title: String, _ detail: String, action: String, cancel: (@MainActor () -> Void)? = nil, run: @escaping @MainActor () -> Void) {
-        asking = Question(title: title.isEmpty ? "Untitled" : title, detail: detail, action: action, run: run, cancel: cancel)
+        asking = Question(title: title, detail: detail, action: action, run: run, cancel: cancel)
     }
 
     // MARK: Names
@@ -132,7 +132,7 @@ final class OrganiseModel {
     }
 
     private func confirmStop(_ row: SessionRow, subs: Int, itself: Bool) {
-        ask(row.title, OrganiseRules.stopQuestion(subs: subs, itself: itself), action: "Stop and archive") { [self] in archiveOne(row, stop: true) }
+        ask("Stop and archive \u{201C}\(row.title)\u{201D}?", OrganiseRules.stopQuestion(subs: subs, itself: itself), action: "Stop and archive") { [self] in archiveOne(row, stop: true) }
     }
 
     /// Without `stop` the server refuses with a 409 when a chat is running, which turns into the question.
@@ -206,7 +206,7 @@ final class OrganiseModel {
         let running = rows.filter(OrganiseRules.isRunning).count
         let below = rows.reduce(0) { $0 + OrganiseRules.subsRunning(all, $1.id) }
         if running == 0 && below == 0 { return archiveBatch(rows, stop: false, tally: Tally(total: rows.count)) }
-        ask(OrganiseRules.sessions(rows.count), OrganiseRules.batchStopDetail(running: running, subs: below), action: "Stop and archive") { [self] in
+        ask("Stop and archive \(OrganiseRules.sessions(rows.count))?", OrganiseRules.batchStopDetail(running: running, subs: below), action: "Stop and archive") { [self] in
             archiveBatch(rows, stop: true, tally: Tally(total: rows.count))
         }
     }
@@ -245,7 +245,7 @@ final class OrganiseModel {
             guard !busy.isEmpty else { if let note { problem = note }; return }
             // The question comes first. The note follows once it is answered.
             let carried = tally
-            ask(OrganiseRules.sessions(busy.count), OrganiseRules.batchStopDetail(running: itself, subs: below), action: "Stop and archive", cancel: { [self] in if let note { problem = note } }) { [self] in
+            ask("Stop and archive \(OrganiseRules.sessions(busy.count))?", OrganiseRules.batchStopDetail(running: itself, subs: below), action: "Stop and archive", cancel: { [self] in if let note { problem = note } }) { [self] in
                 archiveBatch(busy, stop: true, tally: carried)
             }
         }
@@ -272,7 +272,7 @@ final class OrganiseModel {
     func order(_ group: SessionGroup, _ side: OrderSide, beside: String) { run { try await $0.orderGroup(group.id, side, beside: beside) } }
 
     func delete(_ group: SessionGroup) {
-        ask(group.name, OrganiseRules.deleteDetail(group), action: "Delete group") { [self] in
+        ask("Delete \u{201C}\(group.name)\u{201D}?", OrganiseRules.deleteDetail(group), action: "Delete group") { [self] in
             Task {
                 let failure = await attempt { _ = try await $0.removeGroup(group.id) }
                 if let failure { return problem = failure }
@@ -299,7 +299,7 @@ final class OrganiseModel {
     }
 
     func delete(_ project: SessionProject) {
-        ask(project.name, OrganiseRules.deleteDetail(project, in: index), action: "Delete project") { [self] in
+        ask("Delete \u{201C}\(project.name)\u{201D}?", OrganiseRules.deleteDetail(project, in: index), action: "Delete project") { [self] in
             run { try await $0.removeProject(project.id) }
         }
     }
