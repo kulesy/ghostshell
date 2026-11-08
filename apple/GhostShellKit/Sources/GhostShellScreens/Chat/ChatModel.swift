@@ -59,11 +59,11 @@ final class ChatModel {
 
     // MARK: Running
 
-    /// Reads the history, then follows the stream until the caller's task is cancelled.
-    func run() async {
+    /// Reads the history, then follows the stream until the caller's task is cancelled. A nudge from `reconnects` opens the stream again at once.
+    func run(reconnects: ReconnectSignal? = nil) async {
         await load()
         guard !closed, !Task.isCancelled else { return }
-        for await raw in chat.client.eventStream(sessionID: chat.sessionID).events() {
+        for await raw in chat.client.eventStream(sessionID: chat.sessionID).events(restartedBy: reconnects.map { signal in { signal.nudges() } }) {
             if closed { break }
             chat.publish(raw)
             handle(ChatEvent(raw))
@@ -236,7 +236,8 @@ final class ChatModel {
             outside = status.outside
             outsideStart = Self.began(status.outside)
             notice = ""
-            fetchNew()
+            // A fresh stream after a failed read means the server is reachable again.
+            if case .failed = phase { Task { await retry() } } else { fetchNew() }
         case .state(let state):
             patchStatus { $0.state = state }
             if state == .idle { (work, turnStart) = (nil, nil) } else { (outside, outsideStart) = (nil, nil) }

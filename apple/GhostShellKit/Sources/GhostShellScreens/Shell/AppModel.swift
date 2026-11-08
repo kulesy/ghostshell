@@ -29,17 +29,30 @@ public final class AppModel {
     private var feed: SessionIndexFeed?
     private var tasks: [Task<Void, Never>] = []
     public private(set) var visible = true
+    /// Open streams listen here, so a network change or a wake from sleep makes them open again at once.
+    public let reconnects = ReconnectSignal()
+    #if os(macOS)
     /// The scripted run keeps polling while its window is covered, because it runs in the background.
     public var ignoresOcclusion = false
     /// Keeps the feed running while the window is hidden, for notifications. Set by the notifier.
     public var watchesWhileHidden = false { didSet { syncFeed() } }
+    private var keepsPolling: Bool { watchesWhileHidden }
+    #else
+    // NOTE: [8 Nov 2026] EK - iOS suspends a hidden app, so there is nothing to keep polling. Push is a later PBI.
+    private var keepsPolling: Bool { false }
+    #endif
 
     private static let addressKey = "serverAddress"
 
     public init(store: TokenStore, defaults: UserDefaults = .standard, address: String? = nil) {
         self.store = store
         self.defaults = defaults
+        #if os(iOS)
+        // localhost on a phone is the phone, so a new install asks for the address.
+        self.addressText = address ?? defaults.string(forKey: Self.addressKey) ?? ""
+        #else
         self.addressText = address ?? defaults.string(forKey: Self.addressKey) ?? ServerAddress.local.baseURL.absoluteString
+        #endif
         routines.afterWrite = { [weak self] in await self?.refreshIndex() }
     }
 
@@ -72,9 +85,17 @@ public final class AppModel {
     /// Looks at the server's list now. A screen calls it after a change so the list does not wait for the next look.
     public func refreshIndex() async { await feed?.refresh() }
 
+    /// The network came back or changed, or the app returned from the background. The open chat opens its stream again, and the list looks now.
+    public func reconnect() async {
+        reconnects.nudge()
+        await feed?.refresh()
+    }
+
     /// The window calls this as it shows and hides, so a hidden app stops asking the server.
     public func setVisible(_ shown: Bool) {
+        #if os(macOS)
         let shown = shown || ignoresOcclusion
+        #endif
         visible = shown
         routines.setVisible(shown)
         syncFeed()
@@ -82,7 +103,7 @@ public final class AppModel {
 
     private func syncFeed() {
         guard let feed else { return }
-        let poll = visible || watchesWhileHidden
+        let poll = visible || keepsPolling
         Task { if poll { await feed.resume() } else { await feed.pause() } }
     }
 
@@ -111,7 +132,7 @@ public final class AppModel {
                 }
             },
         ]
-        if visible || watchesWhileHidden { Task { await list.resume() } }
+        if visible || keepsPolling { Task { await list.resume() } }
     }
 
     // Reached by sign-out and by any 401, which the client reports through authChanges.

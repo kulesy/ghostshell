@@ -29,8 +29,12 @@ private struct SidebarHost: View {
             .toolbar {
                 ToolbarItemGroup {
                     SidebarToolbarSlot()
+                    #if os(iOS)
+                    PhoneMenu()
+                    #else
                     Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right") { Task { await model.signOut() } }
                         .help("Sign Out")
+                    #endif
                 }
             }
             .modifier(SidebarWatchSlot())

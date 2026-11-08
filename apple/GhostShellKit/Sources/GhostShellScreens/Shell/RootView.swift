@@ -22,6 +22,7 @@ public struct RootView: View {
         .task { await model.start() }
         #if os(iOS)
         .onChange(of: scenePhase) { _, phase in model.setVisible(phase == .active) }
+        .modifier(ReconnectOnWake(model: model))
         #else
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeOcclusionStateNotification)) { _ in
             model.setVisible(NSApp.occlusionState.contains(.visible))
@@ -29,8 +30,11 @@ public struct RootView: View {
         #endif
     }
 
+    // On a phone the split collapses to a stack. `preferredCompactColumn` is what the navigator drives, and it is ignored where both columns fit.
+    @State private var compactColumn = NavigationSplitViewColumn.sidebar
+
     private var split: some View {
-        NavigationSplitView {
+        NavigationSplitView(preferredCompactColumn: $compactColumn) {
             SidebarScreen()
                 .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
                 .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 400)
@@ -40,6 +44,7 @@ public struct RootView: View {
         .toolbar {
             if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
         }
+        .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
     }
 }
 
