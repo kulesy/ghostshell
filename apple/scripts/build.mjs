@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const apple = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Words only the Debug hooks contain. A Release binary holding any of them has shipped a hook.
-const HOOKS = ['GSKeychainService', 'GSAddress', 'GSDefaultsSuite', 'GSAppearance', 'GSShotDir', 'GSNotify', 'GSAlertLog', 'AlertLogPoster', 'ShotWatcher', 'ClickWatcher', 'DebugHooks', 'GSWatchFixture', 'GSWatchTap', 'FixtureRelay', 'request.txt', 'click.txt'];
+const HOOKS = ['GSKeychainService', 'GSAddress', 'GSDefaultsSuite', 'GSAppearance', 'GSShotDir', 'GSNotify', 'GSAlertLog', 'AlertLogPoster', 'ShotWatcher', 'ClickWatcher', 'DebugHooks', 'GSWatchFixture', 'GSWatchTap', 'FixtureRelay', 'request.txt', 'click.txt', 'GSDebugAttach'];
 
 export function build({ release = false } = {}) {
   const configuration = release ? 'Release' : 'Debug';

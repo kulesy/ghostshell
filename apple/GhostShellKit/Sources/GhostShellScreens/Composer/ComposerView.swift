@@ -35,6 +35,12 @@ struct ComposerView: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { model.attach(urls: urls); model.requestFocus() }
         }
+        #if DEBUG
+        // The test run attaches a file this way, because the file panel and the pasteboard can't be driven in the background.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("GSDebugAttach"))) { note in
+            if let path = note.object as? String { model.attach(urls: [URL(fileURLWithPath: path)]) }
+        }
+        #endif
         .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
             for provider in providers {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in

@@ -2,7 +2,7 @@
 // Drives the Debug app through accessibility, in the background (XCUITest is not available here), and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines|files|groups] [--files-only] [--no-files]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines|files|groups|composer, comma separated] [--files-only] [--no-files]
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -11,6 +11,7 @@ import os from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 import { build } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
 import { listen } from '../../test/speakers.mjs';
@@ -23,10 +24,10 @@ const argv = process.argv.slice(2);
 const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? '' : undefined);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(option('--out') || path.join(here, '..', 'screenshots'));
-const FLOW = option('--flow');
-const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups', 'terminal'];
-if (FLOW !== undefined && !FLOWS.includes(FLOW)) {
-  console.error(`${FLOW ? `Unknown --flow ${FLOW}.` : '--flow needs a value.'} The flows are: ${FLOWS.join(', ')}.`);
+const FLOW = option('--flow')?.split(',');
+const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups', 'terminal', 'composer'];
+if (argv.includes('--flow') && (!FLOW[0] || FLOW.some(flow => !FLOWS.includes(flow)))) {
+  console.error(`${FLOW[0] ? `Unknown --flow ${FLOW.join(',')}.` : '--flow needs a value.'} The flows are: ${FLOWS.join(', ')}.`);
   process.exit(2);
 }
 const APPEARANCES = option('--only') ? [option('--only')] : ['light', 'dark'];
@@ -39,14 +40,16 @@ const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) 
 // Runs share nothing but apple/build, so building the app and compiling the helper wait for each other there. Everything else is per run.
 const BUILD_DIR = path.join(here, '..', 'build');
 const BUILD_LOCK = path.join(BUILD_DIR, 'shots-build.lock');
-async function withBuildLock(work) {
+// The one step that takes the focus (activates the app and sends real keys) holds this, so two runs never type into each other.
+const KEYS_LOCK = path.join(BUILD_DIR, 'shots-keys.lock');
+async function withLock(lock, work) {
   fs.mkdirSync(BUILD_DIR, { recursive: true });
-  const pidFile = path.join(BUILD_LOCK, 'pid');
+  const pidFile = path.join(lock, 'pid');
   const owner = () => { try { return Number(fs.readFileSync(pidFile, 'utf8').trim()); } catch { return NaN; } };
   const giveUp = Date.now() + 15 * 60_000;
   for (;;) {
     try {
-      fs.mkdirSync(BUILD_LOCK);
+      fs.mkdirSync(lock);
       fs.writeFileSync(pidFile, String(process.pid));
       break;
     } catch (error) {
@@ -54,22 +57,22 @@ async function withBuildLock(work) {
     }
     const first = owner();
     // NaN means the owner has made the folder and not yet written its pid, which is only stale once the folder is old.
-    const young = Date.now() - (fs.statSync(BUILD_LOCK, { throwIfNoEntry: false })?.mtimeMs ?? 0) < 5000;
+    const young = Date.now() - (fs.statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? 0) < 5000;
     const dead = Number.isFinite(first) ? !alive(first) : !young;
     // Read the owner again just before clearing, so a lock another run has only now retaken is left alone.
     if (dead && Object.is(owner(), first)) {
-      const stale = `${BUILD_LOCK}.stale-${process.pid}`;
-      try { fs.renameSync(BUILD_LOCK, stale); fs.rmSync(stale, { recursive: true, force: true }); continue; } catch { /* another run got there first */ }
+      const stale = `${lock}.stale-${process.pid}`;
+      try { fs.renameSync(lock, stale); fs.rmSync(stale, { recursive: true, force: true }); continue; } catch { /* another run got there first */ }
     }
-    if (Date.now() > giveUp) throw new Error(`Gave up waiting for the build lock ${BUILD_LOCK}, held by pid ${first}.`);
+    if (Date.now() > giveUp) throw new Error(`Gave up waiting for the lock ${lock}, held by pid ${first}.`);
     await sleep(500);
   }
-  const release = () => { try { if (owner() === process.pid) fs.rmSync(BUILD_LOCK, { recursive: true, force: true }); } catch { /* left for the stale check */ } };
+  const release = () => { try { if (owner() === process.pid) fs.rmSync(lock, { recursive: true, force: true }); } catch { /* left for the stale check */ } };
   process.once('exit', release);
   try { return await work(); } finally { release(); process.removeListener('exit', release); }
 }
 
-// The accessibility helper: pid-exact, and it sends no input event. Compiled to a temp name and renamed, so no run sees half a binary.
+// The accessibility helper: pid-exact, and its only input is the `keys` command behind App.keys(). Compiled to a temp name and renamed, so no run sees half a binary.
 const AX_SOURCE = path.join(here, 'ax.swift');
 const AX = path.join(BUILD_DIR, 'ax');
 function compileHelper() {
@@ -159,7 +162,7 @@ class App {
   watch() {
     const front = Number(spawnSync(AX, ['front'], { encoding: 'utf8', timeout: 10_000 }).stdout.trim());
     frontChecks += 1;
-    if (front === this.pid && !this.cameToFront) {
+    if (front === this.pid && !this.cameToFront && !this.keying) {
       this.cameToFront = true;
       cameToFront.push(`${this.tag} ${this.appearance}`);
       check(false, `the app came to the front (pid ${this.pid}, after: ${this.last})`);
@@ -189,7 +192,7 @@ class App {
   act(node, action = 'AXPress') { return this.run('act', node === 'focused' ? 'focused' : JSON.stringify(node.path), action).ok === true; }
   set(node, attribute, value) { return this.run('set', node === 'focused' ? 'focused' : JSON.stringify(node.path), attribute, JSON.stringify(value)).ok === true; }
 
-  // The app is never brought to the front, so there is nothing to do.
+  // The app is never brought to the front, except inside keys().
   front() {}
   send() { throw new Error('Global keystrokes are gone. Use menu, act, set, enter or escape.'); }
   events() { throw new Error('System Events is gone. Use tree, find, findAll, act or set.'); }
@@ -479,6 +482,63 @@ class App {
   }
   signOutFromMenu() { return this.menu('File', 'Sign Out'); }
 
+  // The composer. Everything goes through accessibility except the keys its text view reads off the key event (Shift+Enter, and the slash list's Tab and Escape).
+  composerBox() { return this.findAll(node => node.role === 'AXTextArea').at(-1); }
+  composerText() { return String(this.composerBox()?.value ?? '').replace(/\n$/, ''); }
+  focusComposer() { const box = this.composerBox(); return !!box && this.set(box, 'AXFocused', true); }
+  setComposer(text) { const box = this.composerBox(); return !!box && this.set(box, 'AXFocused', true) && this.set(box, 'AXValue', text); }
+  // The one step that takes the focus: under the keys lock, ax activates the app, posts the keys to its pid and gives the focus back.
+  async keys(...names) {
+    return withLock(KEYS_LOCK, async () => {
+      this.keying = true;
+      const r = this.run('keys', ...names);
+      await sleep(800);
+      this.keying = false;
+      return check(r.ok === true, `keys ${names.join(' ')} were sent`);
+    });
+  }
+  // SwiftUI puts a button's label in its description, its help or its title depending on the style, so all three are read.
+  buttonsLike(part) {
+    return this.findAll(node => ['AXButton', 'AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.help, node.title].some(text => text?.includes(part)));
+  }
+  hasButtonLike(part) { return this.buttonsLike(part).length > 0; }
+  hasText(text) { return this.texts().includes(text); }
+  // Picks "Quote" from the context menu of the first static text containing `text`. The menu opens on the text or on one of its parents, so each is tried until a chip is added.
+  quote(text) {
+    const before = this.buttonsLike('Remove quote').length;
+    const node = this.find(n => n.role === 'AXStaticText' && String(n.value ?? '').includes(text));
+    if (!node) return false;
+    for (let up = 0; up < 6 && up < node.path.length; up += 1) {
+      const target = JSON.stringify(node.path.slice(0, node.path.length - up));
+      const picked = this.run('pick', target, 'Quote').ok === true;
+      if (picked && this.buttonsLike('Remove quote').length > before) return true;
+      if (picked) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); if (this.buttonsLike('Remove quote').length > before) return true; }
+    }
+    return false;
+  }
+  // Opens the menu of the button described `name` and lists its items' titles.
+  menuItems(name) {
+    const button = this.buttonsLike(name).find(node => node.role !== 'AXButton') ?? this.buttonsLike(name)[0];
+    if (!button || !this.act(button)) return [];
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const items = this.findAll(node => node.role === 'AXMenuItem').map(node => node.title);
+      if (items.length) return items;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
+    return [];
+  }
+  closeMenu() { return this.act(this.find(node => node.role === 'AXMenu') ?? 'focused', 'AXCancel'); }
+  // The composer attaches the file named in attach.txt (a Debug hook), because the file panel and the pasteboard can't be driven in the background.
+  attachFile(file) {
+    this.attachCount = (this.attachCount ?? 0) + 1;
+    fs.writeFileSync(path.join(this.shotDir, 'attach.txt'), `${this.attachCount} ${file}`);
+  }
+  // For a failed check: the buttons and fields in the window, so the next run can be fixed from the log.
+  dump() {
+    const nodes = this.tree().filter(node => ['AXButton', 'AXMenuButton', 'AXPopUpButton', 'AXTextArea', 'AXMenuItem', 'AXSheet', 'AXRow'].includes(node.role));
+    console.log(nodes.slice(0, 80).map(node => `${node.role} | ${node.desc ?? ''} | ${node.title ?? ''} | ${node.help ?? ''} | ${node.value ?? ''} | ${node.path.join('.')}`).join('\n'));
+  }
+
   async shot(name) {
     this.count += 1;
     const n = this.count;
@@ -547,6 +607,46 @@ async function appOn(stub, bundle, appearance, tag) {
   await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
   return new App(bundle, { address: `http://localhost:${stub.address().port}`, appearance, tag });
 }
+
+// A small PNG made here, so no picture file lives in the repo.
+function makePng(file, size = 96) {
+  const crc = buf => {
+    let c, n = ~0;
+    for (const byte of buf) { c = (n ^ byte) & 0xff; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; n = c ^ (n >>> 8); }
+    return ~n >>> 0;
+  };
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc(body), body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0); header.writeUInt32BE(size, 4); header[8] = 8; header[9] = 2;
+  const rows = Buffer.alloc((size * 3 + 1) * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const at = y * (size * 3 + 1) + 1 + x * 3;
+    rows[at] = 40 + Math.round(180 * x / size); rows[at + 1] = 90 + Math.round(120 * y / size); rows[at + 2] = 200 - Math.round(100 * x / size);
+  }
+  fs.writeFileSync(file, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', zlib.deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]));
+  return file;
+}
+
+// Polls the server's own list until the session is neither working nor waiting.
+function waitFinished(server, token, id, seconds) {
+  return until('finished', async () => {
+    const index = await (await fetch(`${server.address}/api/sessions`, { headers: { Cookie: `capcom=${token}` } })).json();
+    const rows = [];
+    (function walk(value) {
+      if (Array.isArray(value)) value.forEach(walk);
+      else if (value && typeof value === 'object') { if (value.id === id && 'state' in value) rows.push(value); Object.values(value).forEach(walk); }
+    })(index);
+    return rows.length > 0 && rows.every(row => row.state !== 'working' && row.state !== 'waiting');
+  }, seconds);
+}
+
 
 async function chatFlow(bundle, appearance) {
   const stub = await startChatStub();
@@ -697,10 +797,120 @@ async function widgetFlow(bundle, appearance) {
   }
 }
 
+// The composer, against the chat stub: quoting, attachments, the slash menu, an error, Stop, the pickers and the New Session screen.
+async function composerFlow(bundle, appearance) {
+  const stub = await startChatStub();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-composer-'));
+  makePng(path.join(dir, 'screenshot.png'));
+  fs.writeFileSync(path.join(dir, 'release-notes.txt'), 'Release notes for 4.2\n');
+  console.log(`\n== ${appearance}: composer`);
+  const app = new App(bundle, { address: stub.address, appearance, tag: '7' });
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('rows', () => app.rows() === stub.rows.length), 'the composer stub lists its chats');
+
+    // A quote from another session, then one from this one.
+    app.chooseRow(rowOf(stub, 'other'));
+    check(await until('other', () => app.hasText('Draft the release notes for 4.2.'), 20), 'the other chat opens');
+    await sleep(800);
+    if (!check(app.quote('three headline changes'), 'the message to quote is found and its menu picked')) app.dump();
+    app.chooseRow(rowOf(stub, 'composer'));
+    check(await until('composer chat', () => app.hasText('Rename `exportRows` to `exportTable` everywhere.') || app.hasText('Rename exportRows to exportTable everywhere.'), 20), 'the composer chat opens');
+    await sleep(800);
+    check(app.hasText('From Plan the release notes'), 'the quote chip names the session it came from');
+    check(app.quote('renamed it in 4 files'), 'a second message to quote is found and its menu picked');
+    await app.both('composer-quote');
+
+    // Attachments, then a two-line draft.
+    app.setComposer('');
+    app.attachFile(path.join(dir, 'screenshot.png'));
+    check(await until('image chip', () => app.hasButtonLike('Remove screenshot.png'), 10), 'an attached picture becomes a chip');
+    await sleep(800);
+    app.attachFile(path.join(dir, 'release-notes.txt'));
+    check(await until('file uploaded', () => stub.calls.upload.length === 1, 10), 'an attached file is uploaded');
+    app.setComposer('Rename it in the docs too');
+    await app.keys('shift-return');
+    app.type('and keep the alias for one release');
+    await sleep(600);
+    check(app.composerText().includes('\n'), 'Shift+Enter makes a new line');
+    await app.both('composer-draft');
+
+    // The slash menu.
+    app.setComposer('/c');
+    await until('slash text', () => app.composerText() === '/c', 10);
+    await sleep(600);
+    await app.both('composer-slash');
+    // The list's rows are not in the accessibility tree, so Tab picking the first one shows it was open.
+    await app.keys('tab');
+    check(app.composerText().startsWith('/compact '), 'Tab picks the highlighted command');
+    app.setComposer('/c');
+    await sleep(500);
+    await app.keys('escape', 'tab');
+    check(app.composerText() === '/c', 'Escape closes the slash menu, so Tab picks nothing');
+    app.setComposer('');
+
+    // A refused send keeps everything in the box.
+    app.setComposer('reject this one');
+    check(app.press('Send'), 'Send is pressed');
+    check(await until('error', () => app.hasText('Not sent: That message is too long for this session.'), 10), 'a refused send shows the server\'s sentence');
+    check(app.composerText() === 'reject this one', 'a refused send puts the text back');
+    await sleep(400);
+    await app.both('composer-error');
+    app.setComposer('');
+
+    // A good send lands in the thread and the box empties.
+    app.setComposer('Thanks, that is all');
+    check(app.press('Send'), 'Send is pressed again');
+    check(await until('sent', () => stub.calls.send.length === 2 && app.hasText('Got it.'), 10), 'a send reaches the server and its reply lands in the thread');
+    const sent = stub.calls.send[1];
+    check(sent.images?.length === 1 && sent.images[0].mediaType === 'image/png' && !sent.images[0].data.startsWith('data:'), 'the picture goes inline as raw base64');
+    check(JSON.stringify(sent.files) === '["up-1"]', 'the uploaded file goes as its id');
+    check(/^> /m.test(sent.text) && sent.text.includes('From the session "Plan the release notes":') && sent.text.endsWith('Thanks, that is all'), 'the quotes lead the text');
+    check(app.composerText() === '', 'the box is empty after a send');
+
+    // Pickers.
+    const items = app.menuItems('Model: ');
+    if (!check(items.includes('Haiku 5.5'), 'the model menu lists the models')) { console.log(items); app.dump(); }
+    app.closeMenu();
+    await sleep(400);
+
+    // Stop on a busy chat.
+    app.chooseRow(rowOf(stub, 'stream'));
+    check(await until('stream', () => app.hasText('Go on, I am ready.'), 20), 'the busy chat opens');
+    await sleep(3000);
+    check(app.hasButtonLike('Stop'), 'a busy chat with an empty box shows Stop');
+    await app.both('composer-busy');
+    check(app.press('Stop'), 'Stop is pressed');
+    check(await until('stopped', () => stub.calls.stop.length === 1, 10), 'Stop stops a busy chat');
+
+    // New Session.
+    check(app.menu('File', 'New Session'), 'the File menu has New Session');
+    check(await until('new screen', () => app.hasText('New session'), 10), 'New Session opens');
+    check(await until('folders', () => app.composerText() === '' && app.hasButtonLike('Recent folders'), 10), 'the folder menu loads');
+    await sleep(1000);
+    await app.both('new-session');
+    app.setComposer('Add a dark mode toggle');
+    check(app.press('Start session'), 'Start session is pressed');
+    check(await until('started', () => stub.calls.created.length === 1, 10), 'Start session starts the session');
+    check(stub.calls.created[0].cwd.length > 0 && stub.calls.created[0].model === undefined, 'the new session sends a folder and no unchanged model');
+    check(await until('opened', () => !app.hasText('New session') || app.hasText('Add a dark mode toggle'), 10), 'the new session opens');
+    app.signOutFromMenu();
+    check(await until('signed out', () => app.hasText('Address'), 10), 'signed out of the composer stub');
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+}
+
 async function mainFlow(bundle, appearance, withChat) {
   const server = await startScratch({ claude: withChat });
   servers.add(server);
+  const pictureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-real-'));
+  makePng(path.join(pictureDir, 'colours.png'));
   const app = new App(bundle, { address: server.address, appearance, tag: '1', notify: true });
+  let draftToKeep = '';
   console.log(`\n== ${appearance}: sign in, list, chat, notifications, relaunch, sign out`);
   try {
     await app.launch();
@@ -738,15 +948,7 @@ async function mainFlow(bundle, appearance, withChat) {
       check(started.status === 200 && !!id, 'a Haiku chat starts through the server');
       check(await until('new row', () => app.sessionRows().length === 9, 20), 'the new chat appears in the list with no action in the window');
       await app.both('list-new-chat');
-      const finished = await until('finished', async () => {
-        const index = await (await fetch(`${server.address}/api/sessions`, { headers: { Cookie: `capcom=${token}` } })).json();
-        const rows = [];
-        (function walk(value) {
-          if (Array.isArray(value)) value.forEach(walk);
-          else if (value && typeof value === 'object') { if (value.id === id && 'state' in value) rows.push(value); Object.values(value).forEach(walk); }
-        })(index);
-        return rows.length > 0 && rows.every(row => row.state !== 'running');
-      }, 90);
+      const finished = await waitFinished(server, token, id, 90);
       check(finished, 'the chat finishes');
       check(await until('finished alert', () => app.alerts().some(line => line.startsWith(`post ${id} finished `)), 15), 'the finished chat raised a "finished" alert for its session');
       check(app.alerts().some(line => line.startsWith('badge ')), 'the Dock badge was set');
@@ -757,6 +959,45 @@ async function mainFlow(bundle, appearance, withChat) {
       check(await until('real chat', () => app.texts().includes('Reply with the single word ok.'), 20), 'the finished Haiku chat reads back in the window');
       await sleep(800);
       await app.both('chat-real');
+
+      // The composer against a real Haiku chat: a draft survives a switch, then a message with a picture is sent and lands.
+      const prompt = 'In five words, name the main colours of this picture.';
+      app.focusComposer();
+      app.type(prompt);
+      await sleep(500);
+      app.chooseRow(1);
+      await sleep(1200);
+      app.chooseRow(0);
+      check(await until('draft back', () => app.composerText() === prompt, 10), 'a draft is still in the box after switching sessions');
+      app.setComposer('');
+      app.attachFile(path.join(pictureDir, 'colours.png'));
+      check(await until('picture chip', () => app.hasButtonLike('Remove colours.png'), 10), 'an attached picture becomes a chip in a real chat');
+      await sleep(800);
+      app.focusComposer();
+      app.type(prompt);
+      await sleep(500);
+      await app.both('composer-real-draft');
+      check(app.press('Send'), 'Send is pressed in a real chat');
+      // The scratch server reads a copy of Claude's transcript, so the copy is refreshed while the window waits for the message.
+      let copied = 0;
+      const landed = await until('landed', () => { if (Date.now() - copied > 3000) { copyTranscript(server, id); copied = Date.now(); } return app.texts().split('\n').some(line => line.includes(prompt)); }, 30);
+      await app.shot('1-composer-real-sent-soon');
+      check(landed, 'the sent message lands in the thread');
+      check(await waitFinished(server, token, id, 90), 'the chat answers the message');
+      await sleep(4000);
+      copyTranscript(server, id);
+      app.chooseRow(1);
+      await sleep(800);
+      app.chooseRow(0);
+      await sleep(1500);
+      await app.shot('1-composer-real-sent-done');
+      await app.both('chat-real-after-send');
+      const transcript = fs.readFileSync(path.join(os.homedir(), '.claude', 'projects', TEST_CWD.replace(/[/.]/g, '-'), `${id}.jsonl`), 'utf8');
+      check(transcript.includes('"type":"image"'), 'the transcript holds the picture Claude was sent');
+      app.focusComposer();
+      app.type('a draft to keep');
+      await sleep(500);
+      draftToKeep = 'a draft to keep';
       await ownerCall(server, 'logout', undefined, token);
     }
 
@@ -771,6 +1012,11 @@ async function mainFlow(bundle, appearance, withChat) {
     check(await until('rows', () => app.sessionRows().length === (withChat ? 9 : 8), 20), 'the list loads once the server answers');
     await sleep(1500);
     check(app.alerts().filter(line => line.startsWith('post ')).length === posted, 'a relaunch raises no alerts for sessions that finished while it was closed');
+    if (draftToKeep) {
+      app.chooseRow(0);
+      check(await until('kept draft', () => app.composerText() === draftToKeep, 15), 'a draft survives a relaunch');
+      await app.both('composer-relaunched');
+    }
 
     await server.stop();
     check(await until('foot', () => app.texts().includes("Can't reach the server. Trying again."), 20), 'the foot line shows when the server stops answering');
@@ -1439,12 +1685,12 @@ for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => cleanup().f
 fs.mkdirSync(OUT, { recursive: true });
 let exitCode = 1;
 try {
-  const bundle = await withBuildLock(() => {
+  const bundle = await withLock(BUILD_LOCK, () => {
     const built = build({ release: false });
     compileHelper();
     return built;
   });
-  const flows = argv.includes('--files-only') ? ['files'] : argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? [FLOW] : FLOWS.filter(flow => flow !== 'files' || !argv.includes('--no-files'));
+  const flows = argv.includes('--files-only') ? ['files'] : argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? FLOW : FLOWS.filter(flow => flow !== 'files' || !argv.includes('--no-files'));
   for (const appearance of APPEARANCES) {
     if (flows.includes('main')) {
       await mainFlow(bundle, appearance, !argv.includes('--no-chat'));
@@ -1461,6 +1707,7 @@ try {
     if (flows.includes('files')) await filesFlow(bundle, appearance);
     if (flows.includes('groups')) await groupsFlow(bundle, appearance);
     if (flows.includes('terminal')) await terminalFlow(bundle, appearance);
+    if (flows.includes('composer')) await composerFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);
