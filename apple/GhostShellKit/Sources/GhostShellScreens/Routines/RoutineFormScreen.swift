@@ -303,7 +303,7 @@ private struct RoutineFields: View {
             if baseline != nil, body.isEmpty { leave(); return }
             if let id { try await client.editRoutine(id: id, body) } else { try await client.addRoutine(body) }
             store.note = RoutineNote(text: "\(adding ? "Added" : "Saved") “\(draft.title.trimmingCharacters(in: .whitespaces))”.")
-            await store.refresh()
+            await store.wrote()
             leave()
         } catch let error as GhostShellError {
             refuse(error)

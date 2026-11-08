@@ -40,6 +40,7 @@ public final class AppModel {
         self.store = store
         self.defaults = defaults
         self.addressText = address ?? defaults.string(forKey: Self.addressKey) ?? ServerAddress.local.baseURL.absoluteString
+        routines.afterWrite = { [weak self] in await self?.refreshIndex() }
     }
 
     /// Reads the saved token once. A token opens the window, otherwise sign-in. The Keychain read happens inside the client, off the main actor.

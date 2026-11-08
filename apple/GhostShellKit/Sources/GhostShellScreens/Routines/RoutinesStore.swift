@@ -26,6 +26,8 @@ public final class RoutinesStore {
     /// Why the first load failed. A later failed poll keeps the list it has.
     public private(set) var failure: String?
     var note: RoutineNote?
+    /// Set by AppModel, so a write also loads the session list at once and a new run shows in the sidebar.
+    var afterWrite: (@MainActor () async -> Void)?
 
     private var client: GhostShellClient?
     private var polling: Task<Void, Never>?
@@ -163,7 +165,13 @@ public final class RoutinesStore {
             note = RoutineNote(text: error.localizedDescription, isProblem: true)
             done = false
         }
-        await refresh()
+        await wrote()
         return done
+    }
+
+    /// Loads the lists and the session list again after a write.
+    func wrote() async {
+        await refresh()
+        await afterWrite?()
     }
 }

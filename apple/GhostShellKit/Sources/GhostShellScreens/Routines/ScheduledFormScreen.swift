@@ -148,7 +148,7 @@ private struct ScheduledFields: View {
         do {
             if let was { try await client.editScheduled(id: was.id, body) } else { try await client.addScheduled(body) }
             store.note = RoutineNote(text: "\(was == nil ? "Scheduled" : "Saved") “\(draft.title.trimmingCharacters(in: .whitespaces))”.")
-            await store.refresh()
+            await store.wrote()
             leave()
         } catch let error as GhostShellError {
             let fields = error.fields(in: scheduledFields)
