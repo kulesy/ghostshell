@@ -793,6 +793,7 @@ async function widgetFlow(bundle, appearance) {
     if (target) await app.clickAt(target);
     check(await until('sent', () => stub.sends.length === 1, 10), 'one click on the widget\'s button sends exactly one message');
     check(stub.sends[0]?.text === 'Break Q4 down by region' && stub.sends[0]?.id === 'widgets', 'the message is the button\'s text, in the widget\'s chat');
+    check(await until('bubble', () => app.hasText('Break Q4 down by region'), 10), 'the widget\'s message shows in the thread like a typed one');
     await sleep(2500);
     check(stub.sends.length === 1, 'the click sent no second message');
     await app.shot(`7-widgets-after-click-${appearance}`);
