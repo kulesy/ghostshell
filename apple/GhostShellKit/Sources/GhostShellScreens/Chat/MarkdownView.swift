@@ -224,20 +224,21 @@ struct CodeBlockView: View {
         .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    /// The block's text with the lines of each command, and the ones a backslash joins to it, on a darker ground.
+    /// Puts each command line, with the lines a backslash joins to it, on a darker ground so the owner sees all of what Run would run.
     private static func marked(_ block: ChatCodeBlock) -> AttributedString {
         let ranges = TerminalRules.commandLines(language: block.language, text: block.text)
         guard !ranges.isEmpty else { return AttributedString(block.text) }
         let lines = block.text.components(separatedBy: "\n")
+        let ground = Color.secondary.opacity(0.25)
         var out = AttributedString()
         for (n, line) in lines.enumerated() {
             let inCommand = ranges.contains { $0.contains(n) }
             var piece = AttributedString(line)
-            if inCommand { piece.backgroundColor = Color.secondary.opacity(0.25) }
+            if inCommand { piece.backgroundColor = ground }
             out += piece
             if n < lines.count - 1 {
                 var newline = AttributedString("\n")
-                if inCommand, ranges.contains(where: { $0.contains(n + 1) }) { newline.backgroundColor = Color.secondary.opacity(0.25) }
+                if inCommand, ranges.contains(where: { $0.contains(n + 1) }) { newline.backgroundColor = ground }
                 out += newline
             }
         }
