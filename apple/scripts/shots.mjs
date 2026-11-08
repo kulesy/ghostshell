@@ -328,6 +328,9 @@ async function signInDirect(server) {
   return /capcom=([0-9a-f]+)/.exec(response.headers.get('set-cookie') || '')?.[1];
 }
 
+// The sidebar lists the stub's chats A to Z, so the rows run empty, rich, stream, long.
+const CHAT_ROW = { empty: 0, rich: 1, stream: 2, long: 3 };
+
 async function chatFlow(binary, appearance) {
   const stub = await startChatStub();
   console.log(`\n== ${appearance}: reading chats`);
@@ -338,7 +341,7 @@ async function chatFlow(binary, appearance) {
     app.submit();
     check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
 
-    app.chooseRow(0);
+    app.chooseRow(CHAT_ROW.rich);
     check(await until('rich', () => app.texts().includes('Why is the upload test flaky? It fails about one run in five.'), 20), 'a rich chat shows its first message');
     await sleep(800);
     await app.both('chat-rich');
@@ -353,12 +356,12 @@ async function chatFlow(binary, appearance) {
     app.resize(DEFAULT_SIZE);
     await sleep(700);
 
-    app.chooseRow(1);
+    app.chooseRow(CHAT_ROW.stream);
     check(await until('stream', () => app.texts().includes('Go on, I am ready.'), 20), 'a streaming chat shows its last message');
     await sleep(5000);
     await app.both('chat-streaming');
 
-    app.chooseRow(2);
+    app.chooseRow(CHAT_ROW.long);
     check(await until('long', () => app.texts().includes('Question 600: what does step 600 of the migration do?'), 20), 'a long chat opens at its end');
     await sleep(800);
     await app.both('chat-long-end');
@@ -371,7 +374,7 @@ async function chatFlow(binary, appearance) {
     await sleep(2500);
     await app.shot(`6-chat-long-scrolled-up-again-${appearance}`);
 
-    app.chooseRow(3);
+    app.chooseRow(CHAT_ROW.empty);
     check(await until('empty', () => app.texts().includes('Nothing here yet'), 20), 'an empty chat says so');
     await app.both('chat-empty');
     app.signOutFromMenu();
