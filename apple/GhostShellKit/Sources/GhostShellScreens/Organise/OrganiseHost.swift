@@ -24,7 +24,7 @@ struct OrganiseHost: ViewModifier {
                 Text(organise.problem ?? "")
             }
             .alert(organise.asking?.title ?? "", isPresented: Binding(get: { organise.asking != nil }, set: { if !$0 { organise.asking = nil } }), presenting: organise.asking) { ask in
-                Button("Cancel", role: .cancel) {}
+                Button("Cancel", role: .cancel) { ask.cancel?() }
                 Button(ask.action, role: .destructive) { ask.run() }
             } message: { ask in
                 Text(ask.detail)

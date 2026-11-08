@@ -193,6 +193,17 @@ final class LayoutClientTests: XCTestCase {
         }
     }
 
+    func testARefusalToStopARunningChatCarriesWhatIsRunning() async throws {
+        LayoutStub.reset { _ in (409, #"{"error":"Busy.","self":true,"subs":2}"#) }
+        let client = await client()
+        do {
+            try await client.archiveSession("s1", stop: false)
+            XCTFail("a 409 should throw")
+        } catch {
+            XCTAssertEqual(error as? GhostShellError, .running(itself: true, subs: 2, message: "Busy."))
+        }
+    }
+
     func testAnIDThatIsNotSafeInAPathIsRefusedBeforeSending() async throws {
         LayoutStub.reset { _ in (200, "{}") }
         do {

@@ -13,6 +13,7 @@ final class OrganiseModel {
         var detail: String
         var action: String
         var run: @MainActor () -> Void
+        var cancel: (@MainActor () -> Void)?
     }
 
     /// A name to type, for a new or renamed session, group or project. `run` returns the server's words when it refuses.
@@ -64,8 +65,8 @@ final class OrganiseModel {
         Task { if let failure = await attempt(work) { problem = failure } }
     }
 
-    private func ask(_ title: String, _ detail: String, action: String, run: @escaping @MainActor () -> Void) {
-        asking = Question(title: title.isEmpty ? "Untitled" : title, detail: detail, action: action, run: run)
+    private func ask(_ title: String, _ detail: String, action: String, cancel: (@MainActor () -> Void)? = nil, run: @escaping @MainActor () -> Void) {
+        asking = Question(title: title.isEmpty ? "Untitled" : title, detail: detail, action: action, run: run, cancel: cancel)
     }
 
     // MARK: Names
@@ -127,11 +128,10 @@ final class OrganiseModel {
     func archive(_ row: SessionRow) {
         endSelection(unless: row.id)
         let subs = OrganiseRules.subsRunning(OrganiseRules.every(index), row.id)
-        if subs > 0 { confirmStop(row, subs: subs) } else { archiveOne(row, stop: OrganiseRules.isRunning(row)) }
+        if subs > 0 { confirmStop(row, subs: subs, itself: OrganiseRules.isRunning(row)) } else { archiveOne(row, stop: OrganiseRules.isRunning(row)) }
     }
 
-    private func confirmStop(_ row: SessionRow, subs: Int) {
-        let itself = OrganiseRules.isRunning(row)
+    private func confirmStop(_ row: SessionRow, subs: Int, itself: Bool) {
         ask(row.title, OrganiseRules.stopQuestion(subs: subs, itself: itself), action: "Stop and archive") { [self] in archiveOne(row, stop: true) }
     }
 
@@ -141,8 +141,8 @@ final class OrganiseModel {
             guard let client = app?.client else { return }
             do {
                 try await client.archiveSession(row.id, stop: stop)
-            } catch GhostShellError.refused(let status, _) where status == 409 && !stop {
-                confirmStop(row, subs: OrganiseRules.subsRunning(OrganiseRules.every(index), row.id))
+            } catch GhostShellError.running(let itself, let subs, _) {
+                confirmStop(row, subs: subs, itself: itself)
             } catch {
                 problem = error.localizedDescription
             }
@@ -223,29 +223,29 @@ final class OrganiseModel {
             guard let client = app?.client else { return }
             var tally = tally
             var busy: [SessionRow] = []
+            var itself = 0, below = 0
             for row in rows {
                 do {
                     let reply = try await client.archiveSession(row.id, stop: stop)
                     tally.done += 1
                     tally.stopped += reply.stoppedCount
                     tally.subs += reply.subs
-                } catch GhostShellError.refused(let status, _) where status == 409 && !stop {
+                } catch GhostShellError.running(let isRunning, let subs, _) {
                     busy.append(row)
+                    itself += isRunning ? 1 : 0
+                    below += subs
                 } catch {
                     tally.refused.append(error.localizedDescription)
                 }
             }
-            let all = OrganiseRules.every(index)
             await app?.refreshIndex()
             let settled = tally.total - busy.count
-            if tally.done < settled {
-                problem = OrganiseRules.archiveNote(archived: tally.done, total: settled, stopped: tally.stopped, subs: tally.subs, reason: tally.refused.first ?? "")
-            }
-            guard !busy.isEmpty else { return }
-            let itself = busy.filter(OrganiseRules.isRunning).count
-            let below = busy.reduce(0) { $0 + OrganiseRules.subsRunning(all, $1.id) }
+            let note = tally.done < settled
+                ? OrganiseRules.archiveNote(archived: tally.done, total: settled, stopped: tally.stopped, subs: tally.subs, reason: tally.refused.first ?? "") : nil
+            guard !busy.isEmpty else { if let note { problem = note }; return }
+            // The question comes first. The note follows once it is answered.
             let carried = tally
-            ask(OrganiseRules.sessions(busy.count), OrganiseRules.batchStopDetail(running: itself, subs: below), action: "Stop and archive") { [self] in
+            ask(OrganiseRules.sessions(busy.count), OrganiseRules.batchStopDetail(running: itself, subs: below), action: "Stop and archive", cancel: { [self] in if let note { problem = note } }) { [self] in
                 archiveBatch(busy, stop: true, tally: carried)
             }
         }
