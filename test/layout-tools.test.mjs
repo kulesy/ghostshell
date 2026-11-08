@@ -425,6 +425,26 @@ test('a group whose name holds a character that draws nothing, as the sidebar ca
   assert.deepEqual(subs.calls, []);
 });
 
+test('a group whose name mixes characters that draw nothing blocks a new name with the same letters, wherever they sit', () => {
+  const subs = subsFor();
+  const unseen = [];
+  for (let point = 0; point <= 0x10FFFF; point++) if ((point < 0xD800 || point > 0xDFFF) && /[\p{Cf}\p{Default_Ignorable_Code_Point}\u2800]/u.test(String.fromCodePoint(point))) unseen.push(String.fromCodePoint(point));
+  const sample = unseen.filter((_, i) => i % 97 === 0).concat('\u034F', '\uFE0F', '\u200B', '\u00AD', '\u2800', '\u3164');
+  for (const a of sample) for (const b of sample) {
+    const groups = [{ id: 'cg-x', name: `D${a}ep loy`.replace(' ', b) }, { id: 'cg-y', name: `Dep${a}lo${b}y` }];
+    for (const group of groups) for (const name of ['Dep loy', 'Deploy', 'De ploy']) assert.throws(() => createGroup({ name }, subs, [group]), /\[cg-[xy]\]/, `${JSON.stringify(group.name)} against ${name}`);
+  }
+  assert.deepEqual(subs.calls, []);
+});
+
+test('a move card and its reply show a group name without its quotes and brackets, so a name cannot pass itself off as another group with its id', () => {
+  const subs = subsFor();
+  const groups = [{ id: 'cg-dep', name: 'Deploy' }, { id: 'cg-n', name: 'Deploy" [cg-dep' }];
+  const card = layoutSummary('move_session_to_group', { session_id: 'review', group: 'cg-n' }, subs, groups);
+  assert.match(card, /to "Deploy cg-dep"$/);
+  assert.match(moveSession({ session_id: 'review', group: 'cg-n' }, subs, groups), /to the group "Deploy cg-dep"\./);
+});
+
 test('an emoji joined into one picture blocks the same emoji written apart', () => {
   const subs = subsFor();
   const groups = [{ id: 'cg-f', name: 'Family \u{1F468}\u200D\u{1F469}\u200D\u{1F467}' }];
