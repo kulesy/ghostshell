@@ -44,12 +44,21 @@ enum ShotWatcher {
         try? "\(parts[0]) \(saved ? "ok" : "failed")".write(to: folder.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8)
     }
 
-    // The frame view above the content view includes the title bar and toolbar.
+    // The frame view above the content view includes the title bar and toolbar. An alert or a popover is a window of its own, so it is drawn over the main one.
     private static func capture() -> Data? {
-        guard let window = NSApplication.shared.windows.first(where: { $0.isVisible }), let view = window.contentView?.superview else { return nil }
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        return rep.representation(using: .png, properties: [:])
+        let windows = NSApplication.shared.windows
+        guard let main = windows.first(where: { $0.isVisible && $0.canBecomeMain }) else { return nil }
+        let over = windows.filter { $0 !== main && $0.isVisible && $0.frame.width > 1 && $0.frame.intersects(main.frame) }
+        let canvas = over.reduce(main.frame) { $0.union($1.frame) }
+        let image = NSImage(size: canvas.size)
+        image.lockFocus()
+        for window in [main] + over {
+            guard let view = window.contentView?.superview, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            rep.draw(in: NSRect(x: window.frame.minX - canvas.minX, y: window.frame.minY - canvas.minY, width: window.frame.width, height: window.frame.height))
+        }
+        image.unlockFocus()
+        return image.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0) }?.representation(using: .png, properties: [:])
     }
 }
 #endif

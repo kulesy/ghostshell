@@ -68,8 +68,8 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
         branch = (try? c.decode(String.self, forKey: .branch)) ?? ""
         state = (try? c.decode(SessionState.self, forKey: .state)) ?? .other("")
         dot = try? c.decode(SessionDot.self, forKey: .dot)
-        lastActivityAt = Self.date(c, .lastActivityAt)
-        sortAt = Self.date(c, .sortAt)
+        lastActivityAt = c.millis(.lastActivityAt)
+        sortAt = c.millis(.sortAt)
         pinned = (try? c.decode(Bool.self, forKey: .pinned)) ?? false
         archived = (try? c.decode(Bool.self, forKey: .archived)) ?? false
         group = try? c.decode(String.self, forKey: .group)
@@ -90,11 +90,6 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
     // The server sends how long the turn has run, so the start moves with every poll. Whole seconds keep two polls of one turn equal, and the feed skips an equal index.
     static func turnStart(ms: Double, now: Date = Date()) -> Date {
         Date(timeIntervalSince1970: (now.timeIntervalSince1970 - ms / 1000).rounded())
-    }
-
-    // The server counts in milliseconds since 1970.
-    private static func date(_ c: KeyedDecodingContainer<Key>, _ key: Key) -> Date? {
-        (try? c.decode(Double.self, forKey: key)).map { Date(timeIntervalSince1970: $0 / 1000) }
     }
 }
 
@@ -189,14 +184,4 @@ public struct SessionIndex: Hashable, Sendable, Decodable {
         // Newest first, and rows with the same time keep the order the server listed them in.
         return all.enumerated().sorted { a, b in when(a.element) != when(b.element) ? when(a.element) > when(b.element) : a.offset < b.offset }.map(\.element)
     }
-}
-
-// A row or list the app cannot read is left out, so one odd entry never empties the whole index.
-private struct Lossy<T: Decodable>: Decodable {
-    let value: T?
-    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
-}
-
-func lossy<T: Decodable, K: CodingKey>(_ c: KeyedDecodingContainer<K>, _ key: K) -> [T] {
-    ((try? c.decode([Lossy<T>].self, forKey: key)) ?? []).compactMap(\.value)
 }

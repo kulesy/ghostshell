@@ -128,8 +128,17 @@ public actor GhostShellClient {
         let request = try build(method, path, query: query, body: body, contentType: contentType, token: token)
         let (data, response) = try await transport(request)
         if response.statusCode == 401 { await forget(); throw GhostShellError.signedOut }
-        guard (200..<300).contains(response.statusCode) else { throw GhostShellError.server(status: response.statusCode) }
+        guard (200..<300).contains(response.statusCode) else { throw Self.refusal(response.statusCode, data) }
         return data
+    }
+
+    // A 400, 409 or 404 carries the server's own words in `{error}`, and the screens show them as they are.
+    // NOTE: [8 Nov 2026] EK - The server's "Not found" is its answer for a route it lacks, so it stays `.server(404)`. BannersState reads that as a server with no banners.
+    private static func refusal(_ status: Int, _ body: Data) -> GhostShellError {
+        struct Words: Decodable { var error: String? }
+        guard [400, 404, 409].contains(status), let words = (try? JSONDecoder().decode(Words.self, from: body))?.error, !words.isEmpty,
+              !(status == 404 && words == "Not found") else { return .server(status: status) }
+        return .refused(status: status, message: words)
     }
 
     // The one place a request is made. NOTE: [7 Nov 2026] EK - strictOrigin in server.mjs refuses an owner route that arrives with no Origin,
