@@ -20,6 +20,7 @@ struct SidebarHeading: Hashable, Sendable, Identifiable {
 struct SidebarToolbarSlot: View {
     var body: some View {
         NotificationToggle()
+        NewGroupButton()
     }
 }
 
@@ -28,6 +29,7 @@ struct ViewMenuSlot: View {
     let project: String?
 
     var body: some View {
+        ProjectMenuItems(project: project)
     }
 }
 
@@ -36,6 +38,7 @@ struct SessionRowMenuSlot: View {
     let row: SessionRow
 
     var body: some View {
+        SessionRowMenu(row: row)
     }
 }
 
@@ -44,7 +47,7 @@ struct SessionRowSlot: ViewModifier {
     let row: SessionRow
 
     func body(content: Content) -> some View {
-        content
+        content.modifier(RowDragDrop(row: row))
     }
 }
 
@@ -61,6 +64,7 @@ struct HeadingMenuSlot: View {
     let heading: SidebarHeading
 
     var body: some View {
+        if heading.kind == .group, let group = heading.group { GroupHeadingMenu(group: group) }
     }
 }
 
@@ -69,7 +73,7 @@ struct HeadingSlot: ViewModifier {
     let heading: SidebarHeading
 
     func body(content: Content) -> some View {
-        content
+        content.modifier(HeadingDrop(heading: heading))
     }
 }
 

@@ -34,6 +34,7 @@ private struct SidebarHost: View {
                 }
             }
             .modifier(SidebarWatchSlot())
+            .modifier(OrganiseHost())
             .navigationTitle("Sessions")
             // Last, so the header, toolbar and watch slot all read the same state.
             .environment(state)
