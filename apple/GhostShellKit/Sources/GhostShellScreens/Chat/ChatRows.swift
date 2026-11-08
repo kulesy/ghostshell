@@ -294,7 +294,7 @@ private struct ToolItemView: View {
 
     var body: some View {
         if call.name.hasSuffix("__spawn_task") {
-            ChipCard(call: call, folder: model.chat.session.cwd)
+            ChipCard(call: call)
         } else if call.name.hasSuffix("__mark_chapter") {
             HStack(spacing: 12) {
                 Text(call.input["title"]?.string ?? "Chapter").font(ChatStyle.body).fontWeight(.semibold)
@@ -312,10 +312,10 @@ private struct ToolItemView: View {
     }
 }
 
-/// A task Claude suggested, as the page draws it, without the actions that start or dismiss it.
+/// A task Claude suggested, as the page draws it. The folder it starts in, Start and Dismiss come from `ChatSlots.chipActions`.
 private struct ChipCard: View {
+    @Environment(ChatModel.self) private var model
     let call: ToolCall
-    let folder: String
 
     var body: some View {
         let input = call.input
@@ -324,8 +324,7 @@ private struct ChipCard: View {
             Text(verbatim: input["title"]?.string ?? "Untitled task").font(ChatStyle.body).fontWeight(.semibold)
             if let tldr = input["tldr"]?.string, !tldr.isEmpty { Text(verbatim: tldr).font(ChatStyle.body).foregroundStyle(.secondary) }
             if let prompt = input["prompt"]?.string, !prompt.isEmpty { ToolIO(text: ChatText.clip(prompt, lines: 8), maxHeight: 144).padding(.top, 4) }
-            let start = input["cwd"]?.string ?? folder
-            if !start.isEmpty { Text(verbatim: "Starts in \(start)").font(ChatStyle.monoSmall).foregroundStyle(.secondary).padding(.top, 2) }
+            ChatSlots.chipActions(call, model.chat)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

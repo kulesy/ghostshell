@@ -102,6 +102,20 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
     }
 }
 
+/// The chat of a group or of one of Home's built-in sections, as the index lists it once the chat has been booked.
+public struct GroupChat: Hashable, Sendable, Decodable {
+    public var id: String
+    public var state: SessionState
+
+    private enum Key: String, CodingKey { case id, state }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Key.self)
+        id = try c.decode(String.self, forKey: .id)
+        state = c.value(.state) ?? .other("")
+    }
+    public init(id: String, state: SessionState = .idle) { (self.id, self.state) = (id, state) }
+}
+
 public struct SessionGroup: Hashable, Sendable, Identifiable, Decodable {
     public var id: String
     public var name: String
@@ -126,29 +140,52 @@ public struct SessionGroup: Hashable, Sendable, Identifiable, Decodable {
     }
 }
 
+/// One of Home's built-in sections (`routines`, `pinned`, `started`, `ungrouped`, `other`) and its chat.
+public struct SectionEntry: Hashable, Sendable, Identifiable, Decodable {
+    public var id: String
+    public var session: GroupChat?
+
+    private enum Key: String, CodingKey { case id, session }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Key.self)
+        id = try c.decode(String.self, forKey: .id)
+        session = c.value(.session)
+    }
+}
+
 public struct SessionProject: Hashable, Sendable, Identifiable, Decodable {
     public var id: String
     public var name: String
     public init(id: String, name: String) { (self.id, self.name) = (id, name) }
 }
 
-/// Which edits the server takes, so the app offers only those, as the page does. A flag the server does not send reads as false.
+/// Which edits and reads the server takes, so the app offers only those, as the page does. A flag the server does not send reads as false.
 public struct SessionFeatures: Hashable, Sendable, Decodable {
     public var many: Bool
     public var groupEdits: Bool
     public var groupRename: Bool
     public var accountPins: Bool
+    public var groupSessions: Bool
+    public var sectionSessions: Bool
+    public var subStatus: Bool
+    public var pullStatus: Bool
 
-    private enum Key: String, CodingKey { case many, groupEdits, groupRename, accountPins }
+    private enum Key: String, CodingKey { case many, groupEdits, groupRename, accountPins, groupSessions, sectionSessions, subStatus, pullStatus }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         many = (try? c.decode(Bool.self, forKey: .many)) ?? false
         groupEdits = (try? c.decode(Bool.self, forKey: .groupEdits)) ?? false
         groupRename = (try? c.decode(Bool.self, forKey: .groupRename)) ?? false
         accountPins = (try? c.decode(Bool.self, forKey: .accountPins)) ?? false
+        groupSessions = (try? c.decode(Bool.self, forKey: .groupSessions)) ?? false
+        sectionSessions = (try? c.decode(Bool.self, forKey: .sectionSessions)) ?? false
+        subStatus = (try? c.decode(Bool.self, forKey: .subStatus)) ?? false
+        pullStatus = (try? c.decode(Bool.self, forKey: .pullStatus)) ?? false
     }
-    public init(many: Bool = false, groupEdits: Bool = false, groupRename: Bool = false, accountPins: Bool = false) {
+    public init(many: Bool = false, groupEdits: Bool = false, groupRename: Bool = false, accountPins: Bool = false,
+                groupSessions: Bool = false, sectionSessions: Bool = false, subStatus: Bool = false, pullStatus: Bool = false) {
         (self.many, self.groupEdits, self.groupRename, self.accountPins) = (many, groupEdits, groupRename, accountPins)
+        (self.groupSessions, self.sectionSessions, self.subStatus, self.pullStatus) = (groupSessions, sectionSessions, subStatus, pullStatus)
     }
 }
 
@@ -183,9 +220,10 @@ public struct SessionIndex: Hashable, Sendable, Decodable {
     public var started: [SessionRow]
     public var ungrouped: [SessionRow]
     public var other: [SessionRow]
+    public var sections: [SectionEntry]
     public var features: SessionFeatures?
 
-    private enum Key: String, CodingKey { case station, problem, projects, pinned, groups, routines, started, ungrouped, other, features }
+    private enum Key: String, CodingKey { case station, problem, projects, pinned, groups, routines, started, ungrouped, other, sections, features }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         station = (try? c.decode(String.self, forKey: .station)) ?? ""
@@ -197,13 +235,14 @@ public struct SessionIndex: Hashable, Sendable, Decodable {
         started = lossy(c, .started)
         ungrouped = lossy(c, .ungrouped)
         other = lossy(c, .other)
+        sections = lossy(c, .sections)
         features = try? c.decode(SessionFeatures.self, forKey: .features)
     }
 
     public init(station: String = "", problem: String? = nil, projects: [SessionProject] = [], pinned: [SessionRow] = [], groups: [SessionGroup] = [], routines: [RoutineRuns] = [],
-                started: [SessionRow] = [], ungrouped: [SessionRow] = [], other: [SessionRow] = [], features: SessionFeatures? = nil) {
+                started: [SessionRow] = [], ungrouped: [SessionRow] = [], other: [SessionRow] = [], sections: [SectionEntry] = [], features: SessionFeatures? = nil) {
         (self.station, self.problem, self.projects, self.pinned, self.groups, self.routines) = (station, problem, projects, pinned, groups, routines)
-        (self.started, self.ungrouped, self.other, self.features) = (started, ungrouped, other, features)
+        (self.started, self.ungrouped, self.other, self.sections, self.features) = (started, ungrouped, other, sections, features)
     }
 
     /// Every session once, children included, newest first. The plain list reads this. Groups, pins and routines read the lists above.

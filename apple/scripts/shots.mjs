@@ -2,7 +2,7 @@
 // Drives the Debug app through accessibility, in the background (XCUITest is not available here), and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines|files] [--files-only] [--no-files]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines|files|groups] [--files-only] [--no-files]
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
+import { startGroupStub } from './group-fixtures.mjs';
 import { copyTranscript, startScratch, TEST_CWD } from './test-server.mjs';
 
 const argv = process.argv.slice(2);
@@ -21,7 +22,7 @@ const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? ''
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(option('--out') || path.join(here, '..', 'screenshots'));
 const FLOW = option('--flow');
-const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files'];
+const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups'];
 if (FLOW !== undefined && !FLOWS.includes(FLOW)) {
   console.error(`${FLOW ? `Unknown --flow ${FLOW}.` : '--flow needs a value.'} The flows are: ${FLOWS.join(', ')}.`);
   process.exit(2);
@@ -281,6 +282,13 @@ class App {
       });
   }
   headings() { return this.outline().filter(([kind]) => kind === 'H').length; }
+  // A heading's own button is not a separate element: the list merges it into the heading, which carries the button's hover text. AXPress on the heading folds
+  // the section, and the button is the heading's named action, which the system words as "Name:<name>\nTarget:0x0\nSelector:(null)".
+  headingButton(help) { return this.find(node => node.role === 'AXHeading' && node.help === help); }
+  pressHeadingButton(help) {
+    const heading = this.headingButton(help);
+    return !!heading && this.act(heading, `Name:${help}\nTarget:0x0\nSelector:(null)`);
+  }
   sessionRows() { return this.outline().filter(([kind]) => kind === 'R'); }
   // Opens or folds the nth section heading (from 0). Pressing the heading goes through the outline, so the app keeps the fold. Setting AXDisclosing on the row does not.
   setSection(n, open) {
@@ -1318,6 +1326,70 @@ async function filesFlow(bundle, appearance) {
   }
 }
 
+
+// Group chats and session cards. The stub holds sessions in every part, pull requests in two states, a chat with suggested tasks, a first Start that fails
+// and a reply the server refuses. Nothing here touches a real server.
+async function groupsFlow(bundle, appearance) {
+  console.log(`\n== ${appearance}: group heading, sub sessions panel, cards, reply box, chips`);
+  const stub = await startGroupStub();
+  const app = new App(bundle, { address: stub.address, appearance, tag: '11' });
+  const sees = text => app.texts().includes(text) || app.hasButton(text);
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('heading button', () => app.headingButton('Open the Release chat'), 20), 'the Release heading has its chat button');
+    await app.both('sidebar-heading');
+
+    // A press on the heading itself folds the section and opens no chat, as it did before the chat button.
+    check(app.act(app.headingButton('Open the Release chat')) && await until('folded', () => app.sessionRows().length < 6, 5) && !sees('Draft the release notes, Waiting on you'), 'pressing the heading folds its section and opens no chat');
+    check(app.act(app.headingButton('Open the Release chat')) && await until('unfolded', () => app.sessionRows().length >= 6, 5), 'pressing it again opens the section');
+    check(app.pressHeadingButton('Open the Release chat'), 'the heading button opens the group');
+    await sleep(800);
+    check(await until('fold', () => app.sessionRows().length >= 6, 5), 'the Release section stays open after its chat button is pressed');
+    check(await until('panel', () => sees('Draft the release notes, Waiting on you') && sees('Write the changelog, Working'), 20), 'the panel shows a waiting card and a working card');
+    check(sees('Add the audit log, Waiting on you'), 'a pull request that needs a review counts as waiting on you');
+    check(sees('Fix the flaky build, Idle') || sees('Fix the flaky build, Unread'), 'a merged pull request session is in the panel');
+    check(await until('chat', () => app.texts().includes('Two things are left. I have split them into tasks you can start from here.'), 20), 'the group chat is beside the panel');
+    await sleep(800);
+    await app.both('view');
+
+    check(app.press('Details of Fix the flaky build'), 'a card opens its details');
+    check(await until('details', () => app.texts().includes('npm run build && npm test'), 15), 'the details show the latest reply, code block included');
+    // The card is the fifth, so the panel is scrolled to show it. The panel's bar is the last vertical one, which scrollChat finds.
+    app.scrollChat(1);
+    await sleep(500);
+    await app.both('details');
+    app.scrollChat(0);
+    check(app.press('Details of Fix the flaky build'), 'the details close again');
+
+    // The press is answered with an error as the card redraws, so the box opening is the check.
+    app.press('Reply to Draft the release notes');
+    check(await until('note', () => app.texts().includes("It's waiting on a card in its chat, so this reaches it after you answer that."), 10), 'the reply box says the session is waiting on a card');
+    check(!!app.find(node => node.role === 'AXTextArea' && node.desc === 'Message to Draft the release notes') && app.set(app.find(node => node.role === 'AXTextArea' && node.desc === 'Message to Draft the release notes'), 'AXFocused', true), 'the reply box takes focus');
+    app.type('Go ahead with the tests.');
+    check(app.press('Send'), 'Send is pressed');
+    check(await until('refused', () => app.texts().includes('Not sent: That session is busy with another reply.'), 10), 'a refused reply shows Not sent with the reason');
+    await app.both('reply-error');
+    check(stub.calls.some(call => call.startsWith('/api/sessions/s-wait/send') && call.includes('"text":"Go ahead with the tests."') && !call.includes('mode')), 'the reply was sent as text with no mode');
+
+    // The chat is beside the panel at the default size only.
+    app.resize(DEFAULT_SIZE);
+    await sleep(700);
+    check(await until('chips', () => app.hasButton('Start') && app.texts().includes('Started'), 15), 'an open chip shows Start and a started chip says Started');
+    await app.shot(`${app.tag}-chip-open-${appearance}-default`);
+    check(app.press('Start'), 'Start is pressed');
+    check(await until('chip error', () => app.texts().includes('Not done: This chip has no prompt or folder to start from.'), 10), 'a failed start shows its reason and keeps the buttons');
+    await app.shot(`${app.tag}-chip-error-${appearance}-default`);
+    check(app.press('Start') && await until('chip started', () => !app.hasButton('Start'), 10), 'the second Start settles the chip as started');
+    check(stub.calls.filter(call => call.startsWith('/api/chips/start')).length === 2, 'Start was posted twice');
+    await app.shot(`${app.tag}-chip-started-${appearance}-default`);
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+}
+
 const cleanup = async () => {
   for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
@@ -1348,6 +1420,7 @@ try {
     if (flows.includes('organise')) await organiseFlow(bundle, appearance);
     if (flows.includes('routines')) await routinesFlow(bundle, appearance);
     if (flows.includes('files')) await filesFlow(bundle, appearance);
+    if (flows.includes('groups')) await groupsFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);
