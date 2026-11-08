@@ -211,6 +211,7 @@ private struct QuestionBlock: View {
             ForEach(Array(question.options.enumerated()), id: \.offset) { n, option in
                 let chosen = pick.chosen.contains(n)
                 OptionButton(option: option, chosen: chosen, busy: busy) { pick.choose(n, multiSelect: question.multiSelect) }
+                    .accessibilityHint(Text(verbatim: question.question))
                 if chosen, let preview = option.preview { ToolIO(text: preview, maxHeight: 160) }
             }
             TextField("Or write your own answer", text: Binding(

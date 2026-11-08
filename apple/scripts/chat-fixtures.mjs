@@ -138,7 +138,7 @@ function approvalChats() {
     'ask-bash': chat('Push the upload fix', [bash]),
     'ask-edit': chat('Edit the upload helper', [edit]),
     'ask-question': chat('Choose the test setup', [question]),
-    'ask-plan': chat('Plan the retry change', [plan]),
+    'ask-plan': chat('Approve the retry plan', [plan]),
     'ask-two': chat('Several things waiting', [bash, edit, longBash]),
   };
 }

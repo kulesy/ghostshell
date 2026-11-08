@@ -243,6 +243,12 @@ class App {
     }
     return false;
   }
+  // A card's buttons expose no name to accessibility, but each one's hover text names its card or question.
+  // So this presses the nth button (from 0) whose hover text is `help`.
+  pressHelped(help, n = 0) {
+    const button = this.findAll(node => node.role === 'AXButton' && node.help === help)[n];
+    return !!button && this.act(button);
+  }
   // The sidebar top to bottom, a line each: "H" for a heading, "R <hover text> <Expanded|Collapsed|>" for a session row. Row titles
   // are not readable through accessibility, so a row is told apart by its hover text, which the stub varies by folder.
   outline() {
@@ -343,8 +349,8 @@ async function signInDirect(server) {
   return /capcom=([0-9a-f]+)/.exec(response.headers.get('set-cookie') || '')?.[1];
 }
 
-// The sidebar lists the stub's chats A to Z, so the rows run empty, rich, stream, long.
-const CHAT_ROW = { empty: 0, rich: 1, stream: 2, long: 3 };
+// The sidebar lists the stub's chats A to Z by title, so a chat's row comes from its title.
+const rowOf = (stub, id) => stub.rows.map((r) => r.title).sort((a, b) => a.localeCompare(b)).indexOf(stub.rows.find((r) => r.id === id).title);
 
 async function chatFlow(bundle, appearance) {
   const stub = await startChatStub();
@@ -356,7 +362,7 @@ async function chatFlow(bundle, appearance) {
     app.submit();
     check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
 
-    app.chooseRow(CHAT_ROW.rich);
+    app.chooseRow(rowOf(stub, 'rich'));
     check(await until('rich', () => app.texts().includes('Why is the upload test flaky? It fails about one run in five.'), 20), 'a rich chat shows its first message');
     await sleep(800);
     await app.both('chat-rich');
@@ -371,12 +377,12 @@ async function chatFlow(bundle, appearance) {
     app.resize(DEFAULT_SIZE);
     await sleep(700);
 
-    app.chooseRow(CHAT_ROW.stream);
+    app.chooseRow(rowOf(stub, 'stream'));
     check(await until('stream', () => app.texts().includes('Go on, I am ready.'), 20), 'a streaming chat shows its last message');
     await sleep(5000);
     await app.both('chat-streaming');
 
-    app.chooseRow(CHAT_ROW.long);
+    app.chooseRow(rowOf(stub, 'long'));
     check(await until('long', () => app.texts().includes('Question 600: what does step 600 of the migration do?'), 20), 'a long chat opens at its end');
     await sleep(800);
     await app.both('chat-long-end');
@@ -389,7 +395,7 @@ async function chatFlow(bundle, appearance) {
     await sleep(2500);
     await app.shot(`6-chat-long-scrolled-up-again-${appearance}`);
 
-    app.chooseRow(CHAT_ROW.empty);
+    app.chooseRow(rowOf(stub, 'empty'));
     check(await until('empty', () => app.texts().includes('Nothing here yet'), 20), 'an empty chat says so');
     await app.both('chat-empty');
     app.signOutFromMenu();
@@ -405,8 +411,8 @@ async function approvalsFlow(bundle, appearance) {
   const stub = await startChatStub();
   console.log(`\n== ${appearance}: approval cards`);
   const app = new App(bundle, { address: stub.address, appearance, tag: '7' });
-  const shown = async (row, title) => {
-    app.chooseRow(row);
+  const shown = async (id, title) => {
+    app.chooseRow(rowOf(stub, id));
     return check(await until(title, () => app.texts().includes(title), 20), `the card "${title}" is drawn`);
   };
   try {
@@ -415,32 +421,32 @@ async function approvalsFlow(bundle, appearance) {
     app.submit();
     check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
 
-    await shown(4, 'Bash wants to run a command');
+    await shown('ask-bash', 'Bash wants to run a command');
     await sleep(800);
     await app.both('approval-bash');
     // The stub has no approve route, so the decision fails and the card keeps its buttons and shows why.
-    check(app.press('Deny'), 'Deny is pressed on the Bash card');
+    check(app.pressHelped('Bash wants to run a command', 2), 'Deny is pressed on the Bash card');
     check(await until('error', () => app.texts().includes('The server answered with an error (404). Try again.')), 'a failed decision shows its reason on the card');
     await sleep(500);
     await app.shot(`7-approval-bash-error-${appearance}-default`);
 
-    await shown(5, 'Edit wants to change');
+    await shown('ask-edit', 'Edit wants to change');
     await sleep(800);
     await app.both('approval-edit');
 
-    await shown(6, 'Claude is asking');
-    check(app.press('node:test'), 'an option is picked');
+    await shown('ask-question', 'Claude is asking');
+    check(app.pressHelped('Which test runner should the new tests use?', 0), 'an option is picked');
     await sleep(800);
     await app.both('approval-question');
-    check(app.press('Lint') && app.press('Types'), 'two checks are picked');
+    check(app.pressHelped('Which checks should run before each commit?', 0) && app.pressHelped('Which checks should run before each commit?', 1), 'two checks are picked');
     await sleep(600);
     await app.both('approval-question-picked');
 
-    await shown(7, 'Claude has a plan');
+    await shown('ask-plan', 'Claude has a plan');
     await sleep(800);
     await app.both('approval-plan');
 
-    await shown(8, 'Bash wants to run a command');
+    await shown('ask-two', 'Bash wants to run a command');
     await sleep(800);
     await app.both('approval-stacked');
     app.signOutFromMenu();
