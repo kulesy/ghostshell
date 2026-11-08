@@ -1080,6 +1080,8 @@ async function routinesFlow(bundle, appearance) {
     return `${new Date(ms + offset * 60_000).toISOString().slice(0, 19)}${offset >= 0 ? '+' : '-'}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
   };
   const at = (days, hour, minute = 0) => { const d = new Date(now + days * day); d.setHours(hour, minute, 0, 0); return d.getTime(); };
+  // Days to the next Monday, so the weekly routine's `0 9 * * 1` and its next times agree.
+  const monday = (8 - new Date(now).getDay()) % 7 || 7;
   const row = (id, title, extra = {}) => ({ id, title, state: 'idle', cwd: '/Users/me/Projects/site', branch: 'main', lastActivityAt: now - 600_000, sortAt: now - 600_000, ...extra });
   const index = {
     station: 'stub', projects: [],
@@ -1096,7 +1098,7 @@ async function routinesFlow(bundle, appearance) {
   // Reports has only idle routines, Old backup is idle and loose, and nightly is the one with runs.
   const routineList = { routines: [
     routine('nightly', 'Nightly check', { cron: '30 7 * * 1-5', lastRunAt: iso(now - 600_000), lastSessionId: 'run-3', next: iso(at(1, 7, 30)) }),
-    routine('weekly', 'Weekly report', { heading: 'Reports', next: iso(at(3, 9)) }),
+    routine('weekly', 'Weekly report', { heading: 'Reports', next: iso(at(monday, 9)) }),
     routine('sync', 'Sync the docs', { heading: 'Reports', cron: '15 */4 * * *', next: iso(now + 3_600_000) }),
     routine('backup', 'Old backup', { cron: '0 2 * * *', enabled: false, next: null }),
   ] };
@@ -1127,7 +1129,7 @@ async function routinesFlow(bundle, appearance) {
       if (pathname === '/api/routines') return send(res, 200, routineList);
       if (/^\/api\/routines\/[\w-]+\/prompt$/.test(pathname)) return send(res, 200, { file: '/Users/me/.ghostshell/routines/weekly.md', text: 'Write the weekly report from the merged pull requests.\n', ours: true });
       if (pathname === '/api/scheduled') return send(res, 200, scheduledList);
-      if (pathname === '/api/schedule') return send(res, 200, { next: [iso(at(3, 9)), iso(at(10, 9)), iso(at(17, 9))] });
+      if (pathname === '/api/schedule') return send(res, 200, { next: [iso(at(monday, 9)), iso(at(monday + 7, 9)), iso(at(monday + 14, 9))] });
       if (pathname === '/api/folders') return send(res, 200, { folders: ['/Users/me/Projects/site', '/Users/me/Projects/web'] });
       if (pathname === '/api/accounts') return send(res, 200, { accounts: [{ id: 'work', name: 'Work', active: true }, { id: 'home', name: 'Home' }] });
       return send(res, 200, pathname.startsWith('/api/archived') ? { archived: [] } : index);
