@@ -178,7 +178,7 @@ function termRuns() {
       { stream: 'err', text: "Error: ENOTEMPTY: directory not empty, rmdir 'tmp/run-1'\n" },
     ] },
     { ...base, id: 'r3', command: 'npm run dev', startedAt: Date.now() - 95_000, endedAt: null, exitCode: null, running: true, output: [
-      { stream: 'out', text: '> example@1.0.0 dev\n> vite\n\n  VITE v5.4.0  ready in 312 ms\n\n  \u279c  Local:   http://localhost:5173/\n' },
+      { stream: 'out', text: '> example@1.0.0 dev\n> vite\n\n  \u001b[32m\u001b[1mVITE\u001b[0m v5.4.0  \u001b[2mready in\u001b[0m \u001b[1m312 ms\u001b[0m\n\n  \u001b[32m\u279c\u001b[0m  \u001b[1mLocal\u001b[0m:   \u001b[36mhttp://localhost:5173/\u001b[0m\n' },
     ] },
   ];
 }
