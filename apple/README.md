@@ -46,7 +46,7 @@ The first launch of a new build asks the Keychain for access to its own item. Th
 
 1. **Unit tests** run with `swift test` in `apple/GhostShellKit`. They use a stub `URLProtocol`, so they never open a socket.
 2. **Integration tests** talk to a real scratch server. They cover sign-in, a wrong password, the lockout, an `Origin` check on a POST, sign-out revoking the token, the session index, the `status` event and a 401 after revoke.
-3. **The app run** (`apple/scripts/shots.mjs`) launches the Debug app in the background and drives it through accessibility, because XCUITest is not available here. It signs in, checks the list, starts a real Haiku chat and checks that the row appears with no action in the window. It relaunches to check that the sign-in stays, then signs out. A last pass signs in to a small stub that answers sign-in, the list and the archive, because a chat waiting on an approval or a failed turn can't be had on demand, and it shows all four status marks. A third pass signs in to the chat stub in `apple/scripts/chat-fixtures.mjs`, which serves a rich chat, a reply that streams in, a 600-pair chat to scroll up through and an empty chat, because those can't be had on demand either. A fourth pass runs the Accounts, Passkeys, banner and context meter screens against a stub server that answers only those routes and records every call, so no real account, restart or browser is touched. `--flow main`, `marks`, `chats` or `accounts` runs one pass alone, and `--chats-only` is `--flow chats`. The finished Haiku chat is copied into the scratch server as a plain file (`copyTranscript` in `test-server.mjs`), because the server's transcript index skips a symlinked folder.
+3. **The app run** (`apple/scripts/shots.mjs`) launches the Debug app in the background and drives it through accessibility, because XCUITest is not available here. It signs in, checks the list, starts a real Haiku chat and checks that the row appears with no action in the window. It relaunches to check that the sign-in stays, then signs out. A last pass signs in to a small stub that answers sign-in, the list and the archive, because a chat waiting on an approval or a failed turn can't be had on demand, and it shows all four status marks. The first pass also checks the bell, the Settings pane and a finished-chat alert, and the stub pass checks a needs-you alert and the Dock count. A third pass signs in to the chat stub in `apple/scripts/chat-fixtures.mjs`, which serves a rich chat, a reply that streams in, a 600-pair chat to scroll up through and an empty chat, because those can't be had on demand either. A fourth pass runs the Accounts, Passkeys, banner and context meter screens against a stub server that answers only those routes and records every call, so no real account, restart or browser is touched. `--flow main`, `marks`, `chats` or `accounts` runs one pass alone, and `--chats-only` is `--flow chats`. The finished Haiku chat is copied into the scratch server as a plain file (`copyTranscript` in `test-server.mjs`), because the server's transcript index skips a symlinked folder.
 
 The server for these runs is `node server.mjs` with its own state folder, home folder and port. The password is written to a file with the server's own `writePassword`. `CAPCOM_CLAUDE` points at a wrapper that restores the real home folder, so the Haiku chat is real. It runs in `/private/tmp/claude-501/capcom-test-cwd/swift-app`.
 
@@ -58,7 +58,7 @@ The app is launched with `open -g -n`, so it never comes to the front, and with 
 
 The default folder is `apple/screenshots`, which git ignores. Pass `--out <folder>` to save elsewhere.
 
-The Debug hooks are launch arguments: `-GSKeychainService`, `-GSAddress`, `-GSDefaultsSuite`, `-GSAppearance` and `-GSShotDir`. They sit behind `#if DEBUG` in `apple/GhostShell/DebugHooks.swift`. Every run uses a new Keychain service name, so a run never reads an item that an older build made.
+The Debug hooks are launch arguments: `-GSKeychainService`, `-GSAddress`, `-GSDefaultsSuite`, `-GSAppearance`, `-GSShotDir`, `-GSNotify on` and `-GSAlertLog <file>`. A run with `-GSDefaultsSuite` starts with notifications off, so it never raises the system permission dialog, unless it passes `-GSNotify on`. `-GSAlertLog` swaps the notification centre for a file that gets one line per alert. They sit behind `#if DEBUG` in `apple/GhostShell/DebugHooks.swift`. Every run uses a new Keychain service name, so a run never reads an item that an older build made.
 
 ## Add a screen
 
@@ -102,7 +102,7 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 | [https://github.com/kulesy/ghostshell/issues/91](https://github.com/kulesy/ghostshell/issues/91) Terminal | `Terminal/` | `Terminal.swift` |
 | [https://github.com/kulesy/ghostshell/issues/92](https://github.com/kulesy/ghostshell/issues/92) Routines | `Routines/` | `Routines.swift` |
 | [https://github.com/kulesy/ghostshell/issues/93](https://github.com/kulesy/ghostshell/issues/93) Accounts | `Accounts/` (built) | `Accounts.swift` |
-| [https://github.com/kulesy/ghostshell/issues/94](https://github.com/kulesy/ghostshell/issues/94) Notifications | `Notifications/`, plus app-level code in `apple/GhostShell/` | `Notifications.swift` |
+| [https://github.com/kulesy/ghostshell/issues/94](https://github.com/kulesy/ghostshell/issues/94) Notifications | `Notifications/`, plus app-level code in `apple/GhostShell/` | `GhostShellKit/Notifications/SessionAlerts.swift` |
 | [https://github.com/kulesy/ghostshell/issues/81](https://github.com/kulesy/ghostshell/issues/81) iPhone target | A new `apple/GhostShelliPhone/` folder next to `GhostShell/`. It edits the project file. | none |
 | [https://github.com/kulesy/ghostshell/issues/95](https://github.com/kulesy/ghostshell/issues/95) Push | App-level code in the iPhone and Mac targets | `Push.swift` |
 | [https://github.com/kulesy/ghostshell/issues/82](https://github.com/kulesy/ghostshell/issues/82) Watch | A new `apple/GhostShellWatch/` folder. It uses `GhostShellKit` only. It edits the project file. | none |
@@ -115,7 +115,7 @@ The two sidebar PBIs share one folder. Split the work by file inside `Sidebar/`.
 
 | Slot | What it is | Who fills it |
 | --- | --- | --- |
-| `SidebarToolbarSlot` | Buttons at the end of the sidebar toolbar, beside Sign Out | 87 (New group), 92 (Routines, Scheduled), 94 (notification toggle) |
+| `SidebarToolbarSlot` | Buttons at the end of the sidebar toolbar, beside Sign Out | 87 (New group), 92 (Routines, Scheduled), 94 (notification bell) |
 | `ViewMenuSlot` | Items at the end of the Home and projects menu | 87 (new and edit projects) |
 | `SessionRowMenuSlot` | A session row's right-click menu | 87 (rename, move, nest, archive), 92 (routine items) |
 | `SessionRowSlot` | Modifiers on each session row | 87 (drag and drop) |
@@ -124,11 +124,11 @@ The two sidebar PBIs share one folder. Split the work by file inside `Sidebar/`.
 | `HeadingSlot` | Modifiers on each heading | 87 (drop target) |
 | `HomeTopSectionsSlot` | Whole sections at the top of Home | 92 (Scheduled) |
 | `IdleRoutineRowSlot` | The row for a routine that has never run, drawn in its routine bucket | 92 (idle routines) |
-| `SidebarWatchSlot` | Modifiers on the whole sidebar, for work that watches the index or the chosen session | 92 (idle routines), 94 (notifications) |
+| `SidebarWatchSlot` | Modifiers on the whole sidebar, for work that watches the index or the chosen session | 92 (routines). 94 (notifications) does not use it, because `SessionNotifier` is owned by the app and keeps working with the sidebar collapsed |
 
 Idle routines reach the sidebar through `SidebarState.idleRoutines`, because the index never carries a routine that has not run. 92 shares one store between its Routines screen and its `SidebarWatchSlot` modifier. The modifier fetches `/api/routines` and sets `idleRoutines`, and a routine made or deleted in the screen updates it through the same store, so neither edits the outline or the sections.
 
-Notifications (94) also need the window-visibility handling in `AppModel` and `RootView`, because `SessionIndexFeed` pauses while the window is hidden and a watcher on the index sees nothing then.
+`SessionIndexFeed` pauses while the window is hidden, so notifications (94) keep it running through `AppModel.watchesWhileHidden`.
 
 Selection is a set. One chosen row opens its session, and several stay chosen for 87's bulk actions.
 
@@ -136,4 +136,4 @@ Selection is a set. One chosen row opens its session, and several stay chosen fo
 
 1. Signing with a stable identity needs a paid developer account. Until then each new build asks for Keychain access once.
 2. The iPhone and Watch targets are not in the project yet. The Kit already builds for both. The Watch library is type-checked only, because this machine has no watchOS runtime to link against.
-3. The session list polls every 3 seconds while the window is visible. The server has no push for the index. A push would replace `SessionIndexFeed` without touching its callers.
+3. The session list polls every 3 seconds while the window is visible, and keeps polling while hidden when notifications are on, so alerts arrive within a few seconds. The server has no push for the index. A push would replace `SessionIndexFeed` without touching its callers.
