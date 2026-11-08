@@ -31,12 +31,13 @@ func children(_ e: AXUIElement) -> [AXUIElement] {
 func plain(_ v: AnyObject?) -> Any? {
     guard let v else { return nil }
     if let s = v as? String { return s }
-    if let n = v as? NSNumber { return n }
+    // A view with unbounded content reports an infinite number, which JSON cannot hold and which would fail the whole tree.
+    if let n = v as? NSNumber { return n.doubleValue.isFinite ? n : nil }
     if CFGetTypeID(v) == AXValueGetTypeID() {
         let ax = v as! AXValue
         var p = CGPoint.zero, s = CGSize.zero
-        if AXValueGetValue(ax, .cgPoint, &p) { return [p.x, p.y] }
-        if AXValueGetValue(ax, .cgSize, &s) { return [s.width, s.height] }
+        if AXValueGetValue(ax, .cgPoint, &p) { return [p.x, p.y].allSatisfy(\.isFinite) ? [p.x, p.y] : nil }
+        if AXValueGetValue(ax, .cgSize, &s) { return [s.width, s.height].allSatisfy(\.isFinite) ? [s.width, s.height] : nil }
     }
     return nil
 }
@@ -72,7 +73,7 @@ case "tree":
     guard let w = window(app) else { out([]); exit(0) }
     let fields = [("role", "AXRole"), ("subrole", "AXSubrole"), ("desc", "AXDescription"), ("title", "AXTitle"), ("value", "AXValue"), ("help", "AXHelp"),
                  ("id", "AXIdentifier"), ("disclosing", "AXDisclosing"), ("orientation", "AXOrientation"), ("focused", "AXFocused"), ("selected", "AXSelected"),
-                 ("pos", "AXPosition"), ("size", "AXSize")]
+                 ("pos", "AXPosition"), ("size", "AXSize"), ("enabled", "AXEnabled")]
     var nodes: [[String: Any]] = []
     func walk(_ e: AXUIElement, _ path: [Int]) {
         var node: [String: Any] = ["path": path]

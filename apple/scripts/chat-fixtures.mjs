@@ -126,7 +126,7 @@ The retry makes five attempts with a short pause between them. That covers the s
 
 The temp folder is cleared after each run so a second run cannot read the first run's file. `.split(' ');
 
-const TERM_REPLY = `Run the tests first, then the build. Both blocks have a Run button.
+const TERM_REPLY = `Run the tests first, then the build. Both blocks have a Run button. The notes are in [NOTES.md](/work/example/NOTES.md).
 
 \`\`\`bash
 npm test -- upload
@@ -191,7 +191,7 @@ function chats() {
     stream: { title: 'Plan the retry change', items: [user('Write out the fix for the upload race.', 3), reply('s0', 'Yes. I will lay it out in three parts.', 2.5), user('Go on, I am ready.', 1)], streaming: true },
     long: { title: 'Walk through the migration', items: long },
     empty: { title: 'A chat with nothing in it yet', items: [] },
-    term: { title: 'Check the build output', items: termItems(), terminal: true },
+    term: { title: 'Check the build output', items: termItems(), terminal: true, fileLinks: true },
     widgets: { title: 'Revenue by region', items: [
       user('Show me Q4 revenue by region.', 12),
       reply('w1', 'Here is the breakdown. North leads and East is the smallest.', 11),
@@ -254,7 +254,7 @@ function pageOf(chat, url) {
   let hi = items.length;
   if (after !== null) lo = Math.min(Number(after) / 100, items.length);
   else if (before !== null) { hi = Math.min(Number(before) / 100, items.length); lo = Math.max(0, hi - PAGE); } else lo = Math.max(0, items.length - PAGE);
-  return { items: items.slice(lo, hi), start: lo * 100, end: items.length * 100, hasEarlier: lo > 0, reset: false, fileLinks: false, terminal: chat.terminal === true,
+  return { items: items.slice(lo, hi), start: lo * 100, end: items.length * 100, hasEarlier: lo > 0, reset: false, fileLinks: chat.fileLinks === true, terminal: chat.terminal === true,
     session: { id: '', title: chat.title, cwd: '/work/example', branch: 'main', connectors: {} } };
 }
 
@@ -323,6 +323,13 @@ export async function startChatStub() {
     }
     const t = /^\/api\/sessions\/([^/]+)\/terminal(?:\/(run|input|stop|clear))?$/.exec(url.pathname);
     if (t && all[t[1]]?.terminal) return void terminalRoute(t[2], req, res, requests);
+    // The terminal chat links one file, so its file panel can be open beside the terminal.
+    if (/^\/api\/sessions\/term\/preview$/.test(url.pathname) && url.searchParams.get('path') === '/work/example/NOTES.md') {
+      req.resume();
+      const text = '# Notes\n\nRun the upload test, then the build.\n';
+      return void json(res, { name: 'NOTES.md', path: '/work/example/NOTES.md', real: '/work/example/NOTES.md', size: text.length, kind: 'markdown', type: 'text/markdown',
+        text, truncated: false, version: 'v1', readOnly: 'This is a fixture.' });
+    }
     req.resume();
     if (url.pathname === '/login') return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
     if (url.pathname === '/api/sessions') return void res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ungrouped: rows }));
