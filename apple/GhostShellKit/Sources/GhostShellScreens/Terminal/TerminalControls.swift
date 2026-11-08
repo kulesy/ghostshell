@@ -26,15 +26,14 @@ struct TerminalRunButton: View {
             Button("Run") { run() }
                 .buttonStyle(.borderless).font(ChatStyle.caption).foregroundStyle(.secondary)
                 .disabled(runnable.hidden)
-                .opacity(runnable.hidden ? 0.4 : 1)
                 .help(runnable.hidden ? "This block holds hidden characters, so it cannot be run" : "Run in terminal")
                 .accessibilityLabel(runnable.hidden ? "Run in terminal, unavailable because the block holds hidden characters" : "Run in terminal")
         }
     }
 
-    // The block is read again at the tap, as the page does, and a command holding characters the owner cannot see is refused here as well.
+    // The block and the terminal are checked again at the tap, as the page does, and a command holding characters the owner cannot see is refused here as well.
     private func run() {
-        guard let runnable = TerminalRules.runnableBlock(language: block.language, text: block.text) else { return }
+        guard chat.terminalAvailable, let runnable = TerminalRules.runnableBlock(language: block.language, text: block.text) else { return }
         let terminal = chat.terminal
         terminal.start()
         chat.terminalOpen = true
