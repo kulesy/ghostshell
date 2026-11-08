@@ -138,7 +138,7 @@ final class WatchRelayTests: XCTestCase {
         XCTAssertEqual(session.title, "Fix the build")
         XCTAssertEqual(session.state, .waiting)
         XCTAssertEqual(session.latest, "The latest answer")
-        XCTAssertEqual(session.prompts, [WatchPrompt(kind: .question, title: "Storage", text: "Which database?", options: ["SQLite", "Postgres"])])
+        XCTAssertEqual(session.prompts, [WatchPrompt(kind: .question, title: "Storage", text: "Which database?", options: ["SQLite", "Postgres"], requestID: "r1", answerable: true)])
     }
 
     func testAPermissionIsWordedAndAnOverlongMessageIsCut() async {
@@ -169,6 +169,82 @@ final class WatchRelayTests: XCTestCase {
             XCTAssertEqual(answer.body, .problem(.invalid), id)
             let reply = await handler().handle(WatchRequest(.reply(id: id, text: "hi", replyID: "r1")), client: await client())
             XCTAssertEqual(reply.body, .problem(.invalid), id)
+        }
+        XCTAssertTrue(WatchStub.seen.isEmpty)
+    }
+
+    private func prompts(pending: String) async -> [WatchPrompt] {
+        WatchStub.reset(["/api/sessions/abc/messages": .init(body: page), "/api/sessions/abc/events": .init(body: status(pending), stream: true)])
+        let answer = await handler().handle(WatchRequest(.session(id: "abc")), client: await client())
+        if case .session(let session) = answer.body { return session.prompts }
+        return []
+    }
+
+    // MARK: Answer
+
+    func testOnlyAQuestionWithOneSingleChoicePartIsAnswerableOnTheWatch() async {
+        let part = { (multi: Bool) in "{\"question\":\"Q\(multi)\",\"multiSelect\":\(multi),\"options\":[{\"label\":\"A\"},{\"label\":\"B\"}]}" }
+        let single = await prompts(pending: "[{\"requestId\":\"r1\",\"tool\":\"AskUserQuestion\",\"input\":{\"questions\":[\(part(false))]}}]")
+        XCTAssertEqual(single.map(\.answerable), [true])
+        let multi = await prompts(pending: "[{\"requestId\":\"r1\",\"tool\":\"AskUserQuestion\",\"input\":{\"questions\":[\(part(true))]}}]")
+        XCTAssertEqual(multi.map(\.answerable), [false])
+        let several = await prompts(pending: "[{\"requestId\":\"r1\",\"tool\":\"AskUserQuestion\",\"input\":{\"questions\":[\(part(false)),\(part(false))]}}]")
+        XCTAssertEqual(several.map(\.answerable), [false, false])
+        let permission = await prompts(pending: "[{\"requestId\":\"r2\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"}}]")
+        XCTAssertEqual(permission.map(\.answerable), [false])
+        let plan = await prompts(pending: "[{\"requestId\":\"r3\",\"tool\":\"ExitPlanMode\",\"input\":{\"plan\":\"Do it\"}}]")
+        XCTAssertEqual(plan.map(\.kind), [.plan])
+        XCTAssertEqual(plan.map(\.answerable), [false])
+    }
+
+    func testAnAnswerIsDecidedWithTheQuestionAsItsKeyAndNeverSentAsAMessage() async {
+        WatchStub.reset(["/api/sessions/abc/approve": .init(body: "{\"ok\":true}"), "/api/sessions/abc/send": .init(body: "{}")])
+        let relay = handler()
+        let ask = WatchRequest(.answer(id: "abc", requestID: "r1", question: "Which database?", text: "  Postgres ", answerID: "a-1"))
+        let first = await relay.handle(ask, client: await client())
+        let again = await relay.handle(ask, client: await client())
+        XCTAssertEqual([first.body, again.body], [.sent, .sent])
+        let posts = WatchStub.posts(to: "/api/sessions/abc/approve")
+        XCTAssertEqual(posts.count, 1, "Asking again must not decide twice.")
+        XCTAssertEqual(posts.first?["requestId"] as? String, "r1")
+        XCTAssertEqual(posts.first?["decision"] as? String, "answer")
+        XCTAssertEqual(posts.first?["answers"] as? [String: String], ["Which database?": "Postgres"])
+        XCTAssertTrue(WatchStub.posts(to: "/api/sessions/abc/send").isEmpty)
+    }
+
+    func testAnAnswerToAQuestionNoLongerPendingIsAnsweredElsewhereAndNotRemembered() async {
+        WatchStub.reset(["/api/sessions/abc/approve": .init(status: 410, body: "{\"error\":\"Nothing pending.\"}")])
+        let relay = handler()
+        let ask = WatchRequest(.answer(id: "abc", requestID: "r1", question: "Which?", text: "A", answerID: "a-1"))
+        let gone = await relay.handle(ask, client: await client())
+        XCTAssertEqual(gone.body, .answeredElsewhere)
+        WatchStub.reset(["/api/sessions/abc/approve": .init(body: "{}")])
+        let retried = await relay.handle(ask, client: await client())
+        XCTAssertEqual(retried.body, .sent, "A 410 is not a delivery, so the next try goes through.")
+        XCTAssertEqual(WatchStub.posts(to: "/api/sessions/abc/approve").count, 1)
+    }
+
+    func testAChatNotRunningHereRefusesTheAnswerInTheServersWords() async {
+        WatchStub.reset(["/api/sessions/abc/approve": .init(status: 409, body: "{\"error\":\"Not running here.\"}")])
+        let answer = await handler().handle(WatchRequest(.answer(id: "abc", requestID: "r1", question: "Which?", text: "A", answerID: "a-1")), client: await client())
+        XCTAssertEqual(answer.body, .problem(.refused("Not running here.")))
+    }
+
+    func testAnAnswerWithoutACardOrQuestionOrTextIsRefusedBeforeACall() async {
+        WatchStub.reset([:])
+        let long = String(repeating: "x", count: WatchRelay.maxQuestionCharacters + 1)
+        let asks: [WatchRequest.Action] = [
+            .answer(id: "a/b", requestID: "r1", question: "Q", text: "A", answerID: "a-1"),
+            .answer(id: "abc", requestID: "", question: "Q", text: "A", answerID: "a-1"),
+            .answer(id: "abc", requestID: "r1", question: "", text: "A", answerID: "a-1"),
+            .answer(id: "abc", requestID: "r1", question: long, text: "A", answerID: "a-1"),
+            .answer(id: "abc", requestID: "r1", question: "Q", text: "  ", answerID: "a-1"),
+            .answer(id: "abc", requestID: "r1", question: "Q", text: String(repeating: "x", count: WatchRelay.maxReplyCharacters + 1), answerID: "a-1"),
+            .answer(id: "abc", requestID: "r1", question: "Q", text: "A", answerID: "bad id"),
+        ]
+        for ask in asks {
+            let answer = await handler().handle(WatchRequest(ask), client: await client())
+            XCTAssertEqual(answer.body, .problem(.invalid), "\(ask)")
         }
         XCTAssertTrue(WatchStub.seen.isEmpty)
     }
@@ -242,6 +318,22 @@ final class WatchRelayTests: XCTestCase {
         XCTAssertEqual(outbox.replies.count, 1)
         outbox.confirm(first)
         XCTAssertEqual(outbox.reply(for: "abc"), second, "Confirming the old reply must not drop the new one.")
+    }
+
+    func testAKeptAnswerSurvivesARelaunchKeepsItsIDForTheSameCardAndReplacesAReply() throws {
+        let store = DictionaryStore()
+        let outbox = WatchOutbox(store: store)
+        let first = try XCTUnwrap(outbox.keepAnswer("Postgres", question: "Which?", requestID: "r1", for: "abc", title: "T"))
+        XCTAssertTrue(first.isAnswer)
+        let reopened = WatchOutbox(store: store)
+        XCTAssertEqual(reopened.reply(for: "abc"), first)
+        XCTAssertEqual(try XCTUnwrap(reopened.keepAnswer("Postgres", question: "Which?", requestID: "r1", for: "abc", title: "T")).replyID, first.replyID)
+        XCTAssertNotEqual(try XCTUnwrap(reopened.keepAnswer("Postgres", question: "Which?", requestID: "r2", for: "abc", title: "T")).replyID, first.replyID, "A new card is a new answer.")
+        let plain = try XCTUnwrap(reopened.keep("Postgres", for: "abc", title: "T"))
+        XCTAssertFalse(plain.isAnswer)
+        XCTAssertEqual(reopened.replies.count, 1)
+        reopened.confirm(plain)
+        XCTAssertNil(reopened.reply(for: "abc"))
     }
 
     func testOutboxRefusesBlankAndOverlongTextAndKeepsNewestFirstUpToTheLimit() throws {

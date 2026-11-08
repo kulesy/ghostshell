@@ -9,6 +9,8 @@ public enum WatchRelay {
     /// The longest reply the iPhone will send for the watch, in characters.
     public static let maxReplyCharacters = 2000
     public static let maxRows = 20
+    /// A question longer than this is answered on the iPhone or Mac, because the watch sends the question back whole to say which one it answers.
+    public static let maxQuestionCharacters = 1500
     static let key = "gs"
 
     public static func pack(_ value: some Encodable) -> [String: Any]? {
@@ -28,6 +30,8 @@ public struct WatchRequest: Codable, Equatable, Sendable {
         case session(id: String)
         /// `replyID` names this reply, so the iPhone sends it once however many times the watch asks.
         case reply(id: String, text: String, replyID: String)
+        /// An answer to a question card, sent with `decide` and never as a message. `question` is the card's question text, which keys the answer. `answerID` works as `replyID` does.
+        case answer(id: String, requestID: String, question: String, text: String, answerID: String)
     }
 
     public var version: Int
@@ -95,8 +99,14 @@ public struct WatchPrompt: Codable, Equatable, Sendable {
     public var title: String
     public var text: String
     public var options: [String]
+    /// The server's id for this card. Set on a question only.
+    public var requestID: String
+    /// True for a question with one single-choice part, which the watch answers itself. Other cards are answered on the iPhone or Mac.
+    public var answerable: Bool
 
-    public init(kind: Kind, title: String, text: String, options: [String] = []) { (self.kind, self.title, self.text, self.options) = (kind, title, text, options) }
+    public init(kind: Kind, title: String, text: String, options: [String] = [], requestID: String = "", answerable: Bool = false) {
+        (self.kind, self.title, self.text, self.options, self.requestID, self.answerable) = (kind, title, text, options, requestID, answerable)
+    }
 }
 
 public struct WatchSession: Codable, Equatable, Sendable {
@@ -120,6 +130,8 @@ public struct WatchResponse: Codable, Equatable, Sendable {
         case waiting([WatchRow])
         case session(WatchSession)
         case sent
+        /// The card was no longer pending (410), so the answer went nowhere.
+        case answeredElsewhere
         case problem(WatchProblem)
     }
 

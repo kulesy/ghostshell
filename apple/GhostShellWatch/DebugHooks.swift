@@ -3,7 +3,7 @@ import Foundation
 import GhostShellKit
 
 /// Hooks for the scripted test run, compiled into Debug builds only. `apple/scripts/build.mjs` fails a Release build that holds one of these words.
-/// Launch arguments: -GSDefaultsSuite, -GSWatchFixture (list, phone, server or signedout), -GSWatchOpen <session id>, -GSWatchOpenTitle, -GSWatchDraft <text>, -GSWatchSend 1.
+/// Launch arguments: -GSDefaultsSuite, -GSWatchFixture (list, phone, server or signedout), -GSWatchOpen <session id>, -GSWatchOpenTitle, -GSWatchDraft <text>, -GSWatchSend 1, -GSWatchTap <option>.
 enum DebugHooks {
     private static var args: UserDefaults { .standard }
 
@@ -20,10 +20,21 @@ enum DebugHooks {
     }
 
     /// The draft to type into the opened session, or nil. With -GSWatchSend the draft is sent as a person would with the keyboard, and nothing is typed.
+    /// With -GSWatchTap the named option of the open question is answered as its button would. A typed draft or a tap answers the question when there is one, else it is a reply.
     @MainActor static func draft(for row: WatchRow, model: WatchModel) async -> String? {
-        guard row.id == args.string(forKey: "GSWatchOpen"), model.keptReply(for: row.id) == nil, !model.sent.contains(row.id), let text = args.string(forKey: "GSWatchDraft") else { return nil }
+        guard row.id == args.string(forKey: "GSWatchOpen"), model.keptReply(for: row.id) == nil, !model.sent.contains(row.id) else { return nil }
+        let tap = args.string(forKey: "GSWatchTap")
+        guard tap != nil || args.string(forKey: "GSWatchDraft") != nil else { return nil }
+        await model.refreshSession(row.id)
+        var question: WatchPrompt?
+        if case .loaded(let session) = model.session { question = session.prompts.first { $0.answerable } }
+        if let tap {
+            if let question { await model.answer(tap, to: question, in: row) }
+            return nil
+        }
+        guard let text = args.string(forKey: "GSWatchDraft") else { return nil }
         guard args.bool(forKey: "GSWatchSend") else { return text }
-        await model.reply(text, to: row.id, title: row.title)
+        if let question { await model.answer(text, to: question, in: row) } else { await model.reply(text, to: row.id, title: row.title) }
         return nil
     }
 }
@@ -41,7 +52,7 @@ struct FixtureRelay: Relay {
 
     private let sessions: [String: WatchSession] = [
         "s1": WatchSession(id: "s1", title: "Fix the flaky upload test", state: .waiting,
-                           prompts: [WatchPrompt(kind: .question, title: "Storage", text: "Which database should the upload queue use?", options: ["SQLite", "Postgres"])],
+                           prompts: [WatchPrompt(kind: .question, title: "Storage", text: "Which database should the upload queue use?", options: ["SQLite", "Postgres"], requestID: "q1", answerable: true)],
                            latest: "The test fails because it starts the upload before the server has finished its setup. I can wait for the **ready** event instead."),
         "s2": WatchSession(id: "s2", title: "Clean up the build folder", state: .waiting,
                            prompts: [WatchPrompt(kind: .permission, title: "Bash wants to run a command", text: "rm -rf apple/build")]),
@@ -59,7 +70,7 @@ struct FixtureRelay: Relay {
         switch request.action {
         case .waiting: return WatchResponse(.waiting(rows))
         case .session(let id): return WatchResponse(.session(sessions[id] ?? WatchSession(id: id, title: "Session", state: .idle)))
-        case .reply: return WatchResponse(.sent)
+        case .reply, .answer: return WatchResponse(.sent)
         }
     }
 }

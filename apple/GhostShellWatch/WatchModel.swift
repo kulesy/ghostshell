@@ -19,6 +19,8 @@ final class WatchModel {
     private(set) var sent: Set<String> = []
     /// Why the last try at a kept reply failed.
     private(set) var failure: [String: WatchProblem] = [:]
+    /// Sessions whose answer found its question already answered, on the iPhone, the Mac or by the turn ending.
+    private(set) var answeredElsewhere: Set<String> = []
 
     private let relay: any Relay
     private let outbox: WatchOutbox
@@ -35,7 +37,7 @@ final class WatchModel {
         switch answer.body {
         case .waiting(let rows): list = .loaded(rows)
         case .problem(let problem): list = .problem(problem)
-        case .session, .sent: list = .problem(.outOfDate)
+        case .session, .sent, .answeredElsewhere: list = .problem(.outOfDate)
         }
     }
 
@@ -46,7 +48,7 @@ final class WatchModel {
         switch answer.body {
         case .session(let loaded): session = .loaded(loaded)
         case .problem(let problem): session = .problem(problem)
-        case .waiting, .sent: session = .problem(.outOfDate)
+        case .waiting, .sent, .answeredElsewhere: session = .problem(.outOfDate)
         }
     }
 
@@ -63,6 +65,15 @@ final class WatchModel {
         return true
     }
 
+    /// Keeps `text` as the answer to `prompt`, then sends it through `decide` on the iPhone. A tapped option and a typed answer both come here.
+    @discardableResult
+    func answer(_ text: String, to prompt: WatchPrompt, in row: WatchRow) async -> Bool {
+        guard prompt.answerable, let pending = outbox.keepAnswer(text, question: prompt.text, requestID: prompt.requestID, for: row.id, title: row.title) else { return false }
+        kept = outbox.replies
+        await send(pending)
+        return true
+    }
+
     func sendAgain(_ id: String) async {
         if let pending = keptReply(for: id) { await send(pending) }
     }
@@ -71,6 +82,7 @@ final class WatchModel {
         outbox.discard(sessionID: id)
         kept = outbox.replies
         failure[id] = nil
+        answeredElsewhere.remove(id)
     }
 
     private func send(_ pending: PendingReply) async {
@@ -78,16 +90,28 @@ final class WatchModel {
         defer { sending.remove(pending.sessionID) }
         failure[pending.sessionID] = nil
         sent.remove(pending.sessionID)
-        let answer = await relay.ask(WatchRequest(.reply(id: pending.sessionID, text: pending.text, replyID: pending.replyID)))
+        answeredElsewhere.remove(pending.sessionID)
+        let request: WatchRequest
+        if let requestID = pending.requestID, let question = pending.question {
+            request = WatchRequest(.answer(id: pending.sessionID, requestID: requestID, question: question, text: pending.text, answerID: pending.replyID))
+        } else {
+            request = WatchRequest(.reply(id: pending.sessionID, text: pending.text, replyID: pending.replyID))
+        }
+        let answer = await relay.ask(request)
         switch answer.body {
         case .sent:
             outbox.confirm(pending)
             sent.insert(pending.sessionID)
+        case .answeredElsewhere:
+            // The question is gone, so the kept answer has nothing to wait for.
+            outbox.confirm(pending)
+            answeredElsewhere.insert(pending.sessionID)
         case .problem(let problem):
             failure[pending.sessionID] = problem
         case .waiting, .session:
             failure[pending.sessionID] = .outOfDate
         }
         kept = outbox.replies
+        if pending.isAnswer, shownSession == pending.sessionID { await refreshSession(pending.sessionID) }
     }
 }

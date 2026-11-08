@@ -31,6 +31,13 @@ public actor WatchRelayHandler {
                 return WatchResponse(.problem(.invalid))
             }
             return WatchResponse(await reply(clean, to: id, replyID: replyID, client))
+        case .answer(let id, let requestID, let question, let text, let answerID):
+            let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard Self.isValid(sessionID: id), Self.isValid(replyID: answerID), !requestID.isEmpty, requestID.count <= 200,
+                  !question.isEmpty, question.count <= WatchRelay.maxQuestionCharacters, !clean.isEmpty, clean.count <= WatchRelay.maxReplyCharacters else {
+                return WatchResponse(.problem(.invalid))
+            }
+            return WatchResponse(await answerCard(clean, question: question, requestID: requestID, in: id, answerID: answerID, client))
         }
     }
 
@@ -107,8 +114,13 @@ public actor WatchRelayHandler {
     private static func prompts(_ pending: PendingApproval, connectors: [String: String]) -> [WatchPrompt] {
         switch Approvals.kind(of: pending) {
         case .question:
-            return Approvals.questions(of: pending).map {
-                WatchPrompt(kind: .question, title: $0.header ?? "Question", text: cut($0.question, 1500), options: $0.options.prefix(6).map { cut($0.label, 120) })
+            let questions = Approvals.questions(of: pending)
+            // Only a card with one single-choice question is answered here. The Mac builds the same dictionary from the same rules, so a longer card waits for it.
+            let single = questions.count == 1 && !questions[0].multiSelect && !questions[0].question.isEmpty
+                && questions[0].question.count <= WatchRelay.maxQuestionCharacters && !pending.requestID.isEmpty
+            return questions.map {
+                WatchPrompt(kind: .question, title: $0.header ?? "Question", text: cut($0.question, WatchRelay.maxQuestionCharacters), options: $0.options.prefix(6).map { cut($0.label, 120) },
+                            requestID: pending.requestID, answerable: single)
             }
         case .plan:
             return [WatchPrompt(kind: .plan, title: "Plan ready", text: cut(Approvals.plan(of: pending) ?? "", 1500))]
@@ -125,18 +137,33 @@ public actor WatchRelayHandler {
 
     // MARK: Reply
 
-    // NOTE: [9 Nov 2026] EK - A second ask for a reply that is already on its way waits for the first one's answer, and one already delivered is answered `sent`
-    // without sending. The watch asks again when the answer to the first ask never reached it.
     private func reply(_ text: String, to id: String, replyID: String, _ client: GhostShellClient) async -> WatchResponse.Body {
-        if delivered().contains(replyID) { return .sent }
-        if let running = sending[replyID] { return await running.value }
-        let task = Task<WatchResponse.Body, Never> {
-            await self.answer { _ = try await client.sendPrompt(sessionID: id, text: text, mode: nil); return .sent }.body
+        await deliver(replyID) { _ = try await client.sendPrompt(sessionID: id, text: text, mode: nil); return .sent }
+    }
+
+    // The answer is the one `decide` call the Mac's Approvals screen makes: `answers` keyed by the question's text, built by the same `Approvals.answers`.
+    // It never goes to /send, which does not look at a pending card, so the text would wait behind the card and the question would stay open.
+    private func answerCard(_ text: String, question: String, requestID: String, in id: String, answerID: String, _ client: GhostShellClient) async -> WatchResponse.Body {
+        let asked = ApprovalQuestion(question: question, header: nil, options: [], multiSelect: false)
+        let answers = Approvals.answers(for: [asked], picks: [ApprovalPick(other: text)])
+        return await deliver(answerID) {
+            switch try await client.decide(sessionID: id, requestID: requestID, .answer(answers)) {
+            case .resolved: return .sent
+            case .answeredElsewhere: return .answeredElsewhere
+            }
         }
-        sending[replyID] = task
+    }
+
+    // NOTE: [9 Nov 2026] EK - A second ask with an id that is already on its way waits for the first one's answer, and one already delivered is answered `sent`
+    // without sending. The watch asks again when the answer to the first ask never reached it.
+    private func deliver(_ key: String, _ work: @escaping @Sendable () async throws -> WatchResponse.Body) async -> WatchResponse.Body {
+        if delivered().contains(key) { return .sent }
+        if let running = sending[key] { return await running.value }
+        let task = Task<WatchResponse.Body, Never> { await self.answer(work).body }
+        sending[key] = task
         let body = await task.value
-        sending[replyID] = nil
-        if body == .sent { remember(replyID) }
+        sending[key] = nil
+        if body == .sent { remember(key) }
         return body
     }
 

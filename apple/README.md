@@ -88,20 +88,22 @@ Opening a session's `events` stream marks that session read. Open it only for th
 
 ## The watch app
 
-`GhostShellWatch` is a watchOS 11.0 app (bundle id `com.kulesy.ghostshell.iphone.watchkitapp`) that the iPhone app embeds. It lists the sessions waiting on the owner, opens one to show its question or Claude's latest message, and sends a typed or dictated reply.
+`GhostShellWatch` is a watchOS 11.0 app (bundle id `com.kulesy.ghostshell.iphone.watchkitapp`) that the iPhone app embeds. It lists the sessions waiting on the owner, opens one to show its question or Claude's latest message, answers a question card, and sends a typed or dictated reply.
 
 The watch talks only to the iPhone app, over WatchConnectivity. The iPhone makes each server call with its own token through `AppModel.client`, so the watch holds no token, no address and no `GhostShellClient`. The watch has no Tailscale, and watchOS limits what an app may open for itself, so a request from the watch would fail on the road the owner uses. WatchConnectivity needs no entitlement, so a free personal team signs it.
 
-1. `GhostShellKit/Watch/WatchRelay.swift` is the wire protocol: a versioned request (waiting, one session, reply) and response, as JSON under the key `gs`.
-2. `WatchRelayHandler` runs on the iPhone. It checks every field and maps each request onto the client's existing calls (`sessionIndex`, `messages`, the first `status` frame of `eventStream`, `sendPrompt`). It turns errors into the watch's three unreachable states: "Can't reach your iPhone", "Your iPhone can't reach GhostShell" and "Sign in on your iPhone".
-3. `WatchOutbox` keeps a typed reply on the watch before it is sent and removes it only when the iPhone says the server took it. A reply survives a relaunch and has Send again and Discard. Each reply carries an id, and the iPhone remembers the last 50 it delivered, so asking twice sends one message.
+1. `GhostShellKit/Watch/WatchRelay.swift` is the wire protocol: a versioned request (waiting, one session, reply, answer) and response, as JSON under the key `gs`.
+2. `WatchRelayHandler` runs on the iPhone. It checks every field and maps each request onto the client's existing calls (`sessionIndex`, `messages`, the first `status` frame of `eventStream`, `sendPrompt`, `decide`). It turns errors into the watch's three unreachable states: "Can't reach your iPhone", "Your iPhone can't reach GhostShell" and "Sign in on your iPhone".
+3. `WatchOutbox` keeps a typed reply on the watch before it is sent and removes it only when the iPhone says the server took it. A reply or answer survives a relaunch and has Send again and Discard. Each carries an id, and the iPhone remembers the last 50 it delivered, so asking twice sends one message.
 4. `GhostShelliPhone/WatchLink.swift` is the iPhone's side of WatchConnectivity. It starts in the app's `init`, because a message from the watch can launch the iPhone app in the background with no scene.
+
+A question card is answered with `decide`, never as a message. `/send` does not look at a pending card, and the CLI holds a message sent mid-turn until the tool finishes, so a reply typed into a session that waits on a question would queue behind the card and leave it open. The watch shows a question with one single-choice part as tappable options (44pt) with a field for the owner's own answer, and sends the same `answers` dictionary the Mac's Approvals screen builds (`Approvals.answers`, keyed by the question's text). A multi-select or multi-part question says "Answer this one on your iPhone or Mac". A permission or a plan is read-only on the watch with a line saying where to answer, and a session waiting on one has no reply box. A 410 shows "Already answered elsewhere", drops the kept answer and refreshes.
 
 The list polls through the iPhone every 5 seconds and a session every 8, only while the watch app is active. Opening a session's `events` stream marks it read, so the iPhone opens it only for the session the watch is showing.
 
 A typed reply goes through `sendPrompt`, as a new message. It does not answer a pending permission or question card, which the Mac and iPhone screens answer with a decision.
 
-Debug builds read launch arguments to drive the app in the Simulator: `-GSWatchFixture` (`list`, `phone`, `server` or `signedout`) serves canned answers with no iPhone, `-GSWatchOpen <session id>` with `-GSWatchOpenTitle`, `-GSWatchDraft <text>`, `-GSWatchSend 1` and `-GSDefaultsSuite`. A Release build has none of them, and `apple:watch-build -- --release` checks that.
+Debug builds read launch arguments to drive the app in the Simulator: `-GSWatchFixture` (`list`, `phone`, `server` or `signedout`) serves canned answers with no iPhone, `-GSWatchOpen <session id>` with `-GSWatchOpenTitle`, `-GSWatchDraft <text>`, `-GSWatchSend 1`, `-GSWatchTap <option>` (answers the open question as its button does) and `-GSDefaultsSuite`. A Release build has none of them, and `apple:watch-build -- --release` checks that.
 
 To check the whole road in the Simulator, pair a watch and an iPhone simulator with `xcrun simctl pair`, boot both with `simctl boot`, sign the iPhone Debug app in to a scratch server with `-GSKeychainService`, `-GSDefaultsSuite` and `-GSAddress`, install `GhostShellWatch.app` on the watch with `simctl install` and launch it with the arguments above. The Simulator cannot dictate, so type the reply by launch argument. It also cannot say whether a real watch reaches the server through the iPhone's Tailscale, so that needs the real devices.
 
