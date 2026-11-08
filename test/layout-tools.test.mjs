@@ -453,6 +453,40 @@ test('an emoji joined into one picture blocks the same emoji written apart', () 
   assert.deepEqual(subs.calls, []);
 });
 
+test('a new name may hold only letters, marks, numbers, punctuation, spaces, symbols that are not pictures and emoji, so no character can draw a blank on a card', () => {
+  const subs = subsFor();
+  const plainly = /^[\p{L}\p{M}\p{N}\p{P}\p{Sm}\p{Sc}\p{Sk}\s]$/u;
+  const unseen = /[\p{Cf}\p{Default_Ignorable_Code_Point}\u2800\uFFFC]/u;
+  for (let point = 0; point <= 0x10FFFF; point++) {
+    if (point >= 0xD800 && point <= 0xDFFF) continue;
+    const one = String.fromCodePoint(point);
+    let made = false;
+    try { made = createGroup({ name: `A${one}B` }, subs, []).startsWith('Created'); } catch { /* refused */ }
+    if (made) assert.ok((plainly.test(one) && !unseen.test(one)) || /^\p{RGI_Emoji}$/v.test(one), `U+${point.toString(16)} was let in`);
+  }
+  for (const blank of ['\uFFFC', '\u2800', '\u3164']) refused(() => createGroup({ name: `Deploy${blank}Prod` }, subs, []), /draws nothing/);
+});
+
+test('ordinary names still pass the list of what draws plainly', () => {
+  const subs = subsFor();
+  for (const name of ['Needs Review', 'Q3 plan (draft)', 'Caf\u00E9', '\u65E5\u672C\u8A9E', 'Ops & Infra', '#123 fix', '50% off', '\u{1F4E9} Review', 'C++/C#', 'a = b + c', '$5 cap', 'v1.2-beta']) {
+    assert.match(createGroup({ name }, subs, []), /^Created/, name);
+  }
+});
+
+test('a group whose name holds U+FFFC, as the sidebar can make, blocks a new name with a space there', () => {
+  const subs = subsFor();
+  refused(() => createGroup({ name: 'Deploy Prod' }, subs, [{ id: 'cg-o', name: 'Deploy\uFFFCProd' }]), /\[cg-o\]/);
+  assert.deepEqual(subs.calls, []);
+});
+
+test('a new name is stored and carded in its composed form, so a compatibility ideograph cannot draw as a blank on the card', () => {
+  const subs = subsFor();
+  assert.equal(layoutSummary('create_group', { name: 'Team \uFA2E' }, subs, []), 'create the group "Team \u90DE" on Home');
+  createGroup({ name: 'Team \uFA2E' }, subs, []);
+  assert.deepEqual(subs.calls, [['addGroup', 'Team \u90DE', null]]);
+});
+
 test('a new name keeps the joiners inside an emoji', () => {
   const subs = subsFor();
   for (const name of ['\u{1F9D1}\u200D\u{1F4BB} Dev', '\u2699\uFE0F Ops']) assert.equal(createGroup({ name }, subs, []).startsWith('Created'), true);
