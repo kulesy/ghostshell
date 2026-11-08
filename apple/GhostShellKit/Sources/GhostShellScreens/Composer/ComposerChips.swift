@@ -9,15 +9,45 @@ struct ComposerChips: View {
         let quotes = model.quotes
         let attachments = model.attachments
         if !quotes.isEmpty || !attachments.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
-                    ForEach(attachments) { item in
-                        if item.isPicture { PictureChip(item: item) { model.remove(item) } } else { FileChip(item: item) { model.remove(item) } }
-                    }
+            ChipFlow(spacing: 8) {
+                ForEach(quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
+                ForEach(attachments) { item in
+                    if item.isPicture { PictureChip(item: item) { model.remove(item) } } else { FileChip(item: item) { model.remove(item) } }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// Lays the chips out left to right and starts a new line when the next one does not fit.
+private struct ChipFlow: Layout {
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let placed = arrange(in: proposal.width ?? .infinity, subviews)
+        return CGSize(width: placed.size.width, height: placed.size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let placed = arrange(in: bounds.width, subviews)
+        for (subview, origin) in zip(subviews, placed.origins) {
+            subview.place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y), proposal: .unspecified)
+        }
+    }
+
+    private func arrange(in width: CGFloat, _ subviews: Subviews) -> (origins: [CGPoint], size: CGSize) {
+        var origins: [CGPoint] = []
+        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, widest: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width { (x, y, lineHeight) = (0, y + lineHeight + spacing, 0) }
+            origins.append(CGPoint(x: x, y: y))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return (origins, CGSize(width: widest, height: y + lineHeight))
     }
 }
 

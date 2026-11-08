@@ -72,6 +72,7 @@ struct ComposerView: View {
 
 private struct SendButton: View {
     let model: ComposerModel
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let stop = model.showsStop
@@ -80,9 +81,9 @@ private struct SendButton: View {
             ZStack {
                 Circle().fill(stop || model.canSend ? Color.accentColor : Color.secondary.opacity(0.3))
                 if model.sending {
-                    ProgressView().controlSize(.small).tint(.white)
+                    ProgressView().controlSize(.small).tint(scheme == .dark ? .black : .white)
                 } else {
-                    Image(systemName: stop ? "stop.fill" : "arrow.up").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                    Image(systemName: stop ? "stop.fill" : "arrow.up").font(.system(size: 11, weight: .bold)).foregroundStyle(.background)
                 }
             }
             .frame(width: 24, height: 24)

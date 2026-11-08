@@ -12,7 +12,7 @@ struct ComposerPickers: View {
             effortMenu
             modeMenu
         }
-        .task { await model.loadModels() }
+        .task(id: model.folder) { await model.loadModels() }
     }
 
     private func look(_ name: String, _ symbol: String) -> some View {

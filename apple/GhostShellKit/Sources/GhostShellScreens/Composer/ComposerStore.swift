@@ -63,6 +63,13 @@ final class ComposerStore {
         (limitsKnown, limits) = (false, nil)
     }
 
+    /// A new server has its own upload limits, models and commands, and none of what a person typed.
+    func resetServerCaches() {
+        commandLists = [:]
+        modelLists = [:]
+        (limitsKnown, limits) = (false, nil)
+    }
+
     // MARK: Text
 
     func text(for id: String) -> String { texts.text(for: id) }

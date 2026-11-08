@@ -111,6 +111,7 @@ public final class AppModel {
 
     private func enter(_ fresh: GhostShellClient) {
         stopWork()
+        ComposerStore.shared.resetServerCaches()
         client = fresh
         address = fresh.address
         index = nil

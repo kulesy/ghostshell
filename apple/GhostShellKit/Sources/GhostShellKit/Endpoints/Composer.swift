@@ -225,7 +225,6 @@ extension GhostShellClient {
         public static func folder(_ cwd: String) -> ListTarget { ListTarget(id: nil, cwd: cwd) }
     }
 
-    private struct Empty: Encodable, Sendable {}
     private struct ModeReply: Decodable, Sendable { let mode: String }
     private struct CommandsReply: Decodable, Sendable { let commands: [SlashCommand] }
     private struct ModelsReply: Decodable, Sendable { let models: [ListedModel] }
@@ -235,7 +234,6 @@ extension GhostShellClient {
     private static let unreserved = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
 
     private static func sessionPath(_ id: String, _ action: String) throws -> String {
-        guard !id.isEmpty, !id.contains("/") else { throw GhostShellError.badPath(id) }
-        return "api/sessions/\(id)/\(action)"
+        "api/sessions/\(try pathID(id))/\(action)"
     }
 }

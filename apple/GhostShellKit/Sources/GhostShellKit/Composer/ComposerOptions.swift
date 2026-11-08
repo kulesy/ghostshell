@@ -33,36 +33,14 @@ public enum ComposerOptions {
     public static func modelName(_ model: String, listed: [ListedModel]? = nil) -> String {
         if let known = (mainModels + [longModel]).first(where: { $0.id == model }) { return known.label }
         if let item = listed?.first(where: { $0.id == model }) { return item.label }
-        return label(forModel: model)
+        return ChatText.modelLabel(model)
     }
 
     public static func effortName(_ effort: String) -> String { efforts.first { $0.id == effort }?.label ?? effort }
 
     public static func modeName(_ mode: String) -> String { modes.first { $0.id == mode }?.label ?? mode }
-
-    /// "Opus 5.5" from "claude-opus-5-5", for a model no list holds. Anything else comes back as it is. This is `modelLabel` in public/ui/format.js.
-    public static func label(forModel model: String) -> String {
-        let long = model.range(of: #"\[1m\]$"#, options: [.regularExpression, .caseInsensitive]) != nil ? " (1M)" : ""
-        if let m = model.firstMatch(#"(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2})(?!\d))?"#) {
-            let family = m[1].prefix(1).uppercased() + m[1].dropFirst()
-            return "\(family) \(m[2])\(m.count > 3 && !m[3].isEmpty ? ".\(m[3])" : "")\(long)"
-        }
-        if let m = model.firstMatch(#"^(opus|sonnet|haiku|fable)(\[1m\])?$"#) {
-            return "\(m[1].prefix(1).uppercased() + m[1].dropFirst())\(long)"
-        }
-        return model
-    }
 }
 
 extension ComposerOptions.Choice {
     fileprivate init(_ pair: (String, String)) { (id, label) = pair }
-}
-
-extension String {
-    /// The capture groups of the first case-insensitive match, group 0 first. An unmatched group is an empty string.
-    fileprivate func firstMatch(_ pattern: String) -> [String]? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-              let m = regex.firstMatch(in: self, range: NSRange(startIndex..., in: self)) else { return nil }
-        return (0..<m.numberOfRanges).map { Range(m.range(at: $0), in: self).map { String(self[$0]) } ?? "" }
-    }
 }
