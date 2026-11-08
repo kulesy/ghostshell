@@ -53,10 +53,10 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-11-02 | [Show banners in the sidebar for Claude's sign-in ending and for merged changes waiting](20261102-banners-for-sign-in-and-updates.md) | Accepted |
 | 2026-11-02 | [Keep a draft for each session, and let quotes follow you between chats](20261102-a-draft-for-each-session.md) | Accepted |
 | 2026-11-02 | [Drag a selection of sessions as one, and act on it from a menu](20261102-drag-and-act-on-a-selection.md) | Accepted |
-| 2026-11-02 | [Keep two Claude accounts signed in and switch GhostShell between them](20261102-switch-claude-accounts.md) | Accepted, amended 2026-11-04 |
+| 2026-11-02 | [Keep two Claude accounts signed in and switch GhostShell between them](20261102-switch-claude-accounts.md) | Accepted, amended 2026-11-04 and 2026-11-09 |
 | 2026-11-04 | [Find a session by the pull requests it links, from a list a worker thread keeps](20261104-search-sessions-by-pull-request.md) | Accepted |
 | 2026-11-04 | [Remind the owner to move Chrome's extension after an account switch](20261104-chrome-follows-the-account.md) | Accepted |
-| 2026-11-04 | [Pin a session, group, project or routine to one Claude account](20261104-pin-work-to-an-account.md) | Accepted |
+| 2026-11-04 | [Pin a session, group, project or routine to one Claude account](20261104-pin-work-to-an-account.md) | Accepted, amended 2026-11-09 |
 | 2026-11-05 | [Edit a linked text file in the viewer, and keep the places that run code or hold secrets read only](20261105-edit-linked-text-files.md) | Accepted |
 | 2026-11-07 | [Replace the page with a native Swift app, and keep the Node server](20261107-native-swift-app-keeps-the-node-server.md) | Accepted |
 | 2026-11-09 | [Let a pin name an overflow account that takes its work while the pinned one is out of usage](20261109-spill-pinned-work-to-an-overflow-account.md) | Accepted |
