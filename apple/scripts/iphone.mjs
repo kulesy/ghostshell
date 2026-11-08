@@ -6,12 +6,15 @@
 // A Debug build is for the Simulator. A Release build is for a device with signing off, then searched for the Debug hooks like the Mac one.
 // Tests run against a stub in front of the chat stub, never port 4310 and never ~/.config/capcom.
 import { spawn, spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkNoHooks } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
+import { startFilesStub } from './files-fixtures.mjs';
+import { startGroupStub } from './group-fixtures.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const apple = path.resolve(here, '..');
@@ -55,7 +58,11 @@ function build({ release }) {
 
 const simctl = (...args) => spawnSync('xcrun', ['simctl', ...args], { encoding: 'utf8' });
 
-function findOrCreate({ name, type }) {
+// Each worktree gets its own simulators, named with a short hash of the repo path, so two runs never drive the same device.
+const WORKTREE = crypto.createHash('sha1').update(path.resolve(apple, '..')).digest('hex').slice(0, 6);
+
+function findOrCreate({ name: base, type }) {
+  const name = `${base} (${WORKTREE})`;
   const list = JSON.parse(simctl('list', 'devices', '-j', 'available').stdout).devices[RUNTIME] ?? [];
   const found = list.find(d => d.name === name);
   if (found) return found.udid;
@@ -138,10 +145,21 @@ function startFixtures(stub) {
 
 // MARK: Test runs
 
-function runTests({ udid, device, appearance, out, address, only }) {
+// The other stubs a test can sign in to, by the name it asks for.
+async function startStubs() {
+  const files = await startFilesStub();
+  const groups = await startGroupStub();
+  return {
+    addresses: { files: files.address, groups: groups.address },
+    stop: () => { files.stop(); groups.stop(); },
+  };
+}
+
+function runTests({ udid, device, appearance, out, address, only, stubs }) {
   const env = {
     ...process.env,
     TEST_RUNNER_GS_ADDRESS: address, TEST_RUNNER_GS_SHOTDIR: out, TEST_RUNNER_GS_DEVICE: device, TEST_RUNNER_GS_APPEARANCE: appearance,
+    ...Object.fromEntries(Object.entries(stubs.addresses).map(([name, a]) => [`TEST_RUNNER_GS_ADDRESS_${name.toUpperCase()}`, a])),
   };
   const result = path.join(DERIVED, 'results', `${device}-${appearance}.xcresult`);
   fs.rmSync(result, { recursive: true, force: true });
@@ -175,6 +193,7 @@ async function shoot() {
 
   const stub = await startChatStub();
   const fixtures = await startFixtures(stub);
+  const stubs = await startStubs();
   const booted = [];
   let ok = true;
   try {
@@ -185,7 +204,7 @@ async function shoot() {
       if (!wasBooted) booted.push(udid);
       for (const appearance of appearances) {
         console.log(`\n== ${DEVICES[device].name}, ${appearance}`);
-        const r = await runTests({ udid, device, appearance, out, address: fixtures.address, only: option('--test') });
+        const r = await runTests({ udid, device, appearance, out, address: fixtures.address, only: option('--test'), stubs });
         console.log(r.ok ? `PASS: ${r.summary}` : `FAIL: ${r.summary}\n${r.failed.join('\n')}`);
         ok = ok && r.ok;
       }
@@ -195,6 +214,7 @@ async function shoot() {
     for (const udid of booted) simctl('shutdown', udid);
     fixtures.stop();
     stub.stop();
+    stubs.stop();
   }
   console.log(`Screenshots are in ${out}`);
   return ok;
