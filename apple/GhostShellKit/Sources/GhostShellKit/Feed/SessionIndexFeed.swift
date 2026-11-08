@@ -18,6 +18,9 @@ public actor SessionIndexFeed {
     private let continuation: AsyncStream<FeedUpdate>.Continuation
     private var task: Task<Void, Never>?
     private var last: SessionIndex?
+    // Tickets keep an older look, answering after a newer one, from putting the old index back.
+    private var asked = 0
+    private var answered = 0
     private var connection = FeedConnection.connecting
     private var stopped = false
 
@@ -64,9 +67,12 @@ public actor SessionIndexFeed {
     }
 
     private func poll() async {
+        asked += 1
+        let ticket = asked
         do {
             let index = try await fetch()
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, ticket > answered else { return }
+            answered = ticket
             report(.live)
             if index != last {
                 last = index
