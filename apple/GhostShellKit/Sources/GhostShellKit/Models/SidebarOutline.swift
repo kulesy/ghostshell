@@ -226,9 +226,6 @@ public enum SidebarOutline {
         return lamps.contains(.waiting) ? .waiting : lamps.contains(.working) ? .working : nil
     }
 
-    /// Whether a view other than `shown` has a session that needs you.
-    public static func othersWaiting(shown: String?, in index: SessionIndex) -> Bool { othersLamp(shown: shown, in: index) == .waiting }
-
     private static func viewRows(_ view: String?, in index: SessionIndex) -> [SessionRow] {
         if view == nil {
             let homeGroups = index.groups.filter { self.view($0.project, in: index) == nil }.flatMap(\.sessions)

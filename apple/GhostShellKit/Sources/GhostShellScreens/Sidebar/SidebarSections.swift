@@ -74,7 +74,7 @@ struct HeadingRow: View {
             Text("\(count)").font(.caption2.monospacedDigit())
                 .accessibilityLabel("\(count) session\(count == 1 ? "" : "s")")
         }
-        // Row timers and chevrons end this far inside the list's edge, so the count lines up with them. Measured on a 2x shot, 11 left it 2.5pt too far right.
+        // Row timers and chevrons end this far inside the list's edge, so the count lines up with them.
         .padding(.trailing, 13.5)
         .contentShape(Rectangle())
         .contextMenu { HeadingMenuSlot(heading: heading) }

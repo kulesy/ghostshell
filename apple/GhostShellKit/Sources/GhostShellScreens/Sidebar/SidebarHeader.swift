@@ -45,7 +45,7 @@ private struct ViewMenu: View {
         .menuStyle(.borderlessButton)
         .frame(maxWidth: .infinity, alignment: .leading)
         // A menu label keeps one image and one text, so the lamp sits beside the menu's own chevron. 28pt is the width the borderless menu
-        // keeps for that chevron, measured on a 2x shot.
+        // keeps for that chevron.
         .overlay(alignment: .trailing) {
             if let others { Image(systemName: "circle.fill").font(.system(size: 7)).foregroundStyle(others.color).padding(.trailing, 28).allowsHitTesting(false) }
         }
