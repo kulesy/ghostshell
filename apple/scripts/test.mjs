@@ -16,7 +16,11 @@ const run = (label, args, env = {}, timeout = 600_000) => {
   return r.status === 0;
 };
 
-let ok = run('unit tests', ['--skip', 'IntegrationTests', '--skip', 'KeychainTests']);
+// The screenshot helper is compiled only by apple:shot, so a break in it would otherwise show only partway through a run.
+const ax = spawnSync('swiftc', ['-typecheck', path.join(kit, '..', 'scripts', 'ax.swift')], { stdio: 'inherit', timeout: 120_000 });
+console.log(ax.status === 0 ? '\n== ax.swift typechecks' : '\nax.swift does not typecheck');
+let ok = ax.status === 0;
+ok = run('unit tests', ['--skip', 'IntegrationTests', '--skip', 'KeychainTests']) && ok;
 if (!process.argv.includes('--unit')) {
   let main, lock;
   try {

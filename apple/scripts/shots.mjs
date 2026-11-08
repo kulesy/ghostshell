@@ -32,27 +32,31 @@ const BUILD_DIR = path.join(here, '..', 'build');
 const BUILD_LOCK = path.join(BUILD_DIR, 'shots-build.lock');
 async function withBuildLock(work) {
   fs.mkdirSync(BUILD_DIR, { recursive: true });
-  let held = false;
-  while (!held) {
+  const pidFile = path.join(BUILD_LOCK, 'pid');
+  const owner = () => { try { return Number(fs.readFileSync(pidFile, 'utf8').trim()); } catch { return NaN; } };
+  const giveUp = Date.now() + 15 * 60_000;
+  for (;;) {
     try {
       fs.mkdirSync(BUILD_LOCK);
-      fs.writeFileSync(path.join(BUILD_LOCK, 'pid'), String(process.pid));
-      held = true;
+      fs.writeFileSync(pidFile, String(process.pid));
+      break;
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
-      let owner = NaN;
-      try { owner = Number(fs.readFileSync(path.join(BUILD_LOCK, 'pid'), 'utf8').trim()); } catch { /* the owner has made the folder and not yet written its pid */ }
-      const young = Date.now() - (fs.statSync(BUILD_LOCK, { throwIfNoEntry: false })?.mtimeMs ?? 0) < 5000;
-      if (Number.isFinite(owner) ? !alive(owner) : !young) {
-        // Its owner is dead. Renaming is atomic, so only one run clears it.
-        const stale = `${BUILD_LOCK}.stale-${process.pid}`;
-        try { fs.renameSync(BUILD_LOCK, stale); fs.rmSync(stale, { recursive: true, force: true }); } catch { /* another run got there first */ }
-      } else {
-        await sleep(500);
-      }
     }
+    const first = owner();
+    // NaN means the owner has made the folder and not yet written its pid, which is only stale once the folder is old.
+    const young = Date.now() - (fs.statSync(BUILD_LOCK, { throwIfNoEntry: false })?.mtimeMs ?? 0) < 5000;
+    const dead = Number.isFinite(first) ? !alive(first) : !young;
+    // Read the owner again just before clearing, so a lock another run has only now retaken is left alone.
+    if (dead && Object.is(owner(), first)) {
+      const stale = `${BUILD_LOCK}.stale-${process.pid}`;
+      try { fs.renameSync(BUILD_LOCK, stale); fs.rmSync(stale, { recursive: true, force: true }); } catch { /* another run got there first */ }
+      continue;
+    }
+    if (Date.now() > giveUp) throw new Error(`Gave up waiting for the build lock ${BUILD_LOCK}, held by pid ${first}.`);
+    await sleep(500);
   }
-  const release = () => { try { fs.rmSync(BUILD_LOCK, { recursive: true, force: true }); } catch { /* already gone */ } };
+  const release = () => { if (owner() === process.pid) fs.rmSync(BUILD_LOCK, { recursive: true, force: true }); };
   process.once('exit', release);
   try { return await work(); } finally { release(); process.removeListener('exit', release); }
 }
@@ -136,7 +140,7 @@ class App {
     await sleep(600);
   }
 
-  // Records a failed check if the app is ever the frontmost app. Run on an interval, so every run shows the app stayed in the background.
+  // Records a failed check if the app is the frontmost app when sampled, every 500 ms while the run is awaiting something.
   watch() {
     const front = Number(spawnSync(AX, ['front'], { encoding: 'utf8', timeout: 10_000 }).stdout.trim());
     frontChecks += 1;
@@ -149,7 +153,8 @@ class App {
 
   // Runs one helper command on this app's pid. Returns the parsed JSON, or { ok: false, error } when the helper failed.
   run(command, ...rest) {
-    this.last = [command, ...rest].join(' ').slice(0, 60);
+    // Typed text can be a password, and this.last is printed in a failure.
+    this.last = command === 'type' ? 'type' : [command, ...rest].join(' ').slice(0, 60);
     const r = spawnSync(AX, [command, String(this.pid), ...rest], { encoding: 'utf8', timeout: 30_000, maxBuffer: 1 << 28 });
     if (r.status !== 0) return { ok: false, error: (r.stderr || String(r.error || r.signal)).trim() };
     return JSON.parse(r.stdout);
@@ -216,7 +221,12 @@ class App {
     if (!button) return false;
     if (this.act(button)) return true;
     // An alert closes as its button is pressed, and an accessory app answers that press with an error, so a sheet that is gone counts.
-    return !!sheet && button.path.join().startsWith(`${sheet},`) && !this.tree().some(node => node.role === 'AXSheet');
+    if (!sheet || !button.path.join().startsWith(`${sheet},`)) return false;
+    for (let tries = 0; tries < 10; tries += 1) {
+      if (!this.tree().some(node => node.role === 'AXSheet')) return true;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
+    return false;
   }
   // The sidebar top to bottom, a line each: "H" for a heading, "R <hover text> <Expanded|Collapsed|>" for a session row. Row titles
   // are not readable through accessibility, so a row is told apart by its hover text, which the stub varies by folder.
@@ -293,7 +303,7 @@ class App {
   // Quits the way the Dock would, and kills the app if it is still there after 6 seconds.
   async quit() {
     clearInterval(this.watchdog);
-    if (!this.pid || !alive(this.pid)) return;
+    if (!this.pid || !alive(this.pid)) { pids.delete(this.pid); return; }
     this.run('quit');
     if (!await until('quit', () => !alive(this.pid), 6)) {
       process.kill(this.pid, 'SIGKILL');
@@ -740,7 +750,8 @@ try {
     if (flows.includes('chats')) await chatFlow(bundle, appearance);
     if (flows.includes('accounts')) await accountsFlow(bundle, appearance);
   }
-  check(cameToFront.length === 0, `no test app came to the front (${frontChecks} checks)`);
+  // watch() has already failed a check for each app that came forward.
+  if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);
   console.log(failures.length ? `\n${failures.length} check(s) failed:\n${failures.map(f => `  ${f}`).join('\n')}` : '\nAll checks passed.');
   console.log(`Screenshots: ${OUT}`);
   exitCode = failures.length ? 1 : 0;
