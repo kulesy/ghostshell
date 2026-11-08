@@ -46,7 +46,7 @@ The first launch of a new build asks the Keychain for access to its own item. Th
 
 1. **Unit tests** run with `swift test` in `apple/GhostShellKit`. They use a stub `URLProtocol`, so they never open a socket.
 2. **Integration tests** talk to a real scratch server. They cover sign-in, a wrong password, the lockout, an `Origin` check on a POST, sign-out revoking the token, the session index, the `status` event and a 401 after revoke.
-3. **The app run** (`apple/scripts/shots.mjs`) launches the Debug app and drives it through System Events, because XCUITest is not available here. It signs in, checks the list, starts a real Haiku chat and checks that the row appears with no action in the window. It relaunches to check that the sign-in stays, then signs out. A last pass signs in to a small stub that answers only sign-in and the list, because a chat waiting on an approval or a failed turn can't be had on demand, and it shows all four status marks. A third pass signs in to the chat stub in `apple/scripts/chat-fixtures.mjs`, which serves a rich chat, a reply that streams in, a 600-pair chat to scroll up through and an empty chat, because those can't be had on demand either. `--chats-only` runs that pass alone. The finished Haiku chat is copied into the scratch server as a plain file (`copyTranscript` in `test-server.mjs`), because the server's transcript index skips a symlinked folder.
+3. **The app run** (`apple/scripts/shots.mjs`) launches the Debug app and drives it through System Events, because XCUITest is not available here. It signs in, checks the list, starts a real Haiku chat and checks that the row appears with no action in the window. It relaunches to check that the sign-in stays, then signs out. A last pass signs in to a small stub that answers sign-in, the list and the archive, because a chat waiting on an approval or a failed turn can't be had on demand, and it shows all four status marks. A third pass signs in to the chat stub in `apple/scripts/chat-fixtures.mjs`, which serves a rich chat, a reply that streams in, a 600-pair chat to scroll up through and an empty chat, because those can't be had on demand either. `--chats-only` runs that pass alone. The finished Haiku chat is copied into the scratch server as a plain file (`copyTranscript` in `test-server.mjs`), because the server's transcript index skips a symlinked folder.
 
 The server for these runs is `node server.mjs` with its own state folder, home folder and port. The password is written to a file with the server's own `writePassword`. `CAPCOM_CLAUDE` points at a wrapper that restores the real home folder, so the Haiku chat is real. It runs in `/private/tmp/claude-501/capcom-test-cwd/swift-app`.
 
@@ -106,6 +106,29 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 | [https://github.com/kulesy/ghostshell/issues/82](https://github.com/kulesy/ghostshell/issues/82) Watch | A new `apple/GhostShellWatch/` folder. It uses `GhostShellKit` only. It edits the project file. | none |
 
 The two sidebar PBIs share one folder. Split the work by file inside `Sidebar/`.
+
+## Sidebar slots
+
+`Sidebar/SidebarSlots.swift` holds the places later features plug into the sidebar. The sidebar already draws each one, and each is empty. A feature writes its view or modifier in its own folder and adds one line to the slot's body. Slots read `SidebarState` (the view, folds, selection and search text) from the environment.
+
+| Slot | What it is | Who fills it |
+| --- | --- | --- |
+| `SidebarToolbarSlot` | Buttons at the end of the sidebar toolbar, beside Sign Out | 87 (New group), 92 (Routines, Scheduled), 94 (notification toggle) |
+| `ViewMenuSlot` | Items at the end of the Home and projects menu | 87 (new and edit projects) |
+| `SessionRowMenuSlot` | A session row's right-click menu | 87 (rename, move, nest, archive), 92 (routine items) |
+| `SessionRowSlot` | Modifiers on each session row | 87 (drag and drop) |
+| `HeadingAccessorySlot` | Small buttons on a section or group heading, before its count | 88 (open the group chat) |
+| `HeadingMenuSlot` | A heading's right-click menu | 87 (rename, move, delete a group), 88 |
+| `HeadingSlot` | Modifiers on each heading | 87 (drop target) |
+| `HomeTopSectionsSlot` | Whole sections at the top of Home | 92 (Scheduled) |
+| `IdleRoutineRowSlot` | The row for a routine that has never run, drawn in its routine bucket | 92 (idle routines) |
+| `SidebarWatchSlot` | Modifiers on the whole sidebar, for work that watches the index or the chosen session | 92 (idle routines), 94 (notifications) |
+
+Idle routines reach the sidebar through `SidebarState.idleRoutines`, because the index never carries a routine that has not run. 92 shares one store between its Routines screen and its `SidebarWatchSlot` modifier. The modifier fetches `/api/routines` and sets `idleRoutines`, and a routine made or deleted in the screen updates it through the same store, so neither edits the outline or the sections.
+
+Notifications (94) also need the window-visibility handling in `AppModel` and `RootView`, because `SessionIndexFeed` pauses while the window is hidden and a watcher on the index sees nothing then.
+
+Selection is a set. One chosen row opens its session, and several stay chosen for 87's bulk actions.
 
 ## What the base does not do
 

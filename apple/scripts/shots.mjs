@@ -151,22 +151,24 @@ repeat with e in els
 end repeat
 return "no"`).stdout.trim() === 'yes';
   }
+  // Session rows only. With sections, the nth AXRow is often a heading, and the search field is a row too.
   rows() {
     return Number(this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
 set n to 0
 repeat with e in els
   try
-    if role of e is "AXRow" then set n to n + 1
+    if role of e is "AXRow" and role of UI element 1 of UI element 1 of e is not "AXGroup" and role of UI element 1 of UI element 1 of e is not "AXTextField" then set n to n + 1
   end try
 end repeat
 return n`).stdout.trim());
   }
+  // Chooses the nth session row (from 0), skipping the section headings and the search field.
   chooseRow(index = 0) {
     this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
 set n to 0
 repeat with e in els
   try
-    if role of e is "AXRow" then
+    if role of e is "AXRow" and role of UI element 1 of UI element 1 of e is not "AXGroup" and role of UI element 1 of UI element 1 of e is not "AXTextField" then
       if n is ${index} then
         set selected of e to true
         return
@@ -200,6 +202,91 @@ repeat with e in els
   end try
 end repeat
 return "no"`).stdout.trim() === 'yes';
+  }
+  // The sidebar top to bottom, a line each: "H" for a heading, "R <hover text> <Expanded|Collapsed|>" for a session row. Row titles
+  // are not readable through accessibility, so a row is told apart by its hover text, which the stub varies by folder.
+  outline() {
+    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+set listing to false
+set out to ""
+repeat with e in els
+  try
+    set r to role of e
+    if r is "AXOutline" then set listing to true
+    if r is "AXColumn" then set listing to false
+    if listing and r is "AXHeading" then set out to out & "H" & linefeed
+    if listing and (r is "AXUnknown" or (r is "AXButton" and description of e is "button")) then
+      set h to ""
+      try
+        set h to help of e
+      end try
+      set v to ""
+      try
+        set v to value of e as text
+      end try
+      set out to out & "R|" & h & "|" & v & linefeed
+    end if
+  end try
+end repeat
+return out`).stdout.split('\n').filter(Boolean).map(line => line.split('|'));
+  }
+  headings() { return this.outline().filter(([kind]) => kind === 'H').length; }
+  sessionRows() { return this.outline().filter(([kind]) => kind === 'R'); }
+  // Opens or folds the nth section heading (from 0) by clicking its disclosure chevron, at the right edge of the heading's row.
+  // Setting the row's disclosure through accessibility folds the outline without telling the app, so the fold would not be kept.
+  setSection(n, open) {
+    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+set seen to -1
+repeat with e in els
+  try
+    if role of e is "AXRow" and role of UI element 1 of UI element 1 of UI element 1 of e is "AXHeading" then
+      set seen to seen + 1
+      if seen is ${n} and (value of attribute "AXDisclosing" of e) is not ${open} then
+        set {x, y} to position of e
+        set {w, h} to size of e
+        click at {x + w - 12, y + h / 2}
+        return
+      end if
+    end if
+  end try
+end repeat`);
+  }
+  // What the View menu says about the other views: "View", "View, another view needs you" or "View, another view is working".
+  viewMenu() {
+    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+repeat with e in els
+  try
+    if role of e is "AXPopUpButton" and description of e starts with "View" then return description of e
+  end try
+end repeat
+return ""`).stdout.trim();
+  }
+  // Picks a project (or Home) from the View menu in the sidebar's header. A project's item reads "Name (count)", and the menu is described "View, another view needs you" while one does.
+  pickView(name) {
+    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+repeat with e in els
+  try
+    if role of e is "AXPopUpButton" and description of e starts with "View" then
+      click e
+      delay 0.4
+      click (first menu item of menu 1 of e whose name starts with ${JSON.stringify(name)})
+      return
+    end if
+  end try
+end repeat`);
+  }
+  // Focuses the sidebar's search field and types into it.
+  search(text) {
+    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
+repeat with e in els
+  try
+    if role of e is "AXTextField" and description of e is "search text field" then
+      set focused of e to true
+      return
+    end if
+  end try
+end repeat`);
+    this.type(text);
   }
   signOutFromMenu() { this.events('click menu item "Sign Out" of menu 1 of menu bar item "File" of menu bar 1'); }
 
@@ -251,6 +338,9 @@ async function signInDirect(server) {
   return /capcom=([0-9a-f]+)/.exec(response.headers.get('set-cookie') || '')?.[1];
 }
 
+// The sidebar lists the stub's chats A to Z, so the rows run empty, rich, stream, long.
+const CHAT_ROW = { empty: 0, rich: 1, stream: 2, long: 3 };
+
 async function chatFlow(binary, appearance) {
   const stub = await startChatStub();
   console.log(`\n== ${appearance}: reading chats`);
@@ -261,7 +351,7 @@ async function chatFlow(binary, appearance) {
     app.submit();
     check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
 
-    app.chooseRow(0);
+    app.chooseRow(CHAT_ROW.rich);
     check(await until('rich', () => app.texts().includes('Why is the upload test flaky? It fails about one run in five.'), 20), 'a rich chat shows its first message');
     await sleep(800);
     await app.both('chat-rich');
@@ -276,12 +366,12 @@ async function chatFlow(binary, appearance) {
     app.resize(DEFAULT_SIZE);
     await sleep(700);
 
-    app.chooseRow(1);
+    app.chooseRow(CHAT_ROW.stream);
     check(await until('stream', () => app.texts().includes('Go on, I am ready.'), 20), 'a streaming chat shows its last message');
     await sleep(5000);
     await app.both('chat-streaming');
 
-    app.chooseRow(2);
+    app.chooseRow(CHAT_ROW.long);
     check(await until('long', () => app.texts().includes('Question 600: what does step 600 of the migration do?'), 20), 'a long chat opens at its end');
     await sleep(800);
     await app.both('chat-long-end');
@@ -294,7 +384,7 @@ async function chatFlow(binary, appearance) {
     await sleep(2500);
     await app.shot(`6-chat-long-scrolled-up-again-${appearance}`);
 
-    app.chooseRow(3);
+    app.chooseRow(CHAT_ROW.empty);
     check(await until('empty', () => app.texts().includes('Nothing here yet'), 20), 'an empty chat says so');
     await app.both('chat-empty');
     app.signOutFromMenu();
@@ -321,11 +411,11 @@ async function mainFlow(binary, appearance, withChat) {
 
     app.type(readPassword(server));
     app.submit();
-    check(await until('rows', () => app.rows() === 8), 'signing in shows the 8 seeded sessions');
+    check(await until('rows', () => app.sessionRows().length === 8), 'signing in shows the 8 seeded sessions');
     await app.both('list-rows');
 
     app.chooseFirstRow();
-    check(await until('title', () => app.texts().includes('Fix the flaky upload test')), 'choosing a row shows its title in the detail');
+    check(await until('title', () => app.texts().includes('Add dark mode to the chart')), 'choosing a row shows its title in the detail');
     await app.both('session-chosen');
 
     if (withChat) {
@@ -333,7 +423,7 @@ async function mainFlow(binary, appearance, withChat) {
       const started = await ownerCall(server, 'api/new', { cwd: TEST_CWD, text: 'Reply with the single word ok.', model: 'haiku' }, token);
       const { id } = await started.json().catch(() => ({}));
       check(started.status === 200 && !!id, 'a Haiku chat starts through the server');
-      check(await until('new row', () => app.rows() === 9, 20), 'the new chat appears in the list with no action in the window');
+      check(await until('new row', () => app.sessionRows().length === 9, 20), 'the new chat appears in the list with no action in the window');
       await app.both('list-new-chat');
       const finished = await until('finished', async () => {
         const index = await (await fetch(`${server.address}/api/sessions`, { headers: { Cookie: `capcom=${token}` } })).json();
@@ -362,7 +452,7 @@ async function mainFlow(binary, appearance, withChat) {
     check(!app.hasButton('Sign In') && !app.texts().includes('Address'), 'a relaunch stays signed in');
     await app.both('loading');
     process.kill(server.pid, 'SIGCONT');
-    check(await until('rows', () => app.rows() === (withChat ? 9 : 8), 20), 'the list loads once the server answers');
+    check(await until('rows', () => app.sessionRows().length === (withChat ? 9 : 8), 20), 'the list loads once the server answers');
 
     await server.stop();
     check(await until('foot', () => app.texts().includes("Can't reach the server. Trying again."), 20), 'the foot line shows when the server stops answering');
@@ -389,7 +479,7 @@ async function emptyAndLocked(binary, appearance) {
     await app.launch();
     app.type(readPassword(server));
     app.submit();
-    check(await until('empty', () => app.texts().includes('No sessions yet')), 'a server with no sessions shows the empty state');
+    check(await until('empty', () => app.texts().includes('No sessions found')), 'a server with no sessions shows the empty state');
     await app.both('list-empty');
 
     app.signOutFromMenu();
@@ -431,11 +521,27 @@ async function badAddresses(binary, appearance) {
 }
 
 // A chat waiting on an approval or a failed turn can't be had on demand from a scratch server, so a stub answers the routes the list uses.
+// Its index has a pinned row, a family, a routine with earlier runs, two groups (one in a project) and every mark.
 async function marks(binary, appearance) {
-  console.log(`\n== ${appearance}: every status mark`);
+  console.log(`\n== ${appearance}: every status mark, sections, project, search, fold kept`);
+  const now = Date.now();
+  const row = (id, title, extra = {}) => ({ id, title, state: 'idle', cwd: '/Users/me/Projects/site', branch: 'main', lastActivityAt: now - 600_000, sortAt: now - 600_000, ...extra });
   const rows = [['Waiting on an approval', 'awaiting'], ['This turn failed', 'error'], ['Finished and unread', 'ready'], ['Still working', 'running'], ['Nothing to look at'],
     ['Work out why the nightly build of the shared design system fails on the third Tuesday of every month, but only on the runner with the older toolchain']]
-    .map(([title, dot], i) => ({ id: `mark-${i}`, title, dot, state: 'idle', sortAt: Date.now() - i * 60_000 }));
+    .map(([title, dot], i) => row(`mark-${i}`, title, { dot, sortAt: now - i * 60_000 }));
+  const index = {
+    station: 'stub', problem: 'Could not read the Desktop list', projects: [{ id: 'p1', name: 'Website' }, { id: 'p2', name: 'Empty' }],
+    pinned: [row('pin-1', 'Pinned checklist')],
+    groups: [
+      { id: 'g1', name: 'Release', project: null, sessions: [
+        row('fam', 'Ship the release', { dot: 'ready', children: [row('kid-1', 'Draft the notes', { parent: 'fam', dot: 'awaiting', state: 'waiting' }), row('kid-2', 'Check the build', { parent: 'fam' })] }),
+        row('rel-2', 'Write the changelog', { state: 'working', dot: 'running', turnMs: 125_000 })] },
+      { id: 'g2', name: 'Site', project: 'p1', sessions: [row('site-1', 'Redo the landing page', { cwd: '/Users/me/Projects/web' })] },
+    ],
+    routines: [{ name: 'nightly', title: 'Nightly check', latest: row('run-3', 'Run', { routine: 'nightly' }), earlier: [row('run-2', 'Run', { lastActivityAt: now - 86_400_000 }), row('run-1', 'Run', { lastActivityAt: now - 172_800_000 })] }],
+    ungrouped: rows,
+  };
+  const archived = [row('arch-1', 'Old release rehearsal', { archived: true, cwd: '/Users/me/Projects/old' })];
   // The login reply is held until the signing-in shot is taken.
   let hold = true;
   const held = [];
@@ -443,7 +549,7 @@ async function marks(binary, appearance) {
   const stub = http.createServer((req, res) => {
     req.resume();
     if (req.url === '/login') { if (hold) held.push(res); else answer(res); }
-    else res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ungrouped: rows }));
+    else res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(req.url.startsWith('/api/archived') ? { archived } : index));
   });
   await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
   const app = new App(binary, { address: `http://localhost:${stub.address().port}`, appearance, tag: '5' });
@@ -455,8 +561,47 @@ async function marks(binary, appearance) {
     await app.both('signing-in');
     hold = false;
     held.splice(0).forEach(answer);
-    check(await until('rows', () => app.rows() === rows.length), 'the list shows a row for each mark, and a long title');
+    // Home: Routines, Pinned, Release and Ungrouped. Pinned (1), Release (4 with its family open), Ungrouped (6) and the routine are 12 rows.
+    check(await until('rows', () => app.headings() === 4 && app.sessionRows().length === 12), 'Home lists four sections and 12 rows');
+    const lines = () => app.sessionRows().map(([, help]) => help);
+    check(lines().some(help => help.includes('Needs input')) && lines().some(help => help.includes('Failed')) && lines().some(help => help.includes('working')),
+      'rows carry their marks in the hover text');
+    check(app.texts().includes('Could not read the Desktop list.'), 'the index problem shows above the list');
     await app.both('list-marks');
+
+    app.setSection(2, false);
+    check(await until('folded', () => app.sessionRows().length === 8), 'folding Release hides its four rows');
+    await app.quit();
+    await app.launch();
+    check(await until('kept', () => app.headings() === 4 && app.sessionRows().length === 8), 'the fold is still there after a relaunch');
+    await app.both('fold-kept');
+    app.setSection(2, true);
+    check(await until('opened', () => app.sessionRows().length === 12), 'opening Release shows its rows again');
+
+    app.pickView('Website');
+    check(await until('project', () => app.headings() === 2 && lines().some(help => help.includes('Projects/web'))), 'the Website view shows Pinned and its own group, and not Release');
+    await app.both('project-view');
+    check(app.viewMenu() === 'View, another view needs you', 'Home needs you, so the View menu carries the waiting lamp');
+
+    // With nothing in Home waiting, its one working chat lights the green lamp instead.
+    index.groups[0].sessions[0].children[0].state = 'idle';
+    check(await until('working lamp', () => app.viewMenu() === 'View, another view is working'), 'a working view lights the working lamp when none waits');
+    await app.both('project-view-working');
+
+    // A project with no groups and nothing pinned says "No groups yet" once. Pinned rows show in every view, so the stub drops its own first.
+    index.pinned = [];
+    check(await until('pinned gone', () => app.sessionRows().length === 1), 'the next poll drops the pinned row');
+    app.pickView('Empty');
+    const saysNoGroups = () => app.texts().split('\n').filter(line => line === 'No groups yet').length;
+    check(await until('empty project', () => app.headings() === 0 && app.sessionRows().length === 0 && saysNoGroups() === 1), 'an empty project says "No groups yet" once');
+    await app.both('empty-project');
+
+    app.search('release');
+    // Typing is slower than the list, so the row count is what shows the whole word has arrived.
+    check(await until('archived hit', () => app.headings() === 2 && app.sessionRows().length === 2 && lines().some(help => help.includes('Projects/old'))), 'searching shows a live hit and an archived hit');
+    await app.both('search-archived');
+    app.search('zzzz');
+    check(await until('no hits', () => app.sessionRows().length === 0), 'a search with no match lists nothing');
     app.signOutFromMenu();
     check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the stub');
   } finally {

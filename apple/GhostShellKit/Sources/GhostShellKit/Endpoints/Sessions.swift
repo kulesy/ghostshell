@@ -7,6 +7,12 @@ extension GhostShellClient {
         try await get("api/sessions")
     }
 
+    /// Archived sessions, newest archived first. Search reads these. Opening one does not unarchive it.
+    public func archivedSessions() async throws -> [SessionRow] {
+        let list: ArchivedList = try await get("api/archived")
+        return list.archived
+    }
+
     /// The list, kept up to date. It reads `api/sessions` and never a session's own stream.
     public nonisolated func indexFeed() -> SessionIndexFeed {
         SessionIndexFeed { [self] in try await self.sessionIndex() }
@@ -21,4 +27,10 @@ extension GhostShellClient {
             return try await self.openStream("api/sessions/\(sessionID)/events")
         }
     }
+}
+
+private struct ArchivedList: Decodable, Sendable {
+    let archived: [SessionRow]
+    private enum Key: String, CodingKey { case archived }
+    init(from decoder: Decoder) throws { archived = lossy(try decoder.container(keyedBy: Key.self), .archived) }
 }
