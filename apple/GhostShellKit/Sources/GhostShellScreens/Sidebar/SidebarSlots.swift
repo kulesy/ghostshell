@@ -58,6 +58,7 @@ struct HeadingAccessorySlot: View {
     let heading: SidebarHeading
 
     var body: some View {
+        GroupHeadingButton(heading: heading)
     }
 }
 
@@ -67,6 +68,7 @@ struct HeadingMenuSlot: View {
 
     var body: some View {
         GroupHeadingMenu(heading: heading)
+        GroupHeadingMenuItem(heading: heading)
     }
 }
 

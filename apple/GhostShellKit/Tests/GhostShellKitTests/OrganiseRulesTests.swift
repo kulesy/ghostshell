@@ -113,6 +113,8 @@ final class OrganiseRulesTests: XCTestCase {
         XCTAssertTrue(OrganiseRules.stopQuestion(subs: 1, itself: false).hasPrefix("1 sub session is running"))
         XCTAssertTrue(OrganiseRules.batchStopDetail(running: 3).hasPrefix("3 of them are running."))
         XCTAssertEqual(OrganiseRules.archiveNote(archived: 3, total: 3, stopped: 1, subs: 2), "Archived 3 sessions and 2 sub sessions, and stopped 1.")
+        XCTAssertEqual(OrganiseRules.archiveNote(archived: 1, total: 1, subs: 2, name: "Ship it"), "Archived \u{201C}Ship it\u{201D} and 2 sub sessions.")
+        XCTAssertEqual(OrganiseRules.archiveNote(archived: 1, total: 1), "Archived 1 session.")
         XCTAssertEqual(OrganiseRules.archiveNote(archived: 0, total: 2, reason: "Nope"), "Not archived: Nope.")
         XCTAssertEqual(OrganiseRules.archiveNote(archived: 1, total: 2, reason: "Nope"), "Archived 1 of 2 sessions. Not archived: Nope.")
     }

@@ -4,17 +4,20 @@ import SwiftUI
 /// A session's chat: the thread, the line that says what Claude is doing, and the layout the slots hang from.
 struct ChatScreen: View {
     let sessionID: String
+    /// A chat that is not a row in the list, such as a group's own, is named by the screen that holds it.
+    var title: String?
 
-    var body: some View { ChatHost(sessionID: sessionID).id(sessionID) }
+    var body: some View { ChatHost(sessionID: sessionID, named: title).id(sessionID) }
 }
 
 private struct ChatHost: View {
     @Environment(AppModel.self) private var app
     let sessionID: String
+    var named: String?
     @State private var model: ChatModel?
 
     var body: some View {
-        let title = app.rows.first { $0.id == sessionID }?.title ?? ""
+        let title = named ?? app.rows.first { $0.id == sessionID }?.title ?? ""
         Group {
             if let model { ChatLayout(model: model).environment(model) } else { Color.clear }
         }

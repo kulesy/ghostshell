@@ -54,6 +54,9 @@ enum ChatSlots {
 
     // https://github.com/kulesy/ghostshell/issues/91 - toolbar buttons, such as the terminal toggle.
     @ViewBuilder static func terminalToolbar(_ chat: ChatContext) -> some View { EmptyView() }
+
+    // https://github.com/kulesy/ghostshell/issues/88 - under a suggested task card: Start, Dismiss and what became of it.
+    @ViewBuilder static func chipActions(_ call: ToolCall, _ chat: ChatContext) -> some View { ChipActions(call: call, chat: chat) }
 }
 
 /// The default for a file or picture: its name, with no fetch.

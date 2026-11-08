@@ -46,6 +46,41 @@ final class ModelTests: XCTestCase {
         XCTAssertTrue(index.rows.isEmpty)
     }
 
+    private let chatSample = """
+    {
+      "groups": [{"id": "g1", "name": "Work", "session": {"id": "c1", "title": "Work chat", "state": "waiting"}, "sessions": [{"id": "a1"}]}, {"id": "g2", "name": "Bare"}],
+      "sections": [{"id": "pinned", "session": {"id": "c2", "state": "working"}}, {"id": "started"}, {"nope": 1}],
+      "features": {"groupSessions": true, "sectionSessions": true, "subStatus": true, "pullStatus": true, "future": true}
+    }
+    """
+
+    func testSectionsDecodeWithAndWithoutAChatAndSkipABadEntry() throws {
+        let index = try JSONDecoder().decode(SessionIndex.self, from: Data(chatSample.utf8))
+        XCTAssertEqual(index.sections.map(\.id), ["pinned", "started"])
+        XCTAssertEqual(index.sections.first?.session, GroupChat(id: "c2", state: .working))
+        XCTAssertNil(index.sections.last?.session)
+    }
+
+    func testAGroupsOwnChatBecomesTheTargetsChat() throws {
+        let index = try JSONDecoder().decode(SessionIndex.self, from: Data(chatSample.utf8))
+        XCTAssertEqual(index.groups.first?.session?.id, "c1")
+        XCTAssertEqual(GroupRules.target(index, "g1")?.chat, GroupChat(id: "c1", state: .waiting))
+        XCTAssertNil(index.groups.last?.session)
+        XCTAssertNil(GroupRules.target(index, "g2")?.chat)
+    }
+
+    func testTheGroupFeatureFlagsDecodeAndAnUnsentOneReadsFalse() throws {
+        let features = try XCTUnwrap(JSONDecoder().decode(SessionIndex.self, from: Data(chatSample.utf8)).features)
+        XCTAssertTrue(features.groupSessions && features.sectionSessions && features.subStatus && features.pullStatus)
+        XCTAssertFalse(features.many || features.groupEdits || features.groupRename || features.accountPins)
+    }
+
+    func testAMissingFeaturesObjectIsNilAndAnEmptyOneIsAllFalse() throws {
+        XCTAssertNil(try JSONDecoder().decode(SessionIndex.self, from: Data("{}".utf8)).features)
+        let empty = try XCTUnwrap(JSONDecoder().decode(SessionIndex.self, from: Data(#"{"features": {}}"#.utf8)).features)
+        XCTAssertEqual(empty, SessionFeatures())
+    }
+
     func testRowsListEverySessionOnceNewestFirst() throws {
         let index = try JSONDecoder().decode(SessionIndex.self, from: Data(sample.utf8))
         XCTAssertEqual(index.rows.map(\.id), ["k1", "a1", "s1", "p1", "r1", "u1"])

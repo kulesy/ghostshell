@@ -266,9 +266,10 @@ public enum OrganiseRules {
 
     private static func sentence(_ text: String) -> String { text.last.map { ".!?".contains($0) } == true ? text : "\(text)." }
 
-    public static func archiveNote(archived: Int, total: Int, stopped: Int = 0, subs: Int = 0, reason: String = "") -> String {
+    /// `name` words a lone archived session by its title, as the page does.
+    public static func archiveNote(archived: Int, total: Int, stopped: Int = 0, subs: Int = 0, reason: String = "", name: String? = nil) -> String {
         let stops = stopped > 0 ? "\(subs > 0 ? "," : "") and stopped \(stopped)" : ""
-        if archived == total { return "Archived \(sessions(total))\(withSubs(subs))\(stops)." }
+        if archived == total { return "Archived \(total == 1 ? name.map { "\u{201C}\($0)\u{201D}" } ?? sessions(total) : sessions(total))\(withSubs(subs))\(stops)." }
         if archived == 0 { return "Not archived: \(sentence(reason))" }
         return "Archived \(archived) of \(sessions(total))\(withSubs(subs))\(stops). Not archived: \(sentence(reason))"
     }
