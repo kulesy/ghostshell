@@ -239,9 +239,10 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.buttons["Close"].firstMatch.tap()
 
         tapLink(app, line: "An old log: gone.txt")
-        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 10), "A missing file says so")
+        XCTAssertTrue(app.staticTexts["There is no file at that path."].firstMatch.waitForExistence(timeout: 10), "A missing file says so\n\(app.debugDescription)")
+        sleep(1)
         shot("files-7-missing")
-        app.alerts.buttons["OK"].firstMatch.tap()
+        if app.alerts.firstMatch.exists { app.alerts.buttons["OK"].firstMatch.tap() }
     }
 
     func testAFileCanBeEditedAndSaved() throws {

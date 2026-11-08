@@ -193,7 +193,6 @@ async function shoot() {
 
   const stub = await startChatStub();
   const fixtures = await startFixtures(stub);
-  const stubs = await startStubs();
   const booted = [];
   let ok = true;
   try {
@@ -204,7 +203,9 @@ async function shoot() {
       if (!wasBooted) booted.push(udid);
       for (const appearance of appearances) {
         console.log(`\n== ${DEVICES[device].name}, ${appearance}`);
-        const r = await runTests({ udid, device, appearance, out, address: fixtures.address, only: option('--test'), stubs });
+        // Fresh stubs for each run, because a chip started or a file saved in one run would change what the next one sees.
+        const stubs = await startStubs();
+        const r = await runTests({ udid, device, appearance, out, address: fixtures.address, only: option('--test'), stubs }).finally(() => stubs.stop());
         console.log(r.ok ? `PASS: ${r.summary}` : `FAIL: ${r.summary}\n${r.failed.join('\n')}`);
         ok = ok && r.ok;
       }
@@ -214,7 +215,6 @@ async function shoot() {
     for (const udid of booted) simctl('shutdown', udid);
     fixtures.stop();
     stub.stop();
-    stubs.stop();
   }
   console.log(`Screenshots are in ${out}`);
   return ok;
