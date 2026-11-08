@@ -100,6 +100,12 @@ public final class RoutinesStore {
         }
     }
 
+    /// The server's zone, as the fixed offset on a time it sent. Nil until it has sent one.
+    var serverZone: TimeZone? {
+        let times = (routines ?? []).compactMap(\.next) + (scheduled ?? []).compactMap(\.at)
+        return times.lazy.compactMap(\.offsetMinutes).first.flatMap { TimeZone(secondsFromGMT: $0 * 60) }
+    }
+
     func routine(_ id: String) -> RoutineSummary? { routines?.first { $0.id == id } }
 
     // MARK: Writes. Each says what happened in `note`, then loads the lists again.

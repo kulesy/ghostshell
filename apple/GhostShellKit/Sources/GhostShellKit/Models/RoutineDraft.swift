@@ -183,21 +183,22 @@ public struct ScheduledRequest: Encodable, Hashable, Sendable {
     }
 }
 
-/// `2026-11-09T09:00:00+11:00`: a time to the minute, in the zone given (the device's by default), with its offset. The server reads a time with no
-/// offset in its own zone, so the offset is always sent.
-public func localIso(_ date: Date, in zone: TimeZone = .current) -> String {
+/// `2026-11-09T09:00`: a time to the minute as the wall clock in `zone`, with no offset, as the web page sends it. The server reads that in its own zone, so
+/// it applies its own daylight saving.
+public func wallClock(_ date: Date, in zone: TimeZone) -> String {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = zone
     let p = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-    let offset = zone.secondsFromGMT(for: date) / 60
     func two(_ n: Int) -> String { n < 10 ? "0\(n)" : "\(n)" }
-    return "\(String(format: "%04d", p.year!))-\(two(p.month!))-\(two(p.day!))T\(two(p.hour!)):\(two(p.minute!)):00\(offset < 0 ? "-" : "+")\(two(abs(offset) / 60)):\(two(abs(offset) % 60))"
+    return "\(String(format: "%04d", p.year!))-\(two(p.month!))-\(two(p.day!))T\(two(p.hour!)):\(two(p.minute!))"
 }
 
-/// The scheduled form's fields. `at` is the instant picked, and it is compared with the saved one to the minute so the seconds are never re-sent.
+/// The scheduled form's fields. `at` is the instant picked, read as a wall clock in `zone`, the server's. It is compared with the saved one to the minute
+/// so the seconds are never re-sent.
 public struct ScheduledDraft: Hashable, Sendable {
     public var title = ""
     public var at: Date
+    public let zone: TimeZone
     public var cwd = ""
     public var model = ""
     public var effort = ""
@@ -205,15 +206,20 @@ public struct ScheduledDraft: Hashable, Sendable {
     public var group = ""
     public var prompt = ""
 
-    /// A new session: tomorrow at 09:00 in the device's zone, and the home folder.
-    public init(home: String, now: Date = Date(), calendar: Calendar = .current) {
+    /// A new session: tomorrow at 09:00 in `zone` (the server's, or the device's when that is not known), and the home folder.
+    public init(home: String, now: Date = Date(), zone: TimeZone = .current) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        self.zone = zone
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: now) ?? now
         at = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
         cwd = home
     }
 
-    /// An edit. An entry whose time cannot be read opens at `now`, and that time is sent because it differs from the saved one.
+    /// An edit, in the zone offset the entry's time was saved with. An entry whose time cannot be read opens at `now`, and that time is sent because it
+    /// differs from the saved one.
     public init(_ scheduled: ScheduledSummary, now: Date = Date()) {
+        zone = scheduled.at?.offsetMinutes.flatMap { TimeZone(secondsFromGMT: $0 * 60) } ?? .current
         (title, at, cwd) = (scheduled.title, scheduled.at?.date ?? now, scheduled.cwd)
         (model, effort, mode, group, prompt) = (scheduled.model ?? "", scheduled.effort ?? "", scheduled.mode ?? "", scheduled.group ?? "", scheduled.prompt)
     }
@@ -225,13 +231,13 @@ public struct ScheduledDraft: Hashable, Sendable {
         let cwd = trimmed(cwd)
         var r = ScheduledRequest()
         guard let was else {
-            (r.title, r.at, r.cwd, r.prompt) = (.value(title), .value(localIso(at)), .value(cwd), .value(prompt))
+            (r.title, r.at, r.cwd, r.prompt) = (.value(title), .value(wallClock(at, in: zone)), .value(cwd), .value(prompt))
             (r.model, r.effort, r.mode, r.group) = (orNull(model), orNull(effort), orNull(mode), orNull(group))
             return r
         }
         let minute = { (date: Date) in Int(floor(date.timeIntervalSince1970 / 60)) }
         if title != was.title { r.title = .value(title) }
-        if was.at.map({ minute($0.date) }) != minute(at) { r.at = .value(localIso(at)) }
+        if was.at.map({ minute($0.date) }) != minute(at) { r.at = .value(wallClock(at, in: zone)) }
         if cwd != was.cwd { r.cwd = .value(cwd) }
         if !same(model, was.model) { r.model = orNull(model) }
         if !same(effort, was.effort) { r.effort = orNull(effort) }

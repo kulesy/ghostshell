@@ -107,7 +107,7 @@ final class RoutineIntegrationTests: XCTestCase {
         do {
             XCTAssertEqual(added.status, "pending")
             XCTAssertEqual(added.cwd, folder)
-            XCTAssertEqual(added.at.map { Calendar.current.component(.hour, from: $0.date) }, 9)
+            XCTAssertEqual(added.at?.hour, 9)
             let listed = try await client.scheduledSessions()
             XCTAssertTrue(listed.scheduled.contains { $0.id == id })
 

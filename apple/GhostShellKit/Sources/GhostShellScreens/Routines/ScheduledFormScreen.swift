@@ -15,7 +15,7 @@ struct ScheduledFormScreen: View {
             case .loading: ProgressView("Loading").frame(maxWidth: .infinity, maxHeight: .infinity)
             case .missing: unavailable("That scheduled session is not here any more.")
             case .failed(let why), .settled(let why): unavailable(why)
-            case .ready(let was): ScheduledFields(was: was)
+            case .ready(let was): ScheduledFields(was: was, zone: model.routines.serverZone ?? .current)
             }
         }
         .navigationTitle(id == nil ? "Schedule a session" : "Edit scheduled session")
@@ -31,9 +31,9 @@ struct ScheduledFormScreen: View {
     }
 
     private func open() async {
-        guard let id else { load = .ready(nil); return }
         let store = model.routines
         if store.scheduled == nil { await store.refresh() }
+        guard let id else { load = .ready(nil); return }
         guard let s = store.scheduled?.first(where: { $0.id == id }) else {
             load = store.scheduled == nil ? .failed("Could not load scheduled sessions: \(store.failure ?? "no answer")") : .missing
             return
@@ -55,9 +55,9 @@ private struct ScheduledFields: View {
     @State private var folders: [String] = []
     @FocusState private var focus: Focus?
 
-    init(was: ScheduledSummary?) {
+    init(was: ScheduledSummary?, zone: TimeZone) {
         self.was = was
-        _draft = State(initialValue: was.map { ScheduledDraft($0) } ?? ScheduledDraft(home: NSHomeDirectory()))
+        _draft = State(initialValue: was.map { ScheduledDraft($0) } ?? ScheduledDraft(home: NSHomeDirectory(), zone: zone))
     }
 
     private var store: RoutinesStore { model.routines }
@@ -71,9 +71,9 @@ private struct ScheduledFields: View {
                 FormField(label: "Title", hint: "The session is called this.", message: problems["title"]) {
                     TextField("Title", text: $draft.title).labelsHidden().focused($focus, equals: .title)
                 }
-                FormField(label: "Date and time", hint: "In this Mac's time zone. If GhostShell is off then, it starts as soon as it is back, unless that is more than 12 hours late.",
+                FormField(label: "Date and time", hint: "In the GhostShell server's time zone. If GhostShell is off then, it starts as soon as it is back, unless that is more than 12 hours late.",
                           message: problems["at"]) {
-                    DatePicker("Date and time", selection: $draft.at, displayedComponents: [.date, .hourAndMinute]).labelsHidden().focused($focus, equals: .at)
+                    DatePicker("Date and time", selection: $draft.at, displayedComponents: [.date, .hourAndMinute]).labelsHidden().environment(\.timeZone, draft.zone).focused($focus, equals: .at)
                 }
             }
             Section("Where it runs") {

@@ -78,17 +78,31 @@ final class ScheduledRulesTests: XCTestCase {
         let body = try json(draft.request())
         XCTAssertEqual(Set(body.keys), ["title", "at", "cwd", "model", "effort", "mode", "group", "prompt"])
         XCTAssertEqual(body["title"] as? String, "Look")
-        XCTAssertEqual(body["at"] as? String, localIso(local(9)))
-        XCTAssertTrue(body["at"] is String && (body["at"] as! String).hasPrefix("2026-10-31T09:00:00"))
+        XCTAssertEqual(body["at"] as? String, "2026-10-31T09:00")
         XCTAssertTrue(body["model"] is NSNull && body["effort"] is NSNull && body["mode"] is NSNull && body["group"] is NSNull)
     }
 
-    func testTheTimeCarriesTheDevicesOffset() {
+    func testTheTimeIsSentAsTheWallClockInTheZoneWithNoOffset() {
         let sydney = TimeZone(identifier: "Australia/Sydney")!
-        XCTAssertEqual(localIso(LocalTime("2026-11-09T09:00:00+11:00")!.date, in: sydney), "2026-11-09T09:00:00+11:00")
-        XCTAssertEqual(localIso(LocalTime("2026-07-09T09:00:00+10:00")!.date, in: sydney), "2026-07-09T09:00:00+10:00")
-        XCTAssertEqual(localIso(LocalTime("2026-11-09T09:00:00+05:30")!.date, in: TimeZone(secondsFromGMT: 19_800)!), "2026-11-09T09:00:00+05:30")
-        XCTAssertEqual(localIso(LocalTime("2026-11-09T09:00:00-03:30")!.date, in: TimeZone(secondsFromGMT: -12_600)!), "2026-11-09T09:00:00-03:30")
+        XCTAssertEqual(wallClock(LocalTime("2026-11-09T09:00:00+11:00")!.date, in: sydney), "2026-11-09T09:00")
+        XCTAssertEqual(wallClock(LocalTime("2026-07-09T09:00:00+10:00")!.date, in: sydney), "2026-07-09T09:00")
+        XCTAssertEqual(wallClock(LocalTime("2026-11-09T09:00:00-03:30")!.date, in: TimeZone(secondsFromGMT: -12_600)!), "2026-11-09T09:00")
+    }
+
+    func testAnEditOpensAndResendsTheServersWallClockWhateverTheMacsZoneIs() throws {
+        let was = entry(at: "2026-11-09T09:00:00+10:00")
+        var draft = ScheduledDraft(was, now: now)
+        XCTAssertEqual(draft.zone.secondsFromGMT(), 10 * 3600)
+        XCTAssertEqual(wallClock(draft.at, in: draft.zone), "2026-11-09T09:00")
+        XCTAssertNil(try json(draft.request(against: was))["at"], "an unchanged time is not sent")
+        draft.at = LocalTime("2026-11-09T10:30:00+10:00")!.date
+        XCTAssertEqual(try json(draft.request(against: was))["at"] as? String, "2026-11-09T10:30")
+    }
+
+    func testANewFormStartsTomorrowAtNineInTheServersZone() {
+        let zone = TimeZone(secondsFromGMT: 10 * 3600)!
+        let draft = ScheduledDraft(home: "/Users/me", now: now, zone: zone)
+        XCTAssertEqual(wallClock(draft.at, in: zone), "2026-10-31T09:00")
     }
 
     func testAnEditSendsOnlyWhatChangedSoAPassedTimeIsNotCheckedAgain() throws {
