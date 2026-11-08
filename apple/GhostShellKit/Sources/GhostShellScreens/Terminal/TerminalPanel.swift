@@ -84,7 +84,8 @@ struct TerminalPanel: View {
 
     private var runs: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
+            // Not lazy: a lazy stack estimates the rows it has not drawn from the ones it has, and a first run thousands of lines tall skews that estimate.
+            VStack(spacing: 12) {
                 ForEach(state.runs, id: \.key) { run in
                     TerminalRunBlock(run: run, home: state.home, store: store).equatable()
                 }
