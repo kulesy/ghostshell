@@ -151,6 +151,23 @@ final class AccountClientTests: XCTestCase {
         do { _ = try await client.rename(account: "a", name: "x"); XCTFail() } catch let error as GhostShellError { XCTAssertEqual(error.errorDescription, "Name too long.") }
     }
 
+    func testARefusedFormCarriesItsProblemsPerField() async throws {
+        let client = await client()
+        Echo.reset { _ in (400, #"{"error":"Nothing was saved.","problems":{"cwd":"No such folder.","cron":"Use five fields."}}"#) }
+        do { _ = try await client.addRoutine(RoutineRequest()); XCTFail("expected a refusal") } catch let error as GhostShellError {
+            XCTAssertEqual(error, .refused(status: 400, message: "Nothing was saved.", problems: ["cwd": "No such folder.", "cron": "Use five fields."]))
+            XCTAssertEqual(error.errorDescription, "Nothing was saved.")
+        }
+        Echo.reset { _ in (409, #"{"error":"Still running."}"#) }
+        do { _ = try await client.runRoutine(id: "a"); XCTFail("expected a refusal") } catch let error as GhostShellError {
+            XCTAssertEqual(error, .refused(status: 409, message: "Still running.", problems: [:]))
+        }
+        Echo.reset { _ in (400, #"{"error":"Nothing was saved.","problems":"nope"}"#) }
+        do { _ = try await client.deleteRoutine(id: "a"); XCTFail("expected a refusal") } catch let error as GhostShellError {
+            XCTAssertEqual(error, .refused(status: 400, message: "Nothing was saved.", problems: [:]))
+        }
+    }
+
     func testOtherFailuresKeepTheirOwnWords() async throws {
         let client = await client()
         for (status, body) in [(500, #"{"error":"boom"}"#), (404, #"{"error":"Not found"}"#), (404, "not json"), (404, #"{"error":""}"#), (409, "not json"), (400, #"{"error":""}"#)] {

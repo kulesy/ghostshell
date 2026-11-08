@@ -42,7 +42,7 @@ struct ScheduledFormScreen: View {
     }
 }
 
-private enum Focus: Hashable { case title, at, cwd, model, effort, mode, group, prompt }
+private enum Focus: String, Hashable { case title, at, cwd, model, effort, mode, group, prompt }
 
 private struct ScheduledFields: View {
     @Environment(AppModel.self) private var model
@@ -150,31 +150,15 @@ private struct ScheduledFields: View {
             store.note = RoutineNote(text: "\(was == nil ? "Scheduled" : "Saved") “\(draft.title.trimmingCharacters(in: .whitespaces))”.")
             await store.refresh()
             leave()
-        } catch let refusal as ServerRefusal {
-            let fields = refusal.fields(in: ServerRefusal.scheduledFields)
-            if fields.isEmpty { notice = refusal.message; return }
+        } catch let error as GhostShellError {
+            let fields = error.fields(in: scheduledFields)
+            if fields.isEmpty { notice = error.localizedDescription; return }
             problems = Dictionary(uniqueKeysWithValues: fields.map { ($0.field, $0.sentence) })
-            focus = Focus(name: fields[0].field)
+            focus = Focus(rawValue: fields[0].field)
         } catch {
             notice = error.localizedDescription
         }
     }
 
     private func leave() { model.navigator.show { ScheduledScreen() } }
-}
-
-private extension Focus {
-    init?(name: String) {
-        switch name {
-        case "title": self = .title
-        case "at": self = .at
-        case "cwd": self = .cwd
-        case "model": self = .model
-        case "effort": self = .effort
-        case "mode": self = .mode
-        case "group": self = .group
-        case "prompt": self = .prompt
-        default: return nil
-        }
-    }
 }

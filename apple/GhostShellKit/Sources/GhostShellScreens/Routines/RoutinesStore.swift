@@ -16,6 +16,8 @@ public final class RoutinesStore {
     public private(set) var routines: [RoutineSummary]?
     public private(set) var scheduled: [ScheduledSummary]?
     public private(set) var features = ServerFeatures()
+    /// False until the features call has answered. Every refresh tries it again, and the routine form does not save before it is true.
+    public private(set) var featuresLoaded = false
     /// The server's own line when routines.json or scheduled.json cannot be read.
     public private(set) var problem: String?
     public private(set) var scheduledProblem: String?
@@ -25,7 +27,6 @@ public final class RoutinesStore {
 
     private var client: GhostShellClient?
     private var polling: Task<Void, Never>?
-    private var featuresLoaded = false
     private static let interval = Duration.seconds(5)
 
     public init() {}
@@ -67,7 +68,7 @@ public final class RoutinesStore {
     /// Loads both lists again. Screens call it after each write, so the result shows at once.
     public func refresh() async {
         guard let client else { return }
-        if !featuresLoaded, let loaded = try? await client.serverFeatures() {
+        if !featuresLoaded, let loaded = try? await client.serverFeatures(), self.client === client {
             features = loaded
             featuresLoaded = true
         }

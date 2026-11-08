@@ -113,13 +113,14 @@ public struct RoutineDraft: Hashable, Sendable {
         (promptKind, file, prompt, enabled) = (loaded.kind, loaded.kind == .file ? loaded.file : "", loaded.text, routine.enabled)
     }
 
+    /// What is wrong before anything is sent, keyed by the API's field name. The jitter must be a whole number of seconds from 0 to 86399, as the page checks.
+    public var localProblems: [String: String] { jitterOf(jitterSeconds) == nil ? ["jitterSeconds": jitterProblem] : [:] }
+
     /// With no baseline, a new routine's body with every field. With one, only what changed, so a folder that has since gone does not refuse a new title.
     /// The prompt goes as the text or as the path, never both. A switch of kind always sends the new kind, which is what moves the routine.
-    /// Throws a `ServerRefusal` keyed `jitterSeconds` when the jitter is not a whole number of seconds from 0 to 86399, as the page does before sending.
-    public func request(against baseline: RoutineBaseline? = nil) throws -> RoutineRequest {
-        guard let jitter = jitterOf(jitterSeconds) else {
-            throw ServerRefusal(status: 400, message: jitterProblem, problems: ["jitterSeconds": jitterProblem])
-        }
+    /// The form checks `localProblems` first and sends nothing while it is not empty, so a jitter that cannot be read is left out here.
+    public func request(against baseline: RoutineBaseline? = nil) -> RoutineRequest {
+        let jitter = jitterOf(jitterSeconds)
         let title = trimmed(title)
         let heading = trimmed(heading)
         let cron = self.cron.split(whereSeparator: \.isWhitespace).joined(separator: " ")
@@ -128,7 +129,7 @@ public struct RoutineDraft: Hashable, Sendable {
         let text = promptKind == .text
         var r = RoutineRequest()
         guard let was = baseline?.routine, let baseline else {
-            (r.title, r.cron, r.jitterSeconds, r.cwd) = (.value(title), .value(cron), .value(jitter), .value(cwd))
+            (r.title, r.cron, r.jitterSeconds, r.cwd) = (.value(title), .value(cron), .value(jitter ?? 0), .value(cwd))
             (r.model, r.effort, r.mode, r.enabled) = (orNull(model), orNull(effort), orNull(mode), .value(enabled))
             if !heading.isEmpty { r.heading = .value(heading) }
             if !account.isEmpty { r.account = .value(account) }
@@ -138,7 +139,7 @@ public struct RoutineDraft: Hashable, Sendable {
         if title != was.title { r.title = .value(title) }
         if !same(heading, was.heading) { r.heading = orNull(heading) }
         if cron != was.cron.split(whereSeparator: \.isWhitespace).joined(separator: " ") { r.cron = .value(cron) }
-        if jitter != was.jitterSeconds { r.jitterSeconds = .value(jitter) }
+        if let jitter, jitter != was.jitterSeconds { r.jitterSeconds = .value(jitter) }
         if cwd != was.cwd { r.cwd = .value(cwd) }
         if !same(model, was.model) { r.model = orNull(model) }
         if !same(effort, was.effort) { r.effort = orNull(effort) }

@@ -3,10 +3,6 @@ import Foundation
 // NOTE: [8 Nov 2026] EK - These types mirror lib/routines.mjs, lib/scheduled.mjs and the `routinesApi` and scheduled handlers in server.mjs.
 // Decoding is lenient, as in SessionIndex.swift: a missing or renamed field reads as empty and never fails the whole list.
 
-extension KeyedDecodingContainer {
-    func lenient<T: Decodable>(_ key: Key) -> T? { try? decode(T.self, forKey: key) }
-}
-
 /// A fire the scheduler passed over, such as a run that was still working. The server keeps the last one until the next run.
 public struct RoutineSkip: Hashable, Sendable, Decodable {
     public var fireAt: LocalTime?
@@ -16,8 +12,8 @@ public struct RoutineSkip: Hashable, Sendable, Decodable {
     private enum Key: String, CodingKey { case fireAt, at, reason }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
-        fireAt = c.lenient(.fireAt)
-        at = c.lenient(.at)
+        fireAt = c.value(.fireAt)
+        at = c.value(.at)
         reason = try c.decode(String.self, forKey: .reason)
     }
     public init(fireAt: LocalTime? = nil, at: LocalTime? = nil, reason: String) { (self.fireAt, self.at, self.reason) = (fireAt, at, reason) }
@@ -32,9 +28,9 @@ public struct RoutineRetry: Hashable, Sendable, Decodable {
     private enum Key: String, CodingKey { case fireAt, tries, nextAt }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
-        fireAt = c.lenient(.fireAt)
-        tries = c.lenient(.tries) ?? 0
-        nextAt = c.lenient(.nextAt)
+        fireAt = c.value(.fireAt)
+        tries = c.value(.tries) ?? 0
+        nextAt = c.value(.nextAt)
     }
     public init(fireAt: LocalTime? = nil, tries: Int = 0, nextAt: LocalTime? = nil) { (self.fireAt, self.tries, self.nextAt) = (fireAt, tries, nextAt) }
 }
@@ -71,26 +67,26 @@ public struct RoutineSummary: Hashable, Sendable, Identifiable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         id = try c.decode(String.self, forKey: .id)
-        title = c.lenient(.title) ?? id
-        heading = c.lenient(.heading)
-        cron = c.lenient(.cron) ?? ""
-        jitterSeconds = c.lenient(.jitterSeconds) ?? 0
-        file = c.lenient(.file) ?? ""
-        cwd = c.lenient(.cwd) ?? ""
-        model = c.lenient(.model)
-        effort = c.lenient(.effort)
-        mode = c.lenient(.mode)
-        account = c.lenient(.account)
-        enabled = c.lenient(.enabled) ?? false
-        armedAt = c.lenient(.armedAt)
-        lastRunAt = c.lenient(.lastRunAt)
-        lastSessionId = c.lenient(.lastSessionId)
-        lastError = c.lenient(.lastError)
-        skipped = c.lenient(.skipped)
-        retry = c.lenient(.retry)
-        running = c.lenient(.running) ?? false
-        next = c.lenient(.next)
-        problem = c.lenient(.problem)
+        title = c.value(.title) ?? id
+        heading = c.value(.heading)
+        cron = c.value(.cron) ?? ""
+        jitterSeconds = c.value(.jitterSeconds) ?? 0
+        file = c.value(.file) ?? ""
+        cwd = c.value(.cwd) ?? ""
+        model = c.value(.model)
+        effort = c.value(.effort)
+        mode = c.value(.mode)
+        account = c.value(.account)
+        enabled = c.value(.enabled) ?? false
+        armedAt = c.value(.armedAt)
+        lastRunAt = c.value(.lastRunAt)
+        lastSessionId = c.value(.lastSessionId)
+        lastError = c.value(.lastError)
+        skipped = c.value(.skipped)
+        retry = c.value(.retry)
+        running = c.value(.running) ?? false
+        next = c.value(.next)
+        problem = c.value(.problem)
     }
 
     public init(id: String, title: String? = nil, heading: String? = nil, cron: String = "", jitterSeconds: Int = 0, file: String = "", cwd: String = "",
@@ -113,7 +109,7 @@ public struct RoutineList: Hashable, Sendable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         routines = lossy(c, .routines)
-        problem = c.lenient(.problem)
+        problem = c.value(.problem)
     }
     public init(routines: [RoutineSummary] = [], problem: String? = nil) { (self.routines, self.problem) = (routines, problem) }
 }
@@ -130,11 +126,11 @@ public struct RoutinePrompt: Hashable, Sendable, Decodable {
     private enum Key: String, CodingKey { case file, text, ours, copyTo, error }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
-        file = c.lenient(.file) ?? ""
-        text = c.lenient(.text) ?? ""
-        ours = c.lenient(.ours)
-        copyTo = c.lenient(.copyTo)
-        error = c.lenient(.error)
+        file = c.value(.file) ?? ""
+        text = c.value(.text) ?? ""
+        ours = c.value(.ours)
+        copyTo = c.value(.copyTo)
+        error = c.value(.error)
     }
     public init(file: String = "", text: String = "", ours: Bool? = true, copyTo: String? = nil, error: String? = nil) {
         (self.file, self.text, self.ours, self.copyTo, self.error) = (file, text, ours, copyTo, error)
@@ -150,7 +146,7 @@ public struct SchedulePreview: Hashable, Sendable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         next = lossy(c, .next)
-        problem = c.lenient(.problem)
+        problem = c.value(.problem)
     }
     public init(next: [LocalTime] = [], problem: String? = nil) { (self.next, self.problem) = (next, problem) }
 }
@@ -190,22 +186,22 @@ public struct ScheduledSummary: Hashable, Sendable, Identifiable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         id = try c.decode(String.self, forKey: .id)
-        title = c.lenient(.title) ?? id
-        at = c.lenient(.at)
-        cwd = c.lenient(.cwd) ?? ""
-        prompt = c.lenient(.prompt) ?? ""
-        model = c.lenient(.model)
-        effort = c.lenient(.effort)
-        mode = c.lenient(.mode)
-        group = c.lenient(.group)
-        groupName = c.lenient(.groupName)
-        status = c.lenient(.status) ?? ""
-        sessionId = c.lenient(.sessionId)
-        startedAt = c.lenient(.startedAt)
-        lastError = c.lenient(.lastError)
-        retry = c.lenient(.retry)
-        running = c.lenient(.running) ?? false
-        problem = c.lenient(.problem)
+        title = c.value(.title) ?? id
+        at = c.value(.at)
+        cwd = c.value(.cwd) ?? ""
+        prompt = c.value(.prompt) ?? ""
+        model = c.value(.model)
+        effort = c.value(.effort)
+        mode = c.value(.mode)
+        group = c.value(.group)
+        groupName = c.value(.groupName)
+        status = c.value(.status) ?? ""
+        sessionId = c.value(.sessionId)
+        startedAt = c.value(.startedAt)
+        lastError = c.value(.lastError)
+        retry = c.value(.retry)
+        running = c.value(.running) ?? false
+        problem = c.value(.problem)
     }
 
     public init(id: String, title: String? = nil, at: LocalTime? = nil, cwd: String = "", prompt: String = "", model: String? = nil, effort: String? = nil,
@@ -226,7 +222,7 @@ public struct ScheduledList: Hashable, Sendable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         scheduled = lossy(c, .scheduled)
-        problem = c.lenient(.problem)
+        problem = c.value(.problem)
     }
     public init(scheduled: [ScheduledSummary] = [], problem: String? = nil) { (self.scheduled, self.problem) = (scheduled, problem) }
 }
@@ -243,20 +239,6 @@ struct FolderList: Decodable, Sendable {
     init(from decoder: Decoder) throws { folders = (try? decoder.container(keyedBy: Key.self).decode([String].self, forKey: .folders)) ?? [] }
 }
 
-/// What a folder's Default model, effort and mode follow (`api/defaults`): Claude Desktop's settings for that folder.
-public struct FolderDefaults: Hashable, Sendable, Decodable {
-    public var model: String?
-    public var shownModel: String?
-    public var effort: String?
-    public var mode: String?
-
-    private enum Key: String, CodingKey { case model, shownModel, effort, mode }
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: Key.self)
-        (model, shownModel, effort, mode) = (c.lenient(.model), c.lenient(.shownModel), c.lenient(.effort), c.lenient(.mode))
-    }
-}
-
 /// The parts of `features` in `api/sessions` that decide which fields and pages a server offers. A server that leaves one out does not have it.
 public struct ServerFeatures: Hashable, Sendable, Decodable {
     public var routineEdits = false
@@ -268,11 +250,11 @@ public struct ServerFeatures: Hashable, Sendable, Decodable {
     private enum Key: String, CodingKey { case routineEdits, routineFiles, routineHeadings, scheduled, accountPins }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
-        routineEdits = c.lenient(.routineEdits) ?? false
-        routineFiles = c.lenient(.routineFiles) ?? false
-        routineHeadings = c.lenient(.routineHeadings) ?? false
-        scheduled = c.lenient(.scheduled) ?? false
-        accountPins = c.lenient(.accountPins) ?? false
+        routineEdits = c.value(.routineEdits) ?? false
+        routineFiles = c.value(.routineFiles) ?? false
+        routineHeadings = c.value(.routineHeadings) ?? false
+        scheduled = c.value(.scheduled) ?? false
+        accountPins = c.value(.accountPins) ?? false
     }
     public init() {}
 }

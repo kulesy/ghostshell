@@ -58,7 +58,7 @@ struct RoutineFormScreen: View {
     }
 }
 
-private enum Focus: Hashable { case title, heading, cron, jitterSeconds, cwd, model, effort, mode, account, file, prompt }
+private enum Focus: String, Hashable { case title, heading, cron, jitterSeconds, cwd, model, effort, mode, account, file, prompt }
 
 private struct RoutineFields: View {
     @Environment(AppModel.self) private var model
@@ -102,6 +102,9 @@ private struct RoutineFields: View {
         Form {
             if let notice {
                 Section { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+            }
+            if !store.featuresLoaded {
+                Section { Label("Still asking the server what it offers. Save waits for the answer.", systemImage: "hourglass").foregroundStyle(.secondary) }
             }
             Section {
                 FormField(label: "Title", message: problems["title"]) {
@@ -160,7 +163,7 @@ private struct RoutineFields: View {
                 if !adding { Button("Delete", role: .destructive) { deleting = true } }
                 Button("Cancel", role: .cancel) { leave() }
                 Button(saving ? "Saving" : "Save") { Task { await save() } }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!store.featuresLoaded)
             }
         }
         .noteBar()
@@ -274,12 +277,12 @@ private struct RoutineFields: View {
         for (key, did) in changed where did { problems[key] = nil }
     }
 
-    private func refuse(_ refusal: ServerRefusal) {
-        let fields = refusal.fields(in: ServerRefusal.routineFields)
-        if fields.isEmpty { notice = refusal.message; return }
+    private func refuse(_ error: GhostShellError) {
+        let fields = error.fields(in: routineFields)
+        if fields.isEmpty { notice = error.localizedDescription; return }
         notice = nil
         problems = Dictionary(uniqueKeysWithValues: fields.map { ($0.field, $0.sentence) })
-        focus = Focus(rawFieldName: fields[0].field)
+        focus = Focus(rawValue: fields[0].field)
     }
 
     private func save() async {
@@ -287,16 +290,17 @@ private struct RoutineFields: View {
         saving = true
         defer { saving = false }
         notice = nil
-        problems = [:]
+        problems = draft.localProblems
+        if !problems.isEmpty { focus = .jitterSeconds; return }
         do {
-            let body = try draft.request(against: baseline)
+            let body = draft.request(against: baseline)
             if baseline != nil, body.isEmpty { leave(); return }
             if let id { try await client.editRoutine(id: id, body) } else { try await client.addRoutine(body) }
             store.note = RoutineNote(text: "\(adding ? "Added" : "Saved") “\(draft.title.trimmingCharacters(in: .whitespaces))”.")
             await store.refresh()
             leave()
-        } catch let refusal as ServerRefusal {
-            refuse(refusal)
+        } catch let error as GhostShellError {
+            refuse(error)
         } catch {
             notice = error.localizedDescription
         }
@@ -308,23 +312,4 @@ private struct RoutineFields: View {
     }
 
     private func leave() { model.navigator.show { RoutinesScreen() } }
-}
-
-private extension Focus {
-    init?(rawFieldName name: String) {
-        switch name {
-        case "title": self = .title
-        case "heading": self = .heading
-        case "cron": self = .cron
-        case "jitterSeconds": self = .jitterSeconds
-        case "cwd": self = .cwd
-        case "model": self = .model
-        case "effort": self = .effort
-        case "mode": self = .mode
-        case "account": self = .account
-        case "file": self = .file
-        case "prompt": self = .prompt
-        default: return nil
-        }
-    }
 }

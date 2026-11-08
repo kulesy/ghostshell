@@ -65,7 +65,7 @@ The Debug hooks are launch arguments: `-GSKeychainService`, `-GSAddress`, `-GSDe
 1. Make a folder `GhostShellKit/Sources/GhostShellScreens/<Area>/` and put a SwiftUI view in a new file. SwiftPM picks it up. Nothing else changes.
 2. If it needs the server, add `GhostShellKit/Sources/GhostShellKit/Endpoints/<Area>.swift` as an extension of `GhostShellClient`. Call `get`, `post` or `send` for JSON. Call `data(method, path, query:, body:, contentType:)` for DELETE, PATCH, a raw byte upload (`?path=` and a file name go in `query`) or a raw byte read. Do not build a `URLRequest` anywhere else. The client sets Cookie and Origin itself and refuses a `contentType` with a control character.
 3. Show the screen with `navigator.show { MyScreen() }` from wherever the person reaches it, such as a sidebar row, a button or a menu command. The `Navigator` keeps the detail pane as a type-erased view, so there is no central list of destinations.
-4. Read `AppModel` from the environment (`@Environment(AppModel.self)`). It exposes `client` for calls, `index` for the whole session index, `rows`, the connection state and sign-out. None of that needs an edit to `AppModel.swift`.
+4. Read `AppModel` from the environment (`@Environment(AppModel.self)`). It exposes `client` for calls, `index` for the whole session index, `rows`, the connection state and sign-out. None of that needs an edit to `AppModel.swift`. State that several slots share, such as the routines the sidebar and the Routines screen both show, lives in a store on `AppModel` (`RoutinesStore`) with `start`, `stop` and `setVisible`, which `AppModel` calls on sign-in, sign-out and window visibility. That one line in `AppModel.swift` is the edit.
 5. Add a unit test in `Tests/GhostShellKitTests`. Add an integration test if you add an endpoint.
 
 Opening a session's `events` stream marks that session read. Open it only for the session the person is looking at, never for each row.
@@ -100,7 +100,7 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 | [https://github.com/kulesy/ghostshell/issues/89](https://github.com/kulesy/ghostshell/issues/89) Files | `Files/` | `Files.swift` |
 | [https://github.com/kulesy/ghostshell/issues/90](https://github.com/kulesy/ghostshell/issues/90) Widgets | `Widgets/` (built) | `Widgets.swift` |
 | [https://github.com/kulesy/ghostshell/issues/91](https://github.com/kulesy/ghostshell/issues/91) Terminal | `Terminal/` | `Terminal.swift` |
-| [https://github.com/kulesy/ghostshell/issues/92](https://github.com/kulesy/ghostshell/issues/92) Routines | `Routines/` | `Routines.swift` |
+| [https://github.com/kulesy/ghostshell/issues/92](https://github.com/kulesy/ghostshell/issues/92) Routines | `Routines/` (built) | `Routines.swift` |
 | [https://github.com/kulesy/ghostshell/issues/93](https://github.com/kulesy/ghostshell/issues/93) Accounts | `Accounts/` (built) | `Accounts.swift` |
 | [https://github.com/kulesy/ghostshell/issues/94](https://github.com/kulesy/ghostshell/issues/94) Notifications | `Notifications/`, plus app-level code in `apple/GhostShell/` | `GhostShellKit/Notifications/SessionAlerts.swift` |
 | [https://github.com/kulesy/ghostshell/issues/81](https://github.com/kulesy/ghostshell/issues/81) iPhone target | A new `apple/GhostShelliPhone/` folder next to `GhostShell/`. It edits the project file. | none |
@@ -126,7 +126,7 @@ Each row is a suggested home. Folders sit under `GhostShellScreens` and files un
 | `IdleRoutineRowSlot` | The row for a routine that has never run, drawn in its routine bucket | 92 (idle routines) |
 | `SidebarWatchSlot` | Modifiers on the whole sidebar, for work that watches the index or the chosen session | 92 (routines). 94 (notifications) does not use it, because `SessionNotifier` is owned by the app and keeps working with the sidebar collapsed |
 
-Idle routines reach the sidebar through `SidebarState.idleRoutines`, because the index never carries a routine that has not run. 92 shares one store between its Routines screen and its `SidebarWatchSlot` modifier. The modifier fetches `/api/routines` and sets `idleRoutines`, and a routine made or deleted in the screen updates it through the same store, so neither edits the outline or the sections.
+Idle routines reach the sidebar through `SidebarState.idleRoutines`, because the index never carries a routine that has not run. 92 shares one store, `AppModel.routines` (`RoutinesStore`), between its Routines and Scheduled screens and its slots. The store polls `/api/routines` while the window is visible, with `start`, `stop` and `setVisible` called from `AppModel`, and the `SidebarWatchSlot` modifier copies its idle routines into `idleRoutines`. A routine made or deleted in a screen updates every slot through the same store, so neither edits the outline or the sections.
 
 `SessionIndexFeed` pauses while the window is hidden, so notifications (94) keep it running through `AppModel.watchesWhileHidden`.
 

@@ -1,4 +1,5 @@
 // What the Routines page says and sends, as rules that need no page, so node can test them. Times are the Mac's, as the server writes them.
+// NOTE: [8 Nov 2026] EK - The Swift app ports these words and rules in apple/GhostShellKit/Sources/GhostShellKit/Rules/RoutineRules.swift. A change here needs the same change there.
 import { EFFORTS, LONG, MAIN, modelName } from './model-rules.js';
 import { everyRow } from './tree.js';
 

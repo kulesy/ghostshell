@@ -26,7 +26,7 @@ final class RoutineIntegrationTests: XCTestCase {
         let client = try await signedIn()
         var draft = RoutineDraft(home: folder)
         (draft.title, draft.cron, draft.jitterSeconds, draft.prompt, draft.enabled) = ("Swift kit check", "0 3 1 1 *", "737", "Say hi.", false)
-        let added = try await client.addRoutine(try draft.request())
+        let added = try await client.addRoutine(draft.request())
         let id = added.id
         do {
             XCTAssertEqual([added.title, added.cron, added.cwd], ["Swift kit check", "0 3 1 1 *", folder])
@@ -46,7 +46,7 @@ final class RoutineIntegrationTests: XCTestCase {
             let before = try await load(client, id)
             var edited = RoutineDraft(before, prompt: prompt)
             edited.title = "Swift kit check 2"
-            let request = try edited.request(against: RoutineBaseline(before, prompt: prompt))
+            let request = edited.request(against: RoutineBaseline(before, prompt: prompt))
             XCTAssertEqual(request.title, .value("Swift kit check 2"))
             XCTAssertEqual(request.cron, .omitted)
             XCTAssertEqual(request.jitterSeconds, .omitted)
@@ -66,12 +66,12 @@ final class RoutineIntegrationTests: XCTestCase {
             var bad = RoutineDraft(after, prompt: prompt)
             bad.cwd = folder + "/does-not-exist"
             do {
-                _ = try await client.editRoutine(id: id, try bad.request(against: RoutineBaseline(after, prompt: prompt)))
+                _ = try await client.editRoutine(id: id, bad.request(against: RoutineBaseline(after, prompt: prompt)))
                 XCTFail("A folder that is not there should be refused.")
-            } catch let refusal as ServerRefusal {
-                XCTAssertEqual(refusal.status, 400)
-                XCTAssertFalse(refusal.message.isEmpty)
-                XCTAssertNotNil(refusal.problems["cwd"], "\(refusal.problems)")
+            } catch GhostShellError.refused(let status, let message, let problems) {
+                XCTAssertEqual(status, 400)
+                XCTAssertFalse(message.isEmpty)
+                XCTAssertNotNil(problems["cwd"], "\(problems)")
             }
         } catch {
             try? await client.deleteRoutine(id: id)
@@ -92,7 +92,6 @@ final class RoutineIntegrationTests: XCTestCase {
         XCTAssertNotNil(bad.problem)
         let folders = try await client.folders()
         XCTAssertFalse(folders.isEmpty)
-        _ = try await client.folderDefaults(cwd: folder)
         _ = try await client.accounts()
         let features = try await client.serverFeatures()
         XCTAssertTrue(features.routineEdits)
@@ -125,9 +124,9 @@ final class RoutineIntegrationTests: XCTestCase {
             do {
                 _ = try await client.editScheduled(id: id, past.request(against: saved))
                 XCTFail("A time in the past should be refused.")
-            } catch let refusal as ServerRefusal {
-                XCTAssertEqual(refusal.status, 400)
-                XCTAssertNotNil(refusal.problems["at"], "\(refusal.problems)")
+            } catch GhostShellError.refused(let status, let message, let problems) {
+                XCTAssertEqual(status, 400)
+                XCTAssertNotNil(problems["at"], "\(problems)")
             }
 
             let cancelled = try await client.cancelScheduled(id: id)

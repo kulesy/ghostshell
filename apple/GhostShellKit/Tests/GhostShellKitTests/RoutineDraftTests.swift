@@ -73,13 +73,13 @@ final class RoutineDraftTests: XCTestCase {
 
     func testAnEditSendsOnlyWhatChanged() throws {
         var d = draft()
-        XCTAssertTrue(try d.request(against: baseline()).isEmpty)
+        XCTAssertTrue(d.request(against: baseline()).isEmpty)
         d.title = "Evening"
         XCTAssertEqual(try edit(d), ["title": "Evening"] as NSDictionary)
         d = draft(); d.title = " Morning "
-        XCTAssertTrue(try d.request(against: baseline()).isEmpty)
+        XCTAssertTrue(d.request(against: baseline()).isEmpty)
         d = draft(); d.cron = "30   7 * * 1-5"
-        XCTAssertTrue(try d.request(against: baseline()).isEmpty)
+        XCTAssertTrue(d.request(against: baseline()).isEmpty)
         d = draft(); (d.cron, d.jitterSeconds) = ("0 8 * * *", "0")
         XCTAssertEqual(try edit(d), ["cron": "0 8 * * *", "jitterSeconds": 0] as NSDictionary)
         d = draft(); (d.cwd, d.model, d.effort, d.mode) = ("/other", "", "high", "")
@@ -100,7 +100,7 @@ final class RoutineDraftTests: XCTestCase {
 
     func testTextToTextSendsThePromptOnlyWhenItChangedAndNeverAFile() throws {
         var d = draft(); d.file = "/Users/you/ignored.md"
-        XCTAssertTrue(try d.request(against: baseline()).isEmpty)
+        XCTAssertTrue(d.request(against: baseline()).isEmpty)
         d.prompt = "Changed."
         XCTAssertEqual(try edit(d), ["prompt": "Changed."] as NSDictionary)
     }
@@ -108,11 +108,11 @@ final class RoutineDraftTests: XCTestCase {
     func testFileToFileSendsThePathOnlyWhenItChangedAndNeverTheText() throws {
         let b = baseline(nil, elsewhere)
         var d = draft(nil, elsewhere)
-        XCTAssertTrue(try d.request(against: b).isEmpty)
+        XCTAssertTrue(d.request(against: b).isEmpty)
         d.title = "Evening"
         XCTAssertEqual(try sent(d, b), ["title": "Evening"] as NSDictionary)
         d = draft(nil, elsewhere); d.prompt = "Typed while it was hidden."
-        XCTAssertTrue(try d.request(against: b).isEmpty)
+        XCTAssertTrue(d.request(against: b).isEmpty)
         d = draft(nil, elsewhere); d.file = " /Users/you/prompts/weekly.md "
         XCTAssertEqual(try sent(d, b), ["file": "/Users/you/prompts/weekly.md"] as NSDictionary)
     }
@@ -152,7 +152,7 @@ final class RoutineDraftTests: XCTestCase {
         var pinned = routine; pinned.account = "second"
         var d = draft(pinned)
         XCTAssertEqual(d.account, "second")
-        XCTAssertTrue(try d.request(against: baseline(pinned)).isEmpty)
+        XCTAssertTrue(d.request(against: baseline(pinned)).isEmpty)
         d.account = ""
         XCTAssertEqual(try sent(d, baseline(pinned)), ["account": NSNull()] as NSDictionary)
     }
@@ -165,13 +165,13 @@ final class RoutineDraftTests: XCTestCase {
         XCTAssertNil(try sent(add, nil)["heading"])
         add.heading = " Reports "
         XCTAssertEqual(try sent(add, nil)["heading"] as? String, "Reports")
-        XCTAssertTrue(try draft().request(against: baseline()).isEmpty)
+        XCTAssertTrue(draft().request(against: baseline()).isEmpty)
         var grouped = routine; grouped.heading = "Reports"
         var d = draft(grouped)
         XCTAssertEqual(d.heading, "Reports")
-        XCTAssertTrue(try d.request(against: baseline(grouped)).isEmpty)
+        XCTAssertTrue(d.request(against: baseline(grouped)).isEmpty)
         d.heading = " Reports "
-        XCTAssertTrue(try d.request(against: baseline(grouped)).isEmpty)
+        XCTAssertTrue(d.request(against: baseline(grouped)).isEmpty)
         d.heading = "Inbox"
         XCTAssertEqual(try sent(d, baseline(grouped)), ["heading": "Inbox"] as NSDictionary)
         d.heading = ""
@@ -180,19 +180,21 @@ final class RoutineDraftTests: XCTestCase {
         XCTAssertEqual(try edit(typed), ["heading": "Reports"] as NSDictionary)
     }
 
-    func testABadJitterIsRefusedBeforeAnythingIsSent() {
+    func testABadJitterIsCaughtBeforeAnythingIsSent() {
         var d = draft(); d.jitterSeconds = "1.5"
-        XCTAssertThrowsError(try d.request(against: baseline())) { error in
-            let refusal = error as? ServerRefusal
-            XCTAssertEqual(refusal?.problems["jitterSeconds"], jitterProblem)
-        }
+        XCTAssertEqual(d.localProblems, ["jitterSeconds": jitterProblem])
+        XCTAssertNil(try json(d.request(against: baseline()))["jitterSeconds"], "an unreadable jitter is never sent")
+        for fine in ["", " 0 ", "86399"] { d.jitterSeconds = fine; XCTAssertEqual(d.localProblems, [:], fine) }
+        d.jitterSeconds = "86400"
+        XCTAssertNotNil(d.localProblems["jitterSeconds"])
     }
 
     func testRefusedFieldsComeBackInTheFormsOrderAndIgnoreWhatItHasNoFieldFor() {
-        let refusal = ServerRefusal(status: 400, message: "Nothing was saved.", problems: ["prompt": "Write the prompt.", "cwd": "No such folder.", "other": "x", "title": ""])
-        let found = refusal.fields(in: ServerRefusal.routineFields)
+        let refusal = GhostShellError.refused(status: 400, message: "Nothing was saved.", problems: ["prompt": "Write the prompt.", "cwd": "No such folder.", "other": "x", "title": ""])
+        let found = refusal.fields(in: routineFields)
         XCTAssertEqual(found.map(\.field), ["cwd", "prompt"])
-        let both = ServerRefusal(status: 400, message: "x", problems: ["cron": "Bad.", "heading": "Unknown group.", "file": "Cannot read /nope.md.", "prompt": "Write it."])
-        XCTAssertEqual(both.fields(in: ServerRefusal.routineFields).map(\.field), ["heading", "cron", "file", "prompt"])
+        let both = GhostShellError.refused(status: 400, message: "x", problems: ["cron": "Bad.", "heading": "Unknown group.", "file": "Cannot read /nope.md.", "prompt": "Write it."])
+        XCTAssertEqual(both.fields(in: routineFields).map(\.field), ["heading", "cron", "file", "prompt"])
+        XCTAssertTrue(GhostShellError.unreachable.fields(in: routineFields).isEmpty)
     }
 }

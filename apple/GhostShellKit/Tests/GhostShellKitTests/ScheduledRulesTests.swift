@@ -125,8 +125,8 @@ final class ScheduledRulesTests: XCTestCase {
     }
 
     func testRefusedFieldsComeBackInTheFormsOrder() {
-        let refusal = ServerRefusal(status: 400, message: "Nothing was saved.", problems: ["prompt": "Write a prompt.", "cwd": "No such folder.", "bogus": "x"])
-        let found = refusal.fields(in: ServerRefusal.scheduledFields)
+        let refusal = GhostShellError.refused(status: 400, message: "Nothing was saved.", problems: ["prompt": "Write a prompt.", "cwd": "No such folder.", "bogus": "x"])
+        let found = refusal.fields(in: scheduledFields)
         XCTAssertEqual(found.map(\.field), ["cwd", "prompt"])
         XCTAssertEqual(found.first?.sentence, "No such folder.")
     }

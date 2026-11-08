@@ -2,6 +2,9 @@ import Foundation
 
 // What the Scheduled sessions page and Home's Scheduled section say, ported from public/ui/scheduled-rules.js. Times are the Mac's, as the server writes them.
 
+// NOTE: [8 Nov 2026] EK - This order copies FIELDS in public/ui/scheduled-rules.js, so the first refusal gets the focus as it does there.
+public let scheduledFields = ["title", "at", "cwd", "model", "effort", "mode", "group", "prompt"]
+
 /// How long until a time, in a few words: "in 3 days", "in 5 h", "in 12 min", "in under a minute", or "due now" once it has passed. Empty for no time.
 public func untilWords(_ time: LocalTime?, now: Date = Date()) -> String {
     guard let time else { return "" }

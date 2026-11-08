@@ -196,6 +196,17 @@ public func unrunRoutines(_ index: SessionIndex?, _ routines: [RoutineSummary]?)
 
 public let jitterProblem = "Use a whole number of seconds from 0 to 86399."
 
+// NOTE: [8 Nov 2026] EK - This order copies FIELDS in public/ui/routine-rules.js, so the first refusal gets the focus as it does there.
+public let routineFields = ["title", "heading", "cron", "jitterSeconds", "cwd", "model", "effort", "mode", "account", "file", "prompt"]
+
+extension GhostShellError {
+    /// The refused fields that the form has, in its order. The first one is the one to focus. Fields the form lacks and empty sentences are dropped.
+    public func fields(in order: [String]) -> [(field: String, sentence: String)] {
+        guard case .refused(_, _, let problems) = self else { return [] }
+        return order.compactMap { key in problems[key].flatMap { $0.isEmpty ? nil : (key, $0) } }
+    }
+}
+
 /// The jitter as a number, or nil when the text is not a whole number of seconds in range. Empty is 0.
 public func jitterOf(_ text: String) -> Int? {
     let t = text.trimmingCharacters(in: .whitespacesAndNewlines)

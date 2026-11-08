@@ -69,23 +69,8 @@ final class RoutineDecodeTests: XCTestCase {
         XCTAssertEqual(try decode(RoutineStarted.self, "{\"sessionId\":\"s9\",\"routine\":{\"id\":\"a\"}}").routine?.id, "a")
         XCTAssertEqual(try decode(ScheduledStarted.self, "{\"sessionId\":\"s9\"}").sessionId, "s9")
         XCTAssertEqual(try decode(FolderList.self, "{\"folders\":[\"/home\",\"/work\"]}").folders, ["/home", "/work"])
-        let d = try decode(FolderDefaults.self, "{\"model\":\"claude-opus-5-5\",\"shownModel\":\"Opus\",\"effort\":null,\"mode\":\"plan\"}")
-        XCTAssertEqual([d.model, d.shownModel, d.mode], ["claude-opus-5-5", "Opus", "plan"])
         XCTAssertEqual(try decode(FeatureReply.self, "{\"features\":{\"routineEdits\":true,\"scheduled\":true}}").features.routineEdits, true)
         XCTAssertFalse(try decode(FeatureReply.self, "{}").features.routineFiles)
-    }
-
-    func testARefusalBodyDecodes() throws {
-        let body = Data("{\"error\":\"Nothing was saved.\",\"problems\":{\"cwd\":\"No such folder.\",\"cron\":\"Use five fields.\"}}".utf8)
-        let refusal = try XCTUnwrap(ServerRefusal(status: 400, body: body))
-        XCTAssertEqual(refusal.status, 400)
-        XCTAssertEqual(refusal.message, "Nothing was saved.")
-        XCTAssertEqual(refusal.problems, ["cwd": "No such folder.", "cron": "Use five fields."])
-        XCTAssertEqual(refusal.errorDescription, "Nothing was saved.")
-        let plain = try XCTUnwrap(ServerRefusal(status: 409, body: Data("{\"error\":\"Still running.\"}".utf8)))
-        XCTAssertEqual(plain.problems, [:])
-        XCTAssertNil(ServerRefusal(status: 500, body: Data("<html>".utf8)))
-        XCTAssertNil(ServerRefusal(status: 400, body: Data("{\"error\":\"\"}".utf8)))
     }
 
     func testLocalTimeKeepsTheOriginalStringAndOffset() throws {
