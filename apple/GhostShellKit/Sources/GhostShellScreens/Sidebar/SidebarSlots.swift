@@ -64,7 +64,7 @@ struct HeadingMenuSlot: View {
     let heading: SidebarHeading
 
     var body: some View {
-        if heading.kind == .group, let group = heading.group { GroupHeadingMenu(group: group) }
+        GroupHeadingMenu(heading: heading)
     }
 }
 

@@ -15,12 +15,13 @@ struct NewGroupButton: View {
 
 /// New project, and for a project on show, its rename and delete.
 struct ProjectMenuItems: View {
-    @Environment(OrganiseModel.self) private var organise
+    @Environment(OrganiseModel.self) private var organise: OrganiseModel?
     let project: String?
 
     var body: some View {
-        Button("New project\u{2026}", systemImage: "folder.badge.plus") { organise.newProject() }
-        if let shown = organise.index.projects.first(where: { $0.id == project }) {
+        Button("New project\u{2026}", systemImage: "folder.badge.plus") { organise?.newProject() }
+            .disabled(organise == nil)
+        if let organise, let shown = organise.index.projects.first(where: { $0.id == project }) {
             Button("Rename project\u{2026}", systemImage: "pencil") { organise.rename(shown) }
             Button("Delete project\u{2026}", systemImage: "trash", role: .destructive) { organise.delete(shown) }
         }
@@ -62,7 +63,8 @@ private struct SingleRowMenu: View {
         if !under.isEmpty { NestMenu(rows: under) { organise.nest(row, under: $0) } }
         if !places.isEmpty { PlaceMenu(entries: places) { organise.place(row, section: $0) } }
         if row.pinned {
-            Button("Unpin", systemImage: "pin.slash") { organise.place(row, section: "ungrouped") }
+            // A nested row carries its family's pinned flag, and a move to loose would unlink it instead.
+            if row.parent == nil { Button("Unpin", systemImage: "pin.slash") { organise.place(row, section: "ungrouped") } }
         } else {
             Button("Pin", systemImage: "pin") { organise.pin(row) }
         }
@@ -156,9 +158,14 @@ private struct NestMenu: View {
 /// The right-click menu on a group's heading. Without the server's group edits only the moves are offered, as on the page.
 struct GroupHeadingMenu: View {
     @Environment(OrganiseModel.self) private var organise
-    let group: SessionGroup
+    let heading: SidebarHeading
 
     var body: some View {
+        if heading.kind == .group, let group = heading.group { items(for: group) }
+    }
+
+    @ViewBuilder
+    private func items(for group: SessionGroup) -> some View {
         let index = organise.index
         let moves = OrganiseRules.moveTargets(index.projects, group)
         let ids = OrganiseRules.groups(index, view: organise.view).map(\.id)
