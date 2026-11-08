@@ -2,7 +2,7 @@
 // Drives the Debug app through accessibility, in the background (XCUITest is not available here), and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--approvals-only] [--flow main|marks|chats|accounts|approvals]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise]
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -390,6 +390,22 @@ class App {
     const field = this.find(node => node.role === 'AXTextField' && under && node.path.join().startsWith(`${under},`));
     return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
   }
+  // A button's centre in screen points, by its description or title, or undefined.
+  centerOf(name) {
+    const node = this.find(n => n.role === 'AXButton' && (n.desc === name || n.title === name) && n.pos && n.size);
+    return node && [Math.round(node.pos[0] + node.size[0] / 2), Math.round(node.pos[1] + node.size[1] / 2)];
+  }
+  // A widget counts only a real owner click, which AXPress is not. The Debug app sends a mouse down and up at this point to its own window (ClickWatcher),
+  // so the pointer, the front app and the keyboard are untouched.
+  async clickAt([x, y]) {
+    this.clicks = (this.clicks ?? 0) + 1;
+    this.last = `click ${this.clicks}`;
+    fs.writeFileSync(path.join(this.shotDir, 'click.txt'), `${this.clicks} ${x} ${y}`);
+    const done = await until('click', () => {
+      try { return fs.readFileSync(path.join(this.shotDir, 'clicked.txt'), 'utf8').trim() === `${this.clicks} ok`; } catch { return false; }
+    }, 10);
+    return check(done, `the app took click ${this.clicks}`);
+  }
   menu(bar, item) { return this.run('menu', bar, item).ok === true; }
   signOutFromMenu() { return this.menu('File', 'Sign Out'); }
 
@@ -448,15 +464,20 @@ async function signInDirect(server) {
 // The sidebar lists the stub's chats A to Z by title, so a chat's row comes from its title.
 const rowOf = (stub, id) => stub.rows.map((r) => r.title).sort((a, b) => a.localeCompare(b)).indexOf(stub.rows.find((r) => r.id === id).title);
 
+// Launches the app, signs in to a chat stub and waits for its chats to be listed.
+async function signInToChatStub(app, stub) {
+  await app.launch();
+  app.type('whatever');
+  app.submit();
+  check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
+}
+
 async function chatFlow(bundle, appearance) {
   const stub = await startChatStub();
   console.log(`\n== ${appearance}: reading chats`);
   const app = new App(bundle, { address: stub.address, appearance, tag: '6' });
   try {
-    await app.launch();
-    app.type('whatever');
-    app.submit();
-    check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
+    await signInToChatStub(app, stub);
 
     app.chooseRow(rowOf(stub, 'rich'));
     check(await until('rich', () => app.texts().includes('Why is the upload test flaky? It fails about one run in five.'), 20), 'a rich chat shows its first message');
@@ -551,6 +572,49 @@ async function approvalsFlow(bundle, appearance) {
     await app.both('approval-stacked');
     app.signOutFromMenu();
     check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the approvals stub');
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+}
+
+// A widget is Claude's own page in a web view. This checks that a click on its button sends one message, that a widget that sends without a click is
+// asked about instead, and that the page cannot see the app's bridge.
+async function widgetFlow(bundle, appearance) {
+  const stub = await startChatStub();
+  console.log(`\n== ${appearance}: widgets`);
+  const app = new App(bundle, { address: stub.address, appearance, tag: '7' });
+  try {
+    await signInToChatStub(app, stub);
+
+    app.chooseRow(rowOf(stub, 'widgets'));
+    check(await until('widgets', () => app.texts().includes('Say the word and I will go further on any region.'), 20), 'a chat with widgets shows its last message');
+    check(await until('button', () => !!app.centerOf('Show Q4 by region'), 20), 'the widget\'s button is reachable');
+    await sleep(1500);
+    await app.both('widgets');
+    check(stub.sends.length === 0, 'no message was sent before any click');
+
+    const target = app.centerOf('Show Q4 by region');
+    if (target) await app.clickAt(target);
+    check(await until('sent', () => stub.sends.length === 1, 10), 'one click on the widget\'s button sends exactly one message');
+    check(stub.sends[0]?.text === 'Break Q4 down by region' && stub.sends[0]?.id === 'widgets', 'the message is the button\'s text, in the widget\'s chat');
+    await sleep(2500);
+    check(stub.sends.length === 1, 'the click sent no second message');
+    await app.shot(`7-widgets-after-click-${appearance}`);
+
+    app.chooseRow(rowOf(stub, 'widgetask'));
+    check(await until('ask', () => app.texts().toLowerCase().includes('a widget wants to send this to claude'), 20), 'a widget that sends on its own is asked about');
+    await sleep(800);
+    check(stub.sends.length === 1, 'the widget with no click sent nothing');
+    await app.both('widget-ask');
+    app.press('Cancel');
+    check(await until('gone', () => !app.texts().toLowerCase().includes('a widget wants to send this to claude'), 10), 'Cancel closes the bar');
+    check(stub.sends.length === 1, 'cancelling sent nothing');
+
+    app.chooseRow(rowOf(stub, 'widgets'));
+    check(await until('probe', () => app.texts().includes('webkit: undefined, top: blocked'), 20), 'the widget sees no bridge and cannot reach the app page');
+    app.signOutFromMenu();
+    check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the chat stub');
   } finally {
     await app.quit();
     stub.stop();
@@ -1003,7 +1067,7 @@ try {
     compileHelper();
     return built;
   });
-  const flows = argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--chats-only') ? ['chats'] : FLOW ? [FLOW] : ['main', 'marks', 'chats', 'accounts', 'approvals', 'organise'];
+  const flows = argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? [FLOW] : ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise'];
   for (const appearance of APPEARANCES) {
     if (flows.includes('main')) {
       await mainFlow(bundle, appearance, !argv.includes('--no-chat'));
@@ -1012,6 +1076,7 @@ try {
     }
     if (flows.includes('marks')) await marks(bundle, appearance);
     if (flows.includes('chats')) await chatFlow(bundle, appearance);
+    if (flows.includes('widgets')) await widgetFlow(bundle, appearance);
     if (flows.includes('accounts')) await accountsFlow(bundle, appearance);
     if (flows.includes('approvals')) await approvalsFlow(bundle, appearance);
     if (flows.includes('organise')) await organiseFlow(bundle, appearance);

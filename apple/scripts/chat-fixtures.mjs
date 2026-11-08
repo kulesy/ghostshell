@@ -1,7 +1,11 @@
 // A stub server for the chat screenshots. It answers sign-in, the session list, the messages route and a session's event stream with fixed
 // chats, because a rich chat, a reply still streaming and a very long chat can't be had on demand from a scratch server.
+import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const VENDOR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public', 'vendor');
 const NOW = Date.now();
 const iso = minutesAgo => new Date(NOW - minutesAgo * 60_000).toISOString();
 const PAGE = 120;
@@ -12,6 +16,36 @@ const tool = (id, name, summary, input, output, status = 'ok') => [
   { kind: 'tool', id, name, summary, input, status: 'pending' },
   { kind: 'result', toolId: id, status, output },
 ];
+
+
+const showWidget = (id, title, code) => tool(id, 'mcp__capcom__show_widget', title, { title, widget_code: code }, 'Widget shown.');
+
+const BARS = [['North', 144, 'c-blue'], ['South', 106, 'c-teal'], ['East', 77, 'c-amber'], ['West', 120, 'c-purple']];
+const CHART = `<svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg" role="img">
+  <text class="th" x="24" y="34" font-size="16">Q4 revenue by region</text>
+  ${BARS.map(([name, v, c], i) => `<g class="${c}"><rect x="${24 + i * 160}" y="${196 - v}" width="120" height="${v}" rx="8"/><text class="t" x="${84 + i * 160}" y="${186 - v + 28}" text-anchor="middle" font-size="14">${name}</text><text class="ts" x="${84 + i * 160}" y="${186 - v + 48}" text-anchor="middle" font-size="12">${v}k</text></g>`).join('\n  ')}
+</svg>`;
+
+const BUTTONS = `<div style="padding:16px;display:grid;gap:12px">
+  <h3 style="margin:0;font-size:16px"><i class="ti ti-chart-bar"></i> Next steps</h3>
+  <p style="margin:0;color:var(--text-secondary)">Pick one and I will carry on from there.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button id="go" onclick="sendPrompt('Break Q4 down by region')">Show Q4 by region</button>
+    <a href="https://example.com/report">Open the full report</a>
+  </div>
+  <p id="probe" style="margin:0;font:12px var(--font-mono, monospace)"></p>
+</div>
+<script>
+  let top_ = 'readable';
+  try { void top.document.title; } catch (e) { top_ = 'blocked'; }
+  probe.textContent = 'webkit: ' + typeof window.webkit + ', top: ' + top_;
+</script>`;
+
+const ASKING = `<div style="padding:16px;display:grid;gap:8px">
+  <h3 style="margin:0;font-size:16px">A widget that sends on its own</h3>
+  <p style="margin:0;color:var(--text-secondary)">Nothing was clicked, so the app asks first.</p>
+</div>
+<script>setTimeout(() => sendPrompt('Delete the temp folder'), 900);</script>`;
 
 const RICH_REPLY = `The test fails because it starts the upload before the server has finished its setup. Three things stand out:
 
@@ -100,6 +134,17 @@ function chats() {
     stream: { title: 'Plan the retry change', items: [user('Write out the fix for the upload race.', 3), reply('s0', 'Yes. I will lay it out in three parts.', 2.5), user('Go on, I am ready.', 1)], streaming: true },
     long: { title: 'Walk through the migration', items: long },
     empty: { title: 'A chat with nothing in it yet', items: [] },
+    widgets: { title: 'Revenue by region', items: [
+      user('Show me Q4 revenue by region.', 12),
+      reply('w1', 'Here is the breakdown. North leads and East is the smallest.', 11),
+      ...showWidget('wd1', 'q4_revenue_by_region', CHART),
+      ...showWidget('wd2', 'next_steps', BUTTONS),
+      reply('w2', 'Say the word and I will go further on any region.', 9),
+    ] },
+    widgetask: { title: 'A widget that asks first', items: [
+      user('Show me a widget that tries to send a message on its own.', 6),
+      ...showWidget('wa1', 'sends_on_its_own', ASKING),
+    ] },
     ...approvalChats(),
   };
 }
@@ -178,8 +223,25 @@ export async function startChatStub() {
   const all = chats();
   const rows = Object.entries(all).map(([id, chat], i) => ({ id, title: chat.title, dot: null, state: 'idle', sortAt: Date.now() - i * 60_000 }));
   const timers = [];
+  // Every message a widget sent, so a script can count them.
+  const sends = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    const vendor = /^\/vendor\/(tabler-icons\.(?:woff2|min\.css))$/.exec(url.pathname);
+    if (vendor) {
+      req.resume();
+      return void res.writeHead(200, { 'Content-Type': vendor[1].endsWith('css') ? 'text/css' : 'font/woff2' }).end(fs.readFileSync(path.join(VENDOR, vendor[1])));
+    }
+    const sending = /^\/api\/sessions\/([^/]+)\/send$/.exec(url.pathname);
+    if (sending && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        try { sends.push({ id: sending[1], ...JSON.parse(body) }); } catch { sends.push({ id: sending[1], bad: body }); }
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ state: 'working', running: true, model: 'claude-sonnet-5-5', mode: 'default', live: '' }));
+      });
+      return;
+    }
     req.resume();
     if (url.pathname === '/login') return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
     if (url.pathname === '/api/sessions') return void res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ungrouped: rows }));
@@ -204,6 +266,7 @@ export async function startChatStub() {
   return {
     address: `http://localhost:${server.address().port}`,
     rows,
+    sends,
     stop: () => { timers.splice(0).forEach(clearInterval); server.closeAllConnections(); server.close(); },
   };
 }
