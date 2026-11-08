@@ -35,7 +35,7 @@ enum ChatSlots {
     @ViewBuilder static func filePanel(_ chat: ChatContext) -> some View { EmptyView() }
 
     // https://github.com/kulesy/ghostshell/issues/90 - a `*__show_widget` call with `input.widget_code`.
-    @ViewBuilder static func widget(_ tool: ToolCall, _ chat: ChatContext) -> some View { WidgetPlaceholder(tool: tool) }
+    @ViewBuilder static func widget(_ tool: ToolCall, _ chat: ChatContext) -> some View { WidgetView(tool: tool, chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/91 - the panel under the thread, shown while `chat.terminalOpen`.
     @ViewBuilder static func terminal(_ chat: ChatContext) -> some View { EmptyView() }
@@ -74,19 +74,5 @@ private extension View {
         font(.caption).foregroundStyle(.secondary)
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-/// The default for a widget: a quiet card with its title.
-private struct WidgetPlaceholder: View {
-    let tool: ToolCall
-
-    var body: some View {
-        let title = tool.input["title"]?.string ?? ""
-        Label(title.isEmpty ? "Widget" : "Widget: \(title)", systemImage: "square.grid.2x2")
-            .font(.callout).foregroundStyle(.secondary)
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
     }
 }
