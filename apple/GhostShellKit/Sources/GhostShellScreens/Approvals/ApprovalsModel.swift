@@ -39,6 +39,7 @@ final class ApprovalsModel {
         Task {
             do {
                 _ = try await chat.client.decide(sessionID: chat.sessionID, requestID: requestID, decision)
+                // NOTE: [8 Nov 2026] EK - The page waits for the stream's `approval-resolved` to drop the card. Here it goes at once, because a dropped stream has no notice yet.
                 guard var fresh = chat.status else { return }
                 fresh.pending.removeAll { $0.requestID == requestID }
                 chat.apply(status: fresh)

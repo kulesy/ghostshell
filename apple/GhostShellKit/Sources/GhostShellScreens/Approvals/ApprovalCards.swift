@@ -140,6 +140,9 @@ struct PlanCard: View {
             .frame(maxHeight: 280)
             .fixedSize(horizontal: false, vertical: true)
             .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+            if let description = prompt.description, !description.isEmpty {
+                Text(verbatim: description).font(ChatStyle.body).foregroundStyle(.secondary).textSelection(.enabled)
+            }
             AllInput(prompt: prompt, state: state)
         } actions: {
             Button("Approve plan") { model.decide(.allow, requestID: id, in: chat) }.decisionButton()
@@ -164,8 +167,7 @@ struct QuestionCard: View {
         CardFrame(title: "Claude is asking", state: state) {
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(Array(questions.enumerated()), id: \.offset) { n, question in
-                    QuestionBlock(question: question, pick: pickBinding(n, questions.count, question.multiSelect), busy: state.busy,
-                                  choose: { state.picks[n].choose($0, multiSelect: question.multiSelect) })
+                    QuestionBlock(question: question, pick: pickBinding(n, questions.count), busy: state.busy)
                 }
             }
         } actions: {
@@ -180,7 +182,7 @@ struct QuestionCard: View {
     }
 
     /// Reads the picks, and sizes them to the question count on the first write.
-    private func pickBinding(_ n: Int, _ count: Int, _ multiSelect: Bool) -> Binding<ApprovalPick> {
+    private func pickBinding(_ n: Int, _ count: Int) -> Binding<ApprovalPick> {
         Binding(
             get: { picks(count)[n] },
             set: { fresh in
@@ -194,7 +196,6 @@ private struct QuestionBlock: View {
     let question: ApprovalQuestion
     @Binding var pick: ApprovalPick
     let busy: Bool
-    let choose: (Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -209,7 +210,7 @@ private struct QuestionBlock: View {
             }
             ForEach(Array(question.options.enumerated()), id: \.offset) { n, option in
                 let chosen = pick.chosen.contains(n)
-                OptionButton(option: option, chosen: chosen, busy: busy) { choose(n) }
+                OptionButton(option: option, chosen: chosen, busy: busy) { pick.choose(n, multiSelect: question.multiSelect) }
                 if chosen, let preview = option.preview { ToolIO(text: preview, maxHeight: 160) }
             }
             TextField("Or write your own answer", text: Binding(

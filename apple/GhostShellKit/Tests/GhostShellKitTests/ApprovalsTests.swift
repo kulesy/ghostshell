@@ -24,7 +24,7 @@ private final class ApprovalStub: URLProtocol, @unchecked Sendable {
         Self.lock.unlock()
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: [:])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data("{\"state\":\"idle\"}".utf8))
+        client?.urlProtocol(self, didLoad: Data((status == 200 ? "{\"state\":\"idle\"}" : "{\"error\":\"Not now.\"}").utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 }
@@ -82,13 +82,14 @@ final class ApprovalsTests: XCTestCase {
         ApprovalStub.reset(status: 410)
         let outcome = try await client.decide(sessionID: "abc", requestID: "r1", .allow)
         XCTAssertEqual(outcome, .answeredElsewhere)
-        for status in [409, 400, 500] {
+        let expected: [Int: GhostShellError] = [409: .refused(status: 409, message: "Not now."), 400: .refused(status: 400, message: "Not now."), 500: .server(status: 500)]
+        for (status, failure) in expected {
             ApprovalStub.reset(status: status)
             do { _ = try await client.decide(sessionID: "abc", requestID: "r1", .allow); XCTFail("no error for \(status)") } catch {
-                XCTAssertEqual(error as? GhostShellError, .server(status: status))
+                XCTAssertEqual(error as? GhostShellError, failure)
             }
         }
-        XCTAssertEqual(Approvals.message(for: GhostShellError.server(status: 409)), "This chat is not running here, so it can't take an answer.")
+        XCTAssertEqual(Approvals.message(for: GhostShellError.refused(status: 409, message: "That session is not running here.")), "That session is not running here.")
         XCTAssertEqual(Approvals.message(for: GhostShellError.unreachable), GhostShellError.unreachable.errorDescription)
         XCTAssertEqual(Approvals.message(for: CancellationError()), "That did not go through. Try again.")
     }

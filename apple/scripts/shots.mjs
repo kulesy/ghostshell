@@ -420,7 +420,7 @@ async function approvalsFlow(bundle, appearance) {
     await app.both('approval-bash');
     // The stub has no approve route, so the decision fails and the card keeps its buttons and shows why.
     check(app.press('Deny'), 'Deny is pressed on the Bash card');
-    check(await until('error', () => app.texts().includes('The server did not accept that answer.') || app.texts().includes('That did not go through. Try again.') || app.texts().includes('That did not go through.')), 'a failed decision shows its reason on the card');
+    check(await until('error', () => app.texts().includes('The server answered with an error (404). Try again.')), 'a failed decision shows its reason on the card');
     await sleep(500);
     await app.shot(`7-approval-bash-error-${appearance}-default`);
 
