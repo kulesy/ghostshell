@@ -129,6 +129,7 @@ private struct CardButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .phoneIconTouch()
         .foregroundStyle(.secondary)
         .help(label)
         .accessibilityLabel(label)

@@ -9,10 +9,16 @@ struct GroupHeadingButton: View {
 
     var body: some View {
         if heading.kind != .routineHeading {
-            Image(systemName: "bubble.left.and.text.bubble.right").font(.caption2).frame(width: 22, height: 20).contentShape(Rectangle())
+            let icon = Image(systemName: "bubble.left.and.text.bubble.right").font(.caption2).frame(width: 22, height: 20).phoneIconTouch().contentShape(Rectangle())
                 .onTapGesture { open(heading, in: app) }
                 .help("Open the \(heading.title) chat")
                 .accessibilityAction(named: "Open the \(heading.title) chat") { open(heading, in: app) }
+            #if os(iOS)
+            // A phone has no hover, so the icon needs a name and a role of its own, which a person or a test can find and press.
+            icon.accessibilityLabel("Open the \(heading.title) chat").accessibilityAddTraits(.isButton)
+            #else
+            icon
+            #endif
         }
     }
 }

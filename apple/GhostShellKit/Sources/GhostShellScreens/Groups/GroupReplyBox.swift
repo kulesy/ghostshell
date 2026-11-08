@@ -1,7 +1,7 @@
 import GhostShellKit
 import SwiftUI
 
-/// The box under a card that sends a message to its session. Enter sends, Shift-Enter makes a new line and Esc closes it. Its text is `GroupCards.boxes`,
+/// The box under a card that sends a message to its session. Enter sends, Shift-Enter makes a new line and Esc closes it. On a phone Return makes a new line, Send sends and Cancel closes it. Its text is `GroupCards.boxes`,
 /// so it survives the card moving to another part of the list.
 struct GroupReplyBox: View {
     @Environment(GroupCards.self) private var cards
@@ -39,9 +39,15 @@ struct GroupReplyBox: View {
             if !box.problem.isEmpty {
                 Text("Not sent: \(box.problem)").font(.caption).foregroundStyle(GroupTint.color(.error))
             }
-            Button(box.sending ? "Sending" : "Send", action: send)
-                .controlSize(.small)
-                .disabled(box.sending || box.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            HStack(spacing: 8) {
+                Button(box.sending ? "Sending" : "Send", action: send)
+                    .phoneTouch(boxed: true).compactOnMac()
+                    .disabled(box.sending || box.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                #if os(iOS)
+                // A phone has no Esc, and Return adds a line, so Cancel is the way to close the box.
+                Button("Cancel") { dismissKeyboard(); cards.flipBox(row.id) }.phoneTouch().disabled(box.sending)
+                #endif
+            }
         }
         .onAppear { if cards.focusing == row.id { focused = true } }
         .onChange(of: focused) { _, now in if now { cards.focusing = row.id } }
