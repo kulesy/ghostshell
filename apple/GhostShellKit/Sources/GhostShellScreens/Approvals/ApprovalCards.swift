@@ -27,7 +27,7 @@ private struct CardFrame<Content: View, Actions: View>: View {
                 VStack(alignment: .leading, spacing: 10) { content }
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: bodyCap)
+            .frame(maxHeight: state.error == nil ? bodyCap : max(bodyCap - 25, 60))
             .fixedSize(horizontal: false, vertical: true)
             if let error = state.error {
                 Text(verbatim: error).font(ChatStyle.small).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
@@ -65,15 +65,11 @@ private struct DiffBlock: View {
     let diff: ApprovalParts.Diff
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(diff.removed.enumerated()), id: \.offset) { _, line in row("- ", line, .red) }
-                ForEach(Array(diff.added.enumerated()), id: \.offset) { _, line in row("+ ", line, .green) }
-            }
-            .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(diff.removed.enumerated()), id: \.offset) { _, line in row("- ", line, .red) }
+            ForEach(Array(diff.added.enumerated()), id: \.offset) { _, line in row("+ ", line, .green) }
         }
-        .frame(maxHeight: 200)
-        .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.enabled)
         .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -145,12 +141,9 @@ struct PlanCard: View {
     var body: some View {
         let id = prompt.requestID
         CardFrame(title: "Claude has a plan", state: state) {
-            ScrollView(.vertical) {
-                MarkdownView(blocks: ChatMarkdown.parse(Approvals.plan(of: prompt) ?? "")).padding(12).textSelection(.enabled)
-            }
-            .frame(maxHeight: 280)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+            MarkdownView(blocks: ChatMarkdown.parse(Approvals.plan(of: prompt) ?? "")).padding(12).textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
             if let description = prompt.description, !description.isEmpty {
                 Text(verbatim: description).font(ChatStyle.body).foregroundStyle(.secondary).textSelection(.enabled)
             }

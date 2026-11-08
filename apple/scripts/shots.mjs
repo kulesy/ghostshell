@@ -243,7 +243,7 @@ class App {
     }
     return false;
   }
-  // Sets every vertical scroll bar under the prompt stack, the stack's own and each card body's. 0 is the top and 1 the end.
+  // Sets every vertical scroll bar under the prompt stack. 0 is the top and 1 the end.
   scrollPrompts(to) {
     const nodes = this.tree();
     const stack = nodes.find(node => node.desc === 'Waiting for your answer');
@@ -433,6 +433,7 @@ async function approvalsFlow(bundle, appearance) {
     await sleep(800);
     await app.both('approval-bash');
     // The stub has no approve route, so the decision fails and the card keeps its buttons and shows why.
+    // The stub's Bash card offers Always allow, so its third button is Deny.
     check(app.pressHelped('Bash wants to run a command', 2), 'Deny is pressed on the Bash card');
     check(await until('error', () => app.texts().includes('The server answered with an error (404). Try again.')), 'a failed decision shows its reason on the card');
     await sleep(500);
@@ -448,7 +449,7 @@ async function approvalsFlow(bundle, appearance) {
     check(app.pressHelped('Which test runner should the new tests use?', 0), 'an option is picked');
     check(app.pressHelped('Which checks should run before each commit?', 0) && app.pressHelped('Which checks should run before each commit?', 1), 'two checks are picked');
     await sleep(600);
-    // Scrolls the card's body to its end, so the second question's picks show above the buttons.
+    // Scrolls the card's body to its end. At the smallest window only the last option fits above the buttons.
     check(app.scrollPrompts(1), 'the question card scrolls to its end');
     await sleep(600);
     await app.both('approval-question-picked');
