@@ -218,6 +218,47 @@ final class IntegrationTests: XCTestCase {
         XCTAssertGreaterThan(late, early, "a keep-alive arrived while idle")
     }
 
+    // A seeded session has no running chat here, so the server answers 409 and the client throws it rather than calling it answered elsewhere.
+    func testAnAnswerToASessionThatIsNotRunningIsA409() async throws {
+        let server = try scratch()
+        let client = try await signedIn(server)
+        let id = try await firstID(client)
+        do { _ = try await client.decide(sessionID: id, requestID: "no-such-request", .allow); XCTFail("the server took a decision for a chat that is not running") } catch {
+            switch error as? GhostShellError {
+            case .server(status: 409)?, .refused(status: 409, _)?: break
+            default: XCTFail("expected a 409, got \(error)")
+            }
+        }
+    }
+
+    private struct NewChat: Encodable, Sendable { var cwd: String; var text: String; var model: String; var mode: String }
+    private struct Started: Decodable, Sendable { var id: String }
+
+    // Runs only against a server made with `node apple/scripts/test-server.mjs --claude`, which GS_CLAUDE_ADDRESS and GS_CLAUDE_PASSWORD_FILE name.
+    // A real Haiku chat asks to run a command, the client allows it, and a second answer to the same request is "answered elsewhere".
+    func testARealPermissionPromptIsAllowedAndThenGone() async throws {
+        let server = try scratch("GS_CLAUDE_ADDRESS", "GS_CLAUDE_PASSWORD_FILE")
+        let client = try await signedIn(server)
+        let started: Started = try await client.post("api/new", json: NewChat(
+            cwd: "/private/tmp/claude-501/capcom-test-cwd/swift-app", text: "Run the shell command `touch approved.txt` and then reply with the word done.", model: "haiku", mode: "manual"))
+        let events = client.eventStream(sessionID: started.id).events()
+        let prompt: PendingApproval? = await within(seconds: 90) {
+            for await raw in events {
+                if case .approval(let p) = ChatEvent(raw) { return p }
+                if raw.name == "status", let status = try? raw.decode(ChatStatus.self), let p = status.pending.first { return p }
+            }
+            return nil
+        } ?? nil
+        let asked = try XCTUnwrap(prompt, "the chat never asked")
+        XCTAssertEqual(asked.tool, "Bash")
+        XCTAssertEqual(Approvals.parts(of: asked).title, "Bash wants to run a command")
+
+        let first = try await client.decide(sessionID: started.id, requestID: asked.requestID, .allow)
+        XCTAssertEqual(first, .resolved)
+        let again = try await client.decide(sessionID: started.id, requestID: asked.requestID, .allow)
+        XCTAssertEqual(again, .answeredElsewhere, "the request is no longer pending")
+    }
+
     func testAnAddressNobodyListensOnIsUnreachable() async throws {
         _ = try scratch()
         let client = GhostShellClient(address: try XCTUnwrap(ServerAddress("http://127.0.0.1:9")), store: MemoryTokenStore())

@@ -23,7 +23,7 @@ enum ChatSlots {
     @ViewBuilder static func composer(_ chat: ChatContext) -> some View { EmptyView() }
 
     // https://github.com/kulesy/ghostshell/issues/85 - above the composer, for `chat.status?.pending`: permissions, questions and plan approvals.
-    @ViewBuilder static func prompts(_ chat: ChatContext) -> some View { EmptyView() }
+    @ViewBuilder static func prompts(_ chat: ChatContext) -> some View { ApprovalPrompts(chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/89 - a tapped link. Return true when handled. Only a web link or a file link the server serves arrives.
     static func openLink(_ link: ChatLink, _ chat: ChatContext) -> Bool { ChatLinks.openInBrowser(link) }
