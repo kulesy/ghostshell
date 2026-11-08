@@ -37,8 +37,8 @@ extension GhostShellClient {
     }
 }
 
-/// The words for a refused terminal call. The client keeps only the status of a failure, so these are the server's own sentences for the statuses
-/// it answers with. An error that is not the server's (offline, signed out) keeps its own words.
+/// The words for a refused terminal call. The client keeps the server's own words for a 400, 404 or 409, and those pass through. For a 403, 415 or 429
+/// it keeps only the status, so these are the server's sentences for them. An error that is not the server's (offline, signed out) keeps its own words.
 public enum TerminalFailure {
     public enum Step: Sendable { case read, run, input, stop, clear }
 

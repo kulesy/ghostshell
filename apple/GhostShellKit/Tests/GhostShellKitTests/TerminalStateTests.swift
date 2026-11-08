@@ -294,7 +294,7 @@ final class TerminalStateTests: XCTestCase {
         for (status, step, words) in [(403, TerminalFailure.Step.run, "Cross-site request refused."), (415, .run, "Send JSON."),
                                       (409, .run, "The session's folder does not exist on this Mac."), (409, .input, "That command is not taking input."),
                                       (404, .stop, "No such command in this session."), (429, .run, "Too many commands are running. Wait for one to finish.")] {
-            TerminalStub.reset { _ in (status, #"{"error":"x"}"#) }
+            TerminalStub.reset { _ in (status, #"{"error":"\#(words)"}"#) }
             let client = await signedInClient()
             do {
                 _ = try await client.runCommand(sessionID: "s1", command: "ls", source: .panel)
@@ -350,7 +350,7 @@ final class TerminalIntegrationTests: XCTestCase {
             try await client.sendInput(sessionID: id, run: try XCTUnwrap(started.id), text: "late\n")
             XCTFail("the server took input for a finished command")
         } catch {
-            XCTAssertEqual(error as? GhostShellError, .server(status: 409))
+            XCTAssertEqual(error as? GhostShellError, .refused(status: 409, message: "That command is not taking input."))
             XCTAssertEqual(TerminalFailure.words(error, step: .input), "That command is not taking input.")
         }
         _ = try await client.clearTerminal(sessionID: id)
@@ -367,7 +367,7 @@ final class TerminalIntegrationTests: XCTestCase {
             _ = try await client.stopCommand(sessionID: id, run: "no-such-run")
             XCTFail("the server stopped a run it does not have")
         } catch {
-            XCTAssertEqual(error as? GhostShellError, .server(status: 404))
+            XCTAssertEqual(error as? GhostShellError, .refused(status: 404, message: "No such command in this session."))
             XCTAssertEqual(TerminalFailure.words(error, step: .stop), "No such command in this session.")
         }
         try await Task.sleep(for: .milliseconds(300))
