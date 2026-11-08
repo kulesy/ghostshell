@@ -33,7 +33,7 @@ struct FamilyRows: View {
                 let open = state.isUnfolded(row.id)
                 let note = SidebarOutline.familyNote(row)
                 SessionLine(row: row, dot: open ? nil : note.dot,
-                            fold: RowFold(open: open, label: open ? "\(row.children.count) nested session\(row.children.count == 1 ? "" : "s")" : note.label) { state.setUnfolded(row.id, !open) })
+                            fold: RowFold(open: open, label: open ? SidebarOutline.nested(row.children.count) : note.label) { state.setUnfolded(row.id, !open) })
                 if open { ForEach(row.children) { SessionLine(row: $0, nested: true) } }
             }
         }

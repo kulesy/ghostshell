@@ -80,6 +80,20 @@ final class SidebarOutlineTests: XCTestCase {
         XCTAssertEqual(routines.buckets.last?.routines.first?.latest.title, "Audit")
     }
 
+    func testIdleRoutinesJoinTheirBucketsCountAndKeepRoutinesVisibleAlone() throws {
+        let idle = [IdleRoutine(id: "i1", title: "Zeta"), IdleRoutine(id: "i2", title: "Alpha", heading: "Weekly"), IdleRoutine(id: "i3", title: "New", heading: "Monthly"), IdleRoutine(id: "r-b", title: "Backup")]
+        let routines = try XCTUnwrap(SidebarOutline.sections(try index(sample), view: nil, idleRoutines: idle).first)
+        XCTAssertEqual(routines.count, 7)
+        XCTAssertEqual(routines.buckets.map(\.id), ["routines-loose", "routine-heading:2 Daily", "routine-heading:10 Daily", "routine-heading:Monthly", "routine-heading:Weekly"])
+        XCTAssertEqual(routines.buckets.first?.idle.map(\.id), ["i1"], "a routine that already has runs is not drawn twice")
+        XCTAssertEqual(routines.buckets.last?.idle.map(\.id), ["i2"])
+        let alone = SidebarOutline.sections(SessionIndex(), view: nil, idleRoutines: [IdleRoutine(id: "i1", title: "Zeta", heading: "Weekly")])
+        XCTAssertEqual(alone.map(\.id), ["routines"])
+        XCTAssertEqual(alone.first?.count, 1)
+        XCTAssertEqual(alone.first?.buckets.map(\.id), ["routine-heading:Weekly"])
+        XCTAssertTrue(SidebarOutline.sections(SessionIndex(), view: nil).isEmpty)
+    }
+
     func testHolderNamesTheViewThatHoldsASession() throws {
         let ix = try index(sample)
         XCTAssertEqual(SidebarOutline.holder(of: "pa", in: ix), .view("p1"))
@@ -96,6 +110,8 @@ final class SidebarOutlineTests: XCTestCase {
         XCTAssertEqual(note.label, "3 nested sessions, 2 waiting on you")
         XCTAssertEqual(SidebarOutline.familyNote(row("h", "H", dot: .awaiting, children: [row("a", "A", dot: .ready)])), FamilyNote(dot: nil, label: "1 nested session"))
         XCTAssertEqual(SidebarOutline.familyNote(row("h", "H", children: [row("a", "A", state: .working)])).label, "1 nested session, 1 working")
+        XCTAssertEqual(SidebarOutline.familyNote(row("h", "H", children: [row("a", "A", dot: .running)])).label, "1 nested session, some working")
+        XCTAssertEqual(SidebarOutline.familyNote(row("h", "H", children: [row("a", "A", state: .working), row("b", "B", dot: .running), row("c", "C", state: .working)])).label, "3 nested sessions, 2 working")
         XCTAssertEqual(SidebarOutline.familyNote(row("h", "H", children: [row("a", "A", dot: .error)])).label, "1 nested session, some failed")
         XCTAssertEqual(SidebarOutline.familyNote(row("h", "H", children: [row("a", "A", dot: .ready)])).label, "1 nested session, some unread")
     }
@@ -161,6 +177,42 @@ final class SidebarOutlineTests: XCTestCase {
         XCTAssertTrue(SidebarOutline.search("   ", in: ix, archived: []).sessions.isEmpty)
         let archived = [row("a1", "Old upload"), row("a2", "Old thing")]
         XCTAssertEqual(SidebarOutline.search("upload", in: ix, archived: archived).archived.map(\.id), ["a1"])
+    }
+
+    func testSearchSplitsSubSessionsIntoTheirOwnList() {
+        let kids = (0..<60).map { SessionRow(id: "k\($0)", title: "match kid", lastActivityAt: Date(timeIntervalSince1970: Double($0 + 1)), parent: "h") }
+        let head = SessionRow(id: "h", title: "match head", lastActivityAt: Date(timeIntervalSince1970: 1), children: kids)
+        let hits = SidebarOutline.search("match", in: SessionIndex(started: [head]), archived: [])
+        XCTAssertEqual(hits.sessions.map(\.id), ["h"])
+        XCTAssertEqual(hits.subSessions.count, 50)
+        XCTAssertEqual(hits.subSessions.first?.id, "k59")
+    }
+
+    func testViewLampCountAndOthersWaiting() throws {
+        let ix = try index("""
+        {"projects": [{"id": "p1", "name": "A"}, {"id": "p2", "name": "B"}],
+         "pinned": [{"id": "pin", "state": "waiting"}],
+         "groups": [{"id": "g1", "name": "G", "project": "p1", "sessions": [{"id": "a", "state": "waiting", "children": [{"id": "b"}]}]},
+                    {"id": "g2", "name": "H", "project": "p2", "sessions": [{"id": "c", "state": "working"}]}],
+         "started": [{"id": "s", "state": "idle"}]}
+        """)
+        XCTAssertEqual(SidebarOutline.lamp(of: "p1", in: ix), .waiting)
+        XCTAssertEqual(SidebarOutline.lamp(of: "p2", in: ix), .working)
+        XCTAssertNil(SidebarOutline.lamp(of: nil, in: ix), "pinned rows light no view")
+        XCTAssertEqual(SidebarOutline.count(of: "p1", in: ix), 2)
+        XCTAssertTrue(SidebarOutline.othersWaiting(shown: nil, in: ix))
+        XCTAssertFalse(SidebarOutline.othersWaiting(shown: "p1", in: ix))
+    }
+
+    func testTurnStartIsInWholeSecondsSoTwoPollsOfOneTurnAreEqual() {
+        let now = Date(timeIntervalSince1970: 1_000_000.2)
+        XCTAssertEqual(SessionRow.turnStart(ms: 5000, now: now), SessionRow.turnStart(ms: 5000.4, now: now.addingTimeInterval(0.1)))
+        XCTAssertEqual(SessionRow.turnStart(ms: 5000, now: now).timeIntervalSince1970, 999_995)
+    }
+
+    func testNestedWordsAPlural() {
+        XCTAssertEqual(SidebarOutline.nested(1), "1 nested session")
+        XCTAssertEqual(SidebarOutline.nested(2), "2 nested sessions")
     }
 
     func testSearchCapsEachListAt50() {

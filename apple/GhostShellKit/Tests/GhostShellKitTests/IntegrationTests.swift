@@ -70,6 +70,12 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(times, times.sorted(by: >), "newest first")
     }
 
+    func testTheArchivedListDecodes() async throws {
+        let client = try await signedIn(try scratch())
+        let archived = try await client.archivedSessions()
+        XCTAssertTrue(archived.allSatisfy { !$0.id.isEmpty })
+    }
+
     func testAWrongPasswordIsWrong() async throws {
         let server = try scratch()
         let client = GhostShellClient(address: server.address, store: MemoryTokenStore())

@@ -27,16 +27,22 @@ private struct RoutineBuckets: View {
     let buckets: [RoutineBucket]
 
     var body: some View {
-        ForEach(buckets.filter { $0.heading == nil }.flatMap(\.routines)) { RoutineRows(routine: $0) }
-        RoutineRowsSlot(heading: nil)
+        ForEach(buckets.filter { $0.heading == nil }) { Rows(bucket: $0) }
         ForEach(buckets.filter { $0.heading != nil }) { bucket in
-            let name = bucket.heading ?? ""
             DisclosureGroup(isExpanded: Binding(get: { state.isOpen(bucket.id) }, set: { state.setOpen(bucket.id, $0) })) {
-                ForEach(bucket.routines) { RoutineRows(routine: $0) }
-                RoutineRowsSlot(heading: name)
+                Rows(bucket: bucket)
             } label: {
-                HeadingRow(heading: SidebarHeading(id: bucket.id, title: name, kind: .routines), count: bucket.routines.count)
+                HeadingRow(heading: SidebarHeading(id: bucket.id, title: bucket.heading ?? "", kind: .routineHeading), count: bucket.routines.count + bucket.idle.count)
             }
+        }
+    }
+
+    private struct Rows: View {
+        let bucket: RoutineBucket
+
+        var body: some View {
+            ForEach(bucket.routines) { RoutineRows(routine: $0) }
+            ForEach(bucket.idle) { IdleRoutineRowSlot(routine: $0) }
         }
     }
 }
@@ -65,9 +71,12 @@ struct HeadingRow: View {
             Text(heading.title).font(.caption.weight(.semibold)).textCase(.uppercase).tracking(0.8).lineLimit(1)
             Spacer(minLength: 4)
             HeadingAccessorySlot(heading: heading)
-            Text("\(count)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            Text("\(count)").font(.caption2.monospacedDigit())
                 .accessibilityLabel("\(count) session\(count == 1 ? "" : "s")")
         }
+        // Row timers and chevrons end this far inside the list's edge, so the count lines up with them.
+        .padding(.trailing, 11)
+        .contentShape(Rectangle())
         .contextMenu { HeadingMenuSlot(heading: heading) }
         .modifier(HeadingSlot(heading: heading))
     }

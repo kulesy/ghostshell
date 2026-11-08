@@ -21,20 +21,21 @@ private struct SidebarHost: View {
     var body: some View {
         @Bindable var state = state
         SidebarList()
-            .environment(state)
-            .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader().environment(state) }
+            .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader() }
             .searchable(text: $state.query, placement: .sidebar, prompt: "Search")
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if model.connection == .unreachable { UnreachableLine() }
             }
             .toolbar {
                 ToolbarItemGroup {
-                    SidebarToolbarSlot().environment(state)
+                    SidebarToolbarSlot()
                     Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right") { Task { await model.signOut() } }
                         .help("Sign Out")
                 }
             }
             .modifier(SidebarWatchSlot())
             .navigationTitle("Sessions")
+            // Last, so the header, toolbar and watch slot all read the same state.
+            .environment(state)
     }
 }

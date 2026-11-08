@@ -251,15 +251,15 @@ repeat with e in els
   end try
 end repeat`);
   }
-  // Picks a project (or Home) from the View menu in the sidebar's header.
+  // Picks a project (or Home) from the View menu in the sidebar's header. A project's item reads "Name (count)", and the menu is described "View, another view needs you" while one does.
   pickView(name) {
     this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
 repeat with e in els
   try
-    if role of e is "AXPopUpButton" and description of e is "View" then
+    if role of e is "AXPopUpButton" and description of e starts with "View" then
       click e
       delay 0.4
-      click menu item ${JSON.stringify(name)} of menu 1 of e
+      click (first menu item of menu 1 of e whose name starts with ${JSON.stringify(name)})
       return
     end if
   end try
@@ -517,7 +517,7 @@ async function marks(binary, appearance) {
     ['Work out why the nightly build of the shared design system fails on the third Tuesday of every month, but only on the runner with the older toolchain']]
     .map(([title, dot], i) => row(`mark-${i}`, title, { dot, sortAt: now - i * 60_000 }));
   const index = {
-    station: 'stub', problem: 'Could not read the Desktop list', projects: [{ id: 'p1', name: 'Website' }],
+    station: 'stub', problem: 'Could not read the Desktop list', projects: [{ id: 'p1', name: 'Website' }, { id: 'p2', name: 'Empty' }],
     pinned: [row('pin-1', 'Pinned checklist')],
     groups: [
       { id: 'g1', name: 'Release', project: null, sessions: [
@@ -568,6 +568,14 @@ async function marks(binary, appearance) {
     app.pickView('Website');
     check(await until('project', () => app.headings() === 2 && lines().some(help => help.includes('Projects/web'))), 'the Website view shows Pinned and its own group, and not Release');
     await app.both('project-view');
+
+    // A project with no groups and nothing pinned says "No groups yet" once. Pinned rows show in every view, so the stub drops its own first.
+    index.pinned = [];
+    check(await until('pinned gone', () => app.sessionRows().length === 1), 'the next poll drops the pinned row');
+    app.pickView('Empty');
+    const saysNoGroups = () => app.texts().split('\n').filter(line => line === 'No groups yet').length;
+    check(await until('empty project', () => app.headings() === 0 && app.sessionRows().length === 0 && saysNoGroups() === 1), 'an empty project says "No groups yet" once');
+    await app.both('empty-project');
 
     app.search('release');
     // Typing is slower than the list, so the row count is what shows the whole word has arrived.

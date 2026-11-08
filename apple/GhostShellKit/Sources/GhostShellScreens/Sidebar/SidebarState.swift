@@ -1,4 +1,5 @@
 import Foundation
+import GhostShellKit
 import Observation
 
 /// What the sidebar remembers: the view, what is folded and which rows are chosen. Slots read it from the environment.
@@ -17,13 +18,15 @@ final class SidebarState {
     var selection: Set<String> = []
     /// The search field's text. Empty shows the sections.
     var query = ""
+    /// Routines that have never run, shown in Routines beside the ones that have. Issue 92 fills this from `/api/routines`.
+    var idleRoutines: [IdleRoutine] = []
 
     private let defaults: UserDefaults
     private static let projectKey = "sidebar.project", collapsedKey = "sidebar.collapsed", foldedKey = "sidebar.folded"
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
-        // The folds load first because setting `project` runs its didSet, which saves, and would write empty folds over the stored ones.
+        // Assigning `project` here runs its didSet, which saves, so the folds load first or empty ones would overwrite the stored folds.
         collapsed = Set(defaults.stringArray(forKey: Self.collapsedKey) ?? [])
         folded = Set(defaults.stringArray(forKey: Self.foldedKey) ?? [])
         project = defaults.string(forKey: Self.projectKey)

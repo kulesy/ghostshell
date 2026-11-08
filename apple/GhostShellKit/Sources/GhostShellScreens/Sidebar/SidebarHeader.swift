@@ -22,7 +22,7 @@ struct SidebarHeader: View {
     }
 }
 
-/// Home and the projects. A project that has gone reads as Home.
+/// Home and the projects. A project that has gone reads as Home. A view with a session that needs you shows a lamp, and a project shows its count.
 private struct ViewMenu: View {
     @Environment(AppModel.self) private var model
     @Environment(SidebarState.self) private var state
@@ -30,10 +30,11 @@ private struct ViewMenu: View {
     var body: some View {
         let index = model.index ?? SessionIndex()
         let shown = SidebarOutline.view(state.project, in: index)
+        let otherNeedsYou = SidebarOutline.othersWaiting(shown: shown, in: index)
         Menu {
             Picker("View", selection: Binding(get: { shown }, set: { state.project = $0 })) {
-                Text("Home").tag(String?.none)
-                ForEach(index.projects) { Text($0.name).tag(String?.some($0.id)) }
+                item("Home", nil, shown: shown, in: index).tag(String?.none)
+                ForEach(index.projects) { item($0.name, $0.id, shown: shown, in: index).tag(String?.some($0.id)) }
             }
             .pickerStyle(.inline)
             Divider()
@@ -43,8 +44,18 @@ private struct ViewMenu: View {
         }
         .menuStyle(.borderlessButton)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // A menu label keeps one image and one text, so the lamp sits beside the menu's own chevron.
+        .overlay(alignment: .trailing) {
+            if otherNeedsYou { Image(systemName: "circle.fill").font(.system(size: 7)).foregroundStyle(.orange).padding(.trailing, 28).allowsHitTesting(false) }
+        }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .accessibilityLabel("View")
+        .accessibilityLabel(otherNeedsYou ? "View, another view needs you" : "View")
+    }
+
+    // A menu item draws text and an image only, so the lamp is an image and the count is in the text.
+    @ViewBuilder private func item(_ name: String, _ id: String?, shown: String?, in index: SessionIndex) -> some View {
+        let text = id.map { "\(name) (\(SidebarOutline.count(of: $0, in: index)))" } ?? name
+        if id != shown, SidebarOutline.lamp(of: id, in: index) == .waiting { Label(text, systemImage: "circle.fill") } else { Text(text) }
     }
 }

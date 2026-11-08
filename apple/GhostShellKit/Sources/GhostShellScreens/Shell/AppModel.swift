@@ -22,7 +22,7 @@ public final class AppModel {
 
     private let store: TokenStore
     /// Where screens keep small settings, such as the sidebar's folds. The test run points it at a suite of its own.
-    public let defaults: UserDefaults
+    let defaults: UserDefaults
     /// Screens call the server through this, so a new area needs no edit here.
     public private(set) var client: GhostShellClient?
     private var feed: SessionIndexFeed?

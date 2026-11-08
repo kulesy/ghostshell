@@ -5,9 +5,10 @@ import SwiftUI
 // A feature puts its own view or modifier in its own folder and adds one line to the slot it fills, so it never edits the rest of the sidebar.
 // See apple/README.md, "Sidebar slots", for which PBI fills which slot.
 
-/// A section or group heading, as a slot sees it. Built-in sections have no group.
+/// A section, group or routine sub-heading, as a slot sees it. Built-in sections have no group.
 struct SidebarHeading: Hashable, Sendable, Identifiable {
-    enum Kind: Hashable, Sendable { case pinned, routines, started, ungrouped, other, group }
+    /// `routines` is the Routines section and `routineHeading` is one of its sub-headings.
+    enum Kind: Hashable, Sendable { case pinned, routines, routineHeading, started, ungrouped, other, group }
     /// The section id the server and the page use (`pinned`, `started`...), or the group's id.
     var id: String
     var title: String
@@ -15,7 +16,7 @@ struct SidebarHeading: Hashable, Sendable, Identifiable {
     var group: SessionGroup?
 }
 
-/// Buttons at the end of the sidebar's toolbar, after search and the view picker.
+/// Buttons at the end of the sidebar's toolbar, beside Sign Out.
 struct SidebarToolbarSlot: View {
     var body: some View {
     }
@@ -46,7 +47,7 @@ struct SessionRowSlot: ViewModifier {
     }
 }
 
-/// Small buttons at the trailing end of a section or group heading, before its fold chevron.
+/// Small buttons at the trailing end of a section or group heading, before its session count.
 struct HeadingAccessorySlot: View {
     let heading: SidebarHeading
 
@@ -77,9 +78,9 @@ struct HomeTopSectionsSlot: View {
     }
 }
 
-/// Rows at the end of a routine bucket: the loose routines when `heading` is nil, else one routine heading's rows.
-struct RoutineRowsSlot: View {
-    let heading: String?
+/// The row for a routine that has never run, drawn in its routine bucket after the routines that have.
+struct IdleRoutineRowSlot: View {
+    let routine: IdleRoutine
 
     var body: some View {
     }

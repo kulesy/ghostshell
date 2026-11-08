@@ -17,10 +17,19 @@ public struct OutlineSection: Hashable, Sendable, Identifiable {
     public var count: Int
 }
 
-/// The loose routines (`heading` nil) or the routines under one sub-heading.
+/// A routine that has never run, so the index has no row for it. Issue 92 reads these from `/api/routines`.
+public struct IdleRoutine: Hashable, Sendable, Identifiable {
+    public var id: String
+    public var title: String
+    public var heading: String?
+    public init(id: String, title: String, heading: String? = nil) { (self.id, self.title, self.heading) = (id, title, heading) }
+}
+
+/// The loose routines (`heading` nil) or the routines under one sub-heading, then the idle ones.
 public struct RoutineBucket: Hashable, Sendable, Identifiable {
     public var heading: String?
     public var routines: [OutlineRoutine]
+    public var idle: [IdleRoutine] = []
     /// The fold id the page uses for a sub-heading.
     public var id: String { heading.map { "routine-heading:\($0)" } ?? "routines-loose" }
 }
@@ -42,9 +51,16 @@ public struct FamilyNote: Hashable, Sendable {
 
 public struct SearchHits: Hashable, Sendable {
     public var sessions: [SessionRow] = []
+    /// Live hits that sit under another session.
+    public var subSessions: [SessionRow] = []
     public var archived: [SessionRow] = []
-    public init(sessions: [SessionRow] = [], archived: [SessionRow] = []) { (self.sessions, self.archived) = (sessions, archived) }
+    public init(sessions: [SessionRow] = [], subSessions: [SessionRow] = [], archived: [SessionRow] = []) {
+        (self.sessions, self.subSessions, self.archived) = (sessions, subSessions, archived)
+    }
 }
+
+/// What a view's lamp says: a session in it needs you, or is working.
+public enum ViewLamp: Hashable, Sendable { case waiting, working }
 
 /// Which view holds a session, so opening it can switch the sidebar there.
 public enum ViewHolder: Hashable, Sendable {
@@ -93,7 +109,8 @@ public enum SidebarOutline {
 
     /// What the view lists, in order. Home has Routines, Pinned, its groups, Started here, Ungrouped and Terminal and other.
     /// A project has Pinned and its groups. Only groups show when empty.
-    public static func sections(_ index: SessionIndex, view chosen: String?) -> [OutlineSection] {
+    /// `idleRoutines` are routines with no runs, which sit in Routines beside the ones that have run.
+    public static func sections(_ index: SessionIndex, view chosen: String?, idleRoutines: [IdleRoutine] = []) -> [OutlineSection] {
         let shown = view(chosen, in: index)
         let groups = index.groups.filter { view($0.project, in: index) == shown }.map { group in
             let rows = titleOrder(group.sessions)
@@ -105,7 +122,7 @@ public enum SidebarOutline {
         }
         let pinned = loose("pinned", "Pinned", .pinned, index.pinned)
         guard shown == nil else { return pinned + groups }
-        return routines(index) + pinned + groups + loose("started", "Started here", .started, index.started)
+        return routines(index, idle: idleRoutines) + pinned + groups + loose("started", "Started here", .started, index.started)
             + loose("ungrouped", "Ungrouped", .ungrouped, index.ungrouped) + loose("other", "Terminal and other", .other, index.other)
     }
 
@@ -115,20 +132,26 @@ public enum SidebarOutline {
         return !index.groups.contains { view($0.project, in: index) == shown }
     }
 
-    private static func routines(_ index: SessionIndex) -> [OutlineSection] {
+    private static func routines(_ index: SessionIndex, idle: [IdleRoutine]) -> [OutlineSection] {
         let all = index.routines.compactMap { run -> (title: String, routine: OutlineRoutine, heading: String?)? in
             guard var latest = run.latest else { return nil }
             latest.title = run.title ?? latest.title
-            return (latest.title, OutlineRoutine(id: run.name, latest: latest, earlier: run.earlier), run.heading.flatMap { $0.isEmpty ? nil : $0 })
+            return (latest.title, OutlineRoutine(id: run.name, latest: latest, earlier: run.earlier), clean(run.heading))
         }
-        guard !all.isEmpty else { return [] }
+        let ran = Set(all.map(\.routine.id))
+        let idle = idle.filter { !ran.contains($0.id) }.sorted { $0.title.compare($1.title, locale: .current) == .orderedAscending }
+        guard !all.isEmpty || !idle.isEmpty else { return [] }
         let ordered = all.sorted { before($0.routine.latest, $1.routine.latest) }
-        let named = Dictionary(grouping: ordered.compactMap(\.heading), by: { $0 }).keys.sorted {
+        let named = Set(ordered.compactMap(\.heading) + idle.compactMap { clean($0.heading) }).sorted {
             $0.compare($1, options: [.caseInsensitive, .diacriticInsensitive, .numeric], range: nil, locale: Locale(identifier: "en")) == .orderedAscending
         }
-        let buckets = ([nil] + named).map { heading in RoutineBucket(heading: heading, routines: ordered.filter { $0.heading == heading }.map(\.routine)) }
-        return [OutlineSection(id: "routines", title: "Routines", kind: .routines, buckets: buckets.filter { !$0.routines.isEmpty }, count: all.count)]
+        let buckets = ([nil] + named).map { heading in
+            RoutineBucket(heading: heading, routines: ordered.filter { $0.heading == heading }.map(\.routine), idle: idle.filter { clean($0.heading) == heading })
+        }
+        return [OutlineSection(id: "routines", title: "Routines", kind: .routines, buckets: buckets.filter { !$0.routines.isEmpty || !$0.idle.isEmpty }, count: all.count + idle.count)]
     }
+
+    private static func clean(_ heading: String?) -> String? { heading.flatMap { $0.isEmpty ? nil : $0 } }
 
     private static func withKids(_ rows: [SessionRow]) -> [SessionRow] { rows.flatMap { [$0] + $0.children } }
 
@@ -154,17 +177,50 @@ public enum SidebarOutline {
 
     /// The folded family's mark and fold label. The label is "N nested session(s)", plus what the most urgent ones need when one outranks the head.
     public static func familyNote(_ head: SessionRow) -> FamilyNote {
-        let count = head.children.count
-        let plain = "\(count) nested session\(count == 1 ? "" : "s")"
+        let plain = nested(head.children.count)
         let top = head.children.map(rank).max() ?? 0
         guard top > rank(head) else { return FamilyNote(dot: nil, label: plain) }
         let tail = switch top {
         case 4: "\(head.children.filter { rank($0) == 4 }.count) waiting on you"
-        case 2: "\(head.children.filter { rank($0) == 2 }.count) working"
+        case 2: working(head.children)
         case 3: "some failed"
         default: "some unread"
         }
         return FamilyNote(dot: ranked[top], label: "\(plain), \(tail)")
+    }
+
+    /// "N nested session(s)", the words for a family's children.
+    public static func nested(_ count: Int) -> String { "\(count) nested session\(count == 1 ? "" : "s")" }
+
+    // The page counts children whose state is working, and says "some working" when that is none.
+    private static func working(_ kids: [SessionRow]) -> String {
+        let n = kids.filter { $0.state == .working }.count
+        return n > 0 ? "\(n) working" : "some working"
+    }
+
+    // MARK: Views
+
+    /// Waiting if a session in the view needs you, else working if one runs. Pinned rows are left out because they show in every view.
+    public static func lamp(of view: String?, in index: SessionIndex) -> ViewLamp? {
+        let states = viewRows(view, in: index).map(\.state)
+        return states.contains(.waiting) ? .waiting : states.contains(.working) ? .working : nil
+    }
+
+    /// The sessions in a project, nested ones included, as the page counts them.
+    public static func count(of project: String, in index: SessionIndex) -> Int { viewRows(project, in: index).count }
+
+    /// Whether a view other than `shown` has a session that needs you.
+    public static func othersWaiting(shown: String?, in index: SessionIndex) -> Bool {
+        ([nil] + index.projects.map { Optional($0.id) }).contains { $0 != shown && lamp(of: $0, in: index) == .waiting }
+    }
+
+    private static func viewRows(_ view: String?, in index: SessionIndex) -> [SessionRow] {
+        if view == nil {
+            let runs = index.routines.flatMap { ($0.latest.map { [$0] } ?? []) + $0.earlier }
+            let homeGroups = index.groups.filter { self.view($0.project, in: index) == nil }.flatMap(\.sessions)
+            return withKids(runs + homeGroups + index.started + index.ungrouped + index.other)
+        }
+        return withKids(index.groups.filter { self.view($0.project, in: index) == view }.flatMap(\.sessions))
     }
 
     // MARK: Words
@@ -227,6 +283,7 @@ public enum SidebarOutline {
             let (x, y) = (a.element.lastActivityAt ?? .distantPast, b.element.lastActivityAt ?? .distantPast)
             return x != y ? x > y : a.offset < b.offset
         }.map(\.element)
-        return SearchHits(sessions: Array(newest.prefix(searchCap)), archived: Array(hits(archived).prefix(searchCap)))
+        return SearchHits(sessions: Array(newest.filter { $0.parent == nil }.prefix(searchCap)), subSessions: Array(newest.filter { $0.parent != nil }.prefix(searchCap)),
+                          archived: Array(hits(archived).prefix(searchCap)))
     }
 }

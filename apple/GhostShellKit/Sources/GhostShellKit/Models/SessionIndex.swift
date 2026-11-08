@@ -76,7 +76,7 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
         parent = try? c.decode(String.self, forKey: .parent)
         routine = try? c.decode(String.self, forKey: .routine)
         children = lossy(c, .children)
-        turnStart = (try? c.decode(Double.self, forKey: .turnMs)).map { Date(timeIntervalSinceNow: -$0 / 1000) }
+        turnStart = (try? c.decode(Double.self, forKey: .turnMs)).map { Self.turnStart(ms: $0) }
     }
 
     public init(id: String, title: String = "", cwd: String = "", branch: String = "", state: SessionState = .idle, dot: SessionDot? = nil,
@@ -85,6 +85,11 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
         (self.id, self.title, self.cwd, self.branch, self.state, self.dot) = (id, title, cwd, branch, state, dot)
         (self.lastActivityAt, self.sortAt, self.pinned, self.archived) = (lastActivityAt, sortAt, pinned, archived)
         (self.group, self.parent, self.routine, self.children, self.turnStart) = (group, parent, routine, children, turnStart)
+    }
+
+    // The server sends how long the turn has run, so the start moves with every poll. Whole seconds keep two polls of one turn equal, and the feed skips an equal index.
+    static func turnStart(ms: Double, now: Date = Date()) -> Date {
+        Date(timeIntervalSince1970: (now.timeIntervalSince1970 - ms / 1000).rounded())
     }
 
     // The server counts in milliseconds since 1970.

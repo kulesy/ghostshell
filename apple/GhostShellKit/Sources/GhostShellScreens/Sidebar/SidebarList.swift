@@ -13,7 +13,7 @@ struct SidebarList: View {
         @Bindable var state = state
         let index = model.index ?? SessionIndex()
         let hits = searching ? SidebarOutline.search(state.query, in: index, archived: archived) : SearchHits()
-        let sections = searching ? [] : SidebarOutline.sections(index, view: state.project)
+        let sections = searching ? [] : SidebarOutline.sections(index, view: state.project, idleRoutines: state.idleRoutines)
         let noGroups = SidebarOutline.hasNoGroups(index, view: state.project)
         Group {
             if !model.hasLoaded {
@@ -30,11 +30,11 @@ struct SidebarList: View {
                     } else {
                         if SidebarOutline.view(state.project, in: index) == nil { HomeTopSectionsSlot() }
                         SidebarSections(sections: sections)
-                        if noGroups { EmptyNotice(noGroups: true) }
+                        if noGroups, !sections.isEmpty { EmptyNotice(noGroups: true) }
                     }
                 }
                 .overlay {
-                    if searching, hits.sessions.isEmpty, hits.archived.isEmpty {
+                    if searching, hits.sessions.isEmpty, hits.subSessions.isEmpty, hits.archived.isEmpty {
                         ContentUnavailableView.search(text: state.query)
                     } else if !searching, sections.isEmpty {
                         EmptyNotice(noGroups: noGroups)
