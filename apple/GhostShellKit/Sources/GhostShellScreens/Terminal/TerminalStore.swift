@@ -19,7 +19,7 @@ final class TerminalStore {
     @ObservationIgnored private var started = false
     @ObservationIgnored private var stopped = false
     @ObservationIgnored private var sequence = 0
-    @ObservationIgnored private var hold = TerminalHold()
+    @ObservationIgnored private(set) var hold = TerminalHold()
     @ObservationIgnored private var loaded = false
     @ObservationIgnored private var loading = false
     @ObservationIgnored private var streamTask: Task<Void, Never>?
@@ -70,7 +70,11 @@ final class TerminalStore {
             do {
                 let snapshot = try await client.terminalSnapshot(sessionID: sessionID)
                 // Events were dropped while this was read, so it may lack some of them. Read again, holding from now.
-                if hold.overflowed { hold.reset(); continue }
+                if hold.overflowed {
+                    hold.reset()
+                    try? await Task.sleep(for: retryAfter)
+                    continue
+                }
                 state.apply(snapshot)
                 state.error = ""
                 state.applyHeld(hold.events)
@@ -80,7 +84,10 @@ final class TerminalStore {
             } catch {
                 guard !Task.isCancelled else { return }
                 state.error = TerminalFailure.words(error, step: .read)
-                guard TerminalFailure.isTemporary(error) else { return }
+                guard TerminalFailure.isTemporary(error) else {
+                    hold.reset()
+                    return
+                }
                 try? await Task.sleep(for: retryAfter)
             }
         }

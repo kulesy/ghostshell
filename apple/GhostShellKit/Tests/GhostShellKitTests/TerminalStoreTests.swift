@@ -28,8 +28,22 @@ final class TerminalStoreTests: XCTestCase {
     private func reads() -> Int { TerminalStub.requests().filter { $0.request.httpMethod == "GET" }.count }
 
     private func wait(_ what: String, until done: () -> Bool) async throws {
-        for _ in 0..<200 where !done() { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<300 where !done() { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(done(), what)
+    }
+
+    /// A read that never comes cannot be waited for, so this watches a short window (several retry periods) for one.
+    private func assertNoMoreReads(than count: Int, _ what: String) async throws {
+        for _ in 0..<8 {
+            try await Task.sleep(for: .milliseconds(25))
+            XCTAssertEqual(reads(), count, what)
+        }
+    }
+
+    private func publishOutputs(_ n: Int, to chat: ChatContext) {
+        for _ in 0..<n {
+            chat.publish(SSEEvent(name: "terminal", data: #"{"type":"output","run":"a","chunks":[{"stream":"out","text":"x"}]}"#))
+        }
     }
 
     func testAnUnreachableOrFailedReadIsTriedAgainUntilItWorks() async throws {
@@ -47,9 +61,29 @@ final class TerminalStoreTests: XCTestCase {
         let (store, chat) = await makeStore()
         store.start()
         try await wait("refused") { !store.state.error.isEmpty }
-        try await Task.sleep(for: .milliseconds(200))
-        XCTAssertEqual(reads(), 1)
+        try await assertNoMoreReads(than: 1, "a refusal is final")
         XCTAssertEqual(store.state.error, "This session has no terminal.")
+        chat.close()
+    }
+
+    func testARefusalClearsWhatWasHeldSoTheNextStartReadsOnce() async throws {
+        let gate = DispatchSemaphore(value: 0)
+        let count = Locked(0)
+        TerminalStub.reset { _ in
+            if count.next() == 1 { _ = gate.wait(timeout: .now() + 10); return (400, #"{"error":"This session has no terminal."}"#) }
+            return snapshot("fresh\\n")
+        }
+        let (store, chat) = await makeStore()
+        store.start()
+        publishOutputs(TerminalHold.cap + 1, to: chat)
+        try await wait("held past the cap") { store.hold.overflowed }
+        gate.signal()
+        try await wait("refused") { !store.state.error.isEmpty }
+        XCTAssertFalse(store.hold.overflowed)
+        XCTAssertTrue(store.hold.events.isEmpty)
+        store.start()
+        try await wait("loaded") { store.state.ready }
+        XCTAssertEqual(reads(), 2, "the refused read, then one more")
         chat.close()
     }
 
@@ -59,10 +93,8 @@ final class TerminalStoreTests: XCTestCase {
         store.start()
         try await wait("retrying") { reads() >= 2 }
         chat.close()
-        try await Task.sleep(for: .milliseconds(100))
-        let settled = reads()
-        try await Task.sleep(for: .milliseconds(200))
-        XCTAssertEqual(reads(), settled)
+        try await Task.sleep(for: .milliseconds(50))
+        try await assertNoMoreReads(than: reads(), "the chat is closed")
     }
 
     func testTheReadStopsWhenTheStoreIsStopped() async throws {
@@ -71,28 +103,27 @@ final class TerminalStoreTests: XCTestCase {
         store.start()
         try await wait("retrying") { reads() >= 2 }
         store.stop()
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(for: .milliseconds(50))
         let settled = reads()
-        try await Task.sleep(for: .milliseconds(200))
-        XCTAssertEqual(reads(), settled)
+        try await assertNoMoreReads(than: settled, "the store is stopped")
         store.start()
-        try await Task.sleep(for: .milliseconds(100))
-        XCTAssertEqual(reads(), settled, "a stopped store does not start again")
+        try await assertNoMoreReads(than: settled, "a stopped store does not start again")
         chat.close()
     }
 
     func testMoreEventsThanTheHoldKeepsMeansASecondFreshRead() async throws {
+        let gate = DispatchSemaphore(value: 0)
         let count = Locked(0)
         TerminalStub.reset { _ in
-            // The first read is slow, so the events pile up while it is out.
-            if count.next() == 1 { Thread.sleep(forTimeInterval: 0.5); return snapshot("old\\n") }
+            // The first read waits for the test to feed the events, so they all arrive while it is out.
+            if count.next() == 1 { _ = gate.wait(timeout: .now() + 10); return snapshot("old\\n") }
             return snapshot("fresh\\n")
         }
         let (store, chat) = await makeStore()
         store.start()
-        for _ in 0...TerminalHold.cap {
-            chat.publish(SSEEvent(name: "terminal", data: #"{"type":"output","run":"a","chunks":[{"stream":"out","text":"x"}]}"#))
-        }
+        publishOutputs(TerminalHold.cap + 1, to: chat)
+        try await wait("held past the cap") { store.hold.overflowed }
+        gate.signal()
         try await wait("loaded") { store.state.ready }
         XCTAssertEqual(reads(), 2)
         XCTAssertEqual(TerminalRules.textOf(store.state.runs[0].output), "fresh\n", "none of the dropped events is applied to the stale snapshot")
