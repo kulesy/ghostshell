@@ -465,17 +465,18 @@ test('the group and project menus pick an overflow, and a single account shows n
   await page.evaluate(`localStorage.setItem('capcom.projectsDocked', 'true')`);
   await page.evaluate(`location.reload()`);
   await page.until(`!!document.querySelector('button[aria-label="Actions for Proj"]')`, 15_000);
-  await page.click('button[aria-label="Actions for Proj"]');
-  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
-  await openSub(page, 'Account');
+  await accountSub(page, async () => {
+    await page.until(`!document.querySelector('.menu')`);
+    await page.click('button[aria-label="Actions for Proj"]');
+    await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  });
   await spare(page, 'If Second runs out', 'Main');
   await until(async () => (await index(c)).projects.find(p => p.id === 'cp-a').overflow === 'main');
   assert.deepEqual(page.problems, []);
 
   const one = await open({ one: true, accounts: { live: 'main' } });
   const alone = await openPage(t, one, '#/');
-  await rowMenu(alone, 'live');
-  await openSub(alone, 'Account');
+  await accountSub(alone, () => rowMenu(alone, 'live'));
   assert.equal(await alone.evaluate(`!!document.querySelector('${SUB} [role=group]')`), false);
 });
 
