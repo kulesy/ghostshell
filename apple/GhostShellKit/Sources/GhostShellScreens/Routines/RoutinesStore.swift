@@ -10,7 +10,7 @@ struct RoutineNote: Equatable, Identifiable {
     var open: String?
 }
 
-/// The routines and scheduled sessions, kept fresh while the window is visible. Screens read it from `AppModel.routines` and call `refresh()` after a write.
+/// The routines and scheduled sessions, kept fresh while the window is visible. Screens read it from `AppModel.routines` and call `wrote()` after a write.
 @Observable @MainActor
 public final class RoutinesStore {
     public private(set) var routines: [RoutineSummary]?

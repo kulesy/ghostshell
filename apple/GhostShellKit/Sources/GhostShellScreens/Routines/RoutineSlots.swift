@@ -1,22 +1,15 @@
 import GhostShellKit
 import SwiftUI
 
-/// Manage routines, and Scheduled sessions when this GhostShell has them. One menu, because the sidebar's toolbar has room for few buttons.
-struct RoutineToolbarButtons: View {
+/// Manage routines, and Scheduled sessions when this GhostShell has them, in the view picker's menu. The sidebar's toolbar has no room left.
+struct RoutineMenuItems: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        Divider()
+        Button("Manage routines", systemImage: "calendar.badge.clock") { model.navigator.show { RoutinesScreen() } }
         if model.routines.features.scheduled {
-            Menu("Routines and scheduled sessions", systemImage: "calendar.badge.clock") {
-                Button("Manage routines", systemImage: "calendar.badge.clock") { model.navigator.show { RoutinesScreen() } }
-                Button("Manage scheduled sessions", systemImage: "clock") { model.navigator.show { ScheduledScreen() } }
-            }
-            .menuIndicator(.hidden)
-            .accessibilityLabel("Routines and scheduled sessions")
-            .help("Routines and scheduled sessions")
-        } else {
-            Button("Manage routines", systemImage: "calendar.badge.clock") { model.navigator.show { RoutinesScreen() } }
-                .help("Manage routines")
+            Button("Manage scheduled sessions", systemImage: "clock") { model.navigator.show { ScheduledScreen() } }
         }
     }
 }
@@ -24,10 +17,12 @@ struct RoutineToolbarButtons: View {
 /// Run now, Pause or Resume, Edit and Delete, then a divider, for the latest run of a routine that routines.json holds.
 struct RoutineRowMenu: View {
     @Environment(AppModel.self) private var model
+    @Environment(OrganiseModel.self) private var organise: OrganiseModel?
     let row: SessionRow
 
     var body: some View {
-        if let id = row.routine, !id.isEmpty, model.index?.routines.contains(where: { $0.latest?.id == row.id }) == true, let routine = model.routines.routine(id) {
+        // A row inside a selection of several gets only the selection's menu.
+        if organise?.selection(with: row) == nil, !row.archived, let id = row.routine, !id.isEmpty, model.index?.routines.contains(where: { $0.latest?.id == row.id }) == true, let routine = model.routines.routine(id) {
             RoutineMenu(routine: routine, withRun: true, askDelete: nil)
             Divider()
         }

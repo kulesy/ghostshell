@@ -21,7 +21,6 @@ struct SidebarToolbarSlot: View {
     var body: some View {
         NotificationToggle()
         NewGroupButton()
-        RoutineToolbarButtons()
     }
 }
 
@@ -31,6 +30,7 @@ struct ViewMenuSlot: View {
 
     var body: some View {
         ProjectMenuItems(project: project)
+        RoutineMenuItems()
     }
 }
 
