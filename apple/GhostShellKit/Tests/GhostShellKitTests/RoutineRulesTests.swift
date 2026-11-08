@@ -220,4 +220,10 @@ final class RoutineRulesTests: XCTestCase {
                        ["Archive 2", "Archive 10", "inbox", "Reports"])
         XCTAssertEqual(headingNames([]), [])
     }
+
+    func testPromptSourceNamesWhereTheTextCameFrom() {
+        XCTAssertEqual(promptSource(RoutinePrompt(file: "/g/a.md")), "Read from and saved to /g/a.md")
+        XCTAssertEqual(promptSource(RoutinePrompt(file: "/c/a.md", ours: false, copyTo: "/g/a.md")),
+                       "Read from /c/a.md. Saving copies it to /g/a.md, and the file in Claude Desktop stays as it is.")
+    }
 }

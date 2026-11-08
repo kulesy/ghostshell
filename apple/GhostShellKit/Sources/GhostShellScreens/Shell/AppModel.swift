@@ -16,6 +16,7 @@ public final class AppModel {
     public private(set) var hasLoaded = false
     public private(set) var address: ServerAddress?
     public let navigator = Navigator()
+    public let routines = RoutinesStore()
 
     /// The text in the sign-in address field, kept between launches. It is an address, not a secret.
     public var addressText: String
@@ -72,6 +73,7 @@ public final class AppModel {
     public func setVisible(_ shown: Bool) {
         let shown = shown || ignoresOcclusion
         visible = shown
+        routines.setVisible(shown)
         syncFeed()
     }
 
@@ -89,6 +91,7 @@ public final class AppModel {
         hasLoaded = false
         connection = .connecting
         let list = fresh.indexFeed()
+        routines.start(fresh, polling: visible)
         feed = list
         phase = .signedIn
         tasks = [
@@ -124,5 +127,6 @@ public final class AppModel {
         tasks = []
         if let feed { Task { await feed.stop() } }
         feed = nil
+        routines.stop()
     }
 }

@@ -157,6 +157,13 @@ public func deleteDetail(_ routine: RoutineSummary) -> String {
     "It stops running. Its earlier runs stay in the list, and its prompt file stays at \(routine.file)."
 }
 
+/// What a server without routineFiles says of the prompt it loaded. A text that is not GhostShell's own is copied on the first save.
+public func promptSource(_ prompt: RoutinePrompt) -> String {
+    prompt.ours == false
+        ? "Read from \(prompt.file). Saving copies it to \(prompt.copyTo ?? ""), and the file in Claude Desktop stays as it is."
+        : "Read from and saved to \(prompt.file)"
+}
+
 // MARK: Order
 
 /// The page's collator: case and accents ignored, digits counted as numbers.
