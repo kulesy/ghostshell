@@ -135,7 +135,7 @@ const freePort = () => new Promise(resolve => {
 // sent 'fail the turn' it ends the turn with an error, sent 'hit the usage limit' it says it is out of usage as the real CLI does (an assistant message with error rate_limit, then an error result), 'hit the usage limit with a job running' does the same with a background job left running, and sent
 // 'hit a busy limit' it says rate_limit with the words of a transient 429. Its start log has the CLAUDE_CONFIG_DIR it was given as `configDir`, and a get_usage request is answered from
 // plan-usage.json in that folder when it has one. It never answers an interrupt, but copies layout.json as it is then to layout-at-interrupt.json in
-// the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none. A `get_usage` request is answered with the rate_limits.limits in plan-usage.json in the home, or with an error if there is none, and logged as `control` with its `skip`.
+// the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none. A `get_usage` request is answered with the rate_limits.limits in plan-usage.json in the home, or with an error if there is none, and logged as `control` with its `skip`. The answer waits as many milliseconds as plan-usage-wait in the home holds, when it is there.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
 // 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool>, and a message that opens with a <session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
@@ -257,7 +257,8 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    if (m.type === 'control_request' && m.request.subtype === 'get_usage') {",
     `      const planFile = [process.env.CLAUDE_CONFIG_DIR && path.join(process.env.CLAUDE_CONFIG_DIR, 'plan-usage.json'), ${JSON.stringify(path.join(home, 'plan-usage.json'))}].find(f => f && fs.existsSync(f));`,
     "      const limits = planFile ? JSON.parse(fs.readFileSync(planFile, 'utf8')) : null;",
-    "      say({ type: 'control_response', response: limits ? { subtype: 'success', request_id: m.request_id, response: { rate_limits: { five_hour: null, limits } } } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } });",
+    `      const wait = fs.existsSync(${JSON.stringify(path.join(home, 'plan-usage-wait'))}) ? Number(fs.readFileSync(${JSON.stringify(path.join(home, 'plan-usage-wait'))}, 'utf8')) : 0;`,
+    "      setTimeout(() => say({ type: 'control_response', response: limits ? { subtype: 'success', request_id: m.request_id, response: { rate_limits: { five_hour: null, limits } } } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } }), wait);",
     "    }",
     "    if (m.type === 'control_request' && m.request.subtype === 'get_context_usage') {",
     `      const usage = fs.existsSync(${JSON.stringify(usageFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(usageFile)}, 'utf8'))[m.request.detail] : null;`,

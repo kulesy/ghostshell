@@ -530,6 +530,23 @@ test('a turn that runs out on the pinned account carries on by itself on the ove
   assert.deepEqual([stuck.account, stuck.accountSpill], ['main', undefined]);
 });
 
+test('a message sent while the plan figures are awaited moves the chat itself, so no Continue. follows when its turn ends', async () => {
+  const c = await open();
+  fs.writeFileSync(path.join(c.s.home, 'plan-usage.json'), JSON.stringify([weeklyFull()]));
+  await pinTo(c, 'session', 'live', 'main', 'second');
+  await say(c, 'live', 'finish the turn');
+  await until(() => startsOn(c, null) === 1);
+
+  fs.writeFileSync(path.join(c.s.home, 'plan-usage-wait'), '60000');
+  await say(c, 'live', 'hit the usage limit');
+  await until(() => calls(c).some(x => x.control === 'get_usage'));
+  await say(c, 'live', 'finish the turn');
+  await until(() => startsOn(c, c.dir) === 1);
+  // The old process is stopped by the send and never answers, so the wait ends at the 10 second limit on the request.
+  await settled(10_500);
+  assert.equal(continues(c), 0, 'the wait ended on a chat that had moved already');
+});
+
 test('a session in a pinned group spills with its group\'s overflow, a chat that is waiting on an approval is left running, and a session with no overflow stays where it is', async () => {
   const c = await open({ sessions: [{ id: 'busy', title: 'Busy', source: 'cli', ago: 5, group: 'cg-b' }, { id: 'plain', title: 'Plain', source: 'cli', ago: 6 }] });
   await pinTo(c, 'group', 'cg-b', 'main', 'second');

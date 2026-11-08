@@ -982,8 +982,8 @@ async function heardUsage(id, text, chat) {
   if (!text || !chat || chat.id.startsWith('new-')) return;
   const reset = resetOf(await askPlan(id, chat).catch(() => null));
   if (reset) accountLogins.outUntil(id, reset);
-  // The answer took a moment, so the chat may have been sent to since. A turn is never cut, and a chat with a job or an approval waiting keeps its process.
-  if (chat.state !== 'idle' || chat.pending.size) return;
+  // The answer took a moment, so the chat may have been sent to since, which already moved it off `id`. A turn is never cut, and a chat with a job or an approval waiting keeps its process.
+  if (chat.account !== id || chat.state !== 'idle' || chat.pending.size) return;
   const now = accountOfChat(chat);
   if (now.blocked || now.spilled !== id || !accountLogins.isUsable(now.id)) return;
   chat.retire(true);
