@@ -12,8 +12,8 @@ struct OrganiseHost: ViewModifier {
         content
             .environment(organise)
             .onAppear { organise.bind(model, state) }
-            .task {
-                while !Task.isCancelled {
+            .task(id: model.visible) {
+                while model.visible, !Task.isCancelled {
                     await organise.loadAccounts()
                     try? await Task.sleep(for: .seconds(10))
                 }
