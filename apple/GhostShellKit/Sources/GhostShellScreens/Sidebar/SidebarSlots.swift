@@ -30,6 +30,7 @@ struct ViewMenuSlot: View {
 
     var body: some View {
         ProjectMenuItems(project: project)
+        RoutineMenuItems()
     }
 }
 
@@ -38,6 +39,7 @@ struct SessionRowMenuSlot: View {
     let row: SessionRow
 
     var body: some View {
+        RoutineRowMenu(row: row)
         SessionRowMenu(row: row)
     }
 }
@@ -80,6 +82,7 @@ struct HeadingSlot: ViewModifier {
 /// Whole sections drawn at the top of Home, before Routines. Each must be a `Section` and use `SidebarState.isOpen` to fold.
 struct HomeTopSectionsSlot: View {
     var body: some View {
+        ScheduledSection()
     }
 }
 
@@ -88,6 +91,7 @@ struct IdleRoutineRowSlot: View {
     let routine: IdleRoutine
 
     var body: some View {
+        IdleRoutineRow(routine: routine)
     }
 }
 
@@ -95,5 +99,6 @@ struct IdleRoutineRowSlot: View {
 struct SidebarWatchSlot: ViewModifier {
     func body(content: Content) -> some View {
         content
+            .modifier(RoutineIdleWatch())
     }
 }

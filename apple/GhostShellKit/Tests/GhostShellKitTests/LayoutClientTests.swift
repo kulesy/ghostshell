@@ -180,7 +180,7 @@ final class LayoutClientTests: XCTestCase {
         do {
             try await client.archiveSession("s1", stop: false)
             XCTFail("a 409 should throw")
-        } catch let GhostShellError.refused(status, message) {
+        } catch let GhostShellError.refused(status, message, _) {
             XCTAssertEqual(status, 409)
             XCTAssertEqual(message, "A chat is running.")
         }

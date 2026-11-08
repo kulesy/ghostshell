@@ -1,5 +1,6 @@
 // What the Scheduled sessions page and Home's Scheduled section say and send, as rules that need no page, so node can test them. Times are the
 // Mac's, as the server writes them, and the words for them are the Routines page's.
+// NOTE: [8 Nov 2026] EK - The Swift app ports these words and rules in apple/GhostShellKit/Sources/GhostShellKit/Rules/ScheduledRules.swift. A change here needs the same change there.
 import { effortChoices, fireTime, modelChoices, retryWords } from './routine-rules.js';
 
 // A server that cannot say has no scheduled sessions, so the page and the section stay out of sight.

@@ -20,6 +20,7 @@ import { sessionIndex } from './subs.js';
 import { useTypingPing } from './typing.js';
 import { openViewer } from './viewer.js';
 
+// NOTE: [8 Nov 2026] EK - MODES is copied in apple/GhostShellKit/Sources/GhostShellKit/Models/Choices.swift. A new mode here needs the same line there.
 export const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
 // NOTE: [16 Oct 2026] EK - Grammarly's extension leaves a field alone when it carries these attributes.
 // Without them it puts its own buttons inside the message box.

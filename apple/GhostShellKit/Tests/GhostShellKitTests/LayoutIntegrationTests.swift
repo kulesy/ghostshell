@@ -90,7 +90,7 @@ final class LayoutIntegrationTests: XCTestCase {
         do {
             _ = try await client.addGroup(name: "   ", project: nil)
             XCTFail("an empty name should be refused")
-        } catch let GhostShellError.refused(status, message) {
+        } catch let GhostShellError.refused(status, message, _) {
             XCTAssertEqual(status, 400)
             XCTAssertFalse(message.isEmpty)
         }

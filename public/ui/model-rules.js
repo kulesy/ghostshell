@@ -1,6 +1,7 @@
 // What the model menu offers and what its button says, with no page in it so node can test it. The names are Claude Desktop's.
 import { modelLabel } from './format.js';
 
+// NOTE: [8 Nov 2026] EK - MAIN, LONG and EFFORTS are copied in apple/GhostShellKit/Sources/GhostShellKit/Models/Choices.swift. A new model or effort here needs the same line there.
 export const MAIN = [['claude-opus-5-5', 'Opus 5.5'], ['claude-fable-5-1', 'Fable 5.1'], ['claude-sonnet-5-5', 'Sonnet 5.5'], ['claude-haiku-5-5', 'Haiku 5.5']];
 export const LONG = ['claude-opus-5-5[1m]', 'Opus 5.5 (1M)'];
 export const EFFORTS = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra'], ['max', 'Max']];

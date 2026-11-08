@@ -225,7 +225,7 @@ final class IntegrationTests: XCTestCase {
         let id = try await firstID(client)
         do { _ = try await client.decide(sessionID: id, requestID: "no-such-request", .allow); XCTFail("the server took a decision for a chat that is not running") } catch {
             switch error as? GhostShellError {
-            case .server(status: 409)?, .refused(status: 409, _)?: break
+            case .server(status: 409)?, .refused(status: 409, _, _)?: break
             default: XCTFail("expected a 409, got \(error)")
             }
         }

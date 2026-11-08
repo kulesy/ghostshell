@@ -2,7 +2,7 @@
 // Drives the Debug app through accessibility, in the background (XCUITest is not available here), and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines]
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -16,10 +16,15 @@ import { startChatStub } from './chat-fixtures.mjs';
 import { copyTranscript, startScratch, TEST_CWD } from './test-server.mjs';
 
 const argv = process.argv.slice(2);
-const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? '' : undefined);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(option('--out') || path.join(here, '..', 'screenshots'));
 const FLOW = option('--flow');
+const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines'];
+if (FLOW !== undefined && !FLOWS.includes(FLOW)) {
+  console.error(`${FLOW ? `Unknown --flow ${FLOW}.` : '--flow needs a value.'} The flows are: ${FLOWS.join(', ')}.`);
+  process.exit(2);
+}
 const APPEARANCES = option('--only') ? [option('--only')] : ['light', 'dark'];
 const DEFAULT_SIZE = [960, 640];
 const MIN_SIZE = [640, 420];
@@ -406,7 +411,19 @@ class App {
     }, 10);
     return check(done, `the app took click ${this.clicks}`);
   }
+  // Replaces the text of the first text field whose value is `was`.
+  replaceField(was, text) {
+    const field = this.find(node => node.role === 'AXTextField' && node.value === was);
+    return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
+  }
   menu(bar, item) { return this.run('menu', bar, item).ok === true; }
+  // Opens a menu or pop-up button by its name, then presses one of its items.
+  pick(name, item) {
+    const button = this.find(node => ['AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.title, node.help].includes(name));
+    if (!button || !this.act(button)) return false;
+    const entry = this.waitFor(node => node.role === 'AXMenuItem' && node.title === item);
+    return !!entry && this.act(entry);
+  }
   signOutFromMenu() { return this.menu('File', 'Sign Out'); }
 
   async shot(name) {
@@ -470,6 +487,12 @@ async function signInToChatStub(app, stub) {
   app.type('whatever');
   app.submit();
   check(await until('rows', () => app.rows() === stub.rows.length), 'the chat stub lists its chats');
+}
+
+// Listens on a free port and opens the app pointed at it. The caller closes the stub.
+async function appOn(stub, bundle, appearance, tag) {
+  await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
+  return new App(bundle, { address: `http://localhost:${stub.address().port}`, appearance, tag });
 }
 
 async function chatFlow(bundle, appearance) {
@@ -937,8 +960,7 @@ async function accountsFlow(bundle, appearance) {
       return send(res, { ungrouped: rows });
     });
   });
-  await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
-  const app = new App(bundle, { address: `http://localhost:${stub.address().port}`, appearance, tag: '6' });
+  const app = await appOn(stub, bundle, appearance, '6');
   const sees = text => app.texts().includes(text);
   try {
     await app.launch();
@@ -1052,6 +1074,132 @@ async function organiseFlow(bundle, appearance) {
   }
 }
 
+// The routine and scheduled screens against a stub with fixed data: a heading with only idle routines, a loose idle routine, a routine with a run,
+// a pending and a skipped scheduled session. Every write is recorded and refused, so no real routine is made, changed, started or deleted.
+// Never point this at a real server: a Run now there starts a real session.
+async function routinesFlow(bundle, appearance) {
+  console.log(`\n== ${appearance}: routines, scheduled sessions, idle routine rows, a refused save`);
+  const now = Date.now();
+  const day = 86_400_000;
+  const iso = ms => {
+    const offset = -new Date(ms).getTimezoneOffset();
+    const pad = n => String(Math.abs(n)).padStart(2, '0');
+    return `${new Date(ms + offset * 60_000).toISOString().slice(0, 19)}${offset >= 0 ? '+' : '-'}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
+  };
+  const at = (days, hour, minute = 0) => { const d = new Date(now + days * day); d.setHours(hour, minute, 0, 0); return d.getTime(); };
+  // Days to the next Monday, so the weekly routine's `0 9 * * 1` and its next times agree.
+  const monday = (8 - new Date(now).getDay()) % 7 || 7;
+  const row = (id, title, extra = {}) => ({ id, title, state: 'idle', cwd: '/Users/me/Projects/site', branch: 'main', lastActivityAt: now - 600_000, sortAt: now - 600_000, ...extra });
+  const index = {
+    station: 'stub', projects: [],
+    features: { routineEdits: true, routineFiles: true, routineHeadings: true, scheduled: true, accountPins: true },
+    pinned: [],
+    groups: [{ id: 'g1', name: 'Release', project: null, sessions: [row('rel-1', 'Write the changelog')] }],
+    routines: [{ name: 'nightly', title: 'Nightly check', latest: row('run-3', 'Run', { routine: 'nightly' }), earlier: [row('run-2', 'Run', { lastActivityAt: now - day })] }],
+    ungrouped: [row('u-1', 'Look at the failing build')],
+  };
+  const routine = (id, title, extra = {}) => ({
+    id, title, cron: '0 9 * * 1', jitterSeconds: 0, file: `/Users/me/.ghostshell/routines/${id}.md`, cwd: '/Users/me/Projects/site', enabled: true,
+    lastRunAt: null, lastSessionId: null, lastError: null, running: false, next: iso(at(1, 9)), ...extra,
+  });
+  // Reports has only idle routines, Old backup is idle and loose, and nightly is the one with runs.
+  const routineList = { routines: [
+    routine('nightly', 'Nightly check', { cron: '30 7 * * 1-5', lastRunAt: iso(now - 600_000), lastSessionId: 'run-3', next: iso(at(1, 7, 30)) }),
+    routine('weekly', 'Weekly report', { heading: 'Reports', next: iso(at(monday, 9)) }),
+    routine('sync', 'Sync the docs', { heading: 'Reports', cron: '15 */4 * * *', next: iso(now + 3_600_000) }),
+    routine('backup', 'Old backup', { cron: '0 2 * * *', enabled: false, next: null }),
+  ] };
+  const scheduled = (id, title, extra = {}) => ({
+    id, title, at: iso(at(1, 9)), cwd: '/Users/me/Projects/site', prompt: 'Draft the release notes from the merged pull requests.', status: 'pending', running: false, ...extra,
+  });
+  const scheduledList = { scheduled: [
+    scheduled('notes', 'Draft the release notes', { group: 'g1', groupName: 'Release' }),
+    scheduled('review', 'Quarterly review', { at: iso(at(3, 14, 30)), cwd: '/Users/me/Projects/web' }),
+    scheduled('keys', 'Rotate the keys', { at: iso(at(-1, 8)), status: 'skipped', lastError: 'The folder /Users/me/gone is not there.' }),
+    scheduled('done', 'Archive the old logs', { at: iso(at(-2, 18)), status: 'started', sessionId: 'u-1', startedAt: iso(at(-2, 18)) }),
+  ] };
+  const writes = [];
+  const send = (res, status, body) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+  const stub = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      const { pathname } = new URL(req.url, 'http://stub');
+      if (pathname === '/login') return res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
+      if (req.method !== 'GET') {
+        let body = {};
+        try { body = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { /* not JSON */ }
+        writes.push({ method: req.method, pathname, body });
+        return send(res, 400, { error: 'That could not be saved.', problems: pathname.includes('scheduled')
+          ? { title: 'Give it a title.', cwd: 'That folder is not there.' } : { cron: 'Use five fields, such as 30 7 * * 1-5.', cwd: 'That folder is not there.' } });
+      }
+      if (pathname === '/api/routines') return send(res, 200, routineList);
+      if (/^\/api\/routines\/[\w-]+\/prompt$/.test(pathname)) return send(res, 200, { file: '/Users/me/.ghostshell/routines/weekly.md', text: 'Write the weekly report from the merged pull requests.\n', ours: true });
+      if (pathname === '/api/scheduled') return send(res, 200, scheduledList);
+      if (pathname === '/api/schedule') return send(res, 200, { next: [iso(at(monday, 9)), iso(at(monday + 7, 9)), iso(at(monday + 14, 9))] });
+      if (pathname === '/api/folders') return send(res, 200, { folders: ['/Users/me/Projects/site', '/Users/me/Projects/web'] });
+      if (pathname === '/api/accounts') return send(res, 200, { accounts: [{ id: 'work', name: 'Work', active: true }, { id: 'home', name: 'Home' }] });
+      return send(res, 200, pathname.startsWith('/api/archived') ? { archived: [] } : index);
+    });
+  });
+  const app = await appOn(stub, bundle, appearance, '9');
+  const sees = text => app.texts().includes(text);
+  const hovers = () => app.sessionRows().map(([, help]) => help);
+  const hasRow = start => hovers().some(help => help.startsWith(start));
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    // Home: Scheduled, Routines, Release and Ungrouped. The idle rows are plain buttons with their words as hover text.
+    check(await until('home', () => app.headings() >= 4 && hasRow('Weekly report:') && hasRow('Old backup:')), 'Home lists the idle routines under Routines');
+    check(hasRow('Draft the release notes:') && hasRow('Rotate the keys:') && !hasRow('Archive the old logs:'), 'Scheduled lists the pending and skipped sessions and not the started one');
+    await app.both('sidebar-routines');
+
+    check(app.pick('View', 'Manage routines'), 'Manage routines is in the view menu');
+    check(await until('routines', () => sees('Weekdays at 07:30') && sees('Off')), 'the Routines page lists the routines');
+    await app.both('routines-list');
+
+    check(app.press('Weekly report', { prefix: true }), 'an idle routine in the sidebar can be pressed');
+    check(await until('form', () => sees('The full path of the folder each run starts in.')), 'the routine form opens');
+    await sleep(1200);
+    await app.both('routine-form');
+
+    check(app.press('Save'), 'Save is in the toolbar');
+    check(await until('back', () => !sees('The full path of the folder each run starts in.') && sees('Weekdays at 07:30')), 'saving with nothing changed goes back to the list');
+    await sleep(1000);
+    check(writes.length === 0, 'saving with nothing changed makes no call');
+
+    check(app.press('Weekly report', { prefix: true }) && await until('form again', () => sees('The full path of the folder each run starts in.')), 'the routine form opens again');
+    await sleep(1000);
+    check(app.replaceField('Weekly report', 'Weekly report, Mondays'), 'the title can be changed');
+    check(app.press('Save'), 'Save is in the toolbar again');
+    check(await until('refused', () => sees('Use five fields, such as 30 7 * * 1-5.')), 'a refused save shows the server\'s message on the field');
+    check(writes.length === 1 && writes[0].method === 'PATCH' && Object.keys(writes[0].body).join() === 'title', 'the save sent only the title and not the schedule');
+    await sleep(500);
+    await app.both('routine-refused');
+    check(app.press('Cancel'), 'Cancel is in the toolbar');
+
+    check(app.pick('View', 'Manage scheduled sessions'), 'Manage scheduled sessions is in the view menu');
+    check(await until('scheduled', () => sees('Archive the old logs')), 'the Scheduled page lists the sessions');
+    await app.both('scheduled-list');
+
+    check(app.press('Quarterly review', { prefix: true }), 'a pending row in the sidebar can be pressed');
+    check(await until('scheduled form', () => sees('The session is called this.')), 'the scheduled form opens');
+    await sleep(1000);
+    await app.both('scheduled-form');
+    check(app.press('Save') && await until('scheduled back', () => !sees('The session is called this.')), 'saving a scheduled session with nothing changed goes back');
+    await sleep(1000);
+    check(writes.length === 1, 'saving a scheduled session with nothing changed makes no call');
+
+    app.signOutFromMenu();
+    check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the routines stub');
+  } finally {
+    await app.quit();
+    stub.closeAllConnections();
+    stub.close();
+  }
+}
+
 const cleanup = async () => {
   for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
@@ -1067,7 +1215,7 @@ try {
     compileHelper();
     return built;
   });
-  const flows = argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? [FLOW] : ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise'];
+  const flows = argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? [FLOW] : FLOWS;
   for (const appearance of APPEARANCES) {
     if (flows.includes('main')) {
       await mainFlow(bundle, appearance, !argv.includes('--no-chat'));
@@ -1080,6 +1228,7 @@ try {
     if (flows.includes('accounts')) await accountsFlow(bundle, appearance);
     if (flows.includes('approvals')) await approvalsFlow(bundle, appearance);
     if (flows.includes('organise')) await organiseFlow(bundle, appearance);
+    if (flows.includes('routines')) await routinesFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);

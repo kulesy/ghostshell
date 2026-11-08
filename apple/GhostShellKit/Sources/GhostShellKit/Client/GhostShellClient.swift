@@ -128,22 +128,30 @@ public actor GhostShellClient {
         let request = try build(method, path, query: query, body: body, contentType: contentType, token: token)
         let (data, response) = try await transport(request)
         if response.statusCode == 401 { await forget(); throw GhostShellError.signedOut }
-        guard (200..<300).contains(response.statusCode) else { throw Self.refusal(response.statusCode, data) }
+        guard (200..<300).contains(response.statusCode) else {
+            throw Self.refusal(response.statusCode, data)
+        }
         return data
     }
 
-    // A 400, 409 or 404 carries the server's own words in `{error}`, and the screens show them as they are.
+    // A 400, 409 or 404 carries the server's own words in `{error}`, and the screens show them as they are. A refused form also carries `{problems}`.
     // NOTE: [8 Nov 2026] EK - The server's "Not found" is its answer for a route it lacks, so it stays `.server(404)`. BannersState reads that as a server with no banners.
     private static func refusal(_ status: Int, _ body: Data) -> GhostShellError {
         struct Words: Decodable {
             var error: String?, itself: Bool?, subs: Int?
-            enum CodingKeys: String, CodingKey { case error, itself = "self", subs }
+            var problems: [String: String]?
+            private enum Key: String, CodingKey { case error, itself = "self", subs, problems }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: Key.self)
+                (error, problems) = (try? c.decode(String.self, forKey: .error), try? c.decode([String: String].self, forKey: .problems))
+                (itself, subs) = (try? c.decode(Bool.self, forKey: .itself), try? c.decode(Int.self, forKey: .subs))
+            }
         }
         let reply = try? JSONDecoder().decode(Words.self, from: body)
         guard [400, 404, 409].contains(status), let words = reply?.error, !words.isEmpty,
               !(status == 404 && words == "Not found") else { return .server(status: status) }
         if status == 409, reply?.itself != nil || reply?.subs != nil { return .running(itself: reply?.itself ?? false, subs: reply?.subs ?? 0, message: words) }
-        return .refused(status: status, message: words)
+        return .refused(status: status, message: words, problems: reply?.problems ?? [:])
     }
 
     // The one place a request is made. NOTE: [7 Nov 2026] EK - strictOrigin in server.mjs refuses an owner route that arrives with no Origin,
@@ -192,7 +200,7 @@ public actor GhostShellClient {
         changes.yield(.signedOut)
     }
 
-    private nonisolated func decode<T: Decodable>(_ data: Data) throws -> T {
+    nonisolated func decode<T: Decodable>(_ data: Data) throws -> T {
         do { return try JSONDecoder().decode(T.self, from: data) } catch { throw GhostShellError.server(status: 0) }
     }
 
