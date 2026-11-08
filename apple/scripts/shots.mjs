@@ -506,13 +506,17 @@ class App {
   // Picks "Quote" from the context menu of the first static text containing `text`. The menu opens on the text or on one of its parents, so each is tried until a chip is added.
   quote(text) {
     const before = this.buttonsLike('Remove quote').length;
-    const node = this.find(n => n.role === 'AXStaticText' && String(n.value ?? '').includes(text));
-    if (!node) return false;
-    for (let up = 0; up < 6 && up < node.path.length; up += 1) {
-      const target = JSON.stringify(node.path.slice(0, node.path.length - up));
-      const picked = this.run('pick', target, 'Quote').ok === true;
-      if (picked && this.buttonsLike('Remove quote').length > before) return true;
-      if (picked) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); if (this.buttonsLike('Remove quote').length > before) return true; }
+    const wait = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+    // The thread can still be settling after a chat opens, so a miss is retried before it counts.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const node = this.find(n => n.role === 'AXStaticText' && String(n.value ?? '').includes(text));
+      for (let up = 0; node && up < 6 && up < node.path.length; up += 1) {
+        const target = JSON.stringify(node.path.slice(0, node.path.length - up));
+        const picked = this.run('pick', target, 'Quote').ok === true;
+        if (picked) wait(500);
+        if (this.buttonsLike('Remove quote').length > before) return true;
+      }
+      wait(1000);
     }
     return false;
   }
