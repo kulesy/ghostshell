@@ -20,6 +20,7 @@ final class TerminalStore {
     @ObservationIgnored private var sequence = 0
     @ObservationIgnored private var waiting: [TerminalEvent] = []
     @ObservationIgnored private var loaded = false
+    @ObservationIgnored private var loading = false
 
     init(chat: ChatContext) {
         self.chat = chat
@@ -27,27 +28,38 @@ final class TerminalStore {
         client = chat.client
     }
 
-    /// Listens to the chat's one stream and reads the snapshot. Safe to call again.
+    /// Listens to the chat's one stream and reads the snapshot. Safe to call again, and a snapshot that failed is read again by the next call or
+    /// after a few seconds.
     ///
     /// The stream is opened first and its frames wait until the snapshot is in. A frame sent in the moment between the server taking the snapshot and
     /// this app reading it would otherwise be lost, and the ones the snapshot already holds are dropped by `applyHeld`.
     func start() {
-        guard !started, let chat else { return }
-        started = true
-        let stream = chat.events()
-        Task { [weak self] in
-            for await frame in stream {
-                guard let self, let event = TerminalEvent.decode(frame) else { continue }
-                if loaded { state.apply(event) } else { waiting.append(event) }
+        guard let chat else { return }
+        if !started {
+            started = true
+            let stream = chat.events()
+            Task { [weak self] in
+                for await frame in stream {
+                    guard let self, let event = TerminalEvent.decode(frame) else { continue }
+                    if loaded { state.apply(event) } else { waiting.append(event) }
+                }
             }
         }
+        guard !loaded, !loading else { return }
+        loading = true
         Task { [weak self] in
             guard let self else { return }
             do {
                 state.apply(try await client.terminalSnapshot(sessionID: sessionID))
             } catch {
                 state.error = TerminalFailure.words(error, step: .read)
+                loading = false
+                try? await Task.sleep(for: .seconds(3))
+                start()
+                return
             }
+            loading = false
+            state.error = ""
             state.applyHeld(waiting)
             waiting = []
             loaded = true
@@ -58,6 +70,7 @@ final class TerminalStore {
 
     /// Runs a command and returns the server's reason when it would not, or nil once the server has it.
     func run(_ command: String, source: TerminalSource) async -> String? {
+        guard command.utf16.count <= TerminalRules.maxCommand else { return "That command is too long to run." }
         sequence += 1
         guard let key = state.begin(command: command, source: source, key: "local-\(sequence)", now: Date().timeIntervalSince1970 * 1000) else { return nil }
         do {

@@ -116,6 +116,17 @@ final class TerminalStateTests: XCTestCase {
         XCTAssertEqual(state.runs[0].output.first?.text, "one\ntwo\n", "the held output is the fuller account, so a summary with none leaves it")
     }
 
+    func testTheRevisionRisesWithEveryAppendEvenWhenTheOutputIsHeldAtItsCap() throws {
+        var state = TerminalState()
+        state.apply(.state(cwd: "/h", home: "/h", runs: [try decoded(runJSON("a"))]))
+        let big = String(repeating: "x", count: TerminalRules.keep)
+        state.apply(.output(run: "a", chunks: [.init(stream: "out", text: big)]))
+        let before = state.runs[0]
+        state.apply(.output(run: "a", chunks: [.init(stream: "out", text: "y")]))
+        XCTAssertEqual(state.runs[0].output.map(\.text.utf16.count), before.output.map(\.text.utf16.count), "held at the cap, the size does not move")
+        XCTAssertEqual(state.runs[0].revision, before.revision + 1)
+    }
+
     func testAStartedRunTakesTheRowDrawnForIt() throws {
         var state = TerminalState()
         state.cwd = "/h/x"

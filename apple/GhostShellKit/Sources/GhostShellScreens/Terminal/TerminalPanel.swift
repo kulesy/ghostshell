@@ -135,6 +135,8 @@ struct TerminalRunBlock: View, Equatable {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var rendered: AnsiOutput?
+    @State private var lastDraw: ContinuousClock.Instant?
+    @State private var drawnRevision = -1
     @State private var copied = false
 
     nonisolated static func == (a: TerminalRunBlock, b: TerminalRunBlock) -> Bool { a.run == b.run && a.home == b.home }
@@ -142,10 +144,9 @@ struct TerminalRunBlock: View, Equatable {
     private var live: Bool { run.running && !run.pending }
     private var state: TerminalRules.RunState { TerminalRules.runState(run) }
 
-    /// Changes whenever the output does, so a redraw of the lines waits on this and not on the output's whole text.
-    private var signature: [Int] {
-        [run.output.count, run.output.first?.text.utf16.count ?? 0, run.output.last?.text.utf16.count ?? 0, run.output.last?.stream.count ?? 0]
-    }
+    /// Changes whenever the output does, so a redraw of the lines waits on this and not on the output's whole text. The run's revision rises with
+    /// every append, because an output held at its cap keeps the same size.
+    private var signature: [Int] { [run.revision, run.output.count] }
 
     var body: some View {
         let styler = AnsiStyler(colorScheme)
@@ -171,13 +172,22 @@ struct TerminalRunBlock: View, Equatable {
         .task(id: signature) { await draw() }
     }
 
-    /// The first draw is at once. Output that keeps arriving is drawn at most about ten times a second, off the main thread.
+    /// The first draw is at once, and after that at most one every 100 ms counted from the last, off the main thread. A change cancels the draw
+    /// waiting and the next one waits only for what is left of the 100 ms, so output that never pauses still draws, and the last change always does.
     private func draw() async {
-        if rendered != nil { try? await Task.sleep(for: .milliseconds(100)) }
+        if let lastDraw {
+            let wait = Duration.milliseconds(100) - lastDraw.duration(to: .now)
+            if wait > .zero { try? await Task.sleep(for: wait) }
+        }
         guard !Task.isCancelled else { return }
+        lastDraw = .now
         let chunks = run.output
+        let revision = run.revision
         let out = await Task.detached(priority: .userInitiated) { TerminalAnsi.render(chunks, maxLines: 2000) }.value
-        if !Task.isCancelled { rendered = out }
+        if revision >= drawnRevision {
+            drawnRevision = revision
+            rendered = out
+        }
     }
 
     private func head(_ styler: AnsiStyler) -> some View {

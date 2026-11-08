@@ -89,6 +89,8 @@ public struct TerminalRun: Hashable, Sendable, Decodable {
     public var delivered: String?
     public var output: [TerminalChunk]
     public var pending: Bool
+    /// Rises each time the output changes, which a trimmed output (held at its cap) does not show by its size.
+    public var revision = 0
 
     enum CodingKeys: String, CodingKey {
         case id, command, cwd, source, startedAt, endedAt, exitCode, signal, stopped, running, truncated, delivered, output

@@ -208,6 +208,7 @@ public enum TerminalRules {
             merged.key = held.key
             merged.pending = false
             merged.output = mergeOutput(held: held.output, tail: incoming.output)
+            merged.revision = held.revision + 1
             next[known] = merged
             return next
         }
@@ -235,6 +236,7 @@ public enum TerminalRules {
             if let was = summary.id.flatMap({ byID[$0] }) {
                 run.key = was.key
                 run.output = mergeOutput(held: was.output, tail: summary.output)
+                run.revision = was.revision + 1
             } else if let n = waiting.firstIndex(where: { $0.command == summary.command && $0.source == summary.source }) {
                 run.key = waiting.remove(at: n).key
             }

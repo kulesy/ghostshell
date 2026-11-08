@@ -80,6 +80,7 @@ public struct TerminalState: Equatable, Sendable {
         case .output(let id, let chunks):
             guard let n = runs.firstIndex(where: { $0.id == id }) else { return }
             runs[n].output = TerminalRules.appendChunks(runs[n].output, chunks)
+            runs[n].revision += 1
         case .cwd(let dir):
             cwd = dir
         case .cleared(let left):
@@ -136,6 +137,7 @@ public struct TerminalState: Equatable, Sendable {
         error = ""
         guard let n = runs.firstIndex(where: { $0.id == id }) else { return }
         runs[n].output = TerminalRules.appendChunks(runs[n].output, [TerminalChunk(stream: "in", text: eof ? "^D\n" : text)])
+        runs[n].revision += 1
     }
 
     public mutating func cleared(cwd fresh: String?, runs left: [TerminalRun]) {
