@@ -1,16 +1,22 @@
 import GhostShellKit
 import SwiftUI
 
-/// Manage routines, and Scheduled sessions when this GhostShell has them.
+/// Manage routines, and Scheduled sessions when this GhostShell has them. One menu, because the sidebar's toolbar has room for few buttons.
 struct RoutineToolbarButtons: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Button("Manage routines", systemImage: "calendar.badge.clock") { model.navigator.show { RoutinesScreen() } }
-            .help("Manage routines")
         if model.routines.features.scheduled {
-            Button("Manage scheduled sessions", systemImage: "clock") { model.navigator.show { ScheduledScreen() } }
-                .help("Manage scheduled sessions")
+            Menu("Routines and scheduled sessions", systemImage: "calendar.badge.clock") {
+                Button("Manage routines", systemImage: "calendar.badge.clock") { model.navigator.show { RoutinesScreen() } }
+                Button("Manage scheduled sessions", systemImage: "clock") { model.navigator.show { ScheduledScreen() } }
+            }
+            .menuIndicator(.hidden)
+            .accessibilityLabel("Routines and scheduled sessions")
+            .help("Routines and scheduled sessions")
+        } else {
+            Button("Manage routines", systemImage: "calendar.badge.clock") { model.navigator.show { RoutinesScreen() } }
+                .help("Manage routines")
         }
     }
 }

@@ -417,6 +417,13 @@ class App {
     return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
   }
   menu(bar, item) { return this.run('menu', bar, item).ok === true; }
+  // Opens a toolbar menu button by its name, then presses one of its items.
+  pick(name, item) {
+    const button = this.find(node => ['AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.title, node.help].includes(name));
+    if (!button || !this.act(button)) return false;
+    const entry = this.waitFor(node => node.role === 'AXMenuItem' && node.title === item);
+    return !!entry && this.act(entry);
+  }
   signOutFromMenu() { return this.menu('File', 'Sign Out'); }
 
   async shot(name) {
@@ -1148,7 +1155,7 @@ async function routinesFlow(bundle, appearance) {
     check(hasRow('Draft the release notes:') && hasRow('Rotate the keys:') && !hasRow('Archive the old logs:'), 'Scheduled lists the pending and skipped sessions and not the started one');
     await app.both('sidebar-routines');
 
-    check(app.press('Manage routines'), 'the Manage routines button is in the toolbar');
+    check(app.pick('Routines and scheduled sessions', 'Manage routines'), 'Manage routines is in the toolbar menu');
     check(await until('routines', () => sees('Weekdays at 07:30') && sees('Off')), 'the Routines page lists the routines');
     await app.both('routines-list');
 
@@ -1172,7 +1179,7 @@ async function routinesFlow(bundle, appearance) {
     await app.both('routine-refused');
     check(app.press('Cancel'), 'Cancel is in the toolbar');
 
-    check(app.press('Manage scheduled sessions'), 'the Manage scheduled sessions button is in the toolbar');
+    check(app.pick('Routines and scheduled sessions', 'Manage scheduled sessions'), 'Manage scheduled sessions is in the toolbar menu');
     check(await until('scheduled', () => sees('Archive the old logs')), 'the Scheduled page lists the sessions');
     await app.both('scheduled-list');
 
