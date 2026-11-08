@@ -26,6 +26,7 @@ struct TerminalRunButton: View {
             Button("Run") { run() }
                 .buttonStyle(.borderless).font(ChatStyle.caption).foregroundStyle(.secondary)
                 .disabled(runnable.hidden)
+                .opacity(runnable.hidden ? 0.4 : 1)
                 .help(runnable.hidden ? "This block holds hidden characters, so it cannot be run" : "Run in terminal")
                 .accessibilityLabel(runnable.hidden ? "Run in terminal, unavailable because the block holds hidden characters" : "Run in terminal")
         }

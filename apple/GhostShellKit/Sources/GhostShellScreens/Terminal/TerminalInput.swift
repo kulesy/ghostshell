@@ -66,10 +66,19 @@ struct TerminalInput: View {
         return target.ended ? "That command has ended" : "Command in \(TerminalRules.inHome(state.cwd, home: state.home))"
     }
 
+    // A running command's Stop is also here, because its own block may be scrolled out of the panel.
     private func label(_ target: (run: TerminalRun?, ended: Bool)) -> some View {
-        Text(target.run.map { firstLine($0.command) } ?? (target.ended ? "That command has ended" : TerminalRules.inHome(state.cwd, home: state.home)))
-            .font(ChatStyle.monoSmall).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-            .accessibilityHidden(true)
+        HStack(spacing: 8) {
+            Text(target.run.map { firstLine($0.command) } ?? (target.ended ? "That command has ended" : TerminalRules.inHome(state.cwd, home: state.home)))
+                .font(ChatStyle.monoSmall).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                .accessibilityHidden(true)
+            Spacer(minLength: 0)
+            if let run = target.run, run.running, !run.pending, let id = run.id {
+                Button("Stop") { Task { await store.stop(id) } }
+                    .buttonStyle(.borderless).font(ChatStyle.caption).help("Stop the command")
+                    .accessibilityLabel("Stop command")
+            }
+        }
     }
 
     private func hint(_ target: (run: TerminalRun?, ended: Bool)) -> String {
