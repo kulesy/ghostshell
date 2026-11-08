@@ -30,6 +30,8 @@ public final class AppModel {
     public private(set) var visible = true
     /// The scripted run keeps polling while its window is covered, because it runs in the background.
     public var ignoresOcclusion = false
+    /// Keeps the feed running while the window is hidden, for notifications. Set by the notifier.
+    public var watchesWhileHidden = false { didSet { syncFeed() } }
 
     private static let addressKey = "serverAddress"
 
@@ -67,8 +69,13 @@ public final class AppModel {
     public func setVisible(_ shown: Bool) {
         let shown = shown || ignoresOcclusion
         visible = shown
+        syncFeed()
+    }
+
+    private func syncFeed() {
         guard let feed else { return }
-        Task { if shown { await feed.resume() } else { await feed.pause() } }
+        let poll = visible || watchesWhileHidden
+        Task { if poll { await feed.resume() } else { await feed.pause() } }
     }
 
     private func enter(_ fresh: GhostShellClient) {
@@ -95,7 +102,7 @@ public final class AppModel {
                 }
             },
         ]
-        if visible { Task { await list.resume() } }
+        if visible || watchesWhileHidden { Task { await list.resume() } }
     }
 
     // Reached by sign-out and by any 401, which the client reports through authChanges.

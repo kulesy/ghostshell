@@ -105,7 +105,8 @@ const readPassword = server => fs.readFileSync(server.passwordFile, 'utf8').trim
 // Each node from tree() is { path, role, subrole, desc, title, value, help, id, disclosing, orientation, focused, selected, pos, size, kid(...indexes) }.
 // Its path is child indexes from the window, in the same depth-first order as AppleScript's `entire contents`.
 class App {
-  constructor(bundle, { address, appearance, tag }) {
+  constructor(bundle, { address, appearance, tag, notify = false }) {
+    this.notify = notify;
     this.appearance = appearance;
     this.tag = tag;
     this.count = 0;
@@ -115,6 +116,7 @@ class App {
     this.address = address;
     this.pid = undefined;
     this.shotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-shot-'));
+    this.alertLog = path.join(this.shotDir, 'alerts.log');
     services.add(this.service);
     suites.add(this.suite);
   }
@@ -124,7 +126,8 @@ class App {
   async launch() {
     fs.mkdirSync(this.shotDir, { recursive: true });
     const opened = spawnSync('open', ['-g', '-n', this.bundle, '--args', '-NSAppSleepDisabled', 'YES', '-GSKeychainService', this.service, '-GSAddress', this.address,
-      '-GSDefaultsSuite', this.suite, '-GSAppearance', this.appearance, '-GSShotDir', this.shotDir], { encoding: 'utf8', timeout: 30_000 });
+      '-GSDefaultsSuite', this.suite, '-GSAppearance', this.appearance, '-GSShotDir', this.shotDir,
+      ...(this.notify ? ['-GSNotify', 'on', '-GSAlertLog', this.alertLog] : [])], { encoding: 'utf8', timeout: 30_000 });
     if (opened.status !== 0) throw new Error(`open failed: ${opened.stderr}`);
     const found = await until('process', () => {
       this.pid = Number(spawnSync('pgrep', ['-f', `MacOS/GhostShell .*${this.service}`], { encoding: 'utf8' }).stdout.split('\n')[0]) || undefined;
@@ -188,7 +191,20 @@ class App {
 
   // The text of every static text in the window, one per line.
   texts() { return this.findAll(node => node.role === 'AXStaticText' && node.value != null).map(node => `${node.value}\n`).join(''); }
-  hasButton(name) { return !!this.find(node => node.role === 'AXButton' && node.desc === name); }
+  // With a value, the button must also report it, as the bell does with On and Off.
+  hasButton(name, value) { return !!this.find(node => node.role === 'AXButton' && node.desc === name && (value === undefined || node.value === value)); }
+  // What the app would have shown, one line per alert: "post <id> <kind> <title>", "withdraw <id>" or "badge <count|none>".
+  alerts() {
+    try { return fs.readFileSync(this.alertLog, 'utf8').split('\n').filter(Boolean); } catch { return []; }
+  }
+  // The Settings window opens in front of the main one, so tree() reads it while it is open.
+  settingsOpen() { return this.find(node => node.path.length === 0)?.title === 'GhostShell Settings'; }
+  openSettings() { return this.menu('GhostShell', 'Settings…'); }
+  // Only the Settings window is closed, because closing the main window quits the app.
+  closeSettings() {
+    const close = this.settingsOpen() && this.find(node => node.path.length === 1 && node.subrole === 'AXCloseButton');
+    return !!close && this.act(close);
+  }
   // Session rows only. With sections, the nth AXRow is often a heading, and the search field is a row too.
   sessionRowNodes() {
     return this.findAll(node => {
@@ -387,8 +403,8 @@ async function chatFlow(bundle, appearance) {
 async function mainFlow(bundle, appearance, withChat) {
   const server = await startScratch({ claude: withChat });
   servers.add(server);
-  const app = new App(bundle, { address: server.address, appearance, tag: '1' });
-  console.log(`\n== ${appearance}: sign in, list, chat, relaunch, sign out`);
+  const app = new App(bundle, { address: server.address, appearance, tag: '1', notify: true });
+  console.log(`\n== ${appearance}: sign in, list, chat, notifications, relaunch, sign out`);
   try {
     await app.launch();
     await app.both('signin-idle');
@@ -402,6 +418,17 @@ async function mainFlow(bundle, appearance, withChat) {
     app.submit();
     check(await until('rows', () => app.sessionRows().length === 8), 'signing in shows the 8 seeded sessions');
     await app.both('list-rows');
+
+    // The bell starts on (-GSNotify), turns notifications off and on again, and the pane agrees with it.
+    check(app.hasButton('Notifications', 'On'), 'the toolbar bell starts on');
+    await app.both('toolbar-notifications-on');
+    app.press('Notifications');
+    check(await until('bell off', () => app.hasButton('Notifications', 'Off')), 'clicking the bell turns notifications off');
+    await app.both('toolbar-notifications-off');
+    await settingsShot(app, 'settings-off');
+    app.press('Notifications');
+    check(await until('bell on', () => app.hasButton('Notifications', 'On')), 'clicking the bell again turns them on');
+    await settingsShot(app, 'settings-on');
 
     app.chooseFirstRow();
     check(await until('title', () => app.texts().includes('Add dark mode to the chart')), 'choosing a row shows its title in the detail');
@@ -424,6 +451,8 @@ async function mainFlow(bundle, appearance, withChat) {
         return rows.length > 0 && rows.every(row => row.state !== 'running');
       }, 90);
       check(finished, 'the chat finishes');
+      check(await until('finished alert', () => app.alerts().some(line => line.startsWith(`post ${id} finished `)), 15), 'the finished chat raised a "finished" alert for its session');
+      check(app.alerts().some(line => line.startsWith('badge ')), 'the Dock badge was set');
       await sleep(4000);
       copyTranscript(server, id);
       await app.both('list-chat-finished');
@@ -434,6 +463,7 @@ async function mainFlow(bundle, appearance, withChat) {
       await ownerCall(server, 'logout', undefined, token);
     }
 
+    const posted = app.alerts().filter(line => line.startsWith('post ')).length;
     await app.quit();
     process.kill(server.pid, 'SIGSTOP');
     await app.launch();
@@ -442,6 +472,8 @@ async function mainFlow(bundle, appearance, withChat) {
     await app.both('loading');
     process.kill(server.pid, 'SIGCONT');
     check(await until('rows', () => app.sessionRows().length === (withChat ? 9 : 8), 20), 'the list loads once the server answers');
+    await sleep(1500);
+    check(app.alerts().filter(line => line.startsWith('post ')).length === posted, 'a relaunch raises no alerts for sessions that finished while it was closed');
 
     await server.stop();
     check(await until('foot', () => app.texts().includes("Can't reach the server. Trying again."), 20), 'the foot line shows when the server stops answering');
@@ -457,6 +489,21 @@ async function mainFlow(bundle, appearance, withChat) {
     await app.quit();
     await server.stop();
   }
+}
+
+// Opens the Settings window from the app menu, saves it and closes it with its close button.
+async function settingsShot(app, name) {
+  let open = false;
+  for (let attempt = 0; attempt < 3 && !open; attempt++) {
+    app.openSettings();
+    open = await until('settings', () => app.settingsOpen(), 5);
+  }
+  check(open, `the app menu opens the Settings window (${name})`);
+  if (!open) return;
+  await sleep(500);
+  await app.shot(`${app.tag}-${name}-${app.appearance}`);
+  app.closeSettings();
+  check(await until('closed', () => !app.settingsOpen(), 10), `its close button closes the Settings window (${name})`);
 }
 
 async function emptyAndLocked(bundle, appearance) {
@@ -541,7 +588,7 @@ async function marks(bundle, appearance) {
     else res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(req.url.startsWith('/api/archived') ? { archived } : index));
   });
   await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
-  const app = new App(bundle, { address: `http://localhost:${stub.address().port}`, appearance, tag: '5' });
+  const app = new App(bundle, { address: `http://localhost:${stub.address().port}`, appearance, tag: '5', notify: true });
   try {
     await app.launch();
     app.type('whatever');
@@ -591,6 +638,12 @@ async function marks(bundle, appearance) {
     await app.both('search-archived');
     app.search('zzzz');
     check(await until('no hits', () => app.sessionRows().length === 0), 'a search with no match lists nothing');
+
+    // Two rows wait at the start, which is the Dock count. A row that then starts waiting raises one alert and moves the count to three.
+    check(app.alerts().includes('badge 2') && !app.alerts().some(line => line.startsWith('post ')), 'the first list sets the Dock count to 2 and raises no alert');
+    rows[4].dot = 'awaiting';
+    check(await until('needs you', () => app.alerts().includes('post mark-4 needs-you Nothing to look at'), 15), 'a row that starts waiting raises a "needs you" alert');
+    check(app.alerts().includes('badge 3'), 'the Dock count moves to 3');
     app.signOutFromMenu();
     check(await until('signed out', () => app.texts().includes('Address'), 10), 'signed out of the stub');
   } finally {
