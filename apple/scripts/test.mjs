@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs the Swift tests: the unit tests, then the integration tests against two scratch servers (one is for the lockout, which ends a server's
+// Typechecks the screenshot helper, then runs the Swift tests: the unit tests, then the integration tests against two scratch servers (one is for the lockout, which ends a server's
 // sign-in), then one Keychain round trip in a service made for this run. Servers always stop, even when a test fails.
 //   node apple/scripts/test.mjs [--unit]
 import { spawnSync } from 'node:child_process';

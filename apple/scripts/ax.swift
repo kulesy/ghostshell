@@ -71,8 +71,8 @@ switch args[0] {
 case "tree":
     guard let w = window(app) else { out([]); exit(0) }
     let fields = [("role", "AXRole"), ("subrole", "AXSubrole"), ("desc", "AXDescription"), ("title", "AXTitle"), ("value", "AXValue"), ("help", "AXHelp"),
-                                ("id", "AXIdentifier"), ("disclosing", "AXDisclosing"), ("orientation", "AXOrientation"), ("focused", "AXFocused"), ("selected", "AXSelected"),
-                                ("pos", "AXPosition"), ("size", "AXSize")]
+                 ("id", "AXIdentifier"), ("disclosing", "AXDisclosing"), ("orientation", "AXOrientation"), ("focused", "AXFocused"), ("selected", "AXSelected"),
+                 ("pos", "AXPosition"), ("size", "AXSize")]
     var nodes: [[String: Any]] = []
     func walk(_ e: AXUIElement, _ path: [Int]) {
         var node: [String: Any] = ["path": path]

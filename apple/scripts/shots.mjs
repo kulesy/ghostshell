@@ -50,13 +50,12 @@ async function withBuildLock(work) {
     // Read the owner again just before clearing, so a lock another run has only now retaken is left alone.
     if (dead && Object.is(owner(), first)) {
       const stale = `${BUILD_LOCK}.stale-${process.pid}`;
-      try { fs.renameSync(BUILD_LOCK, stale); fs.rmSync(stale, { recursive: true, force: true }); } catch { /* another run got there first */ }
-      continue;
+      try { fs.renameSync(BUILD_LOCK, stale); fs.rmSync(stale, { recursive: true, force: true }); continue; } catch { /* another run got there first */ }
     }
     if (Date.now() > giveUp) throw new Error(`Gave up waiting for the build lock ${BUILD_LOCK}, held by pid ${first}.`);
     await sleep(500);
   }
-  const release = () => { if (owner() === process.pid) fs.rmSync(BUILD_LOCK, { recursive: true, force: true }); };
+  const release = () => { try { if (owner() === process.pid) fs.rmSync(BUILD_LOCK, { recursive: true, force: true }); } catch { /* left for the stale check */ } };
   process.once('exit', release);
   try { return await work(); } finally { release(); process.removeListener('exit', release); }
 }
