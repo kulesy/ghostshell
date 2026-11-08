@@ -12,6 +12,12 @@ struct OrganiseHost: ViewModifier {
         content
             .environment(organise)
             .onAppear { organise.bind(model, state) }
+            .task {
+                while !Task.isCancelled {
+                    await organise.loadAccounts()
+                    try? await Task.sleep(for: .seconds(10))
+                }
+            }
             .alert("That did not work", isPresented: Binding(get: { organise.problem != nil }, set: { if !$0 { organise.problem = nil } })) {
                 Button("OK") {}
             } message: {

@@ -31,6 +31,8 @@ final class OrganiseModel {
     var naming: Naming?
     var namingProblem: String?
     private(set) var saving = false
+    /// The accounts the Account menu lists, read with the same call as the Accounts screen. Nil until the first read, or when it failed.
+    private(set) var accounts: [Account]?
 
     private weak var app: AppModel?
     private weak var state: SidebarState?
@@ -40,6 +42,11 @@ final class OrganiseModel {
     var index: SessionIndex { app?.index ?? SessionIndex() }
     var features: SessionFeatures { index.features ?? SessionFeatures() }
     var view: String? { SidebarOutline.view(state?.project, in: index) }
+
+    func loadAccounts() async {
+        guard features.accountPins, let client = app?.client else { return }
+        accounts = try? await client.accounts().accounts
+    }
 
     // MARK: Sending
 
@@ -110,6 +117,9 @@ final class OrganiseModel {
         state?.setUnfolded(root.id, true)
         run { try await $0.nestSession(row.id, parent: root.id) }
     }
+
+    /// Pins a session to an account, or with nil clears the pin. The server refuses an account that is signed out.
+    func pinAccount(_ row: SessionRow, to account: String?) { endSelection(unless: row.id); run { try await $0.pinAccount(id: row.id, account: account) } }
 
     func stop(_ row: SessionRow) { endSelection(unless: row.id); run { try await $0.stopSession(row.id) } }
 

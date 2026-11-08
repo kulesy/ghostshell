@@ -19,6 +19,22 @@ private struct IDName: Encodable, Sendable { var id: String; var name: String }
 private struct IDOnly: Encodable, Sendable { var id: String }
 private struct Empty: Encodable, Sendable {}
 
+/// What an account pin can sit on. The Mac app pins sessions only.
+public enum PinKind: String, Hashable, Sendable, Encodable { case session, group, project }
+
+private struct AccountBody: Encodable, Sendable {
+    var kind: PinKind
+    var id: String
+    var account: String?
+    private enum Key: String, CodingKey { case kind, id, account }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(id, forKey: .id)
+        try c.encode(Maybe(value: account), forKey: .account)
+    }
+}
+
 private struct MoveBody: Encodable, Sendable {
     var id: String
     var group: String?
@@ -198,6 +214,11 @@ extension GhostShellClient {
     @discardableResult
     public func placeSessions(_ ids: [String], to target: ManyTarget) async throws -> ManyReply {
         try await post("api/layout/many", json: ManyBody(ids: ids, to: target))
+    }
+
+    /// Pins a session to an account, or with a nil `account` clears the pin so it follows the active account. The server refuses an account that is signed out.
+    public func pinAccount(_ kind: PinKind = .session, id: String, account: String?) async throws {
+        try await send("api/layout/account", json: AccountBody(kind: kind, id: id, account: account))
     }
 
     // MARK: Groups

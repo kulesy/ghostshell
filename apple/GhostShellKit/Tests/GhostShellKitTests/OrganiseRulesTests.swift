@@ -116,4 +116,29 @@ final class OrganiseRulesTests: XCTestCase {
         XCTAssertEqual(OrganiseRules.archiveNote(archived: 0, total: 2, reason: "Nope"), "Not archived: Nope.")
         XCTAssertEqual(OrganiseRules.archiveNote(archived: 1, total: 2, reason: "Nope"), "Archived 1 of 2 sessions. Not archived: Nope.")
     }
+
+    func testTheAccountMenuFollowsThePagesRules() throws {
+        let list = try JSONDecoder().decode(AccountList.self, from: Data(#"{"accounts":[{"id":"work","name":"Work","chromeOn":"home"},{"id":"home","name":"Home"},{"id":"old","name":"Old","signedOut":true}]}"#.utf8)).accounts
+        let on = SessionFeatures(accountPins: true)
+        XCTAssertTrue(OrganiseRules.offersAccountPick(on, list, pin: nil))
+        XCTAssertFalse(OrganiseRules.offersAccountPick(SessionFeatures(), list, pin: nil), "the server must pin")
+        XCTAssertFalse(OrganiseRules.offersAccountPick(on, Array(list.prefix(1)), pin: nil), "one account is no choice")
+        XCTAssertTrue(OrganiseRules.offersAccountPick(on, Array(list.prefix(1)), pin: "work"), "an existing pin always shows")
+        XCTAssertFalse(OrganiseRules.offersAccountPick(on, nil, pin: nil), "accounts not read yet")
+
+        let free = OrganiseRules.accountChoices(list, pin: nil, follows: "Home")
+        XCTAssertEqual(free.map(\.label), ["Active account (Home)", "Work (no Chrome)", "Home", "Old (signed out)"])
+        XCTAssertEqual(free.map(\.checked), [true, false, false, false])
+        XCTAssertEqual(free.map(\.picks), [false, true, true, false], "a signed out account cannot be picked, nor the active line while it holds")
+
+        let held = OrganiseRules.accountChoices(list, pin: "gone", follows: "")
+        XCTAssertEqual(held.last?.label, "Removed account")
+        XCTAssertEqual(held.first?.picks, true, "clearing is offered while pinned")
+        let own = OrganiseRules.accountChoices(list, pin: "home", follows: "")
+        XCTAssertEqual(own.filter(\.checked).map(\.id), ["home"])
+        XCTAssertEqual(own.first { $0.id == "home" }?.picks, false, "the pinned account runs nothing")
+        XCTAssertEqual(OrganiseRules.accountFollows(list, SessionRow(id: "s", account: "home")), "Home")
+        XCTAssertEqual(OrganiseRules.accountFollows(list, SessionRow(id: "s", account: "home", accountPin: "work")), "")
+        XCTAssertEqual(OrganiseRules.accountChromeNote(list), "Chrome is on Home, so work on another account can't reach it.")
+    }
 }

@@ -287,4 +287,45 @@ public enum OrganiseRules {
         if archived == 0 { return "Not archived: \(sentence(reason))" }
         return "Archived \(archived) of \(sessions(total))\(withSubs(subs))\(stops). Not archived: \(sentence(reason))"
     }
+
+    // MARK: Account pins
+
+    public static let pickNote = "Takes effect at the next start. A running turn keeps its account."
+    public static let chromeNote = "Chrome works only on the account its extension is signed into."
+
+    /// One line of the Account menu. `account` is what picking it pins, nil meaning the active account. A checked line, or a disabled one, picks nothing.
+    public struct AccountChoice: Hashable, Sendable, Identifiable {
+        public var id: String
+        public var label: String
+        public var account: String?
+        public var checked: Bool
+        public var picks: Bool
+    }
+
+    public static func accountName(_ accounts: [Account], _ id: String?) -> String { accounts.first { $0.id == id }?.name ?? "" }
+
+    private static func chromeOnName(_ accounts: [Account], _ a: Account) -> String { a.chromeOn.map { accountName(accounts, $0) } ?? "" }
+
+    /// The page's pick: shown when the server pins and there is a choice to make, or something is already pinned.
+    public static func offersAccountPick(_ features: SessionFeatures?, _ accounts: [Account]?, pin: String?) -> Bool {
+        features?.accountPins == true && accounts != nil && (pin != nil || (accounts?.count ?? 0) > 1)
+    }
+
+    /// Whom "Active account" runs as: nobody in particular when the session holds its own pin.
+    public static func accountFollows(_ accounts: [Account], _ row: SessionRow) -> String { row.accountPin != nil ? "" : accountName(accounts, row.account) }
+
+    public static func accountChoices(_ accounts: [Account], pin: String?, follows: String) -> [AccountChoice] {
+        let listed = accounts.map { a -> AccountChoice in
+            let note = a.signedOut ? " (signed out)" : !chromeOnName(accounts, a).isEmpty ? " (no Chrome)" : ""
+            return AccountChoice(id: a.id, label: a.name + note, account: a.id, checked: a.id == pin, picks: a.id != pin && !(a.signedOut))
+        }
+        let removed = pin.flatMap { id in accountName(accounts, id).isEmpty ? AccountChoice(id: id, label: "Removed account", account: id, checked: true, picks: false) : nil }
+        return [AccountChoice(id: "", label: follows.isEmpty ? "Active account" : "Active account (\(follows))", account: nil, checked: pin == nil, picks: pin != nil)] + listed + (removed.map { [$0] } ?? [])
+    }
+
+    /// The line under the pick: definite when the survey found Chrome on another account, else the static limit.
+    public static func accountChromeNote(_ accounts: [Account]) -> String {
+        let name = accounts.map { chromeOnName(accounts, $0) }.first { !$0.isEmpty }
+        return name.map { "Chrome is on \($0), so work on another account can't reach it." } ?? chromeNote
+    }
 }

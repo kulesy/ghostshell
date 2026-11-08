@@ -85,6 +85,19 @@ final class LayoutClientTests: XCTestCase {
         ])
     }
 
+    func testPinningASessionToAnAccount() async throws {
+        LayoutStub.reset { _ in (200, #"{"kind":"session","id":"s1","account":"work"}"#) }
+        let client = await client()
+        try await client.pinAccount(id: "s1", account: "work")
+        try await client.pinAccount(id: "s1", account: nil)
+        try await client.pinAccount(.group, id: "g1", account: "work")
+        XCTAssertEqual(try lines(), [
+            #"POST /api/layout/account {"account":"work","id":"s1","kind":"session"}"#,
+            #"POST /api/layout/account {"account":null,"id":"s1","kind":"session"}"#,
+            #"POST /api/layout/account {"account":"work","id":"g1","kind":"group"}"#,
+        ])
+    }
+
     func testSeveralSessionsAtOnce() async throws {
         LayoutStub.reset { _ in (200, #"{"undo":"u-1","count":2}"#) }
         let client = await client()

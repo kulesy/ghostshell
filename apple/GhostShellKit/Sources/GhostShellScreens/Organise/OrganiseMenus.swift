@@ -64,12 +64,34 @@ private struct SingleRowMenu: View {
         } else {
             Button("Pin", systemImage: "pin") { organise.pin(row) }
         }
+        if OrganiseRules.offersAccountPick(organise.features, organise.accounts, pin: row.accountPin), let accounts = organise.accounts {
+            AccountMenu(accounts: accounts, row: row)
+        }
         Button(picked ? "Deselect" : "Select", systemImage: "checkmark.square") {
             if picked { state.selection.remove(row.id) } else { state.selection.insert(row.id) }
         }
         Divider()
         if running { Button("Stop", systemImage: "stop.circle") { organise.stop(row) } }
         Button(running || below ? "Stop and archive" : "Archive", systemImage: "archivebox", role: running || below ? .destructive : nil) { organise.archive(row) }
+    }
+}
+
+private struct AccountMenu: View {
+    @Environment(OrganiseModel.self) private var organise
+    let accounts: [Account]
+    let row: SessionRow
+
+    var body: some View {
+        let pin = row.accountPin
+        Menu("Account", systemImage: "person.crop.circle") {
+            ForEach(OrganiseRules.accountChoices(accounts, pin: pin, follows: OrganiseRules.accountFollows(accounts, row))) { choice in
+                Toggle(choice.label, isOn: Binding(get: { choice.checked }, set: { _ in organise.pinAccount(row, to: choice.account) }))
+                    .disabled(!choice.picks)
+            }
+            Divider()
+            Text(OrganiseRules.pickNote)
+            Text(OrganiseRules.accountChromeNote(accounts))
+        }
     }
 }
 
