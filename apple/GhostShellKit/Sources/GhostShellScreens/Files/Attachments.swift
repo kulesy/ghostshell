@@ -23,7 +23,7 @@ struct AttachmentsView: View {
                 }
                 if !attachments.files.isEmpty {
                     FlowLayout(spacing: 6, alignment: .trailing) {
-                        ForEach(attachments.files.indices, id: \.self) { index in FileCardView(file: attachments.files[index]) }
+                        ForEach(attachments.files.indices, id: \.self) { index in FileCardView(file: attachments.files[index], store: store) }
                     }
                 }
             }
@@ -92,11 +92,21 @@ private struct PictureTile: View {
     }
 }
 
-/// A file a person sent. It is not openable, because it was never one of the chat's linked files.
+/// A file a person sent. On the Mac it is not openable. A phone taps it to open the panel, which the server allows only if a reply links the same path.
 private struct FileCardView: View {
     let file: ChatFile
+    let store: FilesStore
 
     var body: some View {
+        #if os(iOS)
+        Button { store.open(path: file.path, line: nil, autoplay: ChatFiles.isClip(file.path)) } label: { card }
+            .buttonStyle(.plain).phoneIconTouch().accessibilityHint("Opens the file")
+        #else
+        card
+        #endif
+    }
+
+    private var card: some View {
         HStack(spacing: 8) {
             Image(systemName: "doc").font(.system(size: 18, weight: .light)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 0) {

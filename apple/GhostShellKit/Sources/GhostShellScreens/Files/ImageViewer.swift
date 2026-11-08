@@ -23,12 +23,20 @@ struct ImageViewerOverlay: View {
     let store: FilesStore
 
     var body: some View {
+        #if os(iOS)
+        // An overlay on a phone stops under the navigation bar, so the viewer is a page of its own that covers the screen.
+        Color.clear.allowsHitTesting(false)
+            .fullScreenCover(isPresented: Binding(get: { store.viewer != nil }, set: { if !$0 { store.closeViewer() } })) {
+                if let viewer = store.viewer { ViewerContent(store: store, viewer: viewer).presentationBackground(.black) }
+            }
+        #else
         ZStack {
             if let viewer = store.viewer {
                 ViewerContent(store: store, viewer: viewer).transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.15), value: store.viewer != nil)
+        #endif
     }
 }
 
@@ -108,6 +116,7 @@ private struct ViewerContent: View {
             Image(systemName: symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
                 .frame(width: 32, height: 32)
                 .background(Color.black.opacity(0.5), in: Circle())
+                .phoneIconTouch()
                 .contentShape(Circle())
         }
         .buttonStyle(.plain).help(name).accessibilityLabel(name)

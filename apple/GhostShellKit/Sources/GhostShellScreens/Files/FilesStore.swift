@@ -280,6 +280,37 @@ final class FilesStore {
     }
     #endif
 
+    // MARK: Save to Files
+
+    /// The name a saved copy is offered under: the file's own last path component, never anything the server sent as a path.
+    static func exportName(_ path: String) -> String {
+        let name = ChatFiles.displayName((path as NSString).lastPathComponent)
+        return name.contains("/") ? "file" : name
+    }
+
+    #if os(iOS)
+    /// The bytes the system's Files sheet writes where the person picks. Held in memory only, so nothing lands on disk before they choose.
+    struct Export {
+        var name: String
+        var data: Data
+    }
+
+    var export: Export?
+
+    func saveToFiles() {
+        guard let file, let preview = file.preview, !preview.tooLarge else { return }
+        let path = file.path
+        Task {
+            do {
+                let data = try await client.fileBytes(sessionID: sessionID, path: path, download: true)
+                export = Export(name: Self.exportName(path), data: data)
+            } catch {
+                alert = Alert(title: "Cannot save this file", message: error.localizedDescription)
+            }
+        }
+    }
+    #endif
+
     // MARK: Pictures
 
     /// Opens the viewer on pictures the caller already holds, then widens it to every picture of the chat when the server answers.

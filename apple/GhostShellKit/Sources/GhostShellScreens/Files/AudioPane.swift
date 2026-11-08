@@ -37,16 +37,26 @@ struct AudioPane: View {
 
     private func controls(_ player: ClipPlayer) -> some View {
         HStack(spacing: 10) {
-            Button { player.toggle() } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").frame(width: 16, height: 16)
-            }
-            .buttonStyle(.borderedProminent).controlSize(.regular).clipShape(Circle())
-            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+            playButton(player)
             Slider(value: Binding(get: { player.elapsed }, set: { player.seek(to: $0) }), in: 0...max(player.duration, 0.01))
                 .accessibilityLabel("Position")
             Text(verbatim: "\(ClipTime.text(player.elapsed)) / \(ClipTime.text(player.duration))")
                 .font(ChatStyle.small.monospacedDigit()).foregroundStyle(.secondary)
         }
+    }
+
+    @ViewBuilder private func playButton(_ player: ClipPlayer) -> some View {
+        let symbol = player.isPlaying ? "pause.fill" : "play.fill"
+        #if os(iOS)
+        Button { player.toggle() } label: {
+            Image(systemName: symbol).foregroundStyle(.white).frame(width: 44, height: 44).background(Color.accentColor, in: Circle())
+        }
+        .buttonStyle(.plain).accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+        #else
+        Button { player.toggle() } label: { Image(systemName: symbol).frame(width: 16, height: 16) }
+            .buttonStyle(.borderedProminent).controlSize(.regular).clipShape(Circle())
+            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+        #endif
     }
 
     private func clipNav(_ clips: [String], at: Int) -> some View {
@@ -55,9 +65,11 @@ struct AudioPane: View {
                 Button { store.open(path: clips[(at + clips.count - 1) % clips.count], line: nil, autoplay: true) } label: {
                     Label("Previous", systemImage: "backward.fill").labelStyle(.iconOnly)
                 }
+                .phoneIconTouch()
                 Button { store.open(path: clips[(at + 1) % clips.count], line: nil, autoplay: true) } label: {
                     Label("Next", systemImage: "forward.fill").labelStyle(.iconOnly)
                 }
+                .phoneIconTouch()
                 Text(verbatim: "\(at + 1) of \(clips.count)").font(ChatStyle.small).foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
@@ -71,7 +83,7 @@ struct AudioPane: View {
                         }
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain).help(clip)
+                    .buttonStyle(.plain).phoneIconTouch().help(clip)
                     .accessibilityAddTraits(clip == path ? .isSelected : [])
                 }
             }
