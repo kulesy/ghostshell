@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Drives the Debug app through System Events (XCUITest is not available here) and saves every state in light and dark.
+// Drives the Debug app through accessibility, in the background (XCUITest is not available here), and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--flow accounts]
-import { spawn, spawnSync } from 'node:child_process';
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--flow main|marks|chats|accounts]
+import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -25,38 +25,47 @@ const DEFAULT_SIZE = [960, 640];
 const MIN_SIZE = [640, 420];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const osa = script => spawnSync('osascript', ['-e', script], { encoding: 'utf8', timeout: 30_000 });
-
-// System Events keystrokes are global, so two runs at once would type into each other's app. One run per machine holds this folder.
-const LOCK = '/tmp/ghostshell-shots.lock';
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } };
-const lockOwner = () => Number(fs.readFileSync(path.join(LOCK, 'pid'), 'utf8').trim());
-function acquireLock() {
-  for (let attempt = 0; attempt < 3; attempt++) {
+
+// Runs share nothing but apple/build, so building the app and compiling the helper wait for each other there. Everything else is per run.
+const BUILD_DIR = path.join(here, '..', 'build');
+const BUILD_LOCK = path.join(BUILD_DIR, 'shots-build.lock');
+async function withBuildLock(work) {
+  fs.mkdirSync(BUILD_DIR, { recursive: true });
+  let held = false;
+  while (!held) {
     try {
-      fs.mkdirSync(LOCK);
-      fs.writeFileSync(path.join(LOCK, 'pid'), String(process.pid));
-      process.on('exit', () => {
-        try { if (lockOwner() === process.pid) { fs.unlinkSync(path.join(LOCK, 'pid')); fs.rmdirSync(LOCK); } } catch { /* already gone */ }
-      });
-      return;
+      fs.mkdirSync(BUILD_LOCK);
+      fs.writeFileSync(path.join(BUILD_LOCK, 'pid'), String(process.pid));
+      held = true;
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
+      let owner = NaN;
+      try { owner = Number(fs.readFileSync(path.join(BUILD_LOCK, 'pid'), 'utf8').trim()); } catch { /* the owner has made the folder and not yet written its pid */ }
+      const young = Date.now() - (fs.statSync(BUILD_LOCK, { throwIfNoEntry: false })?.mtimeMs ?? 0) < 5000;
+      if (Number.isFinite(owner) ? !alive(owner) : !young) {
+        // Its owner is dead. Renaming is atomic, so only one run clears it.
+        const stale = `${BUILD_LOCK}.stale-${process.pid}`;
+        try { fs.renameSync(BUILD_LOCK, stale); fs.rmSync(stale, { recursive: true, force: true }); } catch { /* another run got there first */ }
+      } else {
+        await sleep(500);
+      }
     }
-    let owner = NaN;
-    try { owner = lockOwner(); } catch { /* the owner has made the folder and not yet written its pid */ }
-    const young = Date.now() - fs.statSync(LOCK, { throwIfNoEntry: false })?.mtimeMs < 5000;
-    if (Number.isFinite(owner) ? alive(owner) : young) {
-      console.error(`Another shots run holds ${LOCK}${Number.isFinite(owner) ? ` (pid ${owner})` : ''}. Wait for it to finish, then run this again.`);
-      process.exit(1);
-    }
-    // Stale: its owner is dead. Renaming is atomic, so only one run clears it.
-    const stale = `${LOCK}.stale-${process.pid}`;
-    try { fs.renameSync(LOCK, stale); } catch { /* another run got there first */ }
-    fs.rmSync(stale, { recursive: true, force: true });
   }
-  console.error(`Could not take ${LOCK}.`);
-  process.exit(1);
+  const release = () => { try { fs.rmSync(BUILD_LOCK, { recursive: true, force: true }); } catch { /* already gone */ } };
+  process.once('exit', release);
+  try { return await work(); } finally { release(); process.removeListener('exit', release); }
+}
+
+// The accessibility helper: pid-exact, and it sends no input event. Compiled to a temp name and renamed, so no run sees half a binary.
+const AX_SOURCE = path.join(here, 'ax.swift');
+const AX = path.join(BUILD_DIR, 'ax');
+function compileHelper() {
+  if (fs.existsSync(AX) && fs.statSync(AX).mtimeMs >= fs.statSync(AX_SOURCE).mtimeMs) return;
+  const temp = `${AX}.${process.pid}`;
+  const r = spawnSync('swiftc', ['-O', AX_SOURCE, '-o', temp], { encoding: 'utf8', timeout: 120_000 });
+  if (r.status !== 0) throw new Error(`The accessibility helper did not compile:\n${r.stderr}`);
+  fs.renameSync(temp, AX);
 }
 
 const failures = [];
@@ -75,10 +84,12 @@ async function until(what, test, seconds = 15) {
 }
 
 // Everything started here is stopped in `finally`, and on a signal.
-const apps = new Set();
+const pids = new Set();
 const servers = new Set();
 const suites = new Set();
 const services = new Set();
+const cameToFront = [];
+let frontChecks = 0;
 const freePort = () => new Promise(resolve => {
   const probe = net.createServer().listen(0, '127.0.0.1', () => {
     const { port } = probe.address();
@@ -87,14 +98,17 @@ const freePort = () => new Promise(resolve => {
 });
 const readPassword = server => fs.readFileSync(server.passwordFile, 'utf8').trim();
 
+// The app runs in the background the whole time and is driven through accessibility only (apple/scripts/ax.swift), so nothing here sends a key or a click.
+// Each node from tree() is { path, role, subrole, desc, title, value, help, id, disclosing, orientation, focused, selected, pos, size, kid(...indexes) }.
+// Its path is child indexes from the window, in the same depth-first order as AppleScript's `entire contents`.
 class App {
-  constructor(binary, { address, appearance, tag }) {
+  constructor(bundle, { address, appearance, tag }) {
     this.appearance = appearance;
     this.tag = tag;
     this.count = 0;
     this.service = `gs-test-${crypto.randomBytes(6).toString('hex')}`;
     this.suite = `com.kulesy.ghostshell.test.${this.service}`;
-    this.binary = binary;
+    this.bundle = bundle;
     this.address = address;
     this.pid = undefined;
     this.shotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-shot-'));
@@ -102,224 +116,155 @@ class App {
     suites.add(this.suite);
   }
 
+  // `open -g -n` starts a new instance without activating it. NSAppSleepDisabled stops App Nap from slowing the shot timer and the polling.
+  // Another process is also named GhostShell (the installed app, and a Chrome app), so the launched app is found by its unique Keychain service.
   async launch() {
     fs.mkdirSync(this.shotDir, { recursive: true });
-    this.child = spawn(this.binary, ['-GSKeychainService', this.service, '-GSAddress', this.address, '-GSDefaultsSuite', this.suite,
-      '-GSAppearance', this.appearance, '-GSShotDir', this.shotDir], { stdio: 'ignore' });
-    this.pid = this.child.pid;
-    apps.add(this.child);
-    this.exited = new Promise(resolve => this.child.once('exit', () => { apps.delete(this.child); resolve(); }));
-    const shown = await until('window', () => this.events('return count of (windows whose subrole is "AXStandardWindow")').stdout.trim() === '1', 20);
+    const opened = spawnSync('open', ['-g', '-n', this.bundle, '--args', '-NSAppSleepDisabled', 'YES', '-GSKeychainService', this.service, '-GSAddress', this.address,
+      '-GSDefaultsSuite', this.suite, '-GSAppearance', this.appearance, '-GSShotDir', this.shotDir], { encoding: 'utf8', timeout: 30_000 });
+    if (opened.status !== 0) throw new Error(`open failed: ${opened.stderr}`);
+    const found = await until('process', () => {
+      this.pid = Number(spawnSync('pgrep', ['-f', `MacOS/GhostShell .*${this.service}`], { encoding: 'utf8' }).stdout.split('\n')[0]) || undefined;
+      return this.pid;
+    }, 20);
+    if (!found) throw new Error('The app did not start.');
+    pids.add(this.pid);
+    this.cameToFront = false;
+    this.watchdog = setInterval(() => this.watch(), 500);
+    const shown = await until('window', () => this.tree().length > 0, 20);
     if (!shown) throw new Error('The app window did not appear.');
-    this.front();
     await sleep(600);
   }
 
-  // Another process is also named GhostShell (the installed app, and a Chrome app), so the launched app is found by its pid, never its name.
-  // The window title follows the chosen session, and the system's saved-password popup is a second window, so the main window is found by its kind.
-  events(body) { return osa(`tell application "System Events" to tell (first process whose unix id is ${this.pid})\n${body}\nend tell`); }
-  front() { osa(`tell application "System Events" to set frontmost of (first process whose unix id is ${this.pid}) to true`); }
-  // Keystrokes go to whichever app is in front, so every one is sent only after this pid is confirmed to be.
-  send(command) {
-    const frontPid = () => osa('tell application "System Events" to return unix id of first process whose frontmost is true').stdout.trim();
-    if (frontPid() !== String(this.pid)) { this.front(); spawnSync('sleep', ['0.4']); }
-    if (frontPid() !== String(this.pid)) throw new Error(`The app (pid ${this.pid}) is not the front process, so nothing was typed.`);
-    osa(`tell application "System Events"\n${command}\nend tell`);
+  // Records a failed check if the app is ever the frontmost app. Run on an interval, so every run shows the app stayed in the background.
+  watch() {
+    const front = Number(spawnSync(AX, ['front'], { encoding: 'utf8', timeout: 10_000 }).stdout.trim());
+    frontChecks += 1;
+    if (front === this.pid && !this.cameToFront) {
+      this.cameToFront = true;
+      cameToFront.push(`${this.tag} ${this.appearance}`);
+      check(false, `the app came to the front (pid ${this.pid}, after: ${this.last})`);
+    }
   }
-  type(text) { this.send(`keystroke ${JSON.stringify(text)}`); }
-  enter() { this.send('key code 36'); }
-  // The system offers saved passwords in a small window over the field. Escape closes it, so Return reaches the form.
-  submit() { this.send('key code 53'); this.send('key code 36'); }
-  resize([w, h]) { this.events(`set size of (first window whose subrole is "AXStandardWindow") to {${w}, ${h}}`); }
+
+  // Runs one helper command on this app's pid. Returns the parsed JSON, or { ok: false, error } when the helper failed.
+  run(command, ...rest) {
+    this.last = [command, ...rest].join(' ').slice(0, 60);
+    const r = spawnSync(AX, [command, String(this.pid), ...rest], { encoding: 'utf8', timeout: 30_000, maxBuffer: 1 << 28 });
+    if (r.status !== 0) return { ok: false, error: (r.stderr || String(r.error || r.signal)).trim() };
+    return JSON.parse(r.stdout);
+  }
+
+  // Every node under the main window. The window title follows the chosen session, and the system's saved-password popup is a second window, so the main window is found by its kind.
+  tree() {
+    const nodes = this.run('tree');
+    if (!Array.isArray(nodes)) return [];
+    const index = new Map(nodes.map(node => [node.path.join(','), node]));
+    for (const node of nodes) node.kid = (...at) => index.get([...node.path, ...at].join(','));
+    return nodes;
+  }
+  find(test) { return this.tree().find(test); }
+  findAll(test) { return this.tree().filter(test); }
+  // Actions and attribute writes go to the app by pid. `node` is a tree node, or 'focused' for the focused element.
+  act(node, action = 'AXPress') { return this.run('act', node === 'focused' ? 'focused' : JSON.stringify(node.path), action).ok === true; }
+  set(node, attribute, value) { return this.run('set', node === 'focused' ? 'focused' : JSON.stringify(node.path), attribute, JSON.stringify(value)).ok === true; }
+
+  // The app is never brought to the front, so there is nothing to do.
+  front() {}
+  send() { throw new Error('Global keystrokes are gone. Use menu, act, set, enter or escape.'); }
+  events() { throw new Error('System Events is gone. Use tree, find, findAll, act or set.'); }
+
+  // Appends to the focused field. A secure field reads back empty, so the text becomes its value.
+  type(text) { return this.run('type', text).ok === true; }
+  enter() { return this.act('focused', 'AXConfirm'); }
+  submit() { return this.enter(); }
+  // A popover closes on AXCancel, which is what its own Escape does.
+  escape() { return this.act(this.find(node => node.role === 'AXPopover') ?? 'focused', 'AXCancel'); }
+  resize([w, h]) { return this.run('set', '[]', 'AXSize', JSON.stringify([w, h])).ok === true; }
 
   // The text of every static text in the window, one per line.
-  texts() {
-    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-set out to ""
-repeat with e in els
-  try
-    if role of e is "AXStaticText" then set out to out & (value of e as text) & linefeed
-  end try
-end repeat
-return out`).stdout;
-  }
-  hasButton(name) {
-    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-repeat with e in els
-  try
-    if role of e is "AXButton" and description of e is ${JSON.stringify(name)} then return "yes"
-  end try
-end repeat
-return "no"`).stdout.trim() === 'yes';
-  }
+  texts() { return this.findAll(node => node.role === 'AXStaticText' && node.value != null).map(node => `${node.value}\n`).join(''); }
+  hasButton(name) { return !!this.find(node => node.role === 'AXButton' && node.desc === name); }
   // Session rows only. With sections, the nth AXRow is often a heading, and the search field is a row too.
-  rows() {
-    return Number(this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-set n to 0
-repeat with e in els
-  try
-    if role of e is "AXRow" and role of UI element 1 of UI element 1 of e is not "AXGroup" and role of UI element 1 of UI element 1 of e is not "AXTextField" then set n to n + 1
-  end try
-end repeat
-return n`).stdout.trim());
+  sessionRowNodes() {
+    return this.findAll(node => {
+      if (node.role !== 'AXRow') return false;
+      const inner = node.kid(0, 0);
+      return !!inner && inner.role !== 'AXGroup' && inner.role !== 'AXTextField';
+    });
   }
+  rows() { return this.sessionRowNodes().length; }
   // Chooses the nth session row (from 0), skipping the section headings and the search field.
   chooseRow(index = 0) {
-    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-set n to 0
-repeat with e in els
-  try
-    if role of e is "AXRow" and role of UI element 1 of UI element 1 of e is not "AXGroup" and role of UI element 1 of UI element 1 of e is not "AXTextField" then
-      if n is ${index} then
-        set selected of e to true
-        return
-      end if
-      set n to n + 1
-    end if
-  end try
-end repeat`);
+    const row = this.sessionRowNodes()[index];
+    return !!row && this.set(row, 'AXSelected', true);
   }
-  chooseFirstRow() { this.chooseRow(0); }
+  chooseFirstRow() { return this.chooseRow(0); }
   // The chat is the last vertical scroll bar in the window, after the sidebar's. 0 is the top and 1 the end.
   scrollChat(to) {
-    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-set bar to missing value
-repeat with e in els
-  try
-    if role of e is "AXScrollBar" and orientation of e is "AXVerticalOrientation" then set bar to e
-  end try
-end repeat
-if bar is not missing value then set value of bar to ${to}`);
+    const bar = this.findAll(node => node.role === 'AXScrollBar' && node.orientation === 'AXVerticalOrientation').at(-1);
+    return !!bar && this.set(bar, 'AXValue', to);
   }
   // Presses the first button whose description or title is `name`, or starts with it. An alert's buttons are in the window's contents too.
   press(name, { prefix = false } = {}) {
-    const q = JSON.stringify(name);
-    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-repeat with e in els
-  try
-    if role of e is "AXButton" then
-      set d to ""
-      try
-        set d to description of e
-      end try
-      set t to ""
-      try
-        set t to title of e
-      end try
-      if ${prefix ? `d starts with ${q} or t starts with ${q}` : `d is ${q} or t is ${q}`} then
-        click e
-        return "yes"
-      end if
-    end if
-  end try
-end repeat
-return "no"`).stdout.trim() === 'yes';
+    const matches = text => (prefix ? text?.startsWith(name) : text === name);
+    const tree = this.tree();
+    const sheet = tree.find(node => node.role === 'AXSheet')?.path.join();
+    const buttons = tree.filter(node => node.role === 'AXButton' && (matches(node.desc) || matches(node.title)));
+    // An open alert is in front of the window, so its buttons win over a same-named button behind it.
+    const button = buttons.find(node => sheet && node.path.join().startsWith(`${sheet},`)) ?? buttons[0];
+    if (!button) return false;
+    if (this.act(button)) return true;
+    // An alert closes as its button is pressed, and an accessory app answers that press with an error, so a sheet that is gone counts.
+    return !!sheet && button.path.join().startsWith(`${sheet},`) && !this.tree().some(node => node.role === 'AXSheet');
   }
   // The sidebar top to bottom, a line each: "H" for a heading, "R <hover text> <Expanded|Collapsed|>" for a session row. Row titles
   // are not readable through accessibility, so a row is told apart by its hover text, which the stub varies by folder.
   outline() {
-    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-set listing to false
-set out to ""
-repeat with e in els
-  try
-    set r to role of e
-    if r is "AXOutline" then set listing to true
-    if r is "AXColumn" then set listing to false
-    if listing and r is "AXHeading" then set out to out & "H" & linefeed
-    if listing and (r is "AXUnknown" or (r is "AXButton" and description of e is "button")) then
-      set h to ""
-      try
-        set h to help of e
-      end try
-      set v to ""
-      try
-        set v to value of e as text
-      end try
-      set out to out & "R|" & h & "|" & v & linefeed
-    end if
-  end try
-end repeat
-return out`).stdout.split('\n').filter(Boolean).map(line => line.split('|'));
+    const nodes = this.tree();
+    const list = nodes.find(node => node.role === 'AXOutline');
+    if (!list) return [];
+    // A row's content sits under its cell, so a session row is the node three levels below the outline's row, and a heading is deeper.
+    return nodes.filter(node => node.path.length > list.path.length && node.path.slice(0, list.path.length).join() === list.path.join())
+      .flatMap(node => {
+        if (node.role === 'AXHeading') return [['H']];
+        const isRow = node.path.length === list.path.length + 3 && (node.role === 'AXUnknown' || node.role === 'AXButton');
+        return isRow ? [['R', node.help ?? '', typeof node.value === 'string' ? node.value : '']] : [];
+      });
   }
   headings() { return this.outline().filter(([kind]) => kind === 'H').length; }
   sessionRows() { return this.outline().filter(([kind]) => kind === 'R'); }
-  // Opens or folds the nth section heading (from 0) by clicking its disclosure chevron, at the right edge of the heading's row.
-  // Setting the row's disclosure through accessibility folds the outline without telling the app, so the fold would not be kept.
+  // Opens or folds the nth section heading (from 0). Pressing the heading goes through the outline, so the app keeps the fold. Setting AXDisclosing on the row does not.
   setSection(n, open) {
-    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-set seen to -1
-repeat with e in els
-  try
-    if role of e is "AXRow" and role of UI element 1 of UI element 1 of UI element 1 of e is "AXHeading" then
-      set seen to seen + 1
-      if seen is ${n} and (value of attribute "AXDisclosing" of e) is not ${open} then
-        set {x, y} to position of e
-        set {w, h} to size of e
-        click at {x + w - 12, y + h / 2}
-        return
-      end if
-    end if
-  end try
-end repeat`);
+    const heading = this.findAll(node => node.role === 'AXRow' && node.kid(0, 0, 0)?.role === 'AXHeading')[n];
+    return !!heading && (heading.disclosing === open || this.act(heading.kid(0, 0, 0)));
   }
+  viewPopup() { return this.find(node => node.role === 'AXPopUpButton' && node.desc?.startsWith('View')); }
   // What the View menu says about the other views: "View", "View, another view needs you" or "View, another view is working".
-  viewMenu() {
-    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-repeat with e in els
-  try
-    if role of e is "AXPopUpButton" and description of e starts with "View" then return description of e
-  end try
-end repeat
-return ""`).stdout.trim();
-  }
+  viewMenu() { return this.viewPopup()?.desc ?? ''; }
   // Picks a project (or Home) from the View menu in the sidebar's header. A project's item reads "Name (count)", and the menu is described "View, another view needs you" while one does.
   pickView(name) {
-    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-repeat with e in els
-  try
-    if role of e is "AXPopUpButton" and description of e starts with "View" then
-      click e
-      delay 0.4
-      click (first menu item of menu 1 of e whose name starts with ${JSON.stringify(name)})
-      return
-    end if
-  end try
-end repeat`);
+    const popup = this.viewPopup();
+    if (!popup || !this.act(popup)) return false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const item = this.find(node => node.role === 'AXMenuItem' && node.title?.startsWith(name));
+      if (item) return this.act(item);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    }
+    return false;
   }
-  // Focuses the sidebar's search field and types into it.
+  // Focuses the sidebar's search field and sets its text.
   search(text) {
-    this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-repeat with e in els
-  try
-    if role of e is "AXTextField" and description of e is "search text field" then
-      set focused of e to true
-      return
-    end if
-  end try
-end repeat`);
-    this.type(text);
+    const field = this.find(node => node.subrole === 'AXSearchField');
+    return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
   }
   // SwiftUI gives its bordered buttons no name, so a button is pressed by its place in the window.
   pressNth(n) {
-    return this.events(`set els to entire contents of (first window whose subrole is "AXStandardWindow")
-set k to 0
-repeat with e in els
-  try
-    if role of e is "AXButton" then
-      set k to k + 1
-      if k is ${n} then
-        perform action "AXPress" of e
-        return "yes"
-      end if
-    end if
-  end try
-end repeat
-return "no"`).stdout.trim() === 'yes';
+    const button = this.findAll(node => node.role === 'AXButton')[n - 1];
+    return !!button && this.act(button);
   }
-  menu(bar, item) { return this.events(`click menu item ${JSON.stringify(item)} of menu 1 of menu bar item ${JSON.stringify(bar)} of menu bar 1`).status === 0; }
-  escape() { this.send('key code 53'); }
-  signOutFromMenu() { this.events('click menu item "Sign Out" of menu 1 of menu bar item "File" of menu bar 1'); }
+  menu(bar, item) { return this.run('menu', bar, item).ok === true; }
+  signOutFromMenu() { return this.menu('File', 'Sign Out'); }
 
   async shot(name) {
     this.count += 1;
@@ -345,12 +290,16 @@ return "no"`).stdout.trim() === 'yes';
     await sleep(400);
   }
 
+  // Quits the way the Dock would, and kills the app if it is still there after 6 seconds.
   async quit() {
-    if (!this.child || this.child.exitCode !== null) return;
-    try { this.send('keystroke "q" using command down'); } catch { /* the hard kill below covers it */ }
-    const hard = setTimeout(() => this.child.kill('SIGKILL'), 6000);
-    await this.exited;
-    clearTimeout(hard);
+    clearInterval(this.watchdog);
+    if (!this.pid || !alive(this.pid)) return;
+    this.run('quit');
+    if (!await until('quit', () => !alive(this.pid), 6)) {
+      process.kill(this.pid, 'SIGKILL');
+      await until('killed', () => !alive(this.pid), 2);
+    }
+    pids.delete(this.pid);
   }
 }
 
@@ -372,10 +321,10 @@ async function signInDirect(server) {
 // The sidebar lists the stub's chats A to Z, so the rows run empty, rich, stream, long.
 const CHAT_ROW = { empty: 0, rich: 1, stream: 2, long: 3 };
 
-async function chatFlow(binary, appearance) {
+async function chatFlow(bundle, appearance) {
   const stub = await startChatStub();
   console.log(`\n== ${appearance}: reading chats`);
-  const app = new App(binary, { address: stub.address, appearance, tag: '6' });
+  const app = new App(bundle, { address: stub.address, appearance, tag: '6' });
   try {
     await app.launch();
     app.type('whatever');
@@ -426,10 +375,10 @@ async function chatFlow(binary, appearance) {
   }
 }
 
-async function mainFlow(binary, appearance, withChat) {
+async function mainFlow(bundle, appearance, withChat) {
   const server = await startScratch({ claude: withChat });
   servers.add(server);
-  const app = new App(binary, { address: server.address, appearance, tag: '1' });
+  const app = new App(bundle, { address: server.address, appearance, tag: '1' });
   console.log(`\n== ${appearance}: sign in, list, chat, relaunch, sign out`);
   try {
     await app.launch();
@@ -501,10 +450,10 @@ async function mainFlow(binary, appearance, withChat) {
   }
 }
 
-async function emptyAndLocked(binary, appearance) {
+async function emptyAndLocked(bundle, appearance) {
   const server = await startScratch({ empty: true });
   servers.add(server);
-  const app = new App(binary, { address: server.address, appearance, tag: '2' });
+  const app = new App(bundle, { address: server.address, appearance, tag: '2' });
   console.log(`\n== ${appearance}: empty list, locked`);
   try {
     await app.launch();
@@ -526,9 +475,9 @@ async function emptyAndLocked(binary, appearance) {
   }
 }
 
-async function badAddresses(binary, appearance) {
+async function badAddresses(bundle, appearance) {
   console.log(`\n== ${appearance}: unreachable, bad address`);
-  const dead = new App(binary, { address: `http://localhost:${await freePort()}`, appearance, tag: '3' });
+  const dead = new App(bundle, { address: `http://localhost:${await freePort()}`, appearance, tag: '3' });
   try {
     await dead.launch();
     dead.type('whatever');
@@ -539,7 +488,7 @@ async function badAddresses(binary, appearance) {
     await dead.quit();
   }
   // Plain http off loopback is refused before any request leaves the app.
-  const bad = new App(binary, { address: 'http://example.com', appearance, tag: '4' });
+  const bad = new App(bundle, { address: 'http://example.com', appearance, tag: '4' });
   try {
     await bad.launch();
     bad.type('whatever');
@@ -553,7 +502,7 @@ async function badAddresses(binary, appearance) {
 
 // A chat waiting on an approval or a failed turn can't be had on demand from a scratch server, so a stub answers the routes the list uses.
 // Its index has a pinned row, a family, a routine with earlier runs, two groups (one in a project) and every mark.
-async function marks(binary, appearance) {
+async function marks(bundle, appearance) {
   console.log(`\n== ${appearance}: every status mark, sections, project, search, fold kept`);
   const now = Date.now();
   const row = (id, title, extra = {}) => ({ id, title, state: 'idle', cwd: '/Users/me/Projects/site', branch: 'main', lastActivityAt: now - 600_000, sortAt: now - 600_000, ...extra });
@@ -583,7 +532,7 @@ async function marks(binary, appearance) {
     else res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(req.url.startsWith('/api/archived') ? { archived } : index));
   });
   await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
-  const app = new App(binary, { address: `http://localhost:${stub.address().port}`, appearance, tag: '5' });
+  const app = new App(bundle, { address: `http://localhost:${stub.address().port}`, appearance, tag: '5' });
   try {
     await app.launch();
     app.type('whatever');
@@ -646,7 +595,7 @@ async function marks(binary, appearance) {
 // The accounts, banners, context meter and passkeys all need a server that is out of usage, mid-update and so on, which a scratch server can't be.
 // A stub answers them, and records every call so the Force restart question can be shown to POST nothing until it is confirmed.
 // Never point these buttons at a real server: update and force restart run `npm run restart`, and a sign-in opens a browser on this Mac.
-async function accountsFlow(binary, appearance) {
+async function accountsFlow(bundle, appearance) {
   console.log(`\n== ${appearance}: accounts, banners, context meter, passkeys`);
   const now = Date.now();
   const day = 86_400_000;
@@ -706,7 +655,7 @@ async function accountsFlow(binary, appearance) {
     });
   });
   await new Promise(resolve => stub.listen(0, '127.0.0.1', resolve));
-  const app = new App(binary, { address: `http://localhost:${stub.address().port}`, appearance, tag: '6' });
+  const app = new App(bundle, { address: `http://localhost:${stub.address().port}`, appearance, tag: '6' });
   const sees = text => app.texts().includes(text);
   try {
     await app.launch();
@@ -766,28 +715,32 @@ async function accountsFlow(binary, appearance) {
 }
 
 const cleanup = async () => {
-  for (const child of apps) child.kill('SIGKILL');
+  for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
   for (const suite of suites) spawnSync('defaults', ['delete', suite], { stdio: 'ignore', timeout: 10_000 });
 };
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => cleanup().finally(() => process.exit(130)));
 
-acquireLock();
 fs.mkdirSync(OUT, { recursive: true });
 let exitCode = 1;
 try {
-  const app = build({ release: false });
-  const binary = path.join(app, 'Contents', 'MacOS', 'GhostShell');
+  const bundle = await withBuildLock(() => {
+    const built = build({ release: false });
+    compileHelper();
+    return built;
+  });
+  const flows = argv.includes('--chats-only') ? ['chats'] : FLOW ? [FLOW] : ['main', 'marks', 'chats', 'accounts'];
   for (const appearance of APPEARANCES) {
-    if (!argv.includes('--chats-only') && FLOW !== 'accounts') {
-      await mainFlow(binary, appearance, !argv.includes('--no-chat'));
-      await emptyAndLocked(binary, appearance);
-      await badAddresses(binary, appearance);
-      await marks(binary, appearance);
+    if (flows.includes('main')) {
+      await mainFlow(bundle, appearance, !argv.includes('--no-chat'));
+      await emptyAndLocked(bundle, appearance);
+      await badAddresses(bundle, appearance);
     }
-    if (FLOW !== 'accounts') await chatFlow(binary, appearance);
-    if (!argv.includes('--chats-only')) await accountsFlow(binary, appearance);
+    if (flows.includes('marks')) await marks(bundle, appearance);
+    if (flows.includes('chats')) await chatFlow(bundle, appearance);
+    if (flows.includes('accounts')) await accountsFlow(bundle, appearance);
   }
+  check(cameToFront.length === 0, `no test app came to the front (${frontChecks} checks)`);
   console.log(failures.length ? `\n${failures.length} check(s) failed:\n${failures.map(f => `  ${f}`).join('\n')}` : '\nAll checks passed.');
   console.log(`Screenshots: ${OUT}`);
   exitCode = failures.length ? 1 : 0;

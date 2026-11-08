@@ -28,6 +28,8 @@ public final class AppModel {
     private var feed: SessionIndexFeed?
     private var tasks: [Task<Void, Never>] = []
     public private(set) var visible = true
+    /// The scripted run keeps polling while its window is covered, because it runs in the background.
+    public var ignoresOcclusion = false
 
     private static let addressKey = "serverAddress"
 
@@ -63,6 +65,7 @@ public final class AppModel {
 
     /// The window calls this as it shows and hides, so a hidden app stops asking the server.
     public func setVisible(_ shown: Bool) {
+        let shown = shown || ignoresOcclusion
         visible = shown
         guard let feed else { return }
         Task { if shown { await feed.resume() } else { await feed.pause() } }
