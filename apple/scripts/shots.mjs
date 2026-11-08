@@ -262,8 +262,8 @@ class App {
     const tree = this.tree();
     const sheet = tree.find(node => node.role === 'AXSheet')?.path.join();
     const buttons = tree.filter(node => node.role === 'AXButton' && (matches(this.label(node)) || matches(node.title)));
-    // An open alert is in front of the window, so its buttons win over a same-named button behind it.
-    const button = buttons.find(node => sheet && node.path.join().startsWith(`${sheet},`)) ?? buttons[0];
+    // An open alert is in front of the window, so its buttons win over a same-named button behind it. Otherwise a same-named button that is off, such as the composer's Send, loses to one that is on.
+    const button = buttons.find(node => sheet && node.path.join().startsWith(`${sheet},`)) ?? buttons.find(node => node.enabled !== false) ?? buttons[0];
     if (!button) return false;
     if (this.act(button)) return true;
     // An alert closes as its button is pressed, and an accessory app answers that press with an error, so a sheet that is gone counts.
@@ -517,7 +517,6 @@ class App {
     return this.findAll(node => ['AXButton', 'AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.help, node.title].some(text => text?.includes(part)));
   }
   hasButtonLike(part) { return this.buttonsLike(part).length > 0; }
-  hasText(text) { return this.texts().includes(text); }
   // Picks "Quote" from the context menu of the first static text containing `text`. The menu opens on the text or on one of its parents, so each is tried until a chip is added.
   quote(text) {
     const before = this.buttonsLike('Remove quote').length;
@@ -536,7 +535,7 @@ class App {
     return false;
   }
   // Opens the menu of the button described `name` and lists its items' titles.
-  menuItems(name) {
+  buttonMenuItems(name) {
     const button = this.buttonsLike(name).find(node => node.role !== 'AXButton') ?? this.buttonsLike(name)[0];
     if (!button || !this.act(button)) return [];
     for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -546,7 +545,6 @@ class App {
     }
     return [];
   }
-  closeMenu() { return this.act(this.find(node => node.role === 'AXMenu') ?? 'focused', 'AXCancel'); }
   // The composer attaches the file named in attach.txt (a Debug hook), because the file panel and the pasteboard can't be driven in the background.
   attachFile(file) {
     this.attachCount = (this.attachCount ?? 0) + 1;
@@ -895,7 +893,7 @@ async function composerFlow(bundle, appearance) {
     check(app.composerText() === '', 'the box is empty after a send');
 
     // Pickers.
-    const items = app.menuItems('Model: ');
+    const items = app.buttonMenuItems('Model: ');
     if (!check(items.includes('Haiku 5.5'), 'the model menu lists the models')) { console.log(items); app.dump(); }
     app.closeMenu();
     await sleep(400);
