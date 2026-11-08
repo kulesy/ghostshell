@@ -37,6 +37,12 @@ public actor SessionIndexFeed {
         task = Task { await self.run() }
     }
 
+    /// Looks now, so a change the app just made shows without waiting for the next look. The timed looks carry on as before.
+    public func refresh() async {
+        guard !stopped else { return }
+        await poll()
+    }
+
     /// Stops looking while the app is hidden.
     public func pause() {
         task?.cancel()
