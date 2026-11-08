@@ -37,12 +37,13 @@ function xcodebuild(args, label) {
   return r.stdout;
 }
 
+// No -sdk here: it would override the watch app's SDK too, and the watch app is built into this one.
 function build({ release }) {
   if (!release) {
-    xcodebuild(['-configuration', 'Debug', '-sdk', 'iphonesimulator', '-destination', 'generic/platform=iOS Simulator', 'build'], 'Simulator Debug build');
+    xcodebuild(['-configuration', 'Debug', '-destination', 'generic/platform=iOS Simulator', 'build'], 'Simulator Debug build');
     return path.join(DERIVED, 'Build', 'Products', 'Debug-iphonesimulator', 'GhostShelliPhone.app');
   }
-  xcodebuild(['-configuration', 'Release', '-sdk', 'iphoneos', '-destination', 'generic/platform=iOS', 'CODE_SIGNING_ALLOWED=NO', 'build'], 'iOS Release build');
+  xcodebuild(['-configuration', 'Release', '-destination', 'generic/platform=iOS', 'CODE_SIGNING_ALLOWED=NO', 'build'], 'iOS Release build');
   const app = path.join(DERIVED, 'Build', 'Products', 'Release-iphoneos', 'GhostShelliPhone.app');
   // The bundle is flat, so its binaries are the executable and any dylib beside it.
   const files = [path.join(app, 'GhostShelliPhone'), ...fs.readdirSync(app).filter(n => n.endsWith('.dylib')).map(n => path.join(app, n))];
@@ -170,7 +171,7 @@ async function shoot() {
   fs.mkdirSync(out, { recursive: true });
 
   console.log('== build for testing');
-  xcodebuild(['-configuration', 'Debug', '-sdk', 'iphonesimulator', '-destination', 'generic/platform=iOS Simulator', 'build-for-testing'], 'build for testing');
+  xcodebuild(['-configuration', 'Debug', '-destination', 'generic/platform=iOS Simulator', 'build-for-testing'], 'build for testing');
 
   const stub = await startChatStub();
   const fixtures = await startFixtures(stub);
