@@ -7,6 +7,7 @@ public struct BannerStack: View {
     @Environment(AppModel.self) private var model
     @State private var state = BannersState()
     @State private var height: CGFloat = 0
+    private let cap: CGFloat = 220
     private var presence = AccountsPresence.shared
 
     public init() {}
@@ -31,8 +32,8 @@ public struct BannerStack: View {
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height = $0 }
                 }
                 .scrollBounceBehavior(.basedOnSize)
-                .frame(height: min(height, 220))
-                .overlay(alignment: .bottom) { if height > 220 { Divider() } }
+                .frame(height: min(height, cap))
+                .overlay(alignment: .bottom) { if height > cap { Divider() } }
             }
         }
         .task(id: model.visible) {
