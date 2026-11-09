@@ -510,6 +510,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         focusByEdge(reveal(app, cron), "Schedule")
         app.typeText("0 8 * * 1-5")
         endEditing(app)
+        // The large title and the scroll settle after the keyboard goes; a shot taken at once caught them mid-move.
+        try await Task.sleep(for: .milliseconds(1500))
         shot("routines-3-form-top")
         let folder = reveal(app, app.textFields["Folder"])
         XCTAssertTrue(waitForValue(folder, "/Users/me/Projects/site"), "The folder is the server's home, not the phone's: \(folder.value ?? "")\n\(app.debugDescription)")
@@ -788,6 +790,15 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(done.waitForExistence(timeout: 5), "Select starts edit mode\n\(app.debugDescription)")
         XCTAssertTrue(list.exists, "Select leaves the list on screen, with no chat opened")
         XCTAssertTrue(app.staticTexts["1 chosen"].exists, app.debugDescription)
+        // The bar takes room from the list, so the chosen row is brought back above it.
+        let chosen = rowStarting(app, "Write the migration guide")
+        let bar = app.toolbars.firstMatch
+        var visible = false
+        for _ in 0..<20 where !visible {
+            visible = chosen.exists && chosen.isHittable && chosen.frame.maxY <= bar.frame.minY
+            if !visible { usleep(250_000) }
+        }
+        XCTAssertTrue(visible, "The chosen row is above the bottom bar\n\(chosen.frame) \(bar.frame)")
         shot("organise-select-1-edit-mode")
         assertTouchable(done, "Done")
         assertTouchable(app.buttons["Actions"], "Actions")

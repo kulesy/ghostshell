@@ -23,6 +23,10 @@ struct RoutineFormScreen: View {
             }
         }
         .navigationTitle(id == nil ? "New routine" : "Edit routine")
+        #if os(iOS)
+        // A large title sits over the first card of a form that is already scrolling, so the form uses the inline title.
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task(id: id) { await open() }
     }
 

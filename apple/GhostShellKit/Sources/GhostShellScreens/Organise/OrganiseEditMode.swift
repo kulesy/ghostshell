@@ -9,20 +9,30 @@ struct OrganiseEditMode: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(iOS)
-        content
-            .environment(\.editMode, Binding(get: { state.editing ? .active : .inactive }, set: { state.editing = $0.isEditing }))
-            .toolbar {
-                if state.editing {
-                    // A bar sizes a bare text button to its words, so the labels carry their own 44pt frame.
-                    ToolbarItemGroup(placement: .bottomBar) {
-                        Button { organise.clearSelection() } label: { Text("Done").fontWeight(.semibold).phoneIconTouch() }
-                        Spacer()
-                        Text("\(state.selection.count) chosen").font(.subheadline).foregroundStyle(.secondary)
-                        Spacer()
-                        Menu { SelectionMenu(ids: organise.ordered(state.selection)) } label: { Text("Actions").phoneIconTouch() }.disabled(state.selection.isEmpty)
+        ScrollViewReader { proxy in
+            content
+                .environment(\.editMode, Binding(get: { state.editing ? .active : .inactive }, set: { state.editing = $0.isEditing }))
+                // The bottom bar takes room from the list, so the row that started edit mode is scrolled back into view once the bar is up.
+                .onChange(of: state.editing) { _, editing in
+                    guard editing, let id = state.selection.first else { return }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(300))
+                        withAnimation { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
-            }
+                .toolbar {
+                    if state.editing {
+                        // A bar sizes a bare text button to its words, so the labels carry their own 44pt frame.
+                        ToolbarItemGroup(placement: .bottomBar) {
+                            Button { organise.clearSelection() } label: { Text("Done").fontWeight(.semibold).phoneIconTouch() }
+                            Spacer()
+                            Text("\(state.selection.count) chosen").font(.subheadline).foregroundStyle(.secondary)
+                            Spacer()
+                            Menu { SelectionMenu(ids: organise.ordered(state.selection)) } label: { Text("Actions").phoneIconTouch() }.disabled(state.selection.isEmpty)
+                        }
+                    }
+                }
+        }
         #else
         content
         #endif
