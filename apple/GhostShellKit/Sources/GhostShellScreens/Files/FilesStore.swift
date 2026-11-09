@@ -304,6 +304,9 @@ final class FilesStore {
     var export: Export?
     @ObservationIgnored private var exporting = false
 
+    /// Back hides the panel without closing the file, so a late answer checks the panel is still on screen as well as the path.
+    private func stillShowing(_ path: String) -> Bool { file?.path == path && chat?.filePanelOpen == true }
+
     func saveToFiles() {
         guard let file, let preview = file.preview, !preview.tooLarge, !exporting else { return }
         let path = file.path
@@ -312,10 +315,10 @@ final class FilesStore {
             defer { exporting = false }
             do {
                 let data = try await client.fileBytes(sessionID: sessionID, path: path, download: true)
-                guard self.file?.path == path else { return }
+                guard stillShowing(path) else { return }
                 export = Export(name: Self.exportName(path), data: data)
             } catch {
-                guard self.file?.path == path else { return }
+                guard stillShowing(path) else { return }
                 alert = Alert(title: "Cannot save this file", message: error.localizedDescription)
             }
         }
