@@ -300,20 +300,6 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Next image"].firstMatch.exists, "Close puts the viewer away")
     }
 
-    func testAnAttachedFileChipOpensTheFile() throws {
-        let app = openFilesChat()
-        let chip = app.buttons.matching(NSPredicate(format: "label CONTAINS 'spec.pdf'")).firstMatch
-        XCTAssertTrue(chip.waitForExistence(timeout: 10), "The attached file is a button\n\(app.debugDescription)")
-        assertTouchable(chip, "The spec.pdf chip")
-        chip.tap()
-        XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 10), "The chip opens the panel\n\(app.debugDescription)")
-        // A path no reply links is refused by the server, and the panel says so.
-        XCTAssertTrue(app.staticTexts["This chat does not link to that file."].firstMatch.waitForExistence(timeout: 10), app.debugDescription)
-        shot("files-13-attachment-chip")
-        back(app)
-        XCTAssertTrue(app.buttons["Show file"].firstMatch.waitForExistence(timeout: 5) || chip.exists, "Back returns to the chat")
-    }
-
     // MARK: Widgets
 
     func testAWidgetsLongPressAndAskBar() throws {

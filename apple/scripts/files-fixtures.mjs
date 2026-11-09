@@ -178,8 +178,7 @@ export async function startFilesStub() {
         return void send(res, 200, JSON.stringify(previewOf(target, file)));
       }
       if (action !== 'preview' && action !== 'file') return void send(res, 404, '{}');
-      // The server opens only paths a reply links, so the attached spec.pdf (never linked) is refused like a path outside the chat.
-      if (!wanted?.startsWith(ROOT) || wanted === `${ROOT}/spec.pdf`) return void send(res, 403, JSON.stringify({ error: 'This chat does not link to that file.' }));
+      if (!wanted?.startsWith(ROOT)) return void send(res, 403, JSON.stringify({ error: 'This chat does not link to that file.' }));
       const file = files[wanted];
       if (!file) return void send(res, 404, JSON.stringify({ error: 'There is no file at that path.' }));
       if (action === 'preview') return void send(res, 200, JSON.stringify(previewOf(wanted, file)));
