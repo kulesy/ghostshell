@@ -48,10 +48,14 @@ struct GroupReplyBox: View {
                 Button("Cancel") { dismissKeyboard(); cards.flipBox(row.id) }.phoneTouch().disabled(box.sending)
                 #endif
             }
+            .id(Self.buttonsID(row.id))
         }
         .onAppear { if cards.focusing == row.id { focused = true } }
         .onChange(of: focused) { _, now in if now { cards.focusing = row.id } }
     }
+
+    /// The id of the Send and Cancel row, which the panel scrolls above the keyboard.
+    static func buttonsID(_ row: String) -> String { "reply-buttons-\(row)" }
 
     private func send() { Task { await cards.send(row.id, name: name) } }
 }

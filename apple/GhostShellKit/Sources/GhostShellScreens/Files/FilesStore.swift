@@ -87,6 +87,9 @@ final class FilesStore {
         guard let chat else { return }
         edit = nil
         alert = nil
+        #if os(iOS)
+        export = nil
+        #endif
         player.stop()
         media = .none
         serial += 1
@@ -173,6 +176,9 @@ final class FilesStore {
 
     func close() {
         edit = nil
+        #if os(iOS)
+        export = nil
+        #endif
         player.stop()
         chat?.filePanelOpen = false
     }
@@ -289,22 +295,27 @@ final class FilesStore {
     }
 
     #if os(iOS)
-    /// The bytes the system's Files sheet writes where the person picks. Held in memory only, so nothing lands on disk before they choose.
+    /// The bytes the system's Files sheet writes where the person picks. They are held in memory until the system sheet takes them.
     struct Export {
         var name: String
         var data: Data
     }
 
     var export: Export?
+    @ObservationIgnored private var exporting = false
 
     func saveToFiles() {
-        guard let file, let preview = file.preview, !preview.tooLarge else { return }
+        guard let file, let preview = file.preview, !preview.tooLarge, !exporting else { return }
         let path = file.path
+        exporting = true
         Task {
+            defer { exporting = false }
             do {
                 let data = try await client.fileBytes(sessionID: sessionID, path: path, download: true)
+                guard self.file?.path == path else { return }
                 export = Export(name: Self.exportName(path), data: data)
             } catch {
+                guard self.file?.path == path else { return }
                 alert = Alert(title: "Cannot save this file", message: error.localizedDescription)
             }
         }

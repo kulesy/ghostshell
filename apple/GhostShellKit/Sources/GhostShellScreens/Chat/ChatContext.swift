@@ -24,7 +24,7 @@ final class ChatContext {
     var fileLinks = false
     /// The server has a terminal for this chat.
     var terminalAvailable = false
-    /// The inspector beside the thread, which draws `ChatSlots.filePanel`.
+    /// The inspector beside the thread, which draws `ChatSlots.filePanel`. A phone covers the chat with it.
     var filePanelOpen = false
     /// The panel under the thread, which draws `ChatSlots.terminal`.
     var terminalOpen = false

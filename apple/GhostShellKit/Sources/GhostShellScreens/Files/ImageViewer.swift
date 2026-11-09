@@ -27,7 +27,7 @@ struct ImageViewerOverlay: View {
         // An overlay on a phone stops under the navigation bar, so the viewer is a page of its own that covers the screen.
         Color.clear.allowsHitTesting(false)
             .fullScreenCover(isPresented: Binding(get: { store.viewer != nil }, set: { if !$0 { store.closeViewer() } })) {
-                if let viewer = store.viewer { ViewerContent(store: store, viewer: viewer).presentationBackground(.black) }
+                if let viewer = store.viewer { ViewerContent(store: store, viewer: viewer).presentationBackground(.black).preferredColorScheme(.dark) }
             }
         #else
         ZStack {

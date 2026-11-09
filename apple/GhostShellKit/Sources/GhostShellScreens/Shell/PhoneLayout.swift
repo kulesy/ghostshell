@@ -57,6 +57,15 @@ extension View {
         #endif
     }
 
+    /// A full-size control on a phone, where a thumb has to hit it, for a button that keeps its own style. The Mac is left as it was.
+    func largeOnPhone() -> some View {
+        #if os(iOS)
+        controlSize(.large)
+        #else
+        self
+        #endif
+    }
+
     /// A small control on the Mac and a full-size one on a phone, where a thumb has to hit it.
     func compactOnMac() -> some View {
         #if os(iOS)

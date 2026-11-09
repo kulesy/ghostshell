@@ -88,13 +88,15 @@ struct HeadingRow: View {
 
 #if os(iOS)
 /// A phone's list header takes a long press as a tap on the fold, so `.contextMenu` never opens there. A long press asks with an action sheet instead.
+// NOTE: [9 Nov 2026] EK - Items in HeadingMenuSlot must be plain Buttons on iOS, because a confirmationDialog drops Menus and other content.
 private struct HeadingLongPressMenu: ViewModifier {
     let heading: SidebarHeading
     @State private var asking = false
 
     func body(content: Content) -> some View {
+        // A routine sub-heading has no items, so its long press stays off rather than open a dialog with only Cancel.
         content
-            .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in asking = true })
+            .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in asking = true }, including: heading.kind == .routineHeading ? .subviews : .all)
             .confirmationDialog(heading.title, isPresented: $asking, titleVisibility: .visible) { HeadingMenuSlot(heading: heading).textCase(nil) }
     }
 }

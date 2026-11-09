@@ -62,7 +62,7 @@ struct HeadingAccessorySlot: View {
     }
 }
 
-/// The right-click menu on a section or group heading.
+/// The right-click menu on a section or group heading on the Mac, and a long press on the phone.
 struct HeadingMenuSlot: View {
     let heading: SidebarHeading
 

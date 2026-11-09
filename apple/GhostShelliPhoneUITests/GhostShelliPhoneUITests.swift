@@ -323,6 +323,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(bar.waitForExistence(timeout: 15), app.debugDescription)
         sleep(2)
         shot("widgets-3-ask")
+        for name in ["Send", "Open link", "Cancel"] where app.buttons[name].firstMatch.exists { assertTouchable(app.buttons[name].firstMatch, name) }
+        XCTAssertTrue(app.buttons["Send"].firstMatch.exists || app.buttons["Open link"].firstMatch.exists, "The ask bar has a confirm button")
         app.buttons["Cancel"].firstMatch.tap()
         XCTAssertFalse(bar.waitForExistence(timeout: 2), "Cancel puts the ask bar away")
         shot("widgets-4-asked-and-cancelled")
