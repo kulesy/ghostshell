@@ -106,10 +106,7 @@ private struct RoutineRow: View {
     var body: some View {
         let r = routine
         // The controls drop under the text when the pane is too narrow for both side by side.
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 14) { info; Spacer(minLength: 8); controls }
-            VStack(alignment: .leading, spacing: 8) { info; controls }
-        }
+        RowLayout { info } controls: { controls }
         .padding(.vertical, 6)
         .contextMenu { RoutineMenu(routine: r, withRun: true, askDelete: askDelete) }
         .accessibilityElement(children: .contain)

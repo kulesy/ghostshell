@@ -211,3 +211,20 @@ extension View {
         #endif
     }
 }
+
+/// A list row's text with its controls beside it, or under it when the pane is too narrow. A phone always puts them under, so no row wraps its buttons.
+struct RowLayout<Info: View, Controls: View>: View {
+    @ViewBuilder var info: Info
+    @ViewBuilder var controls: Controls
+
+    var body: some View {
+        #if os(iOS)
+        VStack(alignment: .leading, spacing: 8) { info; controls }
+        #else
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) { info; Spacer(minLength: 8); controls }
+            VStack(alignment: .leading, spacing: 8) { info; controls }
+        }
+        #endif
+    }
+}

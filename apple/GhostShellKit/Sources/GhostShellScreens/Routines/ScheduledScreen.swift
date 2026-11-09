@@ -85,10 +85,7 @@ private struct ScheduledRow: View {
 
     var body: some View {
         let s = entry
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 14) { info; Spacer(minLength: 8); controls }
-            VStack(alignment: .leading, spacing: 8) { info; controls }
-        }
+        RowLayout { info } controls: { controls }
         .padding(.vertical, 6)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .contextMenu { ScheduledMenu(entry: s, askDelete: askDelete) }
