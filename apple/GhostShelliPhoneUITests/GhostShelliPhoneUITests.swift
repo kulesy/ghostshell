@@ -163,65 +163,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual(decisions.last?["requestId"] as? String, "req-bash")
     }
 
-    private func messageBox(_ app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Message'")).firstMatch
-    }
-
-    private func type(_ text: String, into app: XCUIApplication) {
-        let box = messageBox(app)
-        XCTAssertTrue(box.waitForExistence(timeout: 15), app.debugDescription)
-        box.tap()
-        dismissKeyboardIntro(app)
-        box.typeText(text)
-    }
-
-    func testAReplyTypedInTheComposerIsSent() async throws {
-        let app = launch()
-        signIn(app)
-        let before = try await get("/__sends").count
-        open(app, "Rename the export helper", expecting: "I renamed it in 4 files and updated the two tests that imported it.")
-        let send = app.buttons["Send"]
-        XCTAssertTrue(send.waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertFalse(send.isEnabled, "Send waits for some text.")
-        type("Thanks, now add a test for it", into: app)
-        shot("11-composer-typed")
-        assertTouchable(send, "Send")
-        XCTAssertTrue(send.isEnabled)
-        send.tap()
-        XCTAssertTrue(app.staticTexts["Got it."].firstMatch.waitForExistence(timeout: 20), app.debugDescription)
-        let sends = try await get("/__sends")
-        XCTAssertEqual(sends.count, before + 1, "One tap on Send sends exactly one message.")
-        XCTAssertEqual(sends.last?["text"] as? String, "Thanks, now add a test for it")
-        XCTAssertEqual(sends.last?["id"] as? String, "composer")
-        XCTAssertFalse(send.isEnabled, "The box is empty again after a send.")
-        shot("12-composer-sent")
-    }
-
-    func testARefusedReplyShowsTheServersWordsAndKeepsTheText() async throws {
-        let app = launch()
-        signIn(app)
-        open(app, "Rename the export helper", expecting: "I renamed it in 4 files and updated the two tests that imported it.")
-        type("reject this one", into: app)
-        app.buttons["Send"].tap()
-        let words = app.staticTexts["Not sent: That message is too long for this session."]
-        XCTAssertTrue(words.waitForExistence(timeout: 15), app.debugDescription)
-        shot("13-composer-refused")
-        XCTAssertTrue(app.buttons["Send"].isEnabled, "The text is back in the box.")
-    }
-
-    func testNewSessionStartsAChatFromThePhone() throws {
-        let app = launch()
-        signIn(app)
-        assertTouchable(app.buttons["New Session"], "New Session")
-        app.buttons["New Session"].tap()
-        XCTAssertTrue(app.staticTexts["New session"].firstMatch.waitForExistence(timeout: 10), app.debugDescription)
-        type("Add a retry to the upload", into: app)
-        shot("14-new-session")
-        let start = app.buttons["Start session"]
-        assertTouchable(start, "Start session")
-        start.tap()
-        XCTAssertTrue(app.staticTexts["Add a retry to the upload"].firstMatch.waitForExistence(timeout: 20), app.debugDescription)
-    }
+    // https://github.com/kulesy/ghostshell/issues/118 - the iPhone composer's reply, refusal and New Session tests go here when it is turned on.
 
     func testAccountsPasskeysAndSignOut() throws {
         let app = launch()

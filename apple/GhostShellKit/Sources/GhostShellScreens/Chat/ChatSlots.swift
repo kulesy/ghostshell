@@ -20,7 +20,14 @@ struct ChatCodeBlock: Hashable {
 @MainActor
 enum ChatSlots {
     // https://github.com/kulesy/ghostshell/issues/84 - under the thread.
-    @ViewBuilder static func composer(_ chat: ChatContext) -> some View { ComposerHost(chat: chat) }
+    @ViewBuilder static func composer(_ chat: ChatContext) -> some View {
+        #if os(iOS)
+        // https://github.com/kulesy/ghostshell/issues/118 - the iPhone gets the composer there, with its own pickers and Simulator tests.
+        EmptyView()
+        #else
+        ComposerHost(chat: chat)
+        #endif
+    }
 
     // https://github.com/kulesy/ghostshell/issues/85 - above the composer, for `chat.status?.pending`: permissions, questions and plan approvals.
     @ViewBuilder static func prompts(_ chat: ChatContext) -> some View { ApprovalPrompts(chat: chat) }
