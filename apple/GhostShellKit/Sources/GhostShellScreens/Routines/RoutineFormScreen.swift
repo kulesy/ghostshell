@@ -37,7 +37,7 @@ struct RoutineFormScreen: View {
     private func open() async {
         let store = model.routines
         guard let id else {
-            draft = RoutineDraft(home: NSHomeDirectory())
+            draft = RoutineDraft(home: startFolder)
             load = .ready(nil)
             return
         }
@@ -112,7 +112,7 @@ private struct RoutineFields: View {
             }
             Section {
                 FormField(label: "Title", message: problems["title"]) {
-                    TextField("Title", text: $draft.title).labelsHidden().focused($focus, equals: .title)
+                    TextField("Title", text: $draft.title).labelsHidden().phoneField($focus, .title)
                 }
                 if store.features.routineHeadings {
                     FormField(label: "Group", hint: "Routines with the same group show under one heading in Home. Leave it empty for none.", message: problems["heading"]) {
@@ -121,17 +121,16 @@ private struct RoutineFields: View {
                 }
             }
             Section {
-                FormField(label: "Schedule", hint: "Five fields: minute, hour, day of the month, month and day of the week, in this Mac's time. For example 30 7 * * 1-5.",
+                FormField(label: "Schedule", hint: "Five fields: minute, hour, day of the month, month and day of the week, \(serverZoneWords(store.serverZone)). For example 30 7 * * 1-5.",
                           message: problems["cron"] ?? previewProblem) {
                     VStack(alignment: .leading, spacing: 6) {
-                        TextField("Schedule", text: $draft.cron, prompt: Text("30 7 * * 1-5")).labelsHidden().font(.body.monospaced())
-                            .autocorrectionDisabled().focused($focus, equals: .cron)
+                        TextField("Schedule", text: $draft.cron, prompt: Text("30 7 * * 1-5")).labelsHidden().font(.body.monospaced()).autocorrectionDisabled().phoneField($focus, .cron)
                         previewView
                     }
                 }
                 FormField(label: "Jitter in seconds", hint: "Added to every fire time, so runs do not all start on the minute.",
                           message: problems["jitterSeconds"] ?? (jitter == nil ? jitterProblem : nil)) {
-                    TextField("Jitter in seconds", text: $draft.jitterSeconds).labelsHidden().frame(maxWidth: 120).focused($focus, equals: .jitterSeconds)
+                    TextField("Jitter in seconds", text: $draft.jitterSeconds).labelsHidden().phoneField($focus, .jitterSeconds).frame(maxWidth: 120)
                 }
             }
             Section("Where it runs") {
@@ -159,16 +158,12 @@ private struct RoutineFields: View {
                 Text(adding ? "A new routine starts counting from the moment it is on." : "Off keeps the routine here without running it.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            PhoneDeleteSection(show: !adding) { deleting = true }
         }
         .formStyle(.grouped)
         .disabled(saving)
         .toolbar {
-            ToolbarItemGroup {
-                if !adding { Button("Delete", role: .destructive) { deleting = true } }
-                Button("Cancel", role: .cancel) { leave() }
-                Button(saving ? "Saving" : "Save") { Task { await save() } }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!store.featuresLoaded)
-            }
+            FormToolbar(canDelete: !adding, saving: saving, canSave: store.featuresLoaded, delete: { deleting = true }, cancel: leave, save: { Task { await save() } })
         }
         .noteBar()
         .task(id: PreviewKey(cron: draft.cron, jitter: draft.jitterSeconds)) { await refreshPreview() }
@@ -196,8 +191,7 @@ private struct RoutineFields: View {
             }
             if fileMode {
                 FormField(label: "Prompt file", message: problems["file"] ?? (loadedUnchanged ? loaded.error : nil)) {
-                    TextField("Full path of the prompt file", text: $draft.file, prompt: Text("/Users/you/prompts/daily-scrum.md")).labelsHidden()
-                        .focused($focus, equals: .file)
+                    TextField("Full path of the prompt file", text: $draft.file, prompt: Text("/Users/you/prompts/daily-scrum.md")).labelsHidden().phoneField($focus, .file)
                 }
             } else {
                 promptEditor
@@ -268,6 +262,8 @@ private struct RoutineFields: View {
     private func loadPickers() async {
         guard let client = model.client else { return }
         folders = (try? await client.folders()) ?? []
+        // The server's own home is its first folder, which a phone has no other way to know.
+        if adding, draft.cwd.isEmpty, let home = folders.first { draft.cwd = home }
         if store.features.accountPins { accounts = (try? await client.accounts())?.accounts ?? [] }
     }
 

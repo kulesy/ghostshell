@@ -23,7 +23,7 @@ struct RoutinesScreen: View {
                 } description: {
                     Text("Could not load routines: \(failure)")
                 } actions: {
-                    Button("Try again") { Task { await store.refresh() } }
+                    Button("Try again") { Task { await store.refresh() } }.phoneTouch(boxed: true)
                 }
             } else {
                 ProgressView("Loading routines").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -33,8 +33,10 @@ struct RoutinesScreen: View {
         .toolbar {
             if store.features.routineEdits {
                 ToolbarItem {
-                    Button("New routine", systemImage: "plus") { model.navigator.show { RoutineFormScreen(id: nil) } }
-                        .help("Add a routine")
+                    Button { model.navigator.show { RoutineFormScreen(id: nil) } } label: {
+                        Image(systemName: "plus").phoneIconTouch().accessibilityLabel("New routine")
+                    }
+                    .help("Add a routine")
                 }
             }
         }
@@ -64,7 +66,7 @@ struct RoutinesScreen: View {
                  : "Routines are listed here once they are in routines.json in the GhostShell folder.")
         } actions: {
             if store.features.routineEdits {
-                Button("New routine") { model.navigator.show { RoutineFormScreen(id: nil) } }.buttonStyle(.borderedProminent)
+                Button("New routine") { model.navigator.show { RoutineFormScreen(id: nil) } }.buttonStyle(.borderedProminent).largeOnPhone()
             }
         }
     }
@@ -139,7 +141,7 @@ private struct RoutineRow: View {
             Text("·").foregroundStyle(.tertiary)
             if let id = routine.lastSessionId, !id.isEmpty, routine.lastRunAt != nil {
                 Button("Last run \(fireTime(routine.lastRunAt))") { model.navigator.openSession(id) }
-                    .buttonStyle(.borderless).foregroundStyle(Color.accentColor)
+                    .buttonStyle(.borderless).foregroundStyle(Color.accentColor).phoneTouch()
             } else {
                 Text(routine.lastRunAt == nil ? "Never run" : "Last run \(fireTime(routine.lastRunAt))")
             }
@@ -168,14 +170,15 @@ private struct RoutineRow: View {
             Toggle("Run \(routine.title) on its schedule", isOn: Binding(get: { routine.enabled }, set: { on in
                 Task { await store.setEnabled(routine, on) }
             }))
-            .toggleStyle(.switch).labelsHidden().controlSize(.small)
+            .toggleStyle(.switch).labelsHidden().compactOnMac()
             Button("Run now") { busy = true; Task { await store.run(routine); busy = false } }
                 .disabled(routine.running || busy)
+                .phoneTouch()
             if editable {
                 Menu {
                     RoutineMenu(routine: routine, withRun: false, askDelete: askDelete)
                 } label: {
-                    Label("Actions for \(routine.title)", systemImage: "ellipsis.circle").labelStyle(.iconOnly)
+                    Label("Actions for \(routine.title)", systemImage: "ellipsis.circle").labelStyle(.iconOnly).phoneIconTouch()
                 }
                 .menuStyle(.borderlessButton).fixedSize()
             }

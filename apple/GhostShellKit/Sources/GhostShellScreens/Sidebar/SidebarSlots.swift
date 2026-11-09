@@ -102,5 +102,6 @@ struct SidebarWatchSlot: ViewModifier {
     func body(content: Content) -> some View {
         content
             .modifier(RoutineIdleWatch())
+            .modifier(OrganiseEditMode())
     }
 }

@@ -61,8 +61,11 @@ final class OrganiseModel {
         return failure
     }
 
-    private func run(_ work: @escaping @MainActor (GhostShellClient) async throws -> Void) {
-        Task { if let failure = await attempt(work) { problem = failure } }
+    /// `endsEditing` leaves a phone's edit mode once a bulk write has gone through, and keeps it on a failure so the choice can be retried.
+    private func run(endsEditing: Bool = false, _ work: @escaping @MainActor (GhostShellClient) async throws -> Void) {
+        Task {
+            if let failure = await attempt(work) { problem = failure } else if endsEditing, state?.editing == true { clearSelection() }
+        }
     }
 
     private func ask(_ title: String, _ detail: String, action: String, cancel: (@MainActor () -> Void)? = nil, run: @escaping @MainActor () -> Void) {
@@ -177,21 +180,24 @@ final class OrganiseModel {
         if let state, state.selection.count > 1, !state.selection.contains(id) { state.selection = [] }
     }
 
-    func clearSelection() { state?.selection = [] }
+    func clearSelection() {
+        state?.selection = []
+        state?.editing = false
+    }
 
     func moveMany(_ ids: [String], section: String) {
         let to = OrganiseRules.target(index, section: section)
         if OrganiseRules.changesNothing(index, ids, to) { return }
-        run { try await $0.placeSessions(ids, to: to) }
+        run(endsEditing: true) { try await $0.placeSessions(ids, to: to) }
     }
 
     func nestMany(_ ids: [String], under parent: String?) {
-        guard let parent else { return run { try await $0.placeSessions(ids, to: .parent(nil)) } }
+        guard let parent else { return run(endsEditing: true) { try await $0.placeSessions(ids, to: .parent(nil)) } }
         guard let root = OrganiseRules.root(index, parent) else { problem = "Not nested: that session is no longer in the list."; return }
         if let refusal = OrganiseRules.refuseNest(index, ids, under: parent) { problem = refusal; return }
         if OrganiseRules.changesNothing(index, ids, .parent(root.id)) { return }
         state?.setUnfolded(root.id, true)
-        run { try await $0.placeSessions(ids, to: .parent(root.id)) }
+        run(endsEditing: true) { try await $0.placeSessions(ids, to: .parent(root.id)) }
     }
 
     /// Archives the topmost chosen sessions, which take the ones below them along. Several with a chat running are asked about once.
