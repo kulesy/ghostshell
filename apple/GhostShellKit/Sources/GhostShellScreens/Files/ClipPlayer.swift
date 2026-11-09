@@ -1,6 +1,11 @@
 import AVFoundation
 import Observation
 
+/// A scripted test run sets `silent`, so a clip shows as playing but never starts, and the run makes no sound.
+@MainActor public enum ClipSound {
+    public static var silent = false
+}
+
 /// Plays one audio clip from bytes in memory. The bytes are never written to disk.
 @Observable @MainActor
 final class ClipPlayer {
@@ -9,7 +14,7 @@ final class ClipPlayer {
     private(set) var duration: TimeInterval = 0
     private(set) var failed = false
 
-    @ObservationIgnored private var player: AVAudioPlayer?
+    @ObservationIgnored private(set) var player: AVAudioPlayer?
     @ObservationIgnored private var ticker: Task<Void, Never>?
 
     /// Replaces whatever played before. A clip the system cannot decode sets `failed`.
@@ -35,8 +40,9 @@ final class ClipPlayer {
     func play() {
         guard let player else { return }
         if player.currentTime >= player.duration - 0.05 { player.currentTime = 0 }
-        player.play()
         isPlaying = true
+        guard !ClipSound.silent else { return }
+        player.play()
         tick()
     }
 

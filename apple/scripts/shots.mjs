@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
+import { listen } from '../../test/speakers.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
 import { copyTranscript, startScratch, TEST_CWD } from './test-server.mjs';
@@ -95,6 +96,9 @@ async function until(what, test, seconds = 15) {
 
 // Everything started here is stopped in `finally`, and on a signal.
 const pids = new Set();
+// Every app this run started, kept after it quits, so the sound check at the end can name them.
+const launched = new Set();
+const speakers = listen();
 const servers = new Set();
 const suites = new Set();
 const services = new Set();
@@ -142,6 +146,7 @@ class App {
     }, 20);
     if (!found) throw new Error('The app did not start.');
     pids.add(this.pid);
+    launched.add(this.pid);
     this.cameToFront = false;
     this.watchdog = setInterval(() => this.watch(), 500);
     const shown = await until('window', () => this.tree().length > 0, 20);
@@ -1520,6 +1525,8 @@ try {
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);
+  const sounds = await speakers.heard(launched);
+  check(!sounds.length, `no test app made a sound (${launched.size} apps)${sounds.map(line => `\n    ${line}`).join('')}`);
   console.log(failures.length ? `\n${failures.length} check(s) failed:\n${failures.map(f => `  ${f}`).join('\n')}` : '\nAll checks passed.');
   console.log(`Screenshots: ${OUT}`);
   exitCode = failures.length ? 1 : 0;

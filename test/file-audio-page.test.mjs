@@ -8,12 +8,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findChromium, launch, notFound } from './browser.mjs';
 import { PASSWORD, start } from './harness.mjs';
+import { family, listen } from './speakers.mjs';
 
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
 const timeout = 40_000;
 let app;
 let browser;
+let speakers;
+let sampler;
+const played = new Set();
 let said = 0;
 
 const says = (id, text) => {
@@ -69,10 +73,12 @@ before(async () => {
   says('solo', `Only [one clip](<${files.solo}>) here.`);
   says('texty', `Only [text.wav](<${files.text}>) here.`);
   says('long', TAKES.map(name => `- [${name}.wav](<${files[name]}>)`).join('\n'));
+  speakers = listen();
   browser = await launch(chromium);
+  sampler = setInterval(() => family(browser.pid).forEach(pid => played.add(pid)), 500);
 });
 
-after(async () => { await browser?.close(); });
+after(async () => { clearInterval(sampler); await browser?.close(); });
 
 const LOGIN = `!!document.querySelector('#password')`;
 const LIST = `!document.querySelector('#boot') && !!document.querySelector('.list-foot')`;
@@ -324,4 +330,10 @@ test('audio has Download and no Open in new tab, because Chrome\'s media page ca
   await playing(page, 'one');
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.file-actions a, .file-actions button')].map(b => b.getAttribute('aria-label'))`), ['Download', 'Close file']);
   assert.equal(await page.evaluate(`document.querySelector('.file-actions a[download]').getAttribute('href')`), `${urlOf('one')}&download=1`);
+});
+
+// Runs last, after every clip above has played. See https://github.com/kulesy/ghostshell/issues/78.
+test('no clip played above reached the speakers', { skip, timeout: 180_000 }, async () => {
+  clearInterval(sampler);
+  assert.deepEqual(await speakers.heard(played), []);
 });
