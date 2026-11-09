@@ -17,7 +17,7 @@ import { Panel, useAgentsOffered, useShownTab } from './panel.js';
 import { toggleTab } from './panel-state.js';
 import { runFromClick } from './run.js';
 import { QuoteDock, useQuoting } from './quote.js';
-import { draftGroup, groupById, pinsOnStart } from './group-rules.js';
+import { besideDraft, draftGroup, groupById, pinsOnStart } from './group-rules.js';
 import { createChat } from './session.js';
 import { keyHint, shortcut } from './shortcuts.js';
 import { usePullNeeds, usePullStatus } from './pulls.js';
@@ -164,7 +164,7 @@ function Notice({ ctrl }) {
 // `rename` is what the header's pencil renames with, from chat-rename.js, or null for a chat that cannot be renamed there.
 // `meta` stands in the header for the folder and branch, and `aside` is drawn between the header and the transcript. `aside` must be
 // one element that follows a store of its own, because a new element on each render would redraw the whole chat.
-export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside, group = null, parent = null, rename }) {
+export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside, group = null, parent = null, beside = null, rename }) {
   const held = useRef(null);
   const pane = useRef(null);
   if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex, pins: () => supportsPins(sessionIndex.get().ix), toast });
@@ -177,8 +177,8 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     ctrl.open();
     return ctrl.close;
   }, [ctrl]);
-  const startIn = useStore(sessionIndex, s => draftGroup(s.ix, group));
-  const folder = useStore(sessionIndex, s => (parent && rootOf(s.ix, parent)?.cwd) || HOME);
+  const startIn = useStore(sessionIndex, s => draftGroup(s.ix, group ?? besideDraft(s.ix, beside)?.group));
+  const folder = useStore(sessionIndex, s => (parent && rootOf(s.ix, parent)?.cwd) || besideDraft(s.ix, beside)?.cwd || HOME);
   useLayoutEffect(() => { if (ctrl.draft) ctrl.store.set({ group: startIn, parent }); }, [ctrl, startIn, parent]);
   useLayoutEffect(() => { if (ctrl.draft) ctrl.setFolder(folder); }, [ctrl, folder]);
   useLayoutEffect(() => {
@@ -201,4 +201,4 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     <${Panel} ctrl=${ctrl} />
     <${PanelKeys} ctrl=${ctrl} />
   </section>`;
-}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside && a.group === b.group && a.parent === b.parent && a.rename === b.rename);
+}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside && a.group === b.group && a.parent === b.parent && a.beside === b.beside && a.rename === b.rename);

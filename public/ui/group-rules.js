@@ -1,7 +1,8 @@
 // How a group's sessions fall into the parts of its status panel and of the list_group_sessions tool, as rules that need no page, so
 // node can test them and the server shares them. The rows are the server's, as they sit in the index.
 import { sectionById, sectionSessions, supportsSections } from './sections.js';
-import { withKids } from './tree.js';
+import { HOME_VIEW, viewIn } from './scopes.js';
+import { findRow, rootOf, withKids } from './tree.js';
 
 // A session that is not archived, waiting or working counts as recent when it was written to within this long.
 export const RECENT_MS = 24 * 3600_000;
@@ -82,14 +83,38 @@ export const newRoute = group => (group ? `#/new/${encodeURIComponent(group)}` :
 // The address of the new session page that nests the session under a parent session.
 export const newUnderRoute = parent => `#/new-under/${encodeURIComponent(parent)}`;
 
-// The new session page an address names, as { group } or, under a parent, { group: null, parent }, or null when it is another page. An id that cannot be decoded is none.
+// The address of the new session page that starts in the folder of a session, and in its group when that group is in a project.
+export const newBesideRoute = id => `#/new-beside/${encodeURIComponent(id)}`;
+
+// The new session page an address names, as { group }, under a parent { group: null, parent }, or beside a session { group: null, beside }, or null when it is another page. An id that cannot be decoded is none.
 export function parseNewRoute(hash) {
   if (hash === '#/new') return { group: null };
-  const under = hash.startsWith('#/new-under/');
-  if (!under && !hash.startsWith('#/new/')) return null;
+  const prefix = ['#/new-under/', '#/new-beside/', '#/new/'].find(p => hash.startsWith(p));
+  if (!prefix) return null;
   let id = null;
-  try { id = decodeURIComponent(hash.slice(under ? 12 : 6)) || null; } catch {}
-  return under ? { group: null, parent: id } : { group: id };
+  try { id = decodeURIComponent(hash.slice(prefix.length)) || null; } catch {}
+  return prefix === '#/new-under/' ? { group: null, parent: id } : prefix === '#/new-beside/' ? { group: null, beside: id } : { group: id };
+}
+
+// Where a session started beside this one begins: its folder, and its group when that group is in a project, so the chat lists under that project.
+// A pinned session or one in a Home group gives its folder alone. Null while the list lacks the session or it has no folder.
+export function besideDraft(ix, id) {
+  const row = findRow(ix, id);
+  if (!row?.cwd) return null;
+  const root = rootOf(ix, id);
+  const group = root.pinned ? null : ix.groups.find(g => g.id === root.group);
+  return { cwd: row.cwd, group: group && viewIn(ix, group.project) !== HOME_VIEW ? group.id : null };
+}
+
+// Where Ctrl+N goes. An open new session page stays as it is, a session opens one beside it, and a group's own chat opens one in that group, both
+// only when it is in a project. Anything else, and any page before the list has loaded, opens the plain one in the home folder.
+export function newKeyRoute(ix, hash) {
+  if (parseNewRoute(hash)) return hash;
+  let id = null;
+  try { id = decodeURIComponent(hash.slice(4)); } catch {}
+  if (hash.startsWith('#/s/') && besideDraft(ix, id)) return newBesideRoute(id);
+  const group = hash.startsWith('#/g/') ? ix?.groups.find(g => g.id === id) : null;
+  return group && viewIn(ix, group.project) !== HOME_VIEW ? newRoute(group.id) : newRoute();
 }
 
 // The group a new session starts in: the one the address names while it is a group the owner made, or Pinned, which pins it. Before the list

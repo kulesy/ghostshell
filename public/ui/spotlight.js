@@ -14,7 +14,7 @@ import { withSubs } from './pick.js';
 import { HOME_VIEW } from './scopes.js';
 import { emptyText, sectionsFor } from './search-rules.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
-import { newSession } from './sessions-list.js';
+import { newHere } from './sessions-list.js';
 import { keyHint } from './shortcuts.js';
 import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
@@ -141,7 +141,7 @@ function Palette({ ix, scheduled, archive, onShow, onClose }) {
       return;
     }
     onClose();
-    if (it.key === 'new') newSession();
+    if (it.key === 'new') newHere();
     else if (it.action) location.hash = it.hash;
     else {
       focusNextComposer();
