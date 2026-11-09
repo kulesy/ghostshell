@@ -61,6 +61,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
     private func open(_ app: XCUIApplication, _ title: String, expecting text: String) {
         let line = row(app, title)
+        // The list only draws the rows on screen, and a small phone shows few of them.
+        for _ in 0..<4 where !line.waitForExistence(timeout: 3) { app.swipeUp() }
         XCTAssertTrue(line.waitForExistence(timeout: 10), "No row \(title)\n\(app.debugDescription)")
         line.tap()
         XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20), "The chat \(title) did not show \(text)\n\(app.debugDescription)")

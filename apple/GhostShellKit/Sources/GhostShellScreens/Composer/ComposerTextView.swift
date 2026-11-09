@@ -207,7 +207,8 @@ struct ComposerTextView: View {
 
     var body: some View {
         @Bindable var model = model
-        TextField("Message", text: $model.text, axis: .vertical)
+        // The empty title leaves the placeholder to ComposerView, which draws it for both platforms.
+        TextField("", text: $model.text, axis: .vertical)
             .font(ChatStyle.body)
             .lineLimit(1...8)
             .focused($focus)
