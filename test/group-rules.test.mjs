@@ -1,7 +1,7 @@
 // Run with `npm test`. How a group's sessions fall into the parts of its panel and of the list tool, and the summary line over them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newRoute, newUnderRoute, paneOf, parseNewRoute, RECENT_MS, startsFrom, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups } from '../public/ui/group-rules.js';
+import { besideDraft, BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newBesideRoute, newKeyRoute, newRoute, newUnderRoute, paneOf, parseNewRoute, RECENT_MS, startsFrom, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups } from '../public/ui/group-rules.js';
 import { supportsSections } from '../public/ui/sections.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -215,6 +215,79 @@ test('the new session under a parent address carries an id of any characters and
   assert.deepEqual(parseNewRoute('#/new-under/'), { group: null, parent: null });
   assert.deepEqual(parseNewRoute('#/new-under/%E0%A4%A'), { group: null, parent: null });
   assert.equal(parseNewRoute('#/new-underneath'), null);
+});
+
+test('the new session beside a session address carries an id of any characters and reads back as that session, with no group', () => {
+  for (const id of ['boss', 'a/b', 'a b?c#d', '100%', 'ünï', '../s/x']) {
+    assert.equal(newBesideRoute(id), `#/new-beside/${encodeURIComponent(id)}`);
+    assert.deepEqual(parseNewRoute(newBesideRoute(id)), { group: null, beside: id }, id);
+  }
+  assert.deepEqual(parseNewRoute('#/new-beside/'), { group: null, beside: null });
+  assert.deepEqual(parseNewRoute('#/new-beside/%E0%A4%A'), { group: null, beside: null });
+  assert.equal(parseNewRoute('#/new-besides'), null);
+});
+
+const placed = {
+  projects: [{ id: 'cp-x', name: 'Capcom' }],
+  groups: [
+    { id: 'cg-in', name: 'In a project', project: 'cp-x', sessions: [{ id: 'in', cwd: '/w/app', group: 'cg-in', children: [{ id: 'kid', cwd: '/w/app/sub', parent: 'in', group: 'cg-in' }] }, { id: 'bare', cwd: '', group: 'cg-in' }, { id: 'pin-in', cwd: '/w/pin', group: 'cg-in', pinned: true }] },
+    { id: 'cg-home', name: 'In Home', project: null, sessions: [{ id: 'hg', cwd: '/w/home-group', group: 'cg-home' }] },
+    { id: 'cg-gone', name: 'Project removed', project: 'cp-none', sessions: [{ id: 'gone', cwd: '/w/gone', group: 'cg-gone' }] },
+  ],
+  pinned: [{ id: 'pin', cwd: '/w/pinned', pinned: true }],
+  started: [{ id: 'loose', cwd: '/w/loose' }],
+  ungrouped: [], other: [], routines: [],
+};
+
+test('a session in a group that is in a project starts the next one in its folder and that group, and a nested one uses its own folder and its root\'s group', () => {
+  assert.deepEqual(besideDraft(placed, 'in'), { cwd: '/w/app', group: 'cg-in' });
+  assert.deepEqual(besideDraft(placed, 'kid'), { cwd: '/w/app/sub', group: 'cg-in' });
+});
+
+test('a session in Home, Pinned, a Home group or a group whose project is gone starts the next one in its folder with no group', () => {
+  assert.deepEqual(besideDraft(placed, 'loose'), { cwd: '/w/loose', group: null });
+  assert.deepEqual(besideDraft(placed, 'hg'), { cwd: '/w/home-group', group: null });
+  assert.deepEqual(besideDraft(placed, 'gone'), { cwd: '/w/gone', group: null });
+  assert.deepEqual(besideDraft(placed, 'pin'), { cwd: '/w/pinned', group: null });
+  assert.deepEqual(besideDraft(placed, 'pin-in'), { cwd: '/w/pin', group: null });
+});
+
+test('a session the list lacks or one with no folder gives no start, and neither does a list that has not loaded', () => {
+  assert.equal(besideDraft(placed, 'nobody'), null);
+  assert.equal(besideDraft(placed, 'bare'), null);
+  assert.equal(besideDraft(placed, null), null);
+  assert.equal(besideDraft(null, 'in'), null);
+});
+
+test('Ctrl+N beside a session in a project group opens the page for that session, and its folder and group come from the list', () => {
+  assert.equal(newKeyRoute(placed, '#/s/in'), '#/new-beside/in');
+  assert.equal(newKeyRoute(placed, '#/s/kid'), '#/new-beside/kid');
+  assert.equal(newKeyRoute(placed, '#/s/loose'), '#/new-beside/loose');
+});
+
+test('Ctrl+N in a group\'s own chat opens a new session in that group only when the group is in a project', () => {
+  assert.equal(newKeyRoute(placed, '#/g/cg-in'), '#/new/cg-in');
+  assert.equal(newKeyRoute(placed, '#/g/cg-home'), '#/new');
+  assert.equal(newKeyRoute(placed, '#/g/cg-gone'), '#/new');
+  assert.equal(newKeyRoute(placed, '#/g/nobody'), '#/new');
+});
+
+test('Ctrl+N on a page that names no project opens a new session in the first group of the project the list shows, and in home when that has none', () => {
+  for (const hash of ['', '#/', '#/routines']) assert.equal(newKeyRoute(placed, hash, 'cp-x'), '#/new/cg-in', hash);
+  const empty = { ...placed, projects: [...placed.projects, { id: 'cp-empty', name: 'Empty' }] };
+  assert.equal(newKeyRoute(empty, '#/', 'cp-empty'), '#/new');
+  assert.equal(newKeyRoute(placed, '#/', 'cp-none'), '#/new', 'a project no longer in the list shows Home');
+  assert.equal(newKeyRoute(placed, '#/s/nobody', 'cp-x'), '#/new', 'a session page leaves the view out');
+  assert.equal(newKeyRoute(placed, '#/g/cg-home', 'cp-x'), '#/new', 'a group page leaves the view out');
+  assert.equal(newKeyRoute(placed, '#/s/loose', 'cp-x'), '#/new-beside/loose');
+  assert.equal(newKeyRoute(null, '#/', 'cp-x'), '#/new');
+});
+
+test('Ctrl+N anywhere else, before the list loads, or on a session the list lacks opens the plain page, and an open new session page stays as it is', () => {
+  for (const hash of ['', '#/', '#/passkeys', '#/accounts', '#/routines', '#/s/nobody', '#/s/bare', '#/s/%E0%A4%A']) assert.equal(newKeyRoute(placed, hash), '#/new', hash);
+  assert.equal(newKeyRoute(null, '#/s/in'), '#/new');
+  assert.equal(newKeyRoute(null, '#/g/cg-in'), '#/new');
+  for (const hash of ['#/new', '#/new/cg-home', '#/new-under/in', '#/new-beside/in']) assert.equal(newKeyRoute(placed, hash), hash, hash);
 });
 
 test('a new session starts in the group of the address only while it is a group the owner made or Pinned, and any other section or an unknown id means none', () => {

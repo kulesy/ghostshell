@@ -14,7 +14,7 @@ import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatHead, NewHereButton } from './group-button.js';
 import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } from './group-drag-rules.js';
-import { deleteDetail, groupById, newRoute, newUnderRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
+import { deleteDetail, groupById, newKeyRoute, newRoute, newUnderRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
 import { isWide, useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { carriedOf, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNote, nestedNote, pinnedNote, placeName, placeTo, refuseNest, topmost, unnestedNote } from './many-rules.js';
@@ -31,9 +31,10 @@ import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
 import { archiveHint, keyHint, onMac, shortcut } from './shortcuts.js';
+import { local } from './storage.js';
 import { familyNote } from './sub-panel-rules.js';
 import { descendantsOf } from './sub-rules.js';
-import { sessionActions } from './subs.js';
+import { sessionActions, sessionIndex } from './subs.js';
 import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
 import { dismissTooltip } from './tooltip.js';
@@ -338,8 +339,10 @@ const openDraft = to => {
   if (location.hash !== to) location.hash = to;
   if (open) document.getElementById('text')?.focus();
 };
-export const newSession = group => openDraft(newRoute(group));
+const newSession = group => openDraft(newRoute(group));
 export const newUnder = parent => openDraft(newUnderRoute(parent));
+// What Ctrl+N and the New session items do: start beside what is on screen.
+export const newHere = () => openDraft(newKeyRoute(sessionIndex.get().ix, location.hash, local.get('scope', null)));
 
 // The Move to items for `targets` (see sessionTargets), with each project's groups under its name. What follows the projects' groups is Home's,
 // and takes a heading of its own so the sections read alike. `choice(label, section, where)` makes one item.
@@ -1093,7 +1096,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   const addMenu = {
     label: 'New session or group',
     items: [
-      { label: 'New session', icon: icons.messageSquarePlus, hint: keyHint(mod, 'N'), run: () => newSession() },
+      { label: 'New session', icon: icons.messageSquarePlus, hint: keyHint(mod, 'N'), run: () => (parseNewRoute(location.hash) ? newSession() : newHere()) },
       ...(ix ? [{ label: 'New group', icon: icons.folderPlus, run: () => setForm({ kind: 'group', project: view, back: ['.add'] }) }] : []),
     ],
   };

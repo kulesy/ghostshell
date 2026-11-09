@@ -1,5 +1,5 @@
 // Run with `npm test`. The New session button on a parent session's row in the real page: where it shows, what it says, the draft it opens with the parent in a chip,
-// the session it starts in the parent's folder under the parent, and room left for the title, the fold arrow and the menu at the narrowest widths. It needs
+// the session it starts in the parent's folder under the parent, Ctrl+N starting beside the session or group on screen, and room left for the title, the fold arrow and the menu at the narrowest widths. It needs
 // Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -53,16 +53,16 @@ async function login(page) {
   }
 }
 
-async function appPage(t, s, { phone = false, width = null, hash = '#/' } = {}) {
+async function appPage(t, s, { phone = false, width = null, hash = '#/', scope = null, rows = 5 } = {}) {
   const setter = await browser.open(`${s.origin}/healthz`);
-  await setter.evaluate(`['groupShut', 'groupMore', 'collapsed', 'folded'].forEach(key => localStorage.removeItem('capcom.' + key)); localStorage.setItem('capcom.scope', 'null')`);
+  await setter.evaluate(`['groupShut', 'groupMore', 'collapsed', 'folded'].forEach(key => localStorage.removeItem('capcom.' + key)); localStorage.setItem('capcom.scope', ${JSON.stringify(JSON.stringify(scope))})`);
   await setter.close();
   const page = await browser.open(`${s.origin}/${hash}`, { phone });
   t.after(() => page.close());
   if (width) await page.resize(width, 860);
   await login(page);
   if ((await page.evaluate('location.hash')) !== hash) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
-  await page.until(`document.querySelectorAll('a.row[data-id]').length >= 5`);
+  await page.until(`document.querySelectorAll('a.row[data-id]').length >= ${rows}`);
   return page;
 }
 
@@ -173,4 +173,67 @@ test('on a phone the button is always shown and fits beside the title, the fold 
     for (const id of ['boss', 'long']) fits(await geometry(page, id), `${width} ${id}`);
     assert.deepEqual(page.problems, []);
   }
+});
+
+const CTRL = 2;
+const TEAM = { groups: [{ id: 'cg-team', name: 'Team', project: 'cp-x' }, { id: 'cg-home', name: 'Notes' }], layout: { projects: [{ id: 'cp-x', name: 'Capcom' }] } };
+const PLACED = [
+  { id: 'mine', title: 'Build the export', folder: 'work', group: 'cg-team', ago: 1 },
+  { id: 'kept', title: 'Keep the notes', folder: 'notes', group: 'cg-home', ago: 2 },
+  { id: 'lone', title: 'Loose notes', folder: 'play', ago: 3 },
+];
+
+test('Ctrl+N from a session in a project group starts a chat in its folder and group, and the chat lists under that project', { skip, timeout }, async t => {
+  const s = await start({ sessions: PLACED, claude: true, ...TEAM });
+  const page = await appPage(t, s, { hash: '#/s/mine', scope: 'cp-x', rows: 1 });
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new-beside/mine' && document.querySelector('${CHIP} .name')?.textContent === 'Team' && ${IN_WORK}`);
+  await typeInto(page, 'begin a session');
+  await page.click('#send');
+  await page.until(`location.hash === '#/s/begun-by-the-fake'`);
+  assert.equal(cliCalls(s).find(x => x.started).cwd, fs.realpathSync(path.join(s.home, 'work')));
+  assert.equal(JSON.parse(fs.readFileSync(s.layout, 'utf8')).assignments['begun-by-the-fake'], 'cg-team');
+  await page.until(`document.querySelector('.group:has(a.row[data-id="begun-by-the-fake"]) .group-head .name')?.textContent === 'Team'`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('Ctrl+N from a session in Home or a Home group starts in its folder with no group, and from a group\'s chat in a project starts in the group at home', { skip, timeout }, async t => {
+  const s = await start({ sessions: PLACED, claude: true, ...TEAM });
+  const page = await appPage(t, s, { hash: '#/s/lone', rows: 1 });
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new-beside/lone' && !document.querySelector('${CHIP}') && /Code in \\S*play/.test(${HEAD})`);
+  await page.evaluate(`location.hash = '#/s/kept'`);
+  await page.until(`location.hash === '#/s/kept'`);
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new-beside/kept' && !document.querySelector('${CHIP}') && /Code in \\S*notes/.test(${HEAD})`);
+  await page.evaluate(`location.hash = '#/g/cg-team'`);
+  await page.until(`location.hash === '#/g/cg-team'`);
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new/cg-team' && document.querySelector('${CHIP} .name')?.textContent === 'Team' && ${AT_HOME}`);
+  await page.evaluate(`location.hash = '#/g/cg-home'`);
+  await page.until(`location.hash === '#/g/cg-home'`);
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}') && ${AT_HOME}`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('Ctrl+N from the list opens the plain page in Home and the project\'s first group in a project, and on a new session page it keeps the draft and the cursor goes to its box', { skip, timeout }, async t => {
+  const s = await start({ sessions: PLACED, claude: true, ...TEAM });
+  const page = await appPage(t, s, { rows: 1 });
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new' && ${AT_HOME}`);
+  await page.evaluate(`localStorage.setItem('capcom.scope', '"cp-x"'); location.hash = '#/'`);
+  await page.until(`location.hash === '#/'`);
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new/cg-team' && document.querySelector('${CHIP} .name')?.textContent === 'Team' && ${AT_HOME}`);
+  await page.evaluate(`location.hash = '#/new-beside/mine'`);
+  await page.until(`${IN_WORK} && document.querySelector('${CHIP} .name')?.textContent === 'Team'`);
+  await typeInto(page, 'half a thought');
+  await page.evaluate(`document.activeElement?.blur()`);
+  await page.press('n', CTRL);
+  await page.until(`document.activeElement?.id === 'text'`);
+  assert.equal(await page.evaluate('location.hash'), '#/new-beside/mine');
+  assert.equal(await page.evaluate(`document.querySelector('#text').value`), 'half a thought');
+  assert.equal(await page.evaluate(`document.querySelector('${CHIP} .name').textContent`), 'Team');
+  assert.deepEqual(page.problems, []);
 });

@@ -57,7 +57,15 @@ New sessions start from any of these:
 - Ctrl+N.
 - Cmd+N in the installed app.
 
-Each opens an empty chat, and the first message starts the session in the home folder, or in the parent's folder when the chat names a parent. A chip on that chat names the parent, and its x starts the session outside it. A session started from a group's header joins that group when it starts, so the group's account pin applies to its first turn, and one started under a parent runs on the parent's account from its first turn. The + and the keys work while the list is still loading. The search shows its action once the list has arrived.
+Each opens an empty chat, and the first message starts the session in the home folder, or in the parent's folder when the chat names a parent. New session in the + menu, the search's action, Ctrl+N and Cmd+N start beside what is on screen instead:
+
+- From a session, the chat opens at `#/new-beside/<id>` and starts in that session's folder. When the session's group, or its parent's, is in a project, the chat also starts in that group, so it lists under the project. A pinned session or one in Home gives its folder alone.
+- From a group's own chat in a project, the chat starts in that group, in the home folder.
+- From any other page while the list shows a project, the chat starts in the project's first group, in the home folder.
+- Anywhere else, and before the list has loaded, it starts in the home folder with no group.
+- On a new session page the keys and the search keep the draft and put the cursor in its box. New session in the + menu opens a fresh plain page there.
+
+A chat started under a parent has a chip that names the parent, and its x starts the session outside it. A session started from a group's header joins that group when it starts, so the group's account pin applies to its first turn, and one started under a parent runs on the parent's account from its first turn. The + and the keys work while the list is still loading. The search shows its action once the list has arrived.
 
 ### Cmd+N in a tab and in the app
 
@@ -228,7 +236,7 @@ Drag a group's header to move the group with its sessions, folded or open. Only 
 - Onto a project or Home moves the group there, as the menu does. With the projects sidebar open its rows are the targets, and the one under the pointer lights up. With it shut, a Move to strip of Home and the projects replaces the header's row while the group is carried, so the list does not move. The view the group is in is left out.
 - Esc cancels, and a note says where the group went or why the server refused. After a reorder the focus is on the group's header.
 
-The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with Rename and then New session, which opens the new session page with the group chosen (`#/new/<group>`), as the new session button on the header does. The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. Pinned's button opens `#/new/pinned` instead, where the chip shows a pin and its button reads Start without pinning, and the first message starts the session and pins it with `api/layout/pin`. The + menu and Ctrl+N or Cmd+N start a session with no group, as before.
+The menu does the same moves for the keyboard and a screen reader: Move up, Move down and the moves to a project. It starts with Rename and then New session, which opens the new session page with the group chosen (`#/new/<group>`), as the new session button on the header does. The page shows the group in a small chip in its header, with a button to start outside it, and the first message starts the session and then places it in the group with `api/layout/move`, before this page reads the list again. If the group will not take it, the session still opens and a note says why. Pinned's button opens `#/new/pinned` instead, where the chip shows a pin and its button reads Start without pinning, and the first message starts the session and pins it with `api/layout/pin`. Where the + menu, the search and Ctrl+N or Cmd+N start is listed under New sessions above.
 
 ## The projects sidebar
 
