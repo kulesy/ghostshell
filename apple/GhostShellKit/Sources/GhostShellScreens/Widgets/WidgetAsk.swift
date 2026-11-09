@@ -27,7 +27,7 @@ struct WidgetAsk: View {
             }
             if isLong {
                 Button(wide ? "Show less" : "Show all") { wide.toggle() }
-                    .buttonStyle(.borderless).font(ChatStyle.small)
+                    .buttonStyle(.borderless).font(ChatStyle.small).phoneTouch()
             }
             if !request.error.isEmpty {
                 Text(request.error).font(ChatStyle.small).foregroundStyle(.red).accessibilityAddTraits(.isStaticText)
@@ -35,11 +35,13 @@ struct WidgetAsk: View {
             HStack(spacing: 10) {
                 Button(isLink ? "Open link" : "Send") { if armed && !request.working { confirm() } }
                     .buttonStyle(.borderedProminent)
+                    .largeOnPhone()
                     .opacity(armed && !request.working ? 1 : 0.5)
                     .accessibilityLabel(isLink ? "Open link" : "Send")
                     .accessibilityHint(armed ? "" : "Not ready yet")
                 Button("Cancel", action: cancel)
                     .buttonStyle(.bordered)
+                    .phoneTouch(boxed: true)
                     .accessibilityLabel("Cancel")
             }
         }

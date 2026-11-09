@@ -45,6 +45,12 @@ struct FilePanel: View {
             Button("Discard changes", role: .destructive) { store.discardEdit() }
             Button("Keep editing", role: .cancel) {}
         }
+        #if os(iOS)
+        .fileExporter(isPresented: Binding(get: { store.export != nil }, set: { if !$0 { store.export = nil } }),
+                      document: store.export.map { BytesDocument($0.data) }, contentType: .data, defaultFilename: store.export?.name) { result in
+            if case .failure(let error) = result { store.alert = .init(title: "Cannot save this file", message: error.localizedDescription) }
+        }
+        #endif
     }
 }
 
@@ -63,9 +69,10 @@ private struct FileHeader: View {
             }
             Spacer(minLength: 8)
             if store.edit != nil {
-                Button("Cancel") { store.cancelEdit() }.controlSize(.small).disabled(store.edit?.saving == true)
-                Button("Save") { store.save() }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
+                Button("Cancel") { dismissKeyboard(); store.cancelEdit() }
+                    .phoneTouch().phoneIconTouch().compactOnMac().disabled(store.edit?.saving == true)
+                Button("Save") { dismissKeyboard(); store.save() }
+                    .buttonStyle(.borderedProminent).compactOnMac().phoneIconTouch()
                     .keyboardShortcut("s", modifiers: .command)
                     .disabled(store.edit.map { $0.saving || !($0.changed || $0.conflict) } ?? true)
             } else {
@@ -77,6 +84,8 @@ private struct FileHeader: View {
                 }
                 #if os(macOS)
                 if let preview, !preview.tooLarge { iconButton("Download", "arrow.down.circle") { store.download() } }
+                #else
+                if let preview, !preview.tooLarge { iconButton("Save to Files", "square.and.arrow.down") { store.saveToFiles() } }
                 #endif
                 iconButton("Close", "xmark") { store.close() }
             }
@@ -86,7 +95,7 @@ private struct FileHeader: View {
 
     private func iconButton(_ name: String, _ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Label(name, systemImage: symbol).labelStyle(.iconOnly) }
-            .buttonStyle(.borderless).help(name)
+            .buttonStyle(.borderless).phoneIconTouch().help(name)
     }
 }
 
@@ -180,7 +189,7 @@ private struct FileBody: View {
     }
 }
 
-/// A file the panel cannot show: its kind, its size and, where it can be saved, Download.
+/// A file the panel cannot show: its kind, its size and, where it can be saved, Download on the Mac and Save to Files on a phone.
 private struct FileCard: View {
     let store: FilesStore
     let preview: FilePreview
@@ -195,6 +204,8 @@ private struct FileCard: View {
             }
             #if os(macOS)
             if !preview.tooLarge { Button("Download") { store.download() }.padding(.top, 4) }
+            #else
+            if !preview.tooLarge { Button("Save to Files") { store.saveToFiles() }.phoneTouch(boxed: true).padding(.top, 4) }
             #endif
         }
         .padding(20)

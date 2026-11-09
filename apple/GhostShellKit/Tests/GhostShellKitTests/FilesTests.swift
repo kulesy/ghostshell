@@ -356,4 +356,11 @@ final class FilesStoreTests: XCTestCase {
         XCTAssertEqual(ChatFiles.displayName("report.pdf"), "report.pdf")
         XCTAssertEqual(ChatFiles.displayName("\u{202E}.. \n"), "file")
     }
+
+    func testASavedCopyIsOfferedUnderTheFilesOwnLastPathComponent() {
+        XCTAssertEqual(FilesStore.exportName("/home/me/x/report.pdf"), "report.pdf")
+        XCTAssertEqual(FilesStore.exportName("~/notes/"), "notes")
+        XCTAssertEqual(FilesStore.exportName("/home/me/../../etc/.passwd"), "passwd")
+        XCTAssertEqual(FilesStore.exportName("/"), "file")
+    }
 }

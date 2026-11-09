@@ -76,16 +76,16 @@ struct ChipActions: View {
             case .started?:
                 HStack(spacing: 8) {
                     Label("Started", systemImage: "checkmark.circle").font(.callout.weight(.medium)).foregroundStyle(GroupTint.color(.ready))
-                    if let id = record?.startedId, !id.isEmpty { Button("Open") { app.navigator.openSession(id) }.controlSize(.small) }
+                    if let id = record?.startedId, !id.isEmpty { Button("Open") { app.navigator.openSession(id) }.phoneTouch(boxed: true).compactOnMac() }
                 }
             case .dismissed?:
                 Label("Dismissed", systemImage: "xmark.circle").font(.callout).foregroundStyle(.secondary)
             default:
                 HStack(spacing: 8) {
                     Button("Start") { Task { await store.press(start: true, call, folder: folder) } }
-                        .buttonStyle(.borderedProminent).controlSize(.small)
+                        .buttonStyle(.borderedProminent).compactOnMac()
                     Button("Dismiss") { Task { await store.press(start: false, call, folder: folder) } }
-                        .controlSize(.small)
+                        .phoneTouch(boxed: true).compactOnMac()
                     if busy { ProgressView().controlSize(.small) }
                 }
                 .disabled(busy)

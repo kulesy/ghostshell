@@ -1,5 +1,8 @@
 import GhostShellKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// The sizes the thread is set in. They follow the page, which sets its replies at 14 points.
 enum ChatStyle {
@@ -44,16 +47,26 @@ enum MarkdownText {
                 var inner = AttributedString()
                 append(text, to: &inner, style: style)
                 inner.link = url
+                Self.styleLink(&inner)
                 out += inner
             case .file(let text, let path, let line):
                 var inner = AttributedString()
                 append(text, to: &inner, style: style)
                 inner.link = ChatLink.file(path: path, line: line).url
+                Self.styleLink(&inner)
                 out += inner
             case .lineBreak:
                 out += AttributedString("\n")
             }
         }
+    }
+
+    /// The app's tint is a neutral grey, so on a phone, where nothing hovers to show a link, a link gets the system's link colour and an underline.
+    private static func styleLink(_ text: inout AttributedString) {
+        #if os(iOS)
+        text.foregroundColor = Color(uiColor: .link)
+        text.underlineStyle = .single
+        #endif
     }
 
     private static func run(_ text: String, _ style: Style) -> AttributedString {

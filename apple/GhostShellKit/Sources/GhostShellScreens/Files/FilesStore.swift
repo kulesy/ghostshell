@@ -87,6 +87,9 @@ final class FilesStore {
         guard let chat else { return }
         edit = nil
         alert = nil
+        #if os(iOS)
+        export = nil
+        #endif
         player.stop()
         media = .none
         serial += 1
@@ -173,6 +176,9 @@ final class FilesStore {
 
     func close() {
         edit = nil
+        #if os(iOS)
+        export = nil
+        #endif
         player.stop()
         chat?.filePanelOpen = false
     }
@@ -274,6 +280,45 @@ final class FilesStore {
                 values.quarantineProperties = [kLSQuarantineTypeKey as String: kLSQuarantineTypeWebDownload as String]
                 try? marked.setResourceValues(values)
             } catch {
+                alert = Alert(title: "Cannot save this file", message: error.localizedDescription)
+            }
+        }
+    }
+    #endif
+
+    // MARK: Save to Files
+
+    /// The name a saved copy is offered under: the file's own last path component, never anything the server sent as a path.
+    static func exportName(_ path: String) -> String {
+        let name = ChatFiles.displayName((path as NSString).lastPathComponent)
+        return name.contains("/") ? "file" : name
+    }
+
+    #if os(iOS)
+    /// The bytes the system's Files sheet writes where the person picks. They are held in memory until the system sheet takes them.
+    struct Export {
+        var name: String
+        var data: Data
+    }
+
+    var export: Export?
+    @ObservationIgnored private var exporting = false
+
+    /// Back hides the panel without closing the file, so a late answer checks the panel is still on screen as well as the path.
+    private func stillShowing(_ path: String) -> Bool { file?.path == path && chat?.filePanelOpen == true }
+
+    func saveToFiles() {
+        guard let file, let preview = file.preview, !preview.tooLarge, !exporting else { return }
+        let path = file.path
+        exporting = true
+        Task {
+            defer { exporting = false }
+            do {
+                let data = try await client.fileBytes(sessionID: sessionID, path: path, download: true)
+                guard stillShowing(path) else { return }
+                export = Export(name: Self.exportName(path), data: data)
+            } catch {
+                guard stillShowing(path) else { return }
                 alert = Alert(title: "Cannot save this file", message: error.localizedDescription)
             }
         }

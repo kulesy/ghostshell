@@ -1,5 +1,8 @@
 import GhostShellKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// The Sub sessions panel: a summary line, then the group's sessions as cards in the parts Waiting on you, Working, Recent activity and Idle.
 struct SubSessionsPanel: View {
@@ -21,6 +24,7 @@ struct SubSessionsPanel: View {
             let summary = GroupRules.summaryLine(index, chat: chat, now: now, needs: needs)
             let key = drawn.map { "\($0.id)\(GroupRules.stamp($0))" }.joined(separator: ",") + "|" + scope.map { "\($0.id)\(GroupRules.stamp($0))" }.joined(separator: ",")
             VStack(spacing: 0) {
+                ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
                         if !summary.isEmpty { Words(text: summary).font(.callout).foregroundStyle(.secondary) }
@@ -32,6 +36,10 @@ struct SubSessionsPanel: View {
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                #if os(iOS)
+                .modifier(ReplyButtonsInView(cards: cards, proxy: proxy))
+                #endif
                 }
                 if let toast = cards.toast { ToastBar(toast: toast, dismiss: { cards.toast = nil }) }
             }
@@ -59,6 +67,27 @@ struct SubSessionsPanel: View {
         Binding(get: { cards.stopQuestion != nil }, set: { if !$0 { cards.stopQuestion = nil } })
     }
 }
+
+#if os(iOS)
+/// Scrolls the focused reply box's Send and Cancel above the keyboard, which covers them otherwise. The row also moves when the keyboard comes up and when "Not sent" appears above it.
+private struct ReplyButtonsInView: ViewModifier {
+    let cards: GroupCards
+    let proxy: ScrollViewProxy
+
+    func body(content: Content) -> some View {
+        let problem = cards.focusing.map { cards.box($0).problem } ?? ""
+        content
+            .onChange(of: cards.focusing) { reveal() }
+            .onChange(of: problem) { reveal() }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in reveal() }
+    }
+
+    private func reveal() {
+        guard let id = cards.focusing else { return }
+        withAnimation { proxy.scrollTo(GroupReplyBox.buttonsID(id), anchor: .bottom) }
+    }
+}
+#endif
 
 private struct PartView: View {
     let bucket: GroupBucket
