@@ -1,7 +1,7 @@
 // How a group's sessions fall into the parts of its status panel and of the list_group_sessions tool, as rules that need no page, so
 // node can test them and the server shares them. The rows are the server's, as they sit in the index.
 import { sectionById, sectionSessions, supportsSections } from './sections.js';
-import { HOME_VIEW, viewIn } from './scopes.js';
+import { groupsIn, HOME_VIEW, viewIn } from './scopes.js';
 import { findRow, rootOf, withKids } from './tree.js';
 
 // A session that is not archived, waiting or working counts as recent when it was written to within this long.
@@ -107,14 +107,17 @@ export function besideDraft(ix, id) {
 }
 
 // Where Ctrl+N goes. An open new session page stays as it is, a session opens one beside it, and a group's own chat opens one in that group, both
-// only when it is in a project. Anything else, and any page before the list has loaded, opens the plain one in the home folder.
-export function newKeyRoute(ix, hash) {
+// only when it is in a project. Any other page opens one in the first group of the project the list shows, `view`. Anything else, and any page
+// before the list has loaded, opens the plain one in the home folder.
+export function newKeyRoute(ix, hash, view = HOME_VIEW) {
   if (parseNewRoute(hash)) return hash;
   let id = null;
   try { id = decodeURIComponent(hash.slice(4)); } catch {}
   if (hash.startsWith('#/s/') && besideDraft(ix, id)) return newBesideRoute(id);
   const group = hash.startsWith('#/g/') ? ix?.groups.find(g => g.id === id) : null;
-  return group && viewIn(ix, group.project) !== HOME_VIEW ? newRoute(group.id) : newRoute();
+  if (group) return viewIn(ix, group.project) !== HOME_VIEW ? newRoute(group.id) : newRoute();
+  const shown = ix && !hash.startsWith('#/s/') ? viewIn(ix, view) : HOME_VIEW;
+  return shown !== HOME_VIEW && groupsIn(ix, shown)[0] ? newRoute(groupsIn(ix, shown)[0].id) : newRoute();
 }
 
 // The group a new session starts in: the one the address names while it is a group the owner made, or Pinned, which pins it. Before the list

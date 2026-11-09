@@ -217,11 +217,15 @@ test('Ctrl+N from a session in Home or a Home group starts in its folder with no
   assert.deepEqual(page.problems, []);
 });
 
-test('Ctrl+N from the list opens the plain page, and on a new session page it keeps the draft and the cursor goes to its box', { skip, timeout }, async t => {
+test('Ctrl+N from the list opens the plain page in Home and the project\'s first group in a project, and on a new session page it keeps the draft and the cursor goes to its box', { skip, timeout }, async t => {
   const s = await start({ sessions: PLACED, claude: true, ...TEAM });
   const page = await appPage(t, s, { rows: 1 });
   await page.press('n', CTRL);
   await page.until(`location.hash === '#/new' && ${AT_HOME}`);
+  await page.evaluate(`localStorage.setItem('capcom.scope', '"cp-x"'); location.hash = '#/'`);
+  await page.until(`location.hash === '#/'`);
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new/cg-team' && document.querySelector('${CHIP} .name')?.textContent === 'Team' && ${AT_HOME}`);
   await page.evaluate(`location.hash = '#/new-beside/mine'`);
   await page.until(`${IN_WORK} && document.querySelector('${CHIP} .name')?.textContent === 'Team'`);
   await typeInto(page, 'half a thought');

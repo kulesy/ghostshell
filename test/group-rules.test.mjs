@@ -272,6 +272,17 @@ test('Ctrl+N in a group\'s own chat opens a new session in that group only when 
   assert.equal(newKeyRoute(placed, '#/g/nobody'), '#/new');
 });
 
+test('Ctrl+N on a page that names no project opens a new session in the first group of the project the list shows, and in home when that has none', () => {
+  for (const hash of ['', '#/', '#/routines']) assert.equal(newKeyRoute(placed, hash, 'cp-x'), '#/new/cg-in', hash);
+  const empty = { ...placed, projects: [...placed.projects, { id: 'cp-empty', name: 'Empty' }] };
+  assert.equal(newKeyRoute(empty, '#/', 'cp-empty'), '#/new');
+  assert.equal(newKeyRoute(placed, '#/', 'cp-none'), '#/new', 'a project no longer in the list shows Home');
+  assert.equal(newKeyRoute(placed, '#/s/nobody', 'cp-x'), '#/new', 'a session page leaves the view out');
+  assert.equal(newKeyRoute(placed, '#/g/cg-home', 'cp-x'), '#/new', 'a group page leaves the view out');
+  assert.equal(newKeyRoute(placed, '#/s/loose', 'cp-x'), '#/new-beside/loose');
+  assert.equal(newKeyRoute(null, '#/', 'cp-x'), '#/new');
+});
+
 test('Ctrl+N anywhere else, before the list loads, or on a session the list lacks opens the plain page, and an open new session page stays as it is', () => {
   for (const hash of ['', '#/', '#/passkeys', '#/accounts', '#/routines', '#/s/nobody', '#/s/bare', '#/s/%E0%A4%A']) assert.equal(newKeyRoute(placed, hash), '#/new', hash);
   assert.equal(newKeyRoute(null, '#/s/in'), '#/new');

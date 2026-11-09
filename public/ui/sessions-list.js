@@ -31,6 +31,7 @@ import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
 import { archiveHint, keyHint, onMac, shortcut } from './shortcuts.js';
+import { local } from './storage.js';
 import { familyNote } from './sub-panel-rules.js';
 import { descendantsOf } from './sub-rules.js';
 import { sessionActions, sessionIndex } from './subs.js';
@@ -338,10 +339,10 @@ const openDraft = to => {
   if (location.hash !== to) location.hash = to;
   if (open) document.getElementById('text')?.focus();
 };
-export const newSession = group => openDraft(newRoute(group));
+const newSession = group => openDraft(newRoute(group));
 export const newUnder = parent => openDraft(newUnderRoute(parent));
 // What Ctrl+N and the New session items do: start beside what is on screen.
-export const newHere = () => openDraft(newKeyRoute(sessionIndex.get().ix, location.hash));
+export const newHere = () => openDraft(newKeyRoute(sessionIndex.get().ix, location.hash, local.get('scope', null)));
 
 // The Move to items for `targets` (see sessionTargets), with each project's groups under its name. What follows the projects' groups is Home's,
 // and takes a heading of its own so the sections read alike. `choice(label, section, where)` makes one item.
