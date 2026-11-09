@@ -60,7 +60,7 @@ export async function serve(pages = {}) {
   };
 }
 
-// Starts the browser in a profile of its own. Returns `open(url)`, which gives a page, and `close()`. A browser that cannot start throws here.
+// Starts the browser in a profile of its own. Returns `open(url)`, which gives a page, `close()` and the browser's `pid`. A browser that cannot start throws here.
 export async function launch(chromium) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-browser-'));
   // Commands go in on fd 3 and replies come out on fd 4, each JSON message ending in a NUL byte. The browser quits when its pipe
@@ -289,5 +289,5 @@ export async function launch(chromium) {
     await close();
     throw error;
   }
-  return { open, close };
+  return { open, close, pid: child.pid };
 }

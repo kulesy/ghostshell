@@ -16,6 +16,8 @@ enum DebugHooks {
 
     @MainActor static func makeModel() -> AppModel {
         let args = UserDefaults.standard
+        // A UI test run always passes this, and the Simulator plays a clip through the Mac's speakers. See https://github.com/kulesy/ghostshell/issues/127.
+        if ProcessInfo.processInfo.arguments.contains("-GSKeychainService") { ClipSound.silent = true }
         let store: TokenStore = args.string(forKey: "GSKeychainService").map { KeychainTokenStore(service: $0) } ?? KeychainTokenStore()
         let defaults = args.string(forKey: "GSDefaultsSuite").flatMap { UserDefaults(suiteName: $0) } ?? .standard
         return AppModel(store: store, defaults: defaults, address: args.string(forKey: "GSAddress"))

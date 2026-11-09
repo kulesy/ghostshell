@@ -37,6 +37,7 @@ enum DebugHooks {
             ClickWatcher.start(folder: URL(fileURLWithPath: shotDir))
             // A regular test app is fronted by macOS when a sibling test app quits. An accessory app is not.
             NSApplication.shared.setActivationPolicy(.accessory)
+            ClipSound.silent = true
         }
         let model = AppModel(store: store, defaults: defaults, address: args.string(forKey: "GSAddress"))
         model.ignoresOcclusion = shotDir != nil
