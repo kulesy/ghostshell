@@ -26,6 +26,7 @@ struct PhoneMenu: View {
         Menu {
             Button("Accounts", systemImage: "person.2") { model.navigator.show { AccountsScreen() } }
             Button("Passkeys", systemImage: "key") { model.navigator.show { PasskeysScreen() } }
+            RoutineMenuItems()
             Divider()
             Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { Task { await model.signOut() } }
         } label: {

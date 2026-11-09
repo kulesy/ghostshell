@@ -15,6 +15,8 @@ import { checkNoHooks } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
+import { routinesStub } from './routines-fixtures.mjs';
+import { startScratch } from './test-server.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const apple = path.resolve(here, '..');
@@ -145,20 +147,30 @@ function startFixtures(stub) {
 
 // MARK: Test runs
 
-// The other stubs a test can sign in to, by the name it asks for.
+// The other stubs a test can sign in to, by the name it asks for: files, groups, routines, and organise (a scratch server with seeded sessions).
 async function startStubs() {
+  const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(`http://localhost:${server.address().port}`)));
   const files = await startFilesStub();
   const groups = await startGroupStub();
+  const routines = routinesStub({ accept: true });
+  const scratch = await startScratch();
   return {
-    addresses: { files: files.address, groups: groups.address },
-    stop: () => { files.stop(); groups.stop(); },
+    addresses: { files: files.address, groups: groups.address, routines: await listen(routines.server), organise: scratch.address },
+    password: fs.readFileSync(scratch.passwordFile, 'utf8').trim(),
+    stop: async () => {
+      files.stop();
+      groups.stop();
+      routines.server.closeAllConnections();
+      routines.server.close();
+      await scratch.stop();
+    },
   };
 }
 
 function runTests({ udid, device, appearance, out, address, only, stubs }) {
   const env = {
     ...process.env,
-    TEST_RUNNER_GS_ADDRESS: address, TEST_RUNNER_GS_SHOTDIR: out, TEST_RUNNER_GS_DEVICE: device, TEST_RUNNER_GS_APPEARANCE: appearance,
+    TEST_RUNNER_GS_ADDRESS: address, TEST_RUNNER_GS_PASSWORD_ORGANISE: stubs.password, TEST_RUNNER_GS_SHOTDIR: out, TEST_RUNNER_GS_DEVICE: device, TEST_RUNNER_GS_APPEARANCE: appearance,
     ...Object.fromEntries(Object.entries(stubs.addresses).map(([name, a]) => [`TEST_RUNNER_GS_ADDRESS_${name.toUpperCase()}`, a])),
   };
   const result = path.join(DERIVED, 'results', `${device}-${appearance}.xcresult`);

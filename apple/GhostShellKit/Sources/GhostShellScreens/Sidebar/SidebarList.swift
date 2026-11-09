@@ -45,7 +45,7 @@ struct SidebarList: View {
         // The archive is read when the search opens and not again while it stays open, as on the page.
         .task(id: searching) { if searching { archived = (try? await model.client?.archivedSessions()) ?? [] } }
         .onChange(of: state.selection) { _, chosen in
-            if chosen.count == 1, let id = chosen.first, id != model.navigator.selectedSessionID { model.navigator.openSession(id) }
+            if !state.editing, chosen.count == 1, let id = chosen.first, id != model.navigator.selectedSessionID { model.navigator.openSession(id) }
         }
         .onChange(of: model.navigator.selectedSessionID) { _, id in
             if let id, !state.selection.contains(id) { state.selection = [id] } else if id == nil { state.selection = [] }

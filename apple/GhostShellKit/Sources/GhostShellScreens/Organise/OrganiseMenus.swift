@@ -57,7 +57,7 @@ private struct SingleRowMenu: View {
         let places = OrganiseRules.sessionTargets(index, row).filter { $0 != .place(PlaceTarget(label: "Pinned", section: "pinned")) }
         let running = OrganiseRules.isRunning(row)
         let below = OrganiseRules.subsRunning(OrganiseRules.every(index), row.id) > 0
-        let picked = state.selection.contains(row.id)
+        let picked = state.isPicked(row.id)
         if row.routine == nil { Button("Rename\u{2026}", systemImage: "pencil") { organise.rename(row) } }
         if let parent { Button("Move out of \u{201C}\(parent.title.isEmpty ? "Untitled" : parent.title)\u{201D}", systemImage: "arrow.up.left") { organise.nest(row, under: nil) } }
         if !under.isEmpty { NestMenu(rows: under) { organise.nest(row, under: $0) } }
@@ -72,7 +72,7 @@ private struct SingleRowMenu: View {
             AccountMenu(accounts: accounts, row: row)
         }
         Button(picked ? "Deselect" : "Select", systemImage: "checkmark.square") {
-            if picked { state.selection.remove(row.id) } else { state.selection.insert(row.id) }
+            state.togglePick(row.id)
         }
         Divider()
         if running { Button("Stop", systemImage: "stop.circle") { organise.stop(row) } }
@@ -99,7 +99,7 @@ private struct AccountMenu: View {
     }
 }
 
-private struct SelectionMenu: View {
+struct SelectionMenu: View {
     @Environment(OrganiseModel.self) private var organise
     let ids: [String]
 

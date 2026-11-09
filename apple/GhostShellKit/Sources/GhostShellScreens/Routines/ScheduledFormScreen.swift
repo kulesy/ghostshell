@@ -19,6 +19,10 @@ struct ScheduledFormScreen: View {
             }
         }
         .navigationTitle(id == nil ? "Schedule a session" : "Edit scheduled session")
+        #if os(iOS)
+        // A large title sits over the first card of a form that is already scrolling, so the form uses the inline title.
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task(id: id) { await open() }
     }
 
@@ -57,7 +61,7 @@ private struct ScheduledFields: View {
 
     init(was: ScheduledSummary?, zone: TimeZone) {
         self.was = was
-        _draft = State(initialValue: was.map { ScheduledDraft($0) } ?? ScheduledDraft(home: NSHomeDirectory(), zone: zone))
+        _draft = State(initialValue: was.map { ScheduledDraft($0) } ?? ScheduledDraft(home: startFolder, zone: zone))
     }
 
     private var store: RoutinesStore { model.routines }
@@ -69,11 +73,11 @@ private struct ScheduledFields: View {
             }
             Section {
                 FormField(label: "Title", hint: "The session is called this.", message: problems["title"]) {
-                    TextField("Title", text: $draft.title).labelsHidden().focused($focus, equals: .title)
+                    TextField("Title", text: $draft.title).labelsHidden().phoneField($focus, .title)
                 }
                 FormField(label: "Date and time", hint: "In the GhostShell server's time zone. If GhostShell is off then, it starts as soon as it is back, unless that is more than 12 hours late.",
                           message: problems["at"]) {
-                    DatePicker("Date and time", selection: $draft.at, displayedComponents: [.date, .hourAndMinute]).labelsHidden().environment(\.timeZone, draft.zone).focused($focus, equals: .at)
+                    DatePicker("Date and time", selection: $draft.at, displayedComponents: [.date, .hourAndMinute]).labelsHidden().phoneField().environment(\.timeZone, draft.zone).focused($focus, equals: .at)
                 }
             }
             Section("Where it runs") {
@@ -110,19 +114,19 @@ private struct ScheduledFields: View {
                 }
                 Text("GhostShell sends it as the session's first message, with a note that nobody is there to answer.").font(.caption).foregroundStyle(.secondary)
             }
+            PhoneDeleteSection(show: was != nil) { deleting = true }
         }
         .formStyle(.grouped)
         .disabled(saving)
         .toolbar {
-            ToolbarItemGroup {
-                if was != nil { Button("Delete", role: .destructive) { deleting = true } }
-                Button("Cancel", role: .cancel) { leave() }
-                Button(saving ? "Saving" : "Save") { Task { await save() } }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-            }
+            FormToolbar(canDelete: was != nil, saving: saving, delete: { deleting = true }, cancel: leave, save: { Task { await save() } })
         }
         .noteBar()
-        .task { folders = (try? await model.client?.folders()) ?? [] }
+        .task {
+            folders = (try? await model.client?.folders()) ?? []
+            // The server's own home is its first folder, which a phone has no other way to know.
+            if was == nil, draft.cwd.isEmpty, let home = folders.first { draft.cwd = home }
+        }
         .confirmationDialog("Delete “\(was?.title ?? draft.title)”?", isPresented: $deleting, titleVisibility: .visible) {
             Button("Delete scheduled session", role: .destructive) { Task { if let was, await store.delete(was) { leave() } } }
             Button("Cancel", role: .cancel) {}.keyboardShortcut(.defaultAction)

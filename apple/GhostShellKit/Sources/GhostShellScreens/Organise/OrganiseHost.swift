@@ -52,14 +52,29 @@ private struct NameSheet: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        // A phone gets a titled sheet with Cancel and Save in the bar, at a small detent so the chat stays in view behind it.
+        NavigationStack {
+            Form {
+                Section {
+                    field.frame(minHeight: 44).contentShape(Rectangle()).onTapGesture { focused = true }
+                    if let problem = organise.namingProblem { Notice(text: problem) }
+                }
+            }
+            .navigationTitle(naming.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // A framed label is the only way to make a bar's text button 44pt wide.
+                ToolbarItem(placement: .cancellationAction) { Button(role: .cancel) { organise.cancelName() } label: { Text("Cancel").phoneIconTouch() } }
+                ToolbarItem(placement: .confirmationAction) { Button { organise.submitName(text) } label: { Text("Save").fontWeight(.semibold).phoneIconTouch() }.disabled(!canSave) }
+            }
+        }
+        .presentationDetents([.height(240), .medium])
+        .onAppear { focused = true }
+        #else
         VStack(alignment: .leading, spacing: 12) {
             Text(naming.title).font(.headline)
-            TextField(naming.prompt, text: $text)
-                .textFieldStyle(.roundedBorder)
-                .focused($focused)
-                .onSubmit { if canSave { organise.submitName(text) } }
-                .onChange(of: text) { _, new in if new.count > naming.limit { text = String(new.prefix(naming.limit)) } }
-                .accessibilityLabel(naming.prompt)
+            field.textFieldStyle(.roundedBorder)
             if let problem = organise.namingProblem { Notice(text: problem) }
             HStack {
                 Spacer()
@@ -70,5 +85,14 @@ private struct NameSheet: View {
         .padding(20)
         .frame(width: 340)
         .onAppear { focused = true }
+        #endif
+    }
+
+    private var field: some View {
+        TextField(naming.prompt, text: $text)
+            .focused($focused)
+            .onSubmit { if canSave { organise.submitName(text) } }
+            .onChange(of: text) { _, new in if new.count > naming.limit { text = String(new.prefix(naming.limit)) } }
+            .accessibilityLabel(naming.prompt)
     }
 }

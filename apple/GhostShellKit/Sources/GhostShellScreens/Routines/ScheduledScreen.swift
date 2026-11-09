@@ -25,7 +25,7 @@ struct ScheduledScreen: View {
                 } description: {
                     Text("Could not load scheduled sessions: \(failure)")
                 } actions: {
-                    Button("Try again") { Task { await store.refresh() } }
+                    Button("Try again") { Task { await store.refresh() } }.phoneTouch(boxed: true)
                 }
             } else {
                 ProgressView("Loading scheduled sessions").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -35,8 +35,10 @@ struct ScheduledScreen: View {
         .toolbar {
             if store.features.scheduled {
                 ToolbarItem {
-                    Button("Schedule a session", systemImage: "plus") { model.navigator.show { ScheduledFormScreen(id: nil) } }
-                        .help("Schedule a session")
+                    Button { model.navigator.show { ScheduledFormScreen(id: nil) } } label: {
+                        Image(systemName: "plus").phoneIconTouch().accessibilityLabel("Schedule a session")
+                    }
+                    .help("Schedule a session")
                 }
             }
         }
@@ -63,7 +65,7 @@ struct ScheduledScreen: View {
         } description: {
             Text("A scheduled session starts once, at the date and time you pick, with the prompt you give it. For something that repeats, use a routine.")
         } actions: {
-            Button("Schedule a session") { model.navigator.show { ScheduledFormScreen(id: nil) } }.buttonStyle(.borderedProminent)
+            Button("Schedule a session") { model.navigator.show { ScheduledFormScreen(id: nil) } }.buttonStyle(.borderedProminent).largeOnPhone()
         }
     }
 
@@ -83,10 +85,7 @@ private struct ScheduledRow: View {
 
     var body: some View {
         let s = entry
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 14) { info; Spacer(minLength: 8); controls }
-            VStack(alignment: .leading, spacing: 8) { info; controls }
-        }
+        RowLayout { info } controls: { controls }
         .padding(.vertical, 6)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .contextMenu { ScheduledMenu(entry: s, askDelete: askDelete) }
@@ -111,12 +110,12 @@ private struct ScheduledRow: View {
     private var controls: some View {
         HStack(spacing: 10) {
             if entry.isPending {
-                Button("Start now") { busy = true; Task { await model.routines.startNow(entry); busy = false } }.disabled(entry.running || busy)
+                Button("Start now") { busy = true; Task { await model.routines.startNow(entry); busy = false } }.disabled(entry.running || busy).phoneTouch()
             }
             Menu {
                 ScheduledMenu(entry: entry, askDelete: askDelete)
             } label: {
-                Label("Actions for \(entry.title)", systemImage: "ellipsis.circle").labelStyle(.iconOnly)
+                Label("Actions for \(entry.title)", systemImage: "ellipsis.circle").labelStyle(.iconOnly).phoneIconTouch()
             }
             .menuStyle(.borderlessButton).fixedSize()
         }
@@ -125,7 +124,7 @@ private struct ScheduledRow: View {
     @ViewBuilder private var status: some View {
         if entry.status == "started", let id = entry.sessionId, !id.isEmpty {
             Button("Started \(fireTime(entry.startedAt))") { model.navigator.openSession(id) }
-                .buttonStyle(.borderless).foregroundStyle(Color.accentColor).font(.callout)
+                .buttonStyle(.borderless).foregroundStyle(Color.accentColor).font(.callout).phoneTouch()
         } else {
             let when = ["pending", "cancelled", "skipped"].contains(entry.status) ? fireTime(entry.at) : ""
             Text([statusWords(entry), when].filter { !$0.isEmpty }.joined(separator: " · ")).font(.callout).foregroundStyle(.secondary)
