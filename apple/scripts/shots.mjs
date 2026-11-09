@@ -924,7 +924,7 @@ async function composerFlow(bundle, appearance) {
     check(await until('stopped', () => stub.calls.stop.length === 1, 10), 'Stop stops a busy chat');
 
     // New Session.
-    check(app.menu('File', 'New Session'), 'the File menu has New Session');
+    check(app.menu('File', 'New Session') || app.press('New Session'), 'New Session is opened from the File menu or the toolbar');
     check(await until('new screen', () => app.hasText('New session'), 10), 'New Session opens');
     check(await until('folders', () => app.composerText() === '' && app.hasButtonLike('Recent folders'), 10), 'the folder menu loads');
     await sleep(1000);

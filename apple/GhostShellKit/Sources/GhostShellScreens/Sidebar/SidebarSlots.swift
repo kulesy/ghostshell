@@ -19,11 +19,12 @@ struct SidebarHeading: Hashable, Sendable, Identifiable {
 /// Buttons at the end of the sidebar's toolbar, beside Sign Out.
 struct SidebarToolbarSlot: View {
     var body: some View {
+        NotificationToggle()
+        NewGroupButton()
+        // NOTE: [9 Nov 2026] EK - Last, so a narrow sidebar folds this one away first. New Group has no other way in, and New Session has the File menu and Command-N.
         #if os(macOS)
         NewSessionButton() // https://github.com/kulesy/ghostshell/issues/118 turns it on for the iPhone.
         #endif
-        NotificationToggle()
-        NewGroupButton()
     }
 }
 
