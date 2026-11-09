@@ -1525,7 +1525,7 @@ try {
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);
-  const sounds = await speakers.heard(launched);
+  const sounds = await speakers.heard(launched).catch(error => [error.message]);
   check(!sounds.length, `no test app made a sound (${launched.size} apps)${sounds.map(line => `\n    ${line}`).join('')}`);
   console.log(failures.length ? `\n${failures.length} check(s) failed:\n${failures.map(f => `  ${f}`).join('\n')}` : '\nAll checks passed.');
   console.log(`Screenshots: ${OUT}`);

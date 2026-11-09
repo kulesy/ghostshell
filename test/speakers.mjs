@@ -20,7 +20,7 @@ export function listen() {
       if (process.platform !== 'darwin') return [];
       const mark = `${MARK}-${Date.now()}`;
       spawnSync('/usr/bin/logger', [mark]);
-      for (let tries = 0; tries < 5; tries += 1) {
+      for (const until = Date.now() + 120_000; Date.now() < until;) {
         const { stdout } = await promisify(execFile)('/usr/bin/log', ['show', '--start', since, '--style', 'compact', '--predicate', PREDICATE], { maxBuffer: 1 << 26 });
         if (stdout.includes(mark)) return sounds(stdout, pids);
         await new Promise(resolve => setTimeout(resolve, 2000));

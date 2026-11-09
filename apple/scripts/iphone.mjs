@@ -181,6 +181,15 @@ function runTests({ udid, device, appearance, out, address, only, stubs }) {
   });
 }
 
+// The Simulator keeps its own log, so a clip the app plays never reaches the Mac's log that test/speakers.mjs reads.
+// See https://github.com/kulesy/ghostshell/issues/127.
+function soundsSince(udid, since) {
+  const r = simctl('spawn', udid, 'log', 'show', '--start', since, '--style', 'compact', '--predicate',
+    'process == "GhostShelliPhone" AND eventMessage CONTAINS "client starting: <AudioQueueObject"');
+  if (r.status !== 0) throw new Error(`Could not read the simulator's log: ${r.stderr}`);
+  return r.stdout.split('\n').filter(line => line.includes('client starting'));
+}
+
 async function shoot() {
   const out = path.resolve(option('--out') || path.join(apple, 'screenshots', 'iphone'));
   const devices = option('--device') ? [option('--device')] : Object.keys(DEVICES);
@@ -205,9 +214,12 @@ async function shoot() {
         console.log(`\n== ${DEVICES[device].name}, ${appearance}`);
         // Fresh stubs for each run, because a chip started or a file saved in one run would change what the next one sees.
         const stubs = await startStubs();
+        const since = new Date().toLocaleString('sv-SE');
         const r = await runTests({ udid, device, appearance, out, address: fixtures.address, only: option('--test'), stubs }).finally(() => stubs.stop());
         console.log(r.ok ? `PASS: ${r.summary}` : `FAIL: ${r.summary}\n${r.failed.join('\n')}`);
-        ok = ok && r.ok;
+        const sounds = soundsSince(udid, since);
+        if (sounds.length) console.log(`FAIL: the app put a sound out\n${sounds.join('\n')}`);
+        ok = ok && r.ok && !sounds.length;
       }
     }
     console.log(`\nWidget sends the stub recorded: ${stub.sends.length}. Approval decisions: ${fixtures.decisions.length}.`);

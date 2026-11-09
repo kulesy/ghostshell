@@ -332,7 +332,7 @@ test('audio has Download and no Open in new tab, because Chrome\'s media page ca
   assert.equal(await page.evaluate(`document.querySelector('.file-actions a[download]').getAttribute('href')`), `${urlOf('one')}&download=1`);
 });
 
-// Runs last, after every clip above has played. See https://github.com/kulesy/ghostshell/issues/78.
+// Runs last, after every clip above has played. See https://github.com/kulesy/ghostshell/issues/127.
 test('no clip played above reached the speakers', { skip, timeout: 180_000 }, async () => {
   clearInterval(sampler);
   assert.deepEqual(await speakers.heard(played), []);
