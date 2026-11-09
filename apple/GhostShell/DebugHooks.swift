@@ -85,7 +85,18 @@ enum ShotWatcher {
         }
     }
 
+    private static var attached = ""
+
+    // `attach.txt` holds `<number> <file path>`. The composer attaches that file, because the file panel and the pasteboard can't be driven without input.
+    private static func attachRequested(_ folder: URL) {
+        guard let request = try? String(contentsOf: folder.appendingPathComponent("attach.txt"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+              request != attached, let space = request.firstIndex(of: " ") else { return }
+        attached = request
+        NotificationCenter.default.post(name: Notification.Name("GSDebugAttach"), object: String(request[request.index(after: space)...]))
+    }
+
     private static func check(_ folder: URL) {
+        attachRequested(folder)
         guard let request = try? String(contentsOf: folder.appendingPathComponent("request.txt"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
               request != handled else { return }
         let parts = request.split(separator: " ", maxSplits: 1).map(String.init)

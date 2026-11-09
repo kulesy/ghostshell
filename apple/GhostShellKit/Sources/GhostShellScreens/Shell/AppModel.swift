@@ -47,6 +47,7 @@ public final class AppModel {
     public init(store: TokenStore, defaults: UserDefaults = .standard, address: String? = nil) {
         self.store = store
         self.defaults = defaults
+        ComposerStore.shared.bind(defaults)
         #if os(iOS)
         // localhost on a phone is the phone, so a new install asks for the address.
         self.addressText = address ?? defaults.string(forKey: Self.addressKey) ?? ""
@@ -79,6 +80,7 @@ public final class AppModel {
         await old.signOut()
         // Only this explicit sign-out empties the drafts. An expired sign-in keeps them, as the page does.
         FileDrafts.forgetAll()
+        ComposerStore.shared.clearAll()
         if client === old { leave() }
     }
 
@@ -109,6 +111,7 @@ public final class AppModel {
 
     private func enter(_ fresh: GhostShellClient) {
         stopWork()
+        ComposerStore.shared.resetServerCaches()
         client = fresh
         address = fresh.address
         index = nil

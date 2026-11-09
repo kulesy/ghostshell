@@ -178,4 +178,3 @@ struct TerminalRunReply: Decodable, Sendable { var run: TerminalRun }
 private struct RunBody: Encodable, Sendable { var command: String; var source: String }
 private struct InputBody: Encodable, Sendable { var run: String; var text: String; var eof: Bool }
 private struct StopBody: Encodable, Sendable { var run: String }
-private struct Empty: Encodable, Sendable {}

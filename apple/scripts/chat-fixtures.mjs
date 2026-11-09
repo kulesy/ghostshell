@@ -203,6 +203,14 @@ function chats() {
       user('Show me a widget that tries to send a message on its own.', 6),
       ...showWidget('wa1', 'sends_on_its_own', ASKING),
     ] },
+    composer: { title: 'Rename the export helper', items: [
+      user('Rename `exportRows` to `exportTable` everywhere.', 12),
+      reply('c1', 'I renamed it in 4 files and updated the two tests that imported it.\n\nThe old name is still exported as an alias, so nothing outside the repo breaks.', 11),
+    ] },
+    other: { title: 'Plan the release notes', items: [
+      user('Draft the release notes for 4.2.', 9),
+      reply('o1', 'The release has three headline changes: faster startup, a quieter sidebar and the new composer.', 8),
+    ] },
     ...approvalChats(),
   };
 }
@@ -263,13 +271,13 @@ const send = (res, name, data) => res.write(`event: ${name}\ndata: ${JSON.string
 function stream(chat, res, timers) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
   if (!chat.streaming) {
-    send(res, 'status', { state: chat.pending ? 'waiting' : 'idle', running: true, model: 'claude-sonnet-5-5', mode: 'default', live: '', pending: chat.pending || [] });
+    send(res, 'status', { state: chat.pending ? 'waiting' : 'idle', running: true, model: 'claude-sonnet-5-5', shownModel: 'claude-sonnet-5-5', effort: 'high', mode: 'manual', live: '', pending: chat.pending || [] });
     return;
   }
   let at = 0;
   const began = Date.now() - 14_000;
   const work = () => ({ writing: true, thinking: false, tools: [], tokens: 1240, turnMs: Date.now() - began, startedAt: began });
-  send(res, 'status', { state: 'working', running: true, model: 'claude-sonnet-5-5', mode: 'default', live: 'The fix has three parts, and I am writing', work: work(),
+  send(res, 'status', { state: 'working', running: true, model: 'claude-sonnet-5-5', shownModel: 'claude-sonnet-5-5', effort: 'high', mode: 'manual', live: 'The fix has three parts, and I am writing', work: work(),
     think: { id: 't1', text: 'The user wants the whole fix laid out. I will start with the helper, then the retry, then the clean up.', done: true } });
   timers.push(setInterval(() => {
     if (at >= STREAM_TEXT.length) return;
@@ -277,78 +285,110 @@ function stream(chat, res, timers) {
   }, 350));
 }
 
-const json = (res, body) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+const COMMANDS = [
+  ['compact', 'Clear the history but keep a summary', '[focus]', []],
+  ['clear', 'Start a new conversation with empty context', '', ['reset', 'new']],
+  ['context', 'Show how much of the context is used', '', []],
+  ['cost', 'Show the cost of this session', '', []],
+  ['review', 'Review a pull request', '<pr>', []],
+  ['init', 'Write a CLAUDE.md for this project', '', []],
+].map(([name, description, hint, aliases]) => ({ name, description, hint, aliases }));
+const MODELS = [
+  { id: 'claude-opus-5-5', label: 'Opus 5.5', fast: true }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', fast: false },
+  { id: 'claude-haiku-5-5', label: 'Haiku 5.5', fast: false }, { id: 'claude-opus-4-7', label: 'Opus 4.7', fast: false },
+];
+const json = (res, status, body) => void res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+const idleStatus = (extra = {}) => ({ state: 'idle', running: true, model: 'claude-sonnet-5-5', shownModel: 'claude-sonnet-5-5', effort: 'high', mode: 'manual', live: '', fast: false, ...extra });
 
 // The terminal routes of the chat that has one. A run answers as finished, because the pictures only need to see it land.
-function terminalRoute(route, req, res, requests) {
-  if (!route) return void json(res, { cwd: '/work/example', home: '/Users/example', runs: termRuns() });
-  let raw = '';
-  req.on('data', chunk => { raw += chunk; });
-  req.on('end', () => {
-    const body = raw ? JSON.parse(raw) : {};
-    requests.push({ route, body });
-    if (route === 'stop') {
-      const run = termRuns().find(r => r.id === body.run) ?? termRuns()[2];
-      return void json(res, { run: { ...run, running: false, stopped: true, endedAt: Date.now(), exitCode: null, signal: 'SIGTERM' } });
-    }
-    if (route !== 'run') return void json(res, route === 'clear' ? { cwd: '/work/example', runs: [] } : { ok: true });
-    json(res, { run: { id: `r${requests.length + 10}`, command: body.command, cwd: '/work/example', source: body.source, startedAt: Date.now() - 1200, endedAt: Date.now(),
-      exitCode: 0, signal: null, stopped: false, running: false, truncated: false, delivered: null, output: [{ stream: 'out', text: `\x1b[32mran\x1b[0m ${body.command}\n` }] } });
-  });
+function terminalRoute(route, body, res, requests) {
+  if (!route) return void json(res, 200, { cwd: '/work/example', home: '/Users/example', runs: termRuns() });
+  requests.push({ route, body });
+  if (route === 'stop') {
+    const run = termRuns().find(r => r.id === body.run) ?? termRuns()[2];
+    return void json(res, 200, { run: { ...run, running: false, stopped: true, endedAt: Date.now(), exitCode: null, signal: 'SIGTERM' } });
+  }
+  if (route !== 'run') return void json(res, 200, route === 'clear' ? { cwd: '/work/example', runs: [] } : { ok: true });
+  json(res, 200, { run: { id: `r${requests.length + 10}`, command: body.command, cwd: '/work/example', source: body.source, startedAt: Date.now() - 1200, endedAt: Date.now(),
+    exitCode: 0, signal: null, stopped: false, running: false, truncated: false, delivered: null, output: [{ stream: 'out', text: `\x1b[32mran\x1b[0m ${body.command}\n` }] } });
 }
 
 export async function startChatStub() {
   const all = chats();
   const rows = Object.entries(all).map(([id, chat], i) => ({ id, title: chat.title, dot: null, state: 'idle', sortAt: Date.now() - i * 60_000 }));
   const timers = [];
-  // Every message a widget sent, so a script can count them.
-  const sends = [];
+  // What the app sent, for the checks: sends, stops, picker changes, uploads and new sessions.
+  const calls = { send: [], stop: [], pick: [], upload: [], created: [] };
+  const sends = calls.send;
   const requests = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
-    const vendor = /^\/vendor\/(tabler-icons\.(?:woff2|min\.css))$/.exec(url.pathname);
-    if (vendor) {
-      req.resume();
-      return void res.writeHead(200, { 'Content-Type': vendor[1].endsWith('css') ? 'text/css' : 'font/woff2' }).end(fs.readFileSync(path.join(VENDOR, vendor[1])));
-    }
-    const sending = /^\/api\/sessions\/([^/]+)\/send$/.exec(url.pathname);
-    if (sending && req.method === 'POST') {
-      let body = '';
-      req.on('data', chunk => { body += chunk; });
-      req.on('end', () => {
-        try { sends.push({ id: sending[1], ...JSON.parse(body) }); } catch { sends.push({ id: sending[1], bad: body }); }
-        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ state: 'working', running: true, model: 'claude-sonnet-5-5', mode: 'default', live: '' }));
-      });
-      return;
-    }
-    const t = /^\/api\/sessions\/([^/]+)\/terminal(?:\/(run|input|stop|clear))?$/.exec(url.pathname);
-    if (t && all[t[1]]?.terminal) return void terminalRoute(t[2], req, res, requests);
-    // The terminal chat links one file, so its file panel can be open beside the terminal.
-    if (/^\/api\/sessions\/term\/preview$/.test(url.pathname) && url.searchParams.get('path') === '/work/example/NOTES.md') {
-      req.resume();
-      const text = '# Notes\n\nRun the upload test, then the build.\n';
-      return void json(res, { name: 'NOTES.md', path: '/work/example/NOTES.md', real: '/work/example/NOTES.md', size: text.length, kind: 'markdown', type: 'text/markdown',
-        text, truncated: false, version: 'v1', readOnly: 'This is a fixture.' });
-    }
-    req.resume();
-    if (url.pathname === '/login') return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
-    if (url.pathname === '/api/sessions') return void res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ungrouped: rows }));
-    const m = /^\/api\/sessions\/([^/]+)\/(messages|events)$/.exec(url.pathname);
-    const chat = m && all[m[1]];
-    if (!chat) return void res.writeHead(404).end('{}');
-    if (m[2] === 'messages') {
-      const page = pageOf(chat, url);
-      page.session.id = m[1];
-      return void res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(page));
-    }
-    stream(chat, res, timers);
-    if (m[1] === 'rich') {
-      send(res, 'subagents', { agents: [
-        { id: 'a1', type: 'Explore', description: 'Look for other races', state: 'done', startedAt: NOW - 600_000, endedAt: NOW - 540_000, ms: 60_000 },
-        { id: 'a2', type: 'general-purpose', description: 'Check the changelog format', state: 'running', startedAt: Date.now() - 20_000, ms: 20_000 },
-      ] });
-    }
-    res.on('close', () => timers.splice(0).forEach(clearInterval));
+    const chunks = [];
+    req.on('data', c => chunks.push(c));
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks);
+      const body = () => { try { return JSON.parse(raw.toString() || '{}'); } catch { return {}; } };
+      const vendor = /^\/vendor\/(tabler-icons\.(?:woff2|min\.css))$/.exec(url.pathname);
+      if (vendor) return void res.writeHead(200, { 'Content-Type': vendor[1].endsWith('css') ? 'text/css' : 'font/woff2' }).end(fs.readFileSync(path.join(VENDOR, vendor[1])));
+      if (url.pathname === '/login') return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
+      if (url.pathname === '/api/sessions') return json(res, 200, { ungrouped: rows });
+      if (url.pathname === '/api/uploads') {
+        if (req.method === 'GET') return json(res, 200, { maxBytes: 20_000_000, maxFiles: 5 });
+        const name = decodeURIComponent(String(req.headers['x-file-name'] || 'file'));
+        calls.upload.push({ name, size: raw.length, type: req.headers['content-type'] });
+        return json(res, 200, { id: `up-${calls.upload.length}`, name, type: req.headers['content-type'], size: raw.length });
+      }
+      const t = /^\/api\/sessions\/([^/]+)\/terminal(?:\/(run|input|stop|clear))?$/.exec(url.pathname);
+      if (t && all[t[1]]?.terminal) return void terminalRoute(t[2], body(), res, requests);
+      // The terminal chat links one file, so its file panel can be open beside the terminal.
+      if (/^\/api\/sessions\/term\/preview$/.test(url.pathname) && url.searchParams.get('path') === '/work/example/NOTES.md') {
+        const text = '# Notes\n\nRun the upload test, then the build.\n';
+        return json(res, 200, { name: 'NOTES.md', path: '/work/example/NOTES.md', real: '/work/example/NOTES.md', size: text.length, kind: 'markdown', type: 'text/markdown',
+          text, truncated: false, version: 'v1', readOnly: 'This is a fixture.' });
+      }
+      if (url.pathname === '/api/commands') return json(res, 200, { commands: COMMANDS });
+      if (url.pathname === '/api/models') return json(res, 200, { models: MODELS });
+      if (url.pathname === '/api/defaults') return json(res, 200, { mode: 'manual', model: 'claude-sonnet-5-5', shownModel: 'claude-sonnet-5-5', effort: 'high' });
+      if (url.pathname === '/api/folders') return json(res, 200, { folders: ['/Users/example', '/work/example', '/work/example/site', '/work/other'] });
+      if (url.pathname === '/api/new') {
+        const sent = body();
+        calls.created.push(sent);
+        const id = `started-${calls.created.length}`;
+        all[id] = { title: sent.text.slice(0, 40), items: [user(sent.text, 0.1)] };
+        rows.unshift({ id, title: all[id].title, dot: null, state: 'idle', sortAt: Date.now() });
+        return json(res, 200, { id });
+      }
+      const m = /^\/api\/sessions\/([^/]+)\/(messages|events|send|stop|mode|model|effort|fast)$/.exec(url.pathname);
+      const chat = m && all[m[1]];
+      if (!chat) return void res.writeHead(404).end('{}');
+      if (m[2] === 'send') {
+        const sent = body();
+        calls.send.push({ id: m[1], ...sent });
+        if (/reject/.test(sent.text || '')) return json(res, 400, { error: 'That message is too long for this session.' });
+        chat.items.push(user(sent.text || '(attachments)', 0.1), reply(`r${chat.items.length}`, 'Got it.', 0));
+        return json(res, 200, idleStatus());
+      }
+      if (m[2] === 'stop') { calls.stop.push(m[1]); return json(res, 200, idleStatus()); }
+      if (['mode', 'model', 'effort', 'fast'].includes(m[2])) {
+        const value = body()[m[2]];
+        calls.pick.push({ id: m[1], [m[2]]: value });
+        if (m[2] === 'mode') return json(res, 200, { mode: value });
+        return json(res, 200, idleStatus({ [m[2]]: value, ...(m[2] === 'model' ? { shownModel: value } : {}) }));
+      }
+      if (m[2] === 'messages') {
+        const page = pageOf(chat, url);
+        page.session.id = m[1];
+        return json(res, 200, page);
+      }
+      stream(chat, res, timers);
+      if (m[1] === 'rich') {
+        send(res, 'subagents', { agents: [
+          { id: 'a1', type: 'Explore', description: 'Look for other races', state: 'done', startedAt: NOW - 600_000, endedAt: NOW - 540_000, ms: 60_000 },
+          { id: 'a2', type: 'general-purpose', description: 'Check the changelog format', state: 'running', startedAt: Date.now() - 20_000, ms: 20_000 },
+        ] });
+      }
+      res.on('close', () => timers.splice(0).forEach(clearInterval));
+    });
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   return {
@@ -356,6 +396,7 @@ export async function startChatStub() {
     rows,
     sends,
     requests,
+    calls,
     stop: () => { timers.splice(0).forEach(clearInterval); server.closeAllConnections(); server.close(); },
   };
 }

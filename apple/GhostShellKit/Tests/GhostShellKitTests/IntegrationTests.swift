@@ -194,6 +194,47 @@ final class IntegrationTests: XCTestCase {
         XCTAssertTrue(none.isEmpty, "a chat with no pictures lists none")
     }
 
+    func testAFileUploadedThroughTheClientComesBackWithItsNameAndSize() async throws {
+        let client = try await signedIn(try scratch())
+        let limits = await client.uploadLimits()
+        XCTAssertGreaterThan(try XCTUnwrap(limits).maxFiles, 0)
+        let bytes = Data("hello from the composer".utf8)
+        let file = try await client.uploadFile(bytes, name: "notes \u{00e9} #1.txt", type: "text/plain")
+        XCTAssertEqual(file.name, "notes \u{00e9} #1.txt", "the percent-encoded name arrives whole")
+        XCTAssertEqual(file.size, bytes.count)
+        XCTAssertFalse(file.id.isEmpty)
+    }
+
+    func testFoldersAndDefaultsAnswerForTheHomeFolder() async throws {
+        let client = try await signedIn(try scratch())
+        let folders = try await client.folders()
+        let home = try XCTUnwrap(folders.first)
+        let defaults = try await client.defaults(cwd: home)
+        XCTAssertNotNil(defaults.mode)
+    }
+
+    func testANewSessionInAFolderThatIsNotThereIsRefusedInTheServersWords() async throws {
+        let client = try await signedIn(try scratch())
+        let request = NewSessionRequest(cwd: "/private/tmp/claude-501/gs-no-such-folder", message: OutgoingMessage(text: "hi"))
+        do {
+            _ = try await client.startSession(request)
+            XCTFail("the server started a session in a folder that is not there")
+        } catch {
+            XCTAssertEqual(error as? GhostShellError, .refused(status: 400, message: "That folder does not exist on this Mac."))
+        }
+    }
+
+    func testStoppingASessionThatIsNotRunningIsA409() async throws {
+        let client = try await signedIn(try scratch())
+        let id = try await firstID(client)
+        do {
+            _ = try await client.stop(sessionID: id)
+            XCTFail("stop answered for a session nothing is running")
+        } catch GhostShellError.refused(let status, _, _, _) {
+            XCTAssertEqual(status, 409)
+        }
+    }
+
     func testTheFeedReportsTheListThenStopsOnSignOut() async throws {
         let server = try scratch()
         let store = MemoryTokenStore()

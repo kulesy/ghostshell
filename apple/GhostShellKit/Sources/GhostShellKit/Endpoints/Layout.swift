@@ -16,7 +16,6 @@ private struct PinBody: Encodable, Sendable { var id: String; var pinned: Bool }
 private struct NameOnly: Encodable, Sendable { var name: String }
 private struct IDName: Encodable, Sendable { var id: String; var name: String }
 private struct IDOnly: Encodable, Sendable { var id: String }
-private struct Empty: Encodable, Sendable {}
 
 public enum PinKind: String, Hashable, Sendable, Encodable { case session, group, project }
 

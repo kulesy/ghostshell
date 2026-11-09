@@ -445,7 +445,7 @@ public struct PasskeyList: Hashable, Sendable, Decodable {
 
 // MARK: Calls
 
-private struct Empty: Encodable, Sendable {}
+struct Empty: Encodable, Sendable {}
 private struct NameBody: Encodable, Sendable { var name: String }
 private struct OnBody: Encodable, Sendable { var on: Bool }
 private struct SignInBody: Encodable, Sendable { var account: String? }

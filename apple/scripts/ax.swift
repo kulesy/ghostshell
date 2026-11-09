@@ -1,11 +1,13 @@
 // Drives a running app through its accessibility tree, by exact pid. shots.mjs compiles this into apple/build/ax.
-// It sends no key or mouse event and never activates the app, so the app can stay in the background.
+// Apart from `keys`, it sends no key or mouse event and never activates the app, so the app can stay in the background.
 //
 //   ax tree  <pid>                          every node under the first standard window, depth first, as JSON
 //   ax act   <pid> <target> [action]        perform an action (default AXPress). A name the app gave an action works too
 //   ax set   <pid> <target> <attr> <json>   set an attribute: a string, number, boolean or a [x, y] / [w, h] pair
 //   ax type  <pid> <text>                   append text to the focused element's value
 //   ax menu  <pid> <bar item> <item>        press an item in the app's menu bar
+//   ax pick  <pid> <target> <item>          open the target's context menu (AXShowMenu) and press the item
+//   ax keys  <pid> <key>...                 the one command that takes the focus: activate the app, send the keys to it, give the focus back
 //   ax quit  <pid>                          ask the app to quit, as the Dock would
 //   ax front                                the pid of the frontmost app
 //
@@ -114,6 +116,48 @@ case "menu":
     guard let top = children(bar as! AXUIElement).first(where: { (attr($0, "AXTitle") as? String) == args[2] }), let menu = children(top).first else { fail("no menu \(args[2])") }
     guard let item = children(menu).first(where: { (attr($0, "AXTitle") as? String) == args[3] }) else { fail("no item \(args[3])") }
     out(result(AXUIElementPerformAction(item, "AXPress" as CFString)))
+case "pick":
+    guard args.count >= 4 else { fail("usage: ax pick <pid> <target> <item>") }
+    let shown = AXUIElementPerformAction(target(app, args[2]), "AXShowMenu" as CFString)
+    guard shown == .success else { out(result(shown)); exit(0) }
+    // The menu hangs off the app or the window depending on the element, so both are searched.
+    func find(_ e: AXUIElement, _ depth: Int) -> AXUIElement? {
+        if (attr(e, kAXRoleAttribute) as? String) == "AXMenuItem", (attr(e, "AXTitle") as? String) == args[3] { return e }
+        guard depth > 0 else { return nil }
+        for c in children(e) { if let hit = find(c, depth - 1) { return hit } }
+        return nil
+    }
+    for _ in 0..<20 {
+        Thread.sleep(forTimeInterval: 0.1)
+        for root in [app] + (window(app).map { [$0] } ?? []) {
+            if let item = find(root, 14) { out(result(AXUIElementPerformAction(item, "AXPress" as CFString))); exit(0) }
+        }
+    }
+    out(["ok": false, "code": -1])
+case "keys":
+    guard args.count >= 3 else { fail("usage: ax keys <pid> <key>...") }
+    let codes: [String: CGKeyCode] = ["return": 36, "tab": 48, "escape": 53, "down": 125, "up": 126]
+    // Every name is checked before the app comes to the front, so a typo can't leave it there.
+    let keys: [(code: CGKeyCode, shift: Bool)] = args.dropFirst(2).map { spec in
+        let shift = spec.hasPrefix("shift-")
+        guard let code = codes[shift ? String(spec.dropFirst(6)) : spec] else { fail("unknown key \(spec)") }
+        return (code, shift)
+    }
+    let before = NSWorkspace.shared.frontmostApplication
+    AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    for _ in 0..<30 where NSWorkspace.shared.frontmostApplication?.processIdentifier != pid { Thread.sleep(forTimeInterval: 0.1) }
+    Thread.sleep(forTimeInterval: 0.4)
+    for (code, shift) in keys {
+        for down in [true, false] {
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
+            if shift { event.flags = .maskShift }
+            event.postToPid(pid)
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        Thread.sleep(forTimeInterval: 0.25)
+    }
+    if let before, before.processIdentifier != pid { AXUIElementSetAttributeValue(AXUIElementCreateApplication(before.processIdentifier), kAXFrontmostAttribute as CFString, kCFBooleanTrue) }
+    out(["ok": true])
 case "quit":
     out(NSRunningApplication(processIdentifier: pid)?.terminate() ?? false)
 default:

@@ -192,7 +192,6 @@ private struct ChipsReply: Decodable, Sendable {
 }
 
 private struct BookedSession: Decodable, Sendable { var id: String }
-private struct Empty: Encodable, Sendable {}
 private struct ChipBody: Encodable, Sendable {
     var sessionId, toolUseId, title, tldr, prompt, confirmCwd: String
     var cwd, model, effort: String?
