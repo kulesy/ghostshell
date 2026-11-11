@@ -1,7 +1,7 @@
 // Run with `npm test`. What the context meter says about a figure from the server, and which figure it keeps when a reply comes in.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hasFigure, mergeContext, parts, planLabel, planReset, planRows, readout } from '../public/ui/context-rules.js';
+import { hasFigure, hasMcp, mcpRows, mergeContext, parts, planLabel, planReset, planRows, readout } from '../public/ui/context-rules.js';
 
 const figure = (over = {}) => ({ source: 'process', total: 47_760, window: 300_000, autoCompactAt: 267_000, model: 'claude-haiku-5-5', ...over });
 const full = (over = {}) => figure({
@@ -170,4 +170,32 @@ test('a row reads as a label, a percent, a reset and the words a meter speaks, a
   ]);
   assert.equal(new Set(rows.map(r => r.key)).size, 3);
   assert.deepEqual(planRows(null), []);
+});
+
+test('each server reads as its state in words and a tone, and only a reloadable one gets a button', () => {
+  const rows = mcpRows([
+    { name: 'notes', status: 'connected', reloadable: true, error: null },
+    { name: 'tracker', status: 'failed', reloadable: true, error: 'Could not start.' },
+    { name: 'wait', status: 'pending', reloadable: true },
+    { name: 'login', status: 'needs-auth', reloadable: true },
+    { name: 'paused', status: 'disabled', reloadable: false },
+    { name: 'odd', status: 'half-open', reloadable: 'yes' },
+  ]);
+  assert.deepEqual(rows.map(r => [r.name, r.state, r.tone, r.reloadable, r.error]), [
+    ['notes', 'Connected', 'ok', true, null],
+    ['tracker', 'Failed', 'problem', true, 'Could not start.'],
+    ['wait', 'Starting', 'wait', true, null],
+    ['login', 'Needs sign-in', 'wait', true, null],
+    ['paused', 'Off', 'idle', false, null],
+    ['odd', 'Half open', 'idle', false, null],
+  ]);
+  assert.deepEqual(mcpRows(null), []);
+});
+
+test('the section shows for a chat that is not running and for one with servers, and for no other', () => {
+  assert.equal(hasMcp(null), false);
+  assert.equal(hasMcp({ running: false, servers: [] }), true);
+  assert.equal(hasMcp({ running: true, servers: [] }), false);
+  assert.equal(hasMcp({ running: true, servers: null }), false);
+  assert.equal(hasMcp({ running: true, servers: [{ name: 'notes', status: 'connected' }] }), true);
 });

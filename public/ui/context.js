@@ -1,7 +1,7 @@
 // The context meter in the prompt box: a ring, or the count in words where the window is not known, and a popover that lists what fills
 // the window, largest first. The popover is shadcn's, which is Radix's, in its non-modal form: the page behind it keeps taking presses,
 // and a press or the focus going anywhere else closes it.
-import { hasFigure, parts, planRows, readout } from './context-rules.js';
+import { hasFigure, hasMcp, mcpRows, parts, planRows, readout } from './context-rules.js';
 import { useFields } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { onPressOutside } from './layer.js';
@@ -65,7 +65,37 @@ export function Plan({ id, rows, account = '' }) {
   </section>`;
 }
 
-function Popover({ id, box, open, anchor, shut, figure, r, view, busy, failed, plan }) {
+const Spin = () => html`<svg class="load-spin" viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="2"/><path d="M10 2.5a7.5 7.5 0 0 1 7.5 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+
+// The chat's MCP servers, each with its state in words and a button that reloads it. One reload runs at a time, so the other buttons wait.
+// A chat with no process lists none, because the servers load fresh when it next starts.
+function Mcp({ id, mcp, reloading, problem, reload }) {
+  const rows = mcpRows(mcp.servers);
+  return html`<section class="context-mcp" aria-labelledby=${`${id}-mcp`}>
+    <h4 class="context-mcp-title" id=${`${id}-mcp`}>MCP servers</h4>
+    ${mcp.running
+      ? html`<ul class="mcp-list">
+          ${rows.map(row => {
+            const text = problem?.name === row.name ? problem.text : row.error;
+            return html`<li key=${row.key} class="mcp-row">
+              <div class="mcp-main">
+                <span class="mcp-name">${row.name}</span>
+                <span class="mcp-state" data-tone=${row.tone}>${row.state}</span>
+              </div>
+              ${row.reloadable
+                ? html`<button class="btn" type="button" data-variant="outline" data-size="xs" aria-label=${`Reload ${row.name}`} aria-busy=${reloading === row.name} disabled=${!!reloading} onClick=${() => reload(row.name)}>
+                    ${reloading === row.name ? html`<${Spin} />Reloading` : 'Reload'}
+                  </button>`
+                : null}
+              ${text ? html`<p class="mcp-error" role=${problem?.name === row.name ? 'alert' : null}>${text}</p>` : null}
+            </li>`;
+          })}
+        </ul>`
+      : html`<p class="context-note mcp-note">This chat is not running. Its servers load fresh when it next starts.</p>`}
+  </section>`;
+}
+
+function Popover({ id, box, open, anchor, shut, figure, r, view, busy, failed, plan, mcp, reloading, problem, reload }) {
   const rows = plan ? planRows(plan.rows) : [];
   const [at, setAt] = useState(null);
   const size = useRef(null);
@@ -150,6 +180,7 @@ function Popover({ id, box, open, anchor, shut, figure, r, view, busy, failed, p
     </div>`}
     ${r.line ? html`<p class="context-line">${r.line}</p>` : null}
     <${Parts} figure=${figure} view=${view} busy=${busy} failed=${failed} />
+    ${hasMcp(mcp) ? html`<${Mcp} id=${id} mcp=${mcp} reloading=${reloading} problem=${problem} reload=${reload} />` : null}
     ${rows.length ? html`<${Plan} id=${id} rows=${rows} account=${plan.account} />` : null}
   </div>`;
 }
@@ -160,6 +191,9 @@ function Meter({ ctrl, figure }) {
   const [open, setOpen] = useState(false);
   const [failedAt, setFailedAt] = useState(null);
   const [plan, setPlan] = useState(null);
+  const [mcp, setMcp] = useState(null);
+  const [reloading, setReloading] = useState(null);
+  const [problem, setProblem] = useState(null);
   const [id] = useState(() => `context-${++made}`);
   const button = useRef(null);
   const box = useRef(null);
@@ -191,6 +225,28 @@ function Meter({ ctrl, figure }) {
     return () => { live = false; };
   }, [open]);
 
+  // The servers are asked for once each time the popover opens. A reload that is still running goes on if the popover is closed, and its answer is kept.
+  useEffect(() => {
+    if (!open) return undefined;
+    let live = true;
+    ctrl.loadMcp().then(got => { if (live) setMcp(got); });
+    return () => { live = false; };
+  }, [open]);
+
+  // A refusal keeps the fresh list when the server sent one, and says its words under the server that was reloaded.
+  const reload = async name => {
+    setReloading(name);
+    setProblem(null);
+    try {
+      setMcp(await ctrl.reloadMcp(name));
+    } catch (e) {
+      setProblem({ name, text: e.message });
+      if (Array.isArray(e.data?.servers)) setMcp({ running: true, servers: e.data.servers });
+    } finally {
+      setReloading(null);
+    }
+  };
+
   const shut = back => {
     setOpen(false);
     if (back) button.current?.focus({ preventScroll: true });
@@ -201,6 +257,7 @@ function Meter({ ctrl, figure }) {
     } else {
       setFailedAt(null);
       last.current = null;
+      if (!reloading) setProblem(null);
       setOpen(true);
     }
   };
@@ -209,7 +266,7 @@ function Meter({ ctrl, figure }) {
     <button class="btn context" type="button" data-variant="ghost" data-size=${ringed ? 'icon-sm' : 'sm'} data-state=${open ? 'open' : 'closed'} data-severity=${r.severity}
       aria-haspopup="dialog" aria-expanded=${open} aria-controls=${open ? id : null} aria-label=${r.label} data-tip=${open ? '' : r.tip}
       ref=${button} onClick=${toggle}>${ringed ? html`<${Ring} fill=${r.fill} />` : html`<span>${r.text}</span>`}</button>
-    ${present ? html`<${Popover} id=${id} box=${box} open=${open} anchor=${button} shut=${shut} figure=${figure} r=${r} view=${view} busy=${busy} failed=${failed} plan=${plan} />` : null}
+    ${present ? html`<${Popover} id=${id} box=${box} open=${open} anchor=${button} shut=${shut} figure=${figure} r=${r} view=${view} busy=${busy} failed=${failed} plan=${plan} mcp=${mcp} reloading=${reloading} problem=${problem} reload=${reload} />` : null}
   <//>`;
 }
 

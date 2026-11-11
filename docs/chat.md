@@ -58,6 +58,10 @@ While GhostShell runs the chat, the figures come from the CLI's own count, which
 
 The window and the auto-compact point come from the CLI. GhostShell keeps them per model in `windows.json` in its state folder, so a chat with no process shows its window once GhostShell has run a chat set to that model. [The decision record](adr/20261022-context-usage-from-the-cli.md) says where each figure comes from.
 
+### MCP servers
+
+Under the parts, the popover lists the MCP servers the chat runs, each with its state (Connected, Failed, Starting, Needs sign-in or Off) and a Reload button. Reload switches that one server off and on again inside the running chat, so a changed `env` in `.claude.json` takes effect with the transcript and the context kept. It is hidden for GhostShell's own server and for a server that is switched off, since reloading would switch it on. If the server went off and did not come back on, the row says so under its name. A chat with no process lists none and says its servers load fresh when it next starts. [The decision record](adr/20261111-reload-an-mcp-server-with-toggle.md) says why it is a toggle and not a reconnect.
+
 ## Stop and redirect
 
 While Claude works and the box is empty, Send turns into Stop, and Esc stops too. A message sent while Claude works redirects it without stopping it: Claude reads the message once the running tool finishes and adjusts before its next step.

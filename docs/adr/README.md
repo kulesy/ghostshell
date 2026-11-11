@@ -60,3 +60,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-11-05 | [Edit a linked text file in the viewer, and keep the places that run code or hold secrets read only](20261105-edit-linked-text-files.md) | Accepted |
 | 2026-11-07 | [Replace the page with a native Swift app, and keep the Node server](20261107-native-swift-app-keeps-the-node-server.md) | Accepted |
 | 2026-11-09 | [Let a pin name an overflow account that takes its work while the pinned one is out of usage](20261109-spill-pinned-work-to-an-overflow-account.md) | Accepted |
+| 2026-11-11 | [Reload one MCP server in a running chat by switching it off and on](20261111-reload-an-mcp-server-with-toggle.md) | Accepted |

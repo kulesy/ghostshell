@@ -136,6 +136,8 @@ const freePort = () => new Promise(resolve => {
 // 'hit a busy limit' it says rate_limit with the words of a transient 429. Its start log has the CLAUDE_CONFIG_DIR it was given as `configDir`, and a get_usage request is answered from
 // plan-usage.json in that folder when it has one. It never answers an interrupt, but copies layout.json as it is then to layout-at-interrupt.json in
 // the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none. A `get_usage` request is answered with the rate_limits.limits in plan-usage.json in the home, or with an error if there is none, and logged as `control` with its `skip`. The answer waits as many milliseconds as plan-usage-wait in the home holds, when it is there.
+// An `mcp_status` request is answered with the rows of mcp-servers.json in the home (each { name, status, scope, config: { type } }, an empty list if there is none), and an `mcp_toggle` with success after it sets that
+// row's status to disabled or connected, (and saves the file), or with an error when mcp-toggle-fails in the home holds `off` or `on` for that way round. Each answer waits as many milliseconds as mcp-toggle-wait holds, and a toggle is logged as `control` with its `serverName` and `enabled`.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
 // 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool>, and a message that opens with a <session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
@@ -251,7 +253,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "  try {",
     "    const m = JSON.parse(line);",
     "    if (begun) held.splice(0).forEach(say);",
-    "    if (m.type === 'control_request') note({ control: m.request.subtype, ...(m.request.subtype === 'get_context_usage' && { detail: m.request.detail }), ...(m.request.subtype === 'get_usage' && { skip: m.request.skip_behaviors }) });",
+    "    if (m.type === 'control_request') note({ control: m.request.subtype, ...(m.request.subtype === 'get_context_usage' && { detail: m.request.detail }), ...(m.request.subtype === 'get_usage' && { skip: m.request.skip_behaviors }), ...(m.request.subtype === 'mcp_toggle' && { serverName: m.request.serverName, enabled: m.request.enabled }) });",
     `    if (m.type === 'control_request' && m.request.subtype === 'interrupt') fs.copyFileSync(${JSON.stringify(path.join(state, 'layout.json'))}, ${JSON.stringify(path.join(home, 'layout-at-interrupt.json'))});`,
     `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)}, models: ${JSON.stringify(CLI_MODELS)} } } });`,
     "    if (m.type === 'control_request' && m.request.subtype === 'get_usage') {",
@@ -259,6 +261,19 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "      const limits = planFile ? JSON.parse(fs.readFileSync(planFile, 'utf8')) : null;",
     `      const wait = fs.existsSync(${JSON.stringify(path.join(home, 'plan-usage-wait'))}) ? Number(fs.readFileSync(${JSON.stringify(path.join(home, 'plan-usage-wait'))}, 'utf8')) : 0;`,
     "      setTimeout(() => say({ type: 'control_response', response: limits ? { subtype: 'success', request_id: m.request_id, response: { rate_limits: { five_hour: null, limits } } } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } }), wait);",
+    "    }",
+    "    if (m.type === 'control_request' && ['mcp_status', 'mcp_toggle'].includes(m.request.subtype)) {",
+    `      const mcpFile = ${JSON.stringify(path.join(home, 'mcp-servers.json'))};`,
+    "      const mcpRows = fs.existsSync(mcpFile) ? JSON.parse(fs.readFileSync(mcpFile, 'utf8')) : [];",
+    `      const flag = name => { const f = path.join(${JSON.stringify(home)}, name); return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim() : ''; };`,
+    "      const toggled = m.request.subtype === 'mcp_toggle';",
+    "      const fails = toggled && flag('mcp-toggle-fails') === (m.request.enabled ? 'on' : 'off');",
+    "      if (toggled && !fails) {",
+    "        mcpRows.filter(r => r.name === m.request.serverName).forEach(r => { r.status = m.request.enabled ? 'connected' : 'disabled'; });",
+    "        fs.writeFileSync(mcpFile, JSON.stringify(mcpRows));",
+    "      }",
+    "      const response = fails ? { subtype: 'error', request_id: m.request_id, error: 'The fake refused to start it.' } : { subtype: 'success', request_id: m.request_id, response: toggled ? {} : { mcpServers: mcpRows } };",
+    "      setTimeout(() => say({ type: 'control_response', response }), Number(flag('mcp-toggle-wait')) || 0);",
     "    }",
     "    if (m.type === 'control_request' && m.request.subtype === 'get_context_usage') {",
     `      const usage = fs.existsSync(${JSON.stringify(usageFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(usageFile)}, 'utf8'))[m.request.detail] : null;`,

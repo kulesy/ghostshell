@@ -254,6 +254,22 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     }
   }
 
+  // The chat's MCP servers, as { running, servers }, or null for a draft or a failed ask.
+  async function loadMcp() {
+    if (draft) return null;
+    try {
+      const reply = await api(`api/sessions/${enc(id)}/mcp`, {});
+      return typeof reply?.running === 'boolean' ? reply : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Resolves with the fresh list. A refusal throws with the server's words, and its `data` holds the fresh list when the server could still read it.
+  async function reloadMcp(name) {
+    return api(`api/sessions/${enc(id)}/mcp-reload`, { name });
+  }
+
   // A count that comes sooner than CONTEXT_EVERY after the last one waits for it, and the many that arrive while it waits are one.
   function refreshContext() {
     if (draft || closed) return;
@@ -468,7 +484,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   const fileUrl = path => `api/sessions/${enc(id)}/file?path=${enc(path)}`;
 
   return {
-    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, retry,
+    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, loadMcp, reloadMcp, retry,
     send, prompt, stop, decide, dismissHold, chip, setMode, pick, repin, setFolder, startNew, notice, imageUrl, fileUrl,
   };
 }
