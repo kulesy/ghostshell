@@ -60,7 +60,9 @@ jobs:
           node-version: 20
           package-manager-cache: false
       # --no-chat: the real Haiku chat needs a signed-in claude, which a runner never has.
-      - run: npm run apple:shot -- --no-chat --out "$RUNNER_TEMP/shots/mac"
+      # NOTE: [11 Nov 2026] EK - The runner's macOS 27.0.1 crashes SwiftUI in the chats, files, groups, terminal and composer flows,
+      # and marks, accounts and organise fail checks there, so those run on a Mac until the image reaches 27.2. See apple/README.md.
+      - run: npm run apple:shot -- --no-chat --flow main,widgets,approvals,routines --out "$RUNNER_TEMP/shots/mac"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -68,10 +70,16 @@ jobs:
           path: ${{ runner.temp }}/shots/mac
           retention-days: 14
 
+  # One job per device and appearance, because the four passes take about two hours in a row.
   iphone-shots:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: xcode-27
-    timeout-minutes: 90
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [se, 16pro]
+        appearance: [light, dark]
     env:
       GS_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-27-2
     steps:
@@ -82,16 +90,16 @@ jobs:
         with:
           node-version: 20
           package-manager-cache: false
-      - run: npm run apple:ios-shot -- --out "$RUNNER_TEMP/shots/iphone"
+      - run: npm run apple:ios-shot -- --device ${{ matrix.device }} --only ${{ matrix.appearance }} --out "$RUNNER_TEMP/shots/iphone"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: iphone-screenshots
+          name: iphone-screenshots-${{ matrix.device }}-${{ matrix.appearance }}
           path: ${{ runner.temp }}/shots/iphone
           retention-days: 14
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
-          name: iphone-test-logs
+          name: iphone-test-logs-${{ matrix.device }}-${{ matrix.appearance }}
           path: apple/build/ios/last-*.log
           retention-days: 14
