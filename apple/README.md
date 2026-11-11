@@ -58,11 +58,11 @@ The `Swift app` workflow (`.github/workflows/swift.yml`) runs the Swift builds, 
 | `mac-shots` | `apple:shot -- --no-chat` for the `main`, `widgets`, `approvals` and `routines` flows | `mac-screenshots` |
 | `iphone-shots`, four jobs, one per device and appearance | `apple:ios-shot` | `iphone-screenshots-<device>-<appearance>`, plus `iphone-test-logs-<device>-<appearance>` when one fails |
 
-A run differs from one on the Mac in three ways:
+A run differs from one on the Mac in these ways:
 
 1. The runner has macOS 27.0.1, where SwiftUI crashes the app in the `chats`, `files`, `groups`, `terminal` and `composer` flows, and the `marks`, `accounts` and `organise` flows fail checks. The crashes are inside SwiftUI and do not happen on 27.2. A change those flows cover still needs `npm run apple:shot -- --flow <flow>` on the Mac, under the lock below, until the runner image reaches 27.2.
 2. The Mac shots skip the real Haiku chat, because a runner has no signed-in `claude`. A change to that path still needs `npm run apple:shot -- --flow main` on the Mac.
-3. The runner has only the iOS 27 Simulators, so the workflow sets `GS_IOS_RUNTIME` to iOS 27.2. On the Mac `iphone.mjs` uses iOS 18.6.
+3. The runner image has only the iOS 27 Simulators, so each iPhone job downloads iOS 18.6 first, the runtime `iphone.mjs` uses on the Mac. On iOS 27 four of the UI tests fail: the toolbar buttons are 36pt, under the 44pt touch target, and the chosen row in edit mode sits under the bottom bar.
 
 A session finds the run for its newest commit, waits for it and fetches the screenshots like this:
 
