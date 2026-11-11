@@ -98,3 +98,16 @@ export function planRows(rows, now = Date.now(), timeZone) {
     };
   });
 }
+
+// The servers are the server's, in its order: { name, status, scope, error, reloadable }. A status the CLI adds later reads as its own word, in the idle tone.
+const MCP_STATES = { connected: ['Connected', 'ok'], failed: ['Failed', 'problem'], pending: ['Starting', 'wait'], 'needs-auth': ['Needs sign-in', 'wait'], disabled: ['Off', 'idle'] };
+
+export function mcpRows(servers) {
+  return (servers ?? []).map(s => {
+    const [state, tone] = MCP_STATES[s.status] ?? [capital(String(s.status).replace(/-/g, ' ')), 'idle'];
+    return { key: s.name, name: s.name, state, tone, reloadable: s.reloadable === true, error: s.error || null };
+  });
+}
+
+// A chat that is not running lists no servers and says so. One that runs with none, or that the CLI did not answer for, has no section.
+export const hasMcp = mcp => !!mcp && (mcp.running === false || (Array.isArray(mcp.servers) && mcp.servers.length > 0));

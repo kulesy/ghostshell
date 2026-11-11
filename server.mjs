@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { cfg, ROOT } from './lib/config.mjs';
-import { lastReply, makeWindows, shapePlan, shapeUsage, transcriptFigure } from './lib/context.mjs';
+import { lastReply, makeWindows, shapeMcp, shapePlan, shapeUsage, transcriptFigure } from './lib/context.mjs';
 import { parseCron } from './lib/cron.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
@@ -997,6 +997,43 @@ async function planFor(id) {
   const account = own?.proc ? own.account : accountOfSession(id).id;
   const limits = await askPlan(account, own);
   return { limits, ...(accounts.list().length > 1 && { account: accounts.find(account)?.name }) };
+}
+
+const NOT_RUNNING = 'This chat is not running. Its MCP servers load fresh when it next starts.';
+const reloading = new Set();
+
+// A chat with no process is not started to answer, so it lists none.
+async function mcpFor(id) {
+  const chat = getChat(id);
+  if (!chat?.proc?.stdin.writable) return { running: false, servers: [] };
+  const rows = await chat.mcpServers();
+  // A server that is on again leaves leftOff, so a later deliberate off is refused like any other. An "on" that timed out may still land.
+  if (rows) for (const name of chat.leftOff) if (!rows.some(r => r.name === name && r.status === 'disabled')) chat.leftOff.delete(name);
+  return { running: true, servers: rows && shapeMcp(rows, chat.leftOff) };
+}
+
+// The only input is a name, and it is used only if it is one of this chat's own servers as the CLI lists them right now. The CLI respawns
+// the server from the config it already holds, so no command, argument or setting of the request's ever reaches it.
+async function reloadMcpFor(id, name) {
+  if (typeof name !== 'string' || !name) return [400, { error: 'Send the name of the server.' }];
+  if (reloading.has(id)) return [409, { error: 'A reload is already running in this chat.' }];
+  reloading.add(id);
+  try {
+    const { running, servers } = await mcpFor(id);
+    if (!running) return [409, { error: NOT_RUNNING }];
+    if (!servers) return [502, { error: 'Claude did not list its MCP servers.' }];
+    const found = servers.find(s => s.name === name);
+    if (!found) return [404, { error: 'This chat has no MCP server with that name.' }];
+    if (!found.reloadable) return [400, { error: found.status === 'disabled' ? 'That server is switched off. Reloading it would switch it on.' : 'GhostShell\'s own server cannot be reloaded.' }];
+    try {
+      await getChat(id).reloadMcp(name);
+    } catch (e) {
+      return [502, { error: e.message, ...(await mcpFor(id)) }];
+    }
+    return [200, await mcpFor(id)];
+  } finally {
+    reloading.delete(id);
+  }
 }
 
 // What the page redraws from. The clock is left out because it moves on every read.
@@ -2239,6 +2276,8 @@ async function api(req, res, u) {
     return send(res, 200, await contextFor(id, detail));
   }
   if (action === 'plan') return send(res, 200, await planFor(id));
+  if (action === 'mcp') return send(res, 200, await mcpFor(id));
+  if (action === 'mcp-reload') return send(res, ...(await reloadMcpFor(id, body.name)));
   const chat = getChat(id);
   if (action === 'mode') {
     if (!MODES.includes(body.mode)) return send(res, 400, { error: 'Unknown permission mode.' });
