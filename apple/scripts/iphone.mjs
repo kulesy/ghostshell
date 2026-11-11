@@ -22,7 +22,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const apple = path.resolve(here, '..');
 const PROJECT = path.join(apple, 'GhostShell.xcodeproj');
 const DERIVED = path.join(apple, 'build', 'ios');
-const RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-18-6';
+// The Actions runner has only the iOS 27 runtimes, so the workflow names its own.
+const RUNTIME = process.env.GS_IOS_RUNTIME || 'com.apple.CoreSimulator.SimRuntime.iOS-18-6';
 const DEVICES = {
   se: { name: 'iPhone SE (3rd generation)', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation' },
   '16pro': { name: 'iPhone 16 Pro', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro' },

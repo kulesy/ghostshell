@@ -1,0 +1,97 @@
+name: Swift app
+
+# The Swift builds, tests and screenshots run here so a Swift change never needs a full run on the owner's Mac.
+# See https://github.com/kulesy/ghostshell/issues/138.
+on:
+  push:
+    paths:
+      - 'apple/**'
+      - 'test/speakers.mjs'
+      - 'package.json'
+      - '.github/workflows/swift.yml'
+  # Same-repo branches already run on push, so a pull request only runs for a fork (see `if` on each job).
+  pull_request:
+    paths:
+      - 'apple/**'
+      - 'test/speakers.mjs'
+      - 'package.json'
+      - '.github/workflows/swift.yml'
+  workflow_dispatch:
+
+# NOTE: [11 Nov 2026] EK - The repo is public and forks run this, so the token stays read-only and no step reads a secret.
+permissions:
+  contents: read
+
+concurrency:
+  group: swift-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+
+jobs:
+  build-and-test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          package-manager-cache: false
+      - run: npm run apple:test
+      - run: npm run apple:build -- --release
+      - run: npm run apple:ios-build -- --release
+      - run: npm run apple:watch-build -- --release
+
+  mac-shots:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: xcode-27
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          package-manager-cache: false
+      # --no-chat: the real Haiku chat needs a signed-in claude, which a runner never has.
+      - run: npm run apple:shot -- --no-chat --out "$RUNNER_TEMP/shots/mac"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mac-screenshots
+          path: ${{ runner.temp }}/shots/mac
+          retention-days: 14
+
+  iphone-shots:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: xcode-27
+    timeout-minutes: 90
+    env:
+      GS_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-27-2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          package-manager-cache: false
+      - run: npm run apple:ios-shot -- --out "$RUNNER_TEMP/shots/iphone"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: iphone-screenshots
+          path: ${{ runner.temp }}/shots/iphone
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: iphone-test-logs
+          path: apple/build/ios/last-*.log
+          retention-days: 14
