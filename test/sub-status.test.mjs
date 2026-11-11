@@ -8,7 +8,7 @@ import { findRow } from '../public/ui/tree.js';
 import { as, cliCalls, listen, request, signIn, start, until as waitFor } from './harness.mjs';
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
-const LAYOUT_TOOLS = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group'];
+const LAYOUT_TOOLS = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project'];
 const NOT_BELOW = 'That session is not a sub session of this session, nor one its chips started beside it. Use list_sub_sessions to see the ones you can reach.';
 // Grand links to Kid and Under gone to Gone, and the list shows both beside the session they link to, under Top.
 //   top
@@ -147,7 +147,7 @@ test('an ordinary chat is offered the sub session tools after the ones every cha
   await sendTo(s, token, 'top', 'list the tools');
   await until(() => replies(s).length === 1);
   const names = replies(s)[0].result.tools.map(t => t.name);
-  assert.deepEqual(names.slice(-11), ['list_sub_sessions', 'read_sub_session', 'send_session', ...LAYOUT_TOOLS]);
+  assert.deepEqual(names.slice(-12), ['list_sub_sessions', 'read_sub_session', 'send_session', ...LAYOUT_TOOLS]);
   assert.ok(names.length > 2);
   assert.equal(names.some(n => n.endsWith('_group_session') || n === 'list_group_sessions'), false);
 
@@ -312,7 +312,7 @@ test('a chat that is only just started has the tools too, and reaches its sessio
   assert.equal(made, 'begun-by-the-fake');
   await sendTo(s, token, made, 'list the tools');
   await until(() => replies(s).length === 1);
-  assert.deepEqual(replies(s)[0].result.tools.map(t => t.name).slice(-11), ['list_sub_sessions', 'read_sub_session', 'send_session', ...LAYOUT_TOOLS]);
+  assert.deepEqual(replies(s)[0].result.tools.map(t => t.name).slice(-12), ['list_sub_sessions', 'read_sub_session', 'send_session', ...LAYOUT_TOOLS]);
   assert.match(textOf(await callTool(s, token, made, 'list_sub_sessions')), /has no sub sessions\.$/);
 
   assert.equal((await post(s, token, '/api/layout/nest', { id: 'loose', parent: made })).status, 200);

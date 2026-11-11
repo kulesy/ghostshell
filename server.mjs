@@ -235,7 +235,7 @@ function accountOfSession(id) {
   return { id: account, from, blocked };
 }
 // What a chip's group name is looked up in when the chip is made. Each call reads the layout again, so a group renamed since is seen as it is now.
-const groupList = () => layout.read().groups.map(({ id, name }) => ({ id, name }));
+const groupList = () => layout.read().groups.map(({ id, name, project }) => ({ id, name, project }));
 
 // A nested session that leaves its place would take the sessions linked straight to it along, though they show beside it, so each is
 // linked to the parent instead, and those further down keep their links. A head takes its whole family along.
@@ -562,6 +562,22 @@ function subCtx(sessionId) {
     projects: () => layout.read().projects.map(({ id, name }) => ({ id, name })),
     addProject: name => layout.addProject(name),
     addGroup: (name, project) => layout.addGroup(name, project),
+    moveGroup: (id, project) => layout.moveGroup(id, project),
+    // Whether a move of group `id` into `project` (an id, or null for Home) would change the account its sessions run on. A group with its own pin keeps it.
+    // One that cannot be worked out counts as a change, so the owner is asked.
+    groupAccount(id, project) {
+      try {
+        const d = accountData();
+        if (!d.anyPin) return { changes: false };
+        if (!d.groups[id]) return { changes: true };
+        const was = accountFor({ group: id }, d);
+        const now = accountFor({ group: id }, { ...d, groups: { ...d.groups, [id]: { ...d.groups[id], project } } });
+        const spills = (was.overflow ?? null) !== (now.overflow ?? null);
+        return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || spills, to: accounts.find(now.account)?.name, active: now.from === 'active', ...(spills && { spills, overflow: now.overflow ? accounts.find(now.overflow)?.name ?? 'another account' : null }) };
+      } catch {
+        return { changes: true };
+      }
+    },
     // Whether a move into `group` (a name or an id) would change the account the session runs on, and the account's name if so. A move that
     // cannot be worked out counts as a change, so the owner is asked. The move also takes the session out from under its parent.
     moveAccount(id, group) {

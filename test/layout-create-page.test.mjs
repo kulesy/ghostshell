@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { findChromium, launch, notFound } from './browser.mjs';
 import { as, PASSWORD, request, signIn, start } from './harness.mjs';
 
-const SESSIONS = [{ id: 'top', title: 'Top', ago: 5 }, { id: 'other', title: 'Other', ago: 6 }];
+const SESSIONS = [{ id: 'top', title: 'Top', ago: 5 }, { id: 'other', title: 'Other', ago: 6 }, { id: 'mover', title: 'Mover', ago: 7 }, { id: 'mover2', title: 'Mover two', ago: 8 }];
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
 const timeout = 60_000;
@@ -15,7 +15,7 @@ let browser;
 
 before(async () => {
   if (skip) return;
-  app = await start({ sessions: SESSIONS, claude: true, layout: { projects: [{ id: 'cp-side', name: 'Side' }] } });
+  app = await start({ sessions: SESSIONS, groups: [{ id: 'cg-work', name: 'Work', project: 'cp-side' }, { id: 'cg-home', name: 'Loose' }], claude: true, layout: { projects: [{ id: 'cp-side', name: 'Side' }] } });
   browser = await launch(chromium);
 });
 
@@ -60,6 +60,21 @@ test('the card for a new project and a new group has its own title and says what
     ['Claude wants to create a project', 'create the project "Fresh one"'],
   ]);
   assert.deepEqual(page.problems, []);
+});
+
+test('the card for moving a group has its own title and says which group goes into which project, or to Home', { skip, timeout }, async t => {
+  const { token } = await signIn(app);
+  // A request is named for its tool, so two moves asked in one chat would share a card.
+  for (const [id, input, line] of [['mover', '{"group":"loose","project":"SIDE"}', 'move the group "Loose" [cg-home] to the project "Side" [cp-side]'], ['mover2', '{"group":"work"}', 'move the group "Work" [cg-work] to Home']]) {
+    const sent = text => request(app, 'POST', `/api/sessions/${id}/send`, { headers: as(token), json: { text } });
+    assert.equal((await sent('begin a session')).status, 200);
+    assert.equal((await sent(`ask to use move_group_to_project ${input}`)).status, 200);
+    const page = await appPage(t, `#/s/${id}`);
+    await page.until(`document.querySelectorAll('.approval').length === 1`);
+    const cards = await page.evaluate(`[...document.querySelectorAll('.approval')].map(a => [a.querySelector('h3').textContent, a.querySelector('.approval-path')?.textContent])`);
+    assert.deepEqual(cards, [['Claude wants to move a group to a project', line]]);
+    assert.deepEqual(page.problems, []);
+  }
 });
 
 test('a project and a group made by a tool show in a sidebar that is already open, with no reload', { skip, timeout }, async t => {
