@@ -11,7 +11,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "GhostShellKit"),
-        .target(name: "GhostShellScreens", dependencies: ["GhostShellKit"]),
+        .target(name: "GhostShellScreens", dependencies: ["GhostShellKit"], resources: [.copy("Resources/Fonts")]),
         .testTarget(name: "GhostShellKitTests", dependencies: ["GhostShellKit", "GhostShellScreens"]),
     ]
 )

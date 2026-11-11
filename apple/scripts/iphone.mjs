@@ -2,7 +2,7 @@
 // Builds and drives the iPhone app in the Simulator. Nothing here opens the Simulator window or takes the keyboard: simulators are booted with
 // `simctl boot` and the UI tests run through xcodebuild, so the run can go on while the Mac is in use.
 //   node apple/scripts/iphone.mjs build [--release]
-//   node apple/scripts/iphone.mjs shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>]
+//   node apple/scripts/iphone.mjs shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>[,<name>...]]
 // A Debug build is for the Simulator. A Release build is for a device with signing off, then searched for the Debug hooks like the Mac one.
 // Tests run against a stub in front of the chat stub, never port 4310 and never ~/.config/capcom.
 import { spawn, spawnSync } from 'node:child_process';
@@ -179,7 +179,7 @@ function runTests({ udid, device, appearance, out, address, only, stubs }) {
   fs.rmSync(result, { recursive: true, force: true });
   const args = ['-project', PROJECT, '-scheme', 'GhostShelliPhone', '-derivedDataPath', DERIVED, '-destination', `platform=iOS Simulator,id=${udid}`,
     '-resultBundlePath', result, '-parallel-testing-enabled', 'NO', 'test-without-building'];
-  if (only) args.push(`-only-testing:GhostShelliPhoneUITests/GhostShelliPhoneUITests/${only}`);
+  for (const name of only ? only.split(',') : []) args.push(`-only-testing:GhostShelliPhoneUITests/GhostShelliPhoneUITests/${name}`);
   return new Promise(resolve => {
     const child = spawn('xcodebuild', args, { env });
     let output = '';
@@ -251,6 +251,6 @@ if (command === 'build') {
 } else if (command === 'shot') {
   process.exit((await shoot()) ? 0 : 1);
 } else {
-  console.error('Usage: iphone.mjs build [--release] | shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>]');
+  console.error('Usage: iphone.mjs build [--release] | shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>[,<name>...]]');
   process.exit(2);
 }
