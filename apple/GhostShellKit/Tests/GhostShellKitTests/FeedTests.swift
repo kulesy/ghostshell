@@ -12,6 +12,11 @@ private actor Script {
     }
 }
 
+private actor Gate {
+    var isOpen = false
+    func open() { isOpen = true }
+}
+
 final class FeedTests: XCTestCase {
     private func index(_ ids: String...) -> SessionIndex { SessionIndex(started: ids.map { SessionRow(id: $0) }) }
 
@@ -71,10 +76,15 @@ final class FeedTests: XCTestCase {
 
     func testAnOlderLookAnsweringLateDoesNotPutTheOldIndexBack() async throws {
         let order = Script([.success(index("old")), .success(index("new"))])
+        let gate = Gate()
         let feed = SessionIndexFeed(interval: .seconds(60)) {
             let first = await order.calls == 0
             let found = try await order.next()
-            if first { try await Task.sleep(for: .milliseconds(80)) }
+            // The first look answers only once the second has, so the order never rests on timing.
+            for _ in 0..<5000 where first {
+                if await gate.isOpen { break }
+                try await Task.sleep(for: .milliseconds(1))
+            }
             return found
         }
         let slow = Task { await feed.refresh() }
@@ -85,6 +95,7 @@ final class FeedTests: XCTestCase {
         let started = await order.calls
         XCTAssertEqual(started, 1, "the first refresh never asked for the index")
         await feed.refresh()
+        await gate.open()
         await slow.value
         await feed.stop()
         let seen = await collect(feed, count: 2)
