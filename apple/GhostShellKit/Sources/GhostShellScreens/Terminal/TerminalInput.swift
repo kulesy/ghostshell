@@ -1,4 +1,3 @@
-#if os(macOS)
 import GhostShellKit
 import SwiftUI
 
@@ -6,6 +5,7 @@ import SwiftUI
 ///
 /// Return runs it and Shift+Return adds a line. Up and Down walk the commands run before, when no command is taking input and the caret is at an end.
 /// Control+C stops the command or clears the box, Control+D ends the command's input, and Escape closes the panel.
+/// A phone has no such keys, so a row of buttons above the box does what Control+C, Control+D, Tab, Up and Down do, through the same functions.
 struct TerminalInput: View {
     let chat: ChatContext
     let store: TerminalStore
@@ -25,6 +25,24 @@ struct TerminalInput: View {
         #endif
     }()
 
+    /// The 44pt rows of a phone have their one line in the middle, where the Mac's box grows upward from the bottom.
+    private static let rowAlignment: VerticalAlignment = {
+        #if os(macOS)
+        .bottom
+        #else
+        .center
+        #endif
+    }()
+
+    /// A thumb's 44pt comes from the frame around the button, so the button itself stays the size of the Mac's.
+    private static let runSize: ControlSize = {
+        #if os(macOS)
+        .small
+        #else
+        .regular
+        #endif
+    }()
+
     private var state: TerminalState { store.state }
     /// The target at the moment of a key, which a redraw may not have caught up with.
     private var shown: (run: TerminalRun?, ended: Bool) { TerminalRules.inputTarget(runs: state.runs, pin: state.sendTo) }
@@ -34,7 +52,10 @@ struct TerminalInput: View {
         let sending = target.run != nil || target.ended
         VStack(alignment: .leading, spacing: 4) {
             label(target)
-            HStack(alignment: .bottom, spacing: 8) {
+            #if os(iOS)
+            keyRow(target)
+            #endif
+            HStack(alignment: Self.rowAlignment, spacing: 8) {
                 Text(sending ? ">" : "$").font(ChatStyle.mono).foregroundStyle(.secondary).padding(.bottom, 1).accessibilityHidden(true)
                 TextField(target.run != nil ? "Send a line to the running command" : "Run a command", text: Binding(get: { state.input }, set: { store.setInput($0) }),
                           selection: $selection, axis: .vertical)
@@ -49,17 +70,20 @@ struct TerminalInput: View {
                     .onKeyPress(phases: .down) { press in keyPressed(press) }
                     .accessibilityLabel(labelText(target))
                 Button(action: submit) { Image(systemName: "play.fill").frame(width: 20, height: 20) }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .buttonStyle(.borderedProminent).controlSize(Self.runSize).phoneIconTouch()
                     .disabled(target.ended || (target.run == nil && state.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
                     .help(sending ? "Send line" : "Run command")
                     .accessibilityLabel(sending ? "Send line" : "Run command")
             }
+            .phoneFieldRow($focused)
             Text(hint(target)).font(ChatStyle.caption).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
         .background(.bar)
         .overlay(alignment: .top) { Divider() }
+        #if os(macOS)
         .onAppear { focused = true }
+        #endif
     }
 
     private func labelText(_ target: (run: TerminalRun?, ended: Bool)) -> String {
@@ -76,7 +100,7 @@ struct TerminalInput: View {
             Spacer(minLength: 0)
             if let run = target.run, run.running, !run.pending, let id = run.id {
                 Button("Stop") { Task { await store.stop(id) } }
-                    .buttonStyle(.borderless).font(ChatStyle.caption).help("Stop the command")
+                    .buttonStyle(.borderless).font(ChatStyle.caption).phoneIconTouch().help("Stop the command")
                     .accessibilityLabel("Stop command")
             }
         }
@@ -109,13 +133,12 @@ struct TerminalInput: View {
             return .handled
         }
         if mods == .control {
-            let run = shown.run
             if press.key == KeyEquivalent("c"), caret.empty {
-                if let id = run?.id { Task { await store.stop(id) } } else { replaceInput("") }
+                interrupt()
                 return .handled
             }
-            if press.key == KeyEquivalent("d"), state.input.isEmpty, let id = run?.id {
-                Task { await store.input(id, text: "", eof: true) }
+            if press.key == KeyEquivalent("d"), canEndInput {
+                endInput()
                 return .handled
             }
         }
@@ -126,11 +149,24 @@ struct TerminalInput: View {
         return .ignored
     }
 
+    private func interrupt() {
+        if let id = shown.run?.id { Task { await store.stop(id) } } else { replaceInput("") }
+    }
+
+    private var canEndInput: Bool { state.input.isEmpty && shown.run?.id != nil }
+
+    private func endInput() {
+        guard canEndInput, let id = shown.run?.id else { return }
+        Task { await store.input(id, text: "", eof: true) }
+    }
+
     // A selection holds indices into the text it was made in. Writing new text under a held one makes SwiftUI trap in the text view, so it is dropped first.
     private func replaceInput(_ text: String, to pin: TerminalRules.InputPin? = nil) {
         selection = nil
         store.setInput(text, to: pin)
     }
+
+    private var canRecall: Bool { shown.run == nil && !shown.ended }
 
     private func recall(_ direction: Int) -> KeyPress.Result {
         guard let next = TerminalRules.recall(list: TerminalRules.historyOf(state.runs), at: walk.at, draft: walk.draft, text: state.input, direction: direction) else { return .ignored }
@@ -138,6 +174,36 @@ struct TerminalInput: View {
         replaceInput(next.text)
         return .handled
     }
+
+    #if os(iOS)
+    // The box's text is replaced whole, with the held selection dropped first, so the caret ends up at the end.
+    private func insertTab() {
+        var text = state.input
+        if let selection, case .selection(let range) = selection.indices { text.replaceSubrange(range, with: "\t") } else { text += "\t" }
+        replaceInput(text)
+    }
+
+    private func keyRow(_ target: (run: TerminalRun?, ended: Bool)) -> some View {
+        HStack(spacing: 4) {
+            key("Ctrl+C", hint: target.run != nil ? "Stops the running command" : "Clears the box") { interrupt() }
+            key("Ctrl+D", hint: "Ends the running command's input") { endInput() }.disabled(!canEndInput)
+            key("Tab", hint: "Inserts a tab") { insertTab() }.disabled(target.ended)
+            Spacer(minLength: 0)
+            key(label: "Previous command", symbol: "chevron.up") { _ = recall(-1) }.disabled(!canRecall)
+            key(label: "Next command", symbol: "chevron.down") { _ = recall(1) }.disabled(!canRecall)
+        }
+    }
+
+    private func key(_ title: String, hint: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Text(title).font(ChatStyle.monoSmall).padding(.horizontal, 6).modifier(KeyCap()) }
+            .buttonStyle(.plain).accessibilityLabel(title).accessibilityHint(hint)
+    }
+
+    private func key(label: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: symbol).modifier(KeyCap()) }
+            .buttonStyle(.plain).accessibilityLabel(label)
+    }
+    #endif
 
     private func submit() {
         let text = state.input
@@ -160,6 +226,20 @@ struct TerminalInput: View {
             store.report(problem)
             if store.state.input.isEmpty { replaceInput(text, to: TerminalRules.InputPin(run: nil)) }
         }
+    }
+}
+
+#if os(iOS)
+/// A key of the phone's key row: 44pt for a thumb, dimmed with the button when it is off.
+private struct KeyCap: ViewModifier {
+    @Environment(\.isEnabled) private var enabled
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(enabled ? Color.primary : Color.secondary.opacity(0.5))
+            .frame(minWidth: 44, minHeight: 44)
+            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
     }
 }
 #endif

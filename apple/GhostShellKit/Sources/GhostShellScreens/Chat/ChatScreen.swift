@@ -41,7 +41,9 @@ private struct ChatLayout: View {
             ChatThreadView()
             NoticeBar()
             AgentStrip()
+            #if os(macOS)
             if chat.terminalOpen { ChatSlots.terminal(chat) }
+            #endif
             ChatSlots.prompts(chat)
             ChatSlots.composer(chat)
         }
@@ -53,17 +55,22 @@ private struct ChatLayout: View {
             }
         }
         #if os(iOS)
-        // NOTE: [9 Nov 2026] EK - A phone has no room beside the thread, so the panel fills the screen and Back returns to the chat. It is not a navigationDestination,
-        // because the split's compact column has no stack of its own, and a stack added there made Back pop the whole chat to the list.
+        // NOTE: [9 Nov 2026] EK - A phone has no room beside the thread, so the file panel and the terminal fill the screen and Back returns to the chat. They are not
+        // navigationDestinations, because the split's compact column has no stack of its own, and a stack added there made Back pop the whole chat to the list.
+        .overlay { if chat.terminalOpen { ChatSlots.terminal(chat).background(.background).accessibilityAddTraits(.isModal) } }
         .overlay { if chat.filePanelOpen { ChatSlots.filePanel(chat).background(.background).accessibilityAddTraits(.isModal) } }
-        .navigationBarBackButtonHidden(chat.filePanelOpen)
+        .navigationBarBackButtonHidden(chat.filePanelOpen || chat.terminalOpen)
         .toolbar {
-            if chat.filePanelOpen {
+            if chat.filePanelOpen || chat.terminalOpen {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { chat.filePanelOpen = false } label: { Label("Back to chat", systemImage: "chevron.left").labelStyle(.iconOnly) }
+                    Button {
+                        if chat.filePanelOpen { chat.filePanelOpen = false } else { chat.terminalOpen = false }
+                    } label: { HStack(spacing: 4) { Image(systemName: "chevron.left").fontWeight(.semibold); Text("Back") }.phoneIconTouch() }
                 }
             }
         }
+        // The composer under the terminal would keep the keyboard.
+        .onChange(of: chat.terminalOpen) { _, open in if open { dismissKeyboard() } }
         #else
         .inspector(isPresented: $chat.filePanelOpen) { ChatSlots.filePanel(chat) }
         #endif

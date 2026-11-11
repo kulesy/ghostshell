@@ -15,6 +15,7 @@ import { checkNoHooks } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
+import { makePng } from './png.mjs';
 import { routinesStub } from './routines-fixtures.mjs';
 import { startScratch } from './test-server.mjs';
 
@@ -84,6 +85,11 @@ function boot(udid) {
   if (r.status !== 0) throw new Error(`The simulator ${udid} did not boot.`);
   // The keyboard's sliding-to-type card would cover the first screen after each fresh simulator.
   simctl('spawn', udid, 'defaults', 'write', 'com.apple.keyboard.preferences', 'DidShowContinuousPathIntroduction', '-bool', 'true');
+  // The composer's photo picker needs a picture to choose.
+  const photo = path.join(DERIVED, 'test-photo.png');
+  fs.mkdirSync(DERIVED, { recursive: true });
+  if (!fs.existsSync(photo)) makePng(photo, 200);
+  simctl('addmedia', udid, photo);
 }
 
 // MARK: Servers
@@ -117,6 +123,8 @@ function startFixtures(stub) {
   const server = http.createServer((req, res) => {
     const { pathname } = new URL(req.url, 'http://fixtures');
     if (pathname === '/__sends') return json(res, stub.sends);
+    if (pathname === '/__calls') return json(res, stub.calls);
+    if (pathname === '/__terminal') return json(res, stub.requests);
     if (pathname === '/__decisions') return json(res, decisions);
     if (pathname === '/api/accounts' || pathname === '/api/accounts/plan') return req.resume(), json(res, accounts);
     if (pathname === '/api/banners') return req.resume(), json(res, {});

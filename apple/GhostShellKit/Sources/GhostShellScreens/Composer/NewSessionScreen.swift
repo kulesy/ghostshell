@@ -33,11 +33,15 @@ private struct NewSessionBody: View {
                     TextField("Folder", text: $model.folder, prompt: Text("Path to a folder"))
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .largeOnPhone()
                         .accessibilityLabel("Folder")
                     Menu {
                         ForEach(folders, id: \.self) { path in Button(path) { model.folder = path } }
                     } label: {
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 11))
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 11)).phoneIconTouch()
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
@@ -53,6 +57,10 @@ private struct NewSessionBody: View {
             ComposerView(model: model, placeholder: "What should Claude do? Type / for commands", autofocus: true)
         }
         .navigationTitle("New session")
+        #if os(iOS)
+        // NOTE: [11 Nov 2026] EK - A large title looped the layout on the iPhone 16 Pro and stalled the screen.
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task {
             folders = (try? await client.folders()) ?? []
             if model.folder.isEmpty, let first = folders.first { model.folder = first }

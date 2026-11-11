@@ -1,4 +1,3 @@
-#if os(macOS)
 import GhostShellKit
 import SwiftUI
 
@@ -31,16 +30,20 @@ struct TerminalPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
             handle
+            #endif
             header
             Divider()
             runs
             if !state.error.isEmpty { errorLine }
             TerminalInput(chat: chat, store: store)
         }
+        #if os(macOS)
         .containerRelativeFrame(.vertical) { length, _ in min(store.height, length * 0.55) }
-        .background(.background)
         .overlay(alignment: .top) { Divider() }
+        #endif
+        .background(.background)
         .task { store.start() }
         .onChange(of: state.announceCount) { AccessibilityNotification.Announcement(state.announce).post() }
         .accessibilityElement(children: .contain)
@@ -49,13 +52,12 @@ struct TerminalPanel: View {
 
     // MARK: Parts
 
-    /// A strip along the top edge that resizes the panel.
+    /// A strip along the top edge that resizes the panel. A phone's panel fills the screen, so it has none.
+    #if os(macOS)
     private var handle: some View {
         Color.clear.frame(height: 6)
             .contentShape(Rectangle())
-            #if os(macOS)
             .pointerStyle(.rowResize)
-            #endif
             .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { drag in
                     let start = dragStart ?? store.height
@@ -65,6 +67,7 @@ struct TerminalPanel: View {
                 .onEnded { _ in dragStart = nil })
             .accessibilityHidden(true)
     }
+    #endif
 
     /// Narrow columns drop the title word and keep the icon. The path's ideal width is 0 so it truncates before either does.
     private var header: some View {
@@ -84,10 +87,14 @@ struct TerminalPanel: View {
                 .help(state.cwd)
             Button("Clear") { Task { await store.clear() } }
                 .buttonStyle(.borderless).font(ChatStyle.small).lineLimit(1).fixedSize()
+                .phoneIconTouch()
                 .disabled(state.runs.allSatisfy(\.running))
                 .help("Clear finished commands")
+            // A phone closes the terminal with Back in the bar.
+            #if os(macOS)
             Button { chat.terminalOpen = false } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless).help("Close the terminal").accessibilityLabel("Close terminal")
+            #endif
         }
     }
 
@@ -128,7 +135,7 @@ struct TerminalPanel: View {
             Text(state.error).font(ChatStyle.small).foregroundStyle(AnsiStyler(colorScheme).danger).textSelection(.enabled)
             Spacer(minLength: 0)
             Button { store.report("") } label: { Image(systemName: "xmark") }
-                .buttonStyle(.borderless).help("Dismiss").accessibilityLabel("Dismiss")
+                .buttonStyle(.borderless).phoneIconTouch().help("Dismiss").accessibilityLabel("Dismiss")
         }
         .padding(.vertical, 6).padding(.leading, 12).padding(.trailing, 8)
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AnsiStyler(colorScheme).danger.opacity(0.4)))
@@ -226,7 +233,7 @@ struct TerminalRunBlock: View, Equatable {
 
     private func tool(_ label: String, _ symbol: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: symbol).font(.system(size: 11)).frame(width: 22, height: 20) }
-            .buttonStyle(.borderless).help(label).accessibilityLabel(label)
+            .buttonStyle(.borderless).phoneIconTouch().help(label).accessibilityLabel(label)
     }
 
     private func foot(_ styler: AnsiStyler) -> some View {
@@ -261,4 +268,3 @@ private struct Lamp: View {
             .accessibilityHidden(true)
     }
 }
-#endif

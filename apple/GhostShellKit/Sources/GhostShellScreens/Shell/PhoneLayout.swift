@@ -57,6 +57,15 @@ extension View {
         #endif
     }
 
+    /// A text field is only as tall as its text, 17pt for one line. A phone pads the row to 44pt and takes a tap anywhere in it for the field.
+    func phoneFieldRow(_ focus: FocusState<Bool>.Binding, alignment: Alignment = .topLeading) -> some View {
+        #if os(iOS)
+        frame(maxWidth: .infinity, minHeight: 44, alignment: alignment).contentShape(Rectangle()).onTapGesture { focus.wrappedValue = true }
+        #else
+        self
+        #endif
+    }
+
     /// A full-size control on a phone, where a thumb has to hit it, for a button that keeps its own style. The Mac is left as it was.
     func largeOnPhone() -> some View {
         #if os(iOS)

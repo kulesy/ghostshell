@@ -18,11 +18,13 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
     /// A new Keychain service and defaults suite for every launch, so no test sees another's token or address.
     /// `stub` names one of the other stubs the script starts (files or groups). Nil is the chat stub.
-    private func launch(prefillAddress: Bool = true, stub: String? = nil) -> XCUIApplication {
+    /// `attachDir` turns on the Debug hook that attaches the file named in `attach.txt` there, standing in for the Files sheet, which is empty in a Simulator.
+    private func launch(prefillAddress: Bool = true, stub: String? = nil, attachDir: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         let tag = UUID().uuidString
         app.launchArguments = ["-GSKeychainService", "gs.iphone.test.\(tag)", "-GSDefaultsSuite", "gs.iphone.test.\(tag)", "-GSAppearance", appearance]
         if prefillAddress { app.launchArguments += ["-GSAddress", stub.flatMap { env["GS_ADDRESS_\($0.uppercased())"] } ?? address] }
+        if let attachDir { app.launchArguments += ["-GSAttachDir", attachDir] }
         app.launch()
         return app
     }
@@ -92,6 +94,15 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let (data, _) = try await URLSession.shared.data(from: URL(string: base + path)!)
         return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
     }
+
+    /// What the chat stub recorded under `key` (send, stop, pick, upload or created).
+    private func calls(_ key: String) async throws -> [Any] {
+        let (data, _) = try await URLSession.shared.data(from: URL(string: address + "/__calls")!)
+        return ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?[key] as? [Any]) ?? []
+    }
+
+    /// The terminal requests the chat stub recorded, each `{ route, body }`.
+    private func terminalRequests() async throws -> [[String: Any]] { try await get("/__terminal") }
 
     // MARK: Tests
 
@@ -180,7 +191,217 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual(decisions.last?["requestId"] as? String, "req-bash")
     }
 
-    // https://github.com/kulesy/ghostshell/issues/118 - the iPhone composer's reply, refusal and New Session tests go here when it is turned on.
+    // MARK: Composer
+
+    private func openComposerChat(_ app: XCUIApplication) {
+        open(app, "Rename the export helper", expecting: "I renamed it in 4 files and updated the two tests that imported it.")
+    }
+
+    /// The phone's keyboard is not raised when a chat opens, and the thread's drag puts it away.
+    private func message(_ app: XCUIApplication) -> XCUIElement { app.textFields["Message"].firstMatch }
+
+    func testWriteAndSendAMessageWithAPhotoAndAFile() async throws {
+        let attachDir = "/tmp/gs-iphone-attach-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: attachDir, withIntermediateDirectories: true)
+        let notes = attachDir + "/notes.txt"
+        try "Remember the export helper.\n".write(toFile: notes, atomically: true, encoding: .utf8)
+        let app = launch(attachDir: attachDir)
+        signIn(app)
+        let sends = try await calls("send").count
+        let uploads = try await calls("upload").count
+        openComposerChat(app)
+
+        // No keyboard on opening a chat, and the controls are in reach.
+        XCTAssertTrue(message(app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "A phone does not raise the keyboard when a chat opens.")
+        for name in ["Attach files", "Attach photos"] { assertTouchable(app.buttons[name].firstMatch, name) }
+        assertTouchable(app.buttons["Send"].firstMatch, "Send")
+        XCTAssertFalse(app.buttons["Send"].firstMatch.isEnabled, "Send waits for something to send.")
+        shot("composer-1-chat")
+
+        focusByEdge(message(app), "Message")
+        message(app).typeText("Please check the helper too")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+
+        // The real photo picker: the newest photo in the Simulator's library is the one script put there.
+        app.buttons["Attach photos"].firstMatch.tap()
+        let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 15), app.debugDescription)
+        photo.tap()
+        let add = app.buttons["Add"].firstMatch
+        XCTAssertTrue(add.waitForExistence(timeout: 10), app.debugDescription)
+        add.tap()
+        let picture = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Image Photo 1'")).firstMatch
+        XCTAssertTrue(picture.waitForExistence(timeout: 20), "The photo becomes a chip\n\(app.debugDescription)")
+
+        // The real Files sheet opens and cancels. It lists nothing in a Simulator, so the file comes in through the Debug hook.
+        app.buttons["Attach files"].firstMatch.tap()
+        let cancel = app.buttons["Cancel"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 15), app.debugDescription)
+        cancel.tap()
+        XCTAssertTrue(cancel.waitForNonExistence(timeout: 10))
+        try "1 \(notes)".write(toFile: attachDir + "/attach.txt", atomically: true, encoding: .utf8)
+        let file = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'File notes.txt'")).firstMatch
+        XCTAssertTrue(file.waitForExistence(timeout: 20), "The file becomes a chip\n\(app.debugDescription)")
+        for name in ["Remove notes.txt"] { assertTouchable(app.buttons[name].firstMatch, name) }
+        shot("composer-2-keyboard-attached")
+
+        let send = app.buttons["Send"].firstMatch
+        XCTAssertTrue(send.isHittable, "Send is reachable with the keyboard up\n\(app.debugDescription)")
+        send.tap()
+        try await Task.sleep(for: .seconds(3))
+        let sent = try await calls("send")
+        XCTAssertEqual(sent.count, sends + 1, "One send")
+        let last = sent.last as? [String: Any]
+        XCTAssertEqual(last?["id"] as? String, "composer")
+        XCTAssertEqual(last?["text"] as? String, "Please check the helper too")
+        // A picture goes inside the message and a file is uploaded first, then named in it.
+        XCTAssertEqual((last?["images"] as? [Any])?.count, 1, "The photo goes with the message: \(String(describing: last))")
+        XCTAssertEqual((last?["files"] as? [Any])?.count, 1, "The file goes with the message: \(String(describing: last))")
+        let uploaded = try await calls("upload")
+        XCTAssertEqual(uploaded.count, uploads + 1, "The file was uploaded")
+        let upload = uploaded.last as? [String: Any]
+        XCTAssertEqual(upload?["name"] as? String, "notes.txt")
+        XCTAssertEqual(upload?["size"] as? Int, "Remember the export helper.\n".utf8.count)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == 'File notes.txt'")).firstMatch.waitForNonExistence(timeout: 10), "The chips clear after a send")
+    }
+
+    func testAMessageIsQuotedIntoTheComposer() async throws {
+        let app = launch()
+        signIn(app)
+        openComposerChat(app)
+        let text = app.staticTexts["I renamed it in 4 files and updated the two tests that imported it."].firstMatch
+        text.press(forDuration: 1.2)
+        let quote = app.buttons["Quote"].firstMatch
+        XCTAssertTrue(quote.waitForExistence(timeout: 10), app.debugDescription)
+        assertTouchable(quote, "Quote")
+        quote.tap()
+        let chip = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Quote: '")).firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 10), "The quote chip appears in the composer\n\(app.debugDescription)")
+        XCTAssertTrue(chip.label.contains("I renamed it in 4 files"), chip.label)
+        assertTouchable(app.buttons["Remove quote"].firstMatch, "Remove quote")
+        shot("composer-3-quote")
+        let sends = try await calls("send").count
+        app.buttons["Send"].firstMatch.tap()
+        try await Task.sleep(for: .seconds(3))
+        let sent = try await calls("send")
+        XCTAssertEqual(sent.count, sends + 1)
+        XCTAssertTrue(((sent.last as? [String: Any])?["text"] as? String ?? "").contains("I renamed it in 4 files"), "The quote goes in the message: \(String(describing: sent.last))")
+    }
+
+    func testStartANewSession() async throws {
+        let app = launch()
+        signIn(app)
+        let before = try await calls("created").count
+        let button = app.buttons["New Session"].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 10), app.debugDescription)
+        assertTouchable(button, "New Session")
+        button.tap()
+        let folder = app.textFields["Folder"].firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(waitForValue(folder, "/Users/example"), "The folder starts as the first the server lists: \(folder.value ?? "")")
+        XCTAssertLessThanOrEqual(folder.frame.maxX, XCUIScreen.main.screenshot().image.size.width, "The folder row fits the screen")
+        assertTouchable(app.buttons["Recent folders"].firstMatch, "Recent folders")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "A phone does not raise the keyboard on this screen")
+        shot("new-session-1")
+        focusByEdge(message(app), "Message")
+        message(app).typeText("Start from the phone")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        shot("new-session-2-keyboard")
+        let start = app.buttons["Start session"].firstMatch
+        assertTouchable(start, "Start session")
+        XCTAssertTrue(start.isHittable, "Start is reachable with the keyboard up\n\(app.debugDescription)")
+        start.tap()
+        try await Task.sleep(for: .seconds(3))
+        let made = try await calls("created")
+        XCTAssertEqual(made.count, before + 1)
+        let sent = made.last as? [String: Any]
+        XCTAssertEqual(sent?["text"] as? String, "Start from the phone")
+        XCTAssertEqual(sent?["cwd"] as? String, "/Users/example")
+        XCTAssertTrue(app.staticTexts["Start from the phone"].firstMatch.waitForExistence(timeout: 20), "The new session opens\n\(app.debugDescription)")
+    }
+
+    // MARK: Terminal
+
+    func testTerminalRunsStopsAndRecalls() async throws {
+        let app = launch()
+        signIn(app)
+        open(app, "Check the build output", expecting: "Run the upload test and show me what the build says.")
+        let toggle = app.buttons["Terminal"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10), app.debugDescription)
+        assertTouchable(toggle, "Terminal toggle")
+        toggle.tap()
+        let input = app.textFields.matching(NSPredicate(format: "label BEGINSWITH 'Send to '")).firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 15), "The terminal opens full screen with npm run dev running\n\(app.debugDescription)")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "The keyboard stays down until the box is tapped")
+        let requests = try await terminalRequests().count
+        for name in ["Ctrl+C", "Ctrl+D", "Tab", "Previous command", "Next command", "Send line", "Stop command", "Clear"] {
+            let element = app.buttons[name].firstMatch
+            XCTAssertTrue(element.exists, "\(name) is in the terminal\n\(app.debugDescription)")
+            assertTouchable(element, name)
+        }
+        XCTAssertFalse(app.buttons["Escape"].exists, "Esc is left out of the key row")
+        shot("terminal-1-running")
+
+        // Ctrl-C stops the running command.
+        app.buttons["Ctrl+C"].firstMatch.tap()
+        try await Task.sleep(for: .seconds(2))
+        let stopped = try await terminalRequests()
+        XCTAssertEqual(stopped.count, requests + 1, "One request: \(stopped)")
+        XCTAssertEqual(stopped.last?["route"] as? String, "stop")
+        XCTAssertEqual((stopped.last?["body"] as? [String: Any])?["run"] as? String, "r3")
+
+        // A command runs with the button, and a touch keyboard's Return adds a line instead of running it.
+        let box = app.textFields.matching(NSPredicate(format: "label BEGINSWITH 'Command in '")).firstMatch
+        XCTAssertTrue(box.waitForExistence(timeout: 15), "The box takes a command once the running one stopped\n\(app.debugDescription)")
+        shot("terminal-1b-stopped")
+        focusByEdge(box, "Terminal box")
+        box.typeText("echo hi")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        shot("terminal-2-keyboard")
+        for name in ["Ctrl+C", "Tab", "Previous command", "Run command"] { XCTAssertTrue(app.buttons[name].firstMatch.isHittable, "\(name) is reachable with the keyboard up\n\(app.debugDescription)") }
+        app.buttons["Run command"].firstMatch.tap()
+        try await Task.sleep(for: .seconds(2))
+        let ran = try await terminalRequests()
+        XCTAssertEqual(ran.last?["route"] as? String, "run")
+        XCTAssertEqual((ran.last?["body"] as? [String: Any])?["command"] as? String, "echo hi")
+
+        // Up recalls it.
+        let again = app.textFields.matching(NSPredicate(format: "label BEGINSWITH 'Command in '")).firstMatch
+        XCTAssertTrue(again.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertEqual(again.value as? String ?? "", "Run a command", "The box is empty after a run")
+        app.buttons["Previous command"].firstMatch.tap()
+        XCTAssertTrue(waitForValue(again, "echo hi"), "Up recalls the last command: \(again.value ?? "")\n\(app.debugDescription)")
+
+        // Back closes the terminal and shows the chat.
+        let backButton = app.navigationBars.firstMatch.buttons["Back"].firstMatch
+        XCTAssertTrue(backButton.exists, app.debugDescription)
+        assertTouchable(backButton, "Back")
+        backButton.tap()
+        XCTAssertTrue(app.staticTexts["Run the upload test and show me what the build says."].firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.buttons["Ctrl+C"].exists, "The terminal is closed")
+    }
+
+    func testACodeBlocksRunButtonOpensTheTerminalAndRuns() async throws {
+        let app = launch()
+        signIn(app)
+        open(app, "Check the build output", expecting: "Run the upload test and show me what the build says.")
+        let run = app.buttons["Run in terminal"].firstMatch
+        XCTAssertTrue(run.waitForExistence(timeout: 15), app.debugDescription)
+        assertTouchable(run, "Run in terminal")
+        shot("terminal-0-chat")
+        // The block is above the visible part of the thread, which opens at the bottom. Tapping it unseen makes the test tool scroll to it, and the app stops answering while it does.
+        for _ in 0..<6 where !run.isHittable { app.swipeDown() }
+        XCTAssertTrue(run.isHittable, "Run is on screen: \(run.frame)")
+        let before = try await terminalRequests().count
+        run.tap()
+        XCTAssertTrue(app.textFields.matching(NSPredicate(format: "label BEGINSWITH 'Send to ' OR label BEGINSWITH 'Command in '")).firstMatch.waitForExistence(timeout: 15), app.debugDescription)
+        try await Task.sleep(for: .seconds(2))
+        let after = try await terminalRequests()
+        XCTAssertEqual(after.count, before + 1, "The Run button runs the block once: \(after)")
+        XCTAssertEqual(after.last?["route"] as? String, "run")
+        XCTAssertEqual((after.last?["body"] as? [String: Any])?["source"] as? String, "block")
+    }
 
     func testAccountsPasskeysAndSignOut() throws {
         let app = launch()
