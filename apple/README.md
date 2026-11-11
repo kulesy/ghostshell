@@ -50,7 +50,7 @@ The first launch of a new build asks the Keychain for access to its own item. Th
 
 ## GitHub Actions
 
-The `Swift app` workflow (`.github/workflows/swift.yml`) runs the Swift builds, tests and most of the screenshots on GitHub's Xcode 27 runners, so a Swift change rarely needs a run on the Mac. It runs on every push that touches `apple/`, `test/speakers.mjs`, `package.json` or the workflow, on a pull request from a fork, and by hand. A new push to a branch cancels the run still going on it. Its jobs run side by side:
+The `Swift app` workflow (`.github/workflows/swift.yml`) runs the Swift builds, the tests and part of the screenshots on GitHub's Xcode 27 runners. The rest still runs on the Mac, as listed below. It runs on every push that touches `apple/`, `test/speakers.mjs`, `package.json` or the workflow, on a pull request from a fork, and by hand. A new push to a branch cancels the run still going on it. Its jobs run side by side:
 
 | Job | What it runs | Artifact |
 | --- | --- | --- |
@@ -74,7 +74,7 @@ gh run download "$run" --name mac-screenshots --dir <folder>
 gh run download "$run" --pattern 'iphone-screenshots-*' --dir <folder>
 ```
 
-`gh workflow run swift.yml --ref <branch>` starts a run without a new push. The screenshots then go into the PR body the usual way.
+A push that touches none of those paths starts no run, so when the list comes back empty, start one with `gh workflow run swift.yml --ref <branch>` and look again. The screenshots then go into the PR body the usual way.
 
 The workflow's token can only read, and no step reads a secret, so a run from a fork cannot write to the repo. Anyone can download the artifacts of a public repo, so the fixtures hold no real names, paths or addresses.
 
