@@ -78,7 +78,7 @@ final class FeedTests: XCTestCase {
             return found
         }
         let slow = Task { await feed.refresh() }
-        try await Task.sleep(for: .milliseconds(20))
+        while await order.calls == 0 { try await Task.sleep(for: .milliseconds(1)) }
         await feed.refresh()
         await slow.value
         await feed.stop()

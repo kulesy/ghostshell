@@ -2,7 +2,7 @@
 // Builds and drives the iPhone app in the Simulator. Nothing here opens the Simulator window or takes the keyboard: simulators are booted with
 // `simctl boot` and the UI tests run through xcodebuild, so the run can go on while the Mac is in use.
 //   node apple/scripts/iphone.mjs build [--release]
-//   node apple/scripts/iphone.mjs shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>]
+//   node apple/scripts/iphone.mjs shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>] [--skip <name,name>]
 // A Debug build is for the Simulator. A Release build is for a device with signing off, then searched for the Debug hooks like the Mac one.
 // Tests run against a stub in front of the chat stub, never port 4310 and never ~/.config/capcom.
 import { spawn, spawnSync } from 'node:child_process';
@@ -22,7 +22,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const apple = path.resolve(here, '..');
 const PROJECT = path.join(apple, 'GhostShell.xcodeproj');
 const DERIVED = path.join(apple, 'build', 'ios');
-// The Actions runner has only the iOS 27 runtimes, so the workflow names its own.
+// The Actions runner has only iOS 27 and can't download 18.6, so the workflow names its own.
 const RUNTIME = process.env.GS_IOS_RUNTIME || 'com.apple.CoreSimulator.SimRuntime.iOS-18-6';
 const DEVICES = {
   se: { name: 'iPhone SE (3rd generation)', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation' },
@@ -79,7 +79,8 @@ function findOrCreate({ name: base, type }) {
 function boot(udid) {
   const state = JSON.parse(simctl('list', 'devices', '-j').stdout).devices[RUNTIME].find(d => d.udid === udid)?.state;
   if (state !== 'Booted') simctl('boot', udid);
-  const r = spawnSync('xcrun', ['simctl', 'bootstatus', udid, '-b'], { encoding: 'utf8', timeout: 240_000 });
+  // A runner's first boot of a fresh device can take over four minutes.
+  const r = spawnSync('xcrun', ['simctl', 'bootstatus', udid, '-b'], { encoding: 'utf8', timeout: 600_000 });
   if (r.status !== 0) throw new Error(`The simulator ${udid} did not boot.`);
   // The keyboard's sliding-to-type card would cover the first screen after each fresh simulator.
   simctl('spawn', udid, 'defaults', 'write', 'com.apple.keyboard.preferences', 'DidShowContinuousPathIntroduction', '-bool', 'true');
@@ -168,7 +169,7 @@ async function startStubs() {
   };
 }
 
-function runTests({ udid, device, appearance, out, address, only, stubs }) {
+function runTests({ udid, device, appearance, out, address, only, skip, stubs }) {
   const env = {
     ...process.env,
     TEST_RUNNER_GS_ADDRESS: address, TEST_RUNNER_GS_PASSWORD_ORGANISE: stubs.password, TEST_RUNNER_GS_SHOTDIR: out, TEST_RUNNER_GS_DEVICE: device, TEST_RUNNER_GS_APPEARANCE: appearance,
@@ -179,6 +180,7 @@ function runTests({ udid, device, appearance, out, address, only, stubs }) {
   const args = ['-project', PROJECT, '-scheme', 'GhostShelliPhone', '-derivedDataPath', DERIVED, '-destination', `platform=iOS Simulator,id=${udid}`,
     '-resultBundlePath', result, '-parallel-testing-enabled', 'NO', 'test-without-building'];
   if (only) args.push(`-only-testing:GhostShelliPhoneUITests/GhostShelliPhoneUITests/${only}`);
+  for (const name of skip ? skip.split(',') : []) args.push(`-skip-testing:GhostShelliPhoneUITests/GhostShelliPhoneUITests/${name}`);
   return new Promise(resolve => {
     const child = spawn('xcodebuild', args, { env });
     let output = '';
@@ -228,7 +230,7 @@ async function shoot() {
         // Fresh stubs for each run, because a chip started or a file saved in one run would change what the next one sees.
         const stubs = await startStubs();
         const since = new Date().toLocaleString('sv-SE');
-        const r = await runTests({ udid, device, appearance, out, address: fixtures.address, only: option('--test'), stubs }).finally(() => stubs.stop());
+        const r = await runTests({ udid, device, appearance, out, address: fixtures.address, only: option('--test'), skip: option('--skip'), stubs }).finally(() => stubs.stop());
         console.log(r.ok ? `PASS: ${r.summary}` : `FAIL: ${r.summary}\n${r.failed.join('\n')}`);
         const sounds = soundsSince(udid, since);
         if (sounds.length) console.log(`FAIL: the app put a sound out\n${sounds.join('\n')}`);

@@ -411,8 +411,12 @@ final class TerminalIntegrationTests: XCTestCase {
             XCTAssertEqual(error as? GhostShellError, .refused(status: 404, message: "No such command in this session."))
             XCTAssertEqual(TerminalFailure.words(error, step: .stop), "No such command in this session.")
         }
-        try await Task.sleep(for: .milliseconds(300))
-        let left = try await client.clearTerminal(sessionID: id)
+        // A slow runner can take more than a fixed sleep to reap the stopped process.
+        var left = try await client.clearTerminal(sessionID: id)
+        for _ in 0..<50 where left.runs.contains(where: { $0.id == started.id && $0.running }) {
+            try await Task.sleep(for: .milliseconds(100))
+            left = try await client.clearTerminal(sessionID: id)
+        }
         XCTAssertFalse(left.runs.contains { $0.id == started.id && $0.running })
     }
 }
