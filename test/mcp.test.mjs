@@ -110,6 +110,19 @@ test('a reload that fails to switch the server back on says it was left off, and
   assert.deepEqual(toggles(s).slice(2), [['tracker', false]], 'the enable was never sent');
 });
 
+test('a server a failed reload left off is refused again once it is seen on and then switched off by the user', async () => {
+  const { s, token } = await running();
+  flag(s, 'mcp-toggle-fails', 'on');
+  assert.equal((await reload(s, token, 'live', { name: 'notes' })).status, 502);
+  const status = to => servers(s, ROWS.map(r => (r.name === 'notes' ? { ...r, status: to } : r)));
+  status('connected');
+  assert.equal((await list(s, token, 'live')).body().servers.find(r => r.name === 'notes').reloadable, true, 'an on that landed late lists it as on');
+  status('disabled');
+  assert.equal((await list(s, token, 'live')).body().servers.find(r => r.name === 'notes').reloadable, false, 'the user switched it off, so it is theirs to switch on');
+  flag(s, 'mcp-toggle-fails', '');
+  assert.equal((await reload(s, token, 'live', { name: 'notes' })).status, 400);
+});
+
 test('a second reload while one runs in the same chat is refused, and the chat takes another once it is done', async () => {
   const { s, token } = await running();
   flag(s, 'mcp-toggle-wait', '300');

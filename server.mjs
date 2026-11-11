@@ -1007,6 +1007,8 @@ async function mcpFor(id) {
   const chat = getChat(id);
   if (!chat?.proc?.stdin.writable) return { running: false, servers: [] };
   const rows = await chat.mcpServers();
+  // A server that is on again leaves leftOff, so a later deliberate off is refused like any other. An "on" that timed out may still land.
+  if (rows) for (const name of chat.leftOff) if (!rows.some(r => r.name === name && r.status === 'disabled')) chat.leftOff.delete(name);
   return { running: true, servers: rows && shapeMcp(rows, chat.leftOff) };
 }
 
