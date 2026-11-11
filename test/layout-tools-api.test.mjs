@@ -43,6 +43,7 @@ const WRITES = [
   ['move_session_to_group', { session_id: 'loose', group: 'home' }, 'move "Loose" [loose] to "Home"'],
   ['create_project', { name: 'Fresh' }, 'create the project "Fresh"'],
   ['create_group', { name: 'Shiny', project: 'side' }, 'create the group "Shiny" in the project "Side"'],
+  ['move_group_to_project', { group: 'work', project: 'side' }, 'move the group "Work" to the project "Side"'],
 ];
 
 test('each write lands in layout.json as the layout route writes it, and the server lists the session as changed', async () => {
@@ -143,12 +144,12 @@ test('find_sessions and list_chips read the real index and chips, a group\'s cha
   assert.match(chips, /^1 chip, the newest first\n\n- Review - dialogs \[task_one\] · started · started session \[kid\] · made by \[top\] · /);
 });
 
-test('a group\'s chat is given the eight tools and uses them, and its own chat and a section\'s cannot be changed', async () => {
+test('a group\'s chat is given the layout tools and uses them, and its own chat and a section\'s cannot be changed', async () => {
   const { s, token } = await ready();
   await sendTo(s, token, WORK, 'list the tools');
   await until(() => replies(s).length === 1);
   const listed = replies(s)[0].result.tools.map(t => t.name);
-  for (const name of ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'send_session']) assert.ok(listed.includes(name), name);
+  for (const name of ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'send_session']) assert.ok(listed.includes(name), name);
   const moved = textOf(await callTool(s, token, WORK, 'move_session_to_group', { session_id: 'loose', group: 'Work' }));
   assert.match(moved, /^Moved "Loose" \[loose\] to the group "Work"/);
   assert.match(moved, /This group's chat can now read it with read_group_session\.$/);
@@ -317,6 +318,30 @@ test('a session goes from no project to sitting in a new group in a new project 
   const home = textOf(await callTool(s, token, 'top', 'create_group', { name: 'On the home screen' }));
   assert.match(home, /on Home\./);
   assert.equal(onDisk(s).groups.find(g => g.name === 'On the home screen').project, undefined);
+});
+
+test('a group moves into a project and back to Home as the route writes it, a group already there is left alone, and a section, a group\'s chat and an unknown project are refused', async () => {
+  const { s, token } = await ready();
+  const refusedText = async args => {
+    const reply = await callTool(s, token, 'top', 'move_group_to_project', args);
+    assert.equal(reply.result.isError, true, JSON.stringify(args));
+    return textOf(reply);
+  };
+  assert.equal(textOf(await callTool(s, token, 'top', 'move_group_to_project', { group: ' WORK ', project: 'side' })), 'Moved the group "Work" [cg-work] into the project "Side" [cp-side]. Its sessions moved with it.');
+  assert.deepEqual(onDisk(s).groups.map(g => [g.id, g.project]), [['cg-work', 'cp-side'], ['cg-home', undefined]]);
+  assert.equal((await get(s, token, '/api/sessions')).body().groups.find(g => g.id === 'cg-work').project, 'cp-side');
+  const before = fs.readFileSync(s.layout, 'utf8');
+  assert.equal(textOf(await callTool(s, token, 'top', 'move_group_to_project', { group: 'cg-work', project: 'Side' })), 'The group "Work" [cg-work] is already in the project "Side" [cp-side]. Nothing changed.');
+  assert.equal(textOf(await callTool(s, token, 'top', 'move_group_to_project', { group: 'home' })), 'The group "Home" [cg-home] is already on Home. Nothing changed.');
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'nothing was written');
+  assert.match(await refusedText({ group: 'Pinned', project: 'side' }), /^"Pinned" \[pinned\] is a section of Home, not a group, so it cannot move into a project\.$/);
+  assert.equal(await refusedText({ group: WORK, project: 'side' }), 'move_group_to_project has no group called "' + WORK + '". The groups are "Work", "Home".');
+  assert.equal(await refusedText({ group: 'work', project: 'Nowhere' }), 'move_group_to_project has no project called "Nowhere". The projects are "Side".');
+  assert.equal(await refusedText({ group: 'work', project: 5 }), 'Give the project as its name or its id.');
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'nothing was written');
+  assert.match(textOf(await callTool(s, token, 'top', 'move_group_to_project', { group: 'Work', project: null })), /^Moved the group "Work" \[cg-work\] to Home\./);
+  assert.equal(onDisk(s).groups.find(g => g.id === 'cg-work').project, undefined, 'back at the top level as the route leaves it');
+  assert.equal((await post(s, token, '/api/layout/group/move', { id: 'cg-work', project: 'cp-gone' })).status, 404, 'the route\'s own refusal');
 });
 
 test('spawn_task\'s group and move_session_to_group find a group inside a project as they find one on Home, by name and by id, and a chip starts its session there', async () => {

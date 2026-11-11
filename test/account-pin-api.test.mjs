@@ -302,19 +302,31 @@ test('a scheduled session put in a pinned group starts on that group\'s account,
 
 const MOVE = 'move_session_to_group';
 // What happened to a move a chat asked for: the card's words, or 'allowed' when the CLI was answered with no card.
-async function moveAsk(c, caller, input) {
+async function moveAsk(c, caller, input, tool = MOVE) {
   const viewer = listen(c.s, c.token, caller);
-  const answered = () => calls(c).filter(x => x.requestId === `perm-${MOVE}`).length;
+  const answered = () => calls(c).filter(x => x.requestId === `perm-${tool}`).length;
   try {
     await until(() => viewer.events.length);
     const had = answered();
-    assert.equal((await say(c, caller, `ask to use ${MOVE} ${JSON.stringify(input)}`)).status, 200);
+    assert.equal((await say(c, caller, `ask to use ${tool} ${JSON.stringify(input)}`)).status, 200);
     await until(() => viewer.events.some(e => e.type === 'approval') || answered() > had);
     return viewer.events.find(e => e.type === 'approval')?.data.summary ?? 'allowed';
   } finally {
     viewer.close();
   }
 }
+
+test('the card for moving a group into a project names the account its sessions will run on when the projects differ, and says nothing when the account stays the same', async () => {
+  const c = await open({ sessions: [{ id: 'top', title: 'Top', ago: 5 }] });
+  const ask = input => moveAsk(c, 'top', input, 'move_group_to_project');
+  assert.equal(await ask({ group: 'Loose', project: 'Proj' }), 'move the group "Loose" to the project "Proj"', 'nothing is pinned');
+  assert.equal((await pin(c, 'project', 'cp-a', 'second')).status, 200);
+  assert.equal(await ask({ group: 'Loose', project: 'Proj' }), 'move the group "Loose" to the project "Proj", which runs its sessions on Second', 'into a pinned project');
+  assert.equal(await ask({ group: 'Work' }), 'move the group "Work" to Home, which runs its sessions on the active account, now Main', 'out of a pinned project');
+  assert.equal(await ask({ group: 'Work', project: 'Proj' }), 'move the group "Work" to the project "Proj"', 'already there, so the account is the same');
+  assert.equal((await pin(c, 'group', 'cg-a', 'main')).status, 200);
+  assert.equal(await ask({ group: 'Work' }), 'move the group "Work" to Home', 'a pin on the group itself holds');
+});
 
 test('a move inside the caller\'s tree that would change the session\'s account asks the owner and names the account, and one that leaves it the same goes with no card', async () => {
   const c = await open({ sessions: [{ id: 'top', title: 'Top', ago: 5 }, { id: 'kid', title: 'Kid', ago: 6, parent: 'top', group: 'cg-b' }, { id: 'solo', title: 'Solo', ago: 7 }] });
