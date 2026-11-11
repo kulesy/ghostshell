@@ -67,14 +67,14 @@ A run differs from one on the Mac in these ways:
 A session finds the run for its newest commit, waits for it and fetches the screenshots like this:
 
 ```
-run=$(gh run list --workflow swift.yml --commit "$(git rev-parse HEAD)" --limit 1 --json databaseId -q '.[0].databaseId')
+run=$(gh run list --workflow swift.yml --commit "$(git rev-parse HEAD)" --json databaseId,event -q '[.[] | select(.event != "pull_request")][0].databaseId')
 gh run watch "$run" --exit-status
 gh run view "$run" --log-failed
 gh run download "$run" --name mac-screenshots --dir <folder>
 gh run download "$run" --pattern 'iphone-screenshots-*' --dir <folder>
 ```
 
-A push that touches none of those paths starts no run, so when the list comes back empty, start one with `gh workflow run swift.yml --ref <branch>` and look again. The screenshots then go into the PR body the usual way.
+The filter leaves out the run a same-repo pull request starts, whose jobs all skip. A push that touches none of those paths starts no run, so when the list comes back empty, start one with `gh workflow run swift.yml --ref <branch>` and look again. The screenshots then go into the PR body the usual way.
 
 The workflow's token can only read, and no step reads a secret, so a run from a fork cannot write to the repo. Anyone can download the artifacts of a public repo, so the fixtures hold no real names, paths or addresses.
 

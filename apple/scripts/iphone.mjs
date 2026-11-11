@@ -252,6 +252,6 @@ if (command === 'build') {
 } else if (command === 'shot') {
   process.exit((await shoot()) ? 0 : 1);
 } else {
-  console.error('Usage: iphone.mjs build [--release] | shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>]');
+  console.error('Usage: iphone.mjs build [--release] | shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>] [--skip <name,name>]');
   process.exit(2);
 }

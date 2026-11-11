@@ -78,7 +78,12 @@ final class FeedTests: XCTestCase {
             return found
         }
         let slow = Task { await feed.refresh() }
-        while await order.calls == 0 { try await Task.sleep(for: .milliseconds(1)) }
+        for _ in 0..<5000 {
+            if await order.calls > 0 { break }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        let started = await order.calls
+        XCTAssertEqual(started, 1, "the first refresh never asked for the index")
         await feed.refresh()
         await slow.value
         await feed.stop()
