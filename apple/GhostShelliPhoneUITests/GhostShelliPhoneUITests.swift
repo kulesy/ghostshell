@@ -566,7 +566,13 @@ final class GhostShelliPhoneUITests: XCTestCase {
         shot("widgets-1-chart")
         XCTAssertGreaterThan(app.webViews.count, 0, "The widget draws in a web view")
         // A long press in the widget selects the word under it and offers the system's callout with Copy.
-        app.webViews.element(boundBy: app.webViews.count - 1).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(forDuration: 1.3)
+        // The composer takes the foot of the screen, and an earlier test's send can push the widget above the bar, so bring the press point into the open area first.
+        let widget = app.webViews.element(boundBy: app.webViews.count - 1)
+        for _ in 0..<6 {
+            let y = widget.frame.minY + widget.frame.height * 0.2
+            if y < app.frame.height * 0.2 { app.swipeDown() } else if y > app.frame.height * 0.7 { app.swipeUp() } else { break }
+        }
+        widget.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(forDuration: 1.3)
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 5), "A long press in a widget offers Copy\n\(app.debugDescription)")
         sleep(1)
         shot("widgets-2-long-press")
