@@ -319,13 +319,13 @@ async function moveAsk(c, caller, input, tool = MOVE) {
 test('the card for moving a group into a project names the account its sessions will run on when the projects differ, and says nothing when the account stays the same', async () => {
   const c = await open({ sessions: [{ id: 'top', title: 'Top', ago: 5 }] });
   const ask = input => moveAsk(c, 'top', input, 'move_group_to_project');
-  assert.equal(await ask({ group: 'Loose', project: 'Proj' }), 'move the group "Loose" to the project "Proj"', 'nothing is pinned');
+  assert.equal(await ask({ group: 'Loose', project: 'Proj' }), 'move the group "Loose" [cg-b] to the project "Proj" [cp-a]', 'nothing is pinned');
   assert.equal((await pin(c, 'project', 'cp-a', 'second')).status, 200);
-  assert.equal(await ask({ group: 'Loose', project: 'Proj' }), 'move the group "Loose" to the project "Proj", which runs its sessions on Second', 'into a pinned project');
-  assert.equal(await ask({ group: 'Work' }), 'move the group "Work" to Home, which runs its sessions on the active account, now Main', 'out of a pinned project');
-  assert.equal(await ask({ group: 'Work', project: 'Proj' }), 'move the group "Work" to the project "Proj"', 'already there, so the account is the same');
+  assert.equal(await ask({ group: 'Loose', project: 'Proj' }), 'move the group "Loose" [cg-b] to the project "Proj" [cp-a], which runs its sessions on Second', 'into a pinned project');
+  assert.equal(await ask({ group: 'Work' }), 'move the group "Work" [cg-a] to Home, which runs its sessions on the active account, now Main', 'out of a pinned project');
+  assert.equal(await ask({ group: 'Work', project: 'Proj' }), 'move the group "Work" [cg-a] to the project "Proj" [cp-a]', 'already there, so the account is the same');
   assert.equal((await pin(c, 'group', 'cg-a', 'main')).status, 200);
-  assert.equal(await ask({ group: 'Work' }), 'move the group "Work" to Home', 'a pin on the group itself holds');
+  assert.equal(await ask({ group: 'Work' }), 'move the group "Work" [cg-a] to Home', 'a pin on the group itself holds');
 });
 
 test('a move inside the caller\'s tree that would change the session\'s account asks the owner and names the account, and one that leaves it the same goes with no card', async () => {

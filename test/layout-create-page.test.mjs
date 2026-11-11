@@ -65,7 +65,7 @@ test('the card for a new project and a new group has its own title and says what
 test('the card for moving a group has its own title and says which group goes into which project, or to Home', { skip, timeout }, async t => {
   const { token } = await signIn(app);
   // A request is named for its tool, so two moves asked in one chat would share a card.
-  for (const [id, input, line] of [['mover', '{"group":"loose","project":"SIDE"}', 'move the group "Loose" to the project "Side"'], ['mover2', '{"group":"work"}', 'move the group "Work" to Home']]) {
+  for (const [id, input, line] of [['mover', '{"group":"loose","project":"SIDE"}', 'move the group "Loose" [cg-home] to the project "Side" [cp-side]'], ['mover2', '{"group":"work"}', 'move the group "Work" [cg-work] to Home']]) {
     const sent = text => request(app, 'POST', `/api/sessions/${id}/send`, { headers: as(token), json: { text } });
     assert.equal((await sent('begin a session')).status, 200);
     assert.equal((await sent(`ask to use move_group_to_project ${input}`)).status, 200);

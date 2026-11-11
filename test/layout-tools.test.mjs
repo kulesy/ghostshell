@@ -596,31 +596,31 @@ test('a group with the same name as a section is moved, not refused as a section
 test('the card for moving a group names it and where it goes, shows an unresolved name as given without quotes or brackets, and cannot say Home for a project the call writes into', () => {
   const subs = subsFor();
   const card = input => layoutSummary('move_group_to_project', input, subs, PLACED);
-  assert.equal(card({ group: 'needs review', project: 'WORK' }), 'move the group "Needs Review" to the project "Work"');
-  assert.equal(card({ group: 'cg-in', project: 'cp-h' }), 'move the group "Inside" to the project "Home lab"');
-  for (const project of [undefined, null, '']) assert.equal(card({ group: 'inside', project }), 'move the group "Inside" to Home');
+  assert.equal(card({ group: 'needs review', project: 'WORK' }), 'move the group "Needs Review" [cg-a] to the project "Work" [cp-w]');
+  assert.equal(card({ group: 'cg-in', project: 'cp-h' }), 'move the group "Inside" [cg-in] to the project "Home lab" [cp-h]');
+  for (const project of [undefined, null, '']) assert.equal(card({ group: 'inside', project }), 'move the group "Inside" [cg-in] to Home');
   assert.equal(card({ group: 'Nobody', project: 'Nowhere' }), 'move the group "Nobody" to the project "Nowhere"');
   assert.equal(card({ group: 'x" [evil] to Home', project: '[evil] "y"' }), 'move the group "x evil to Home" to the project "evil y"');
-  assert.equal(card({ group: 'pinned', project: 'work' }), 'move the group "pinned" to the project "Work"');
-  assert.equal(card({ group: 'inside', project: 5 }), 'move the group "Inside" to the project "5"');
+  assert.equal(card({ group: 'pinned', project: 'work' }), 'move the group "pinned" to the project "Work" [cp-w]');
+  assert.equal(card({ group: 'inside', project: 5 }), 'move the group "Inside" [cg-in] to the project "5"');
   assert.equal(card({ group: 5 }), 'move the group "" to Home');
   assert.equal(layoutSummary('move_group_to_project', undefined, subs, PLACED), 'move the group "" to Home');
 });
 
 test('the card for moving a group says which account its sessions will run on, or that they may change account, and adds nothing when it stays the same', () => {
   const card = answer => layoutSummary('move_group_to_project', { group: 'inside', project: 'work' }, { ...subsFor(), groupAccount: (id, project) => { assert.deepEqual([id, project], ['cg-in', 'cp-w']); return answer; } }, PLACED);
-  assert.equal(card({ changes: false }), 'move the group "Inside" to the project "Work"');
-  assert.equal(card({ changes: true, to: 'Team', active: false }), 'move the group "Inside" to the project "Work", which runs its sessions on Team');
-  assert.equal(card({ changes: true, to: 'Main', active: true }), 'move the group "Inside" to the project "Work", which runs its sessions on the active account, now Main');
-  assert.equal(card({ changes: true, to: 'Team', spills: true, overflow: null }), 'move the group "Inside" to the project "Work", which runs its sessions on Team, with no overflow account');
-  assert.equal(card({ changes: true }), 'move the group "Inside" to the project "Work", which may change the account its sessions run on');
-  assert.equal(layoutSummary('move_group_to_project', { group: 'inside', project: 'Nowhere' }, { ...subsFor(), groupAccount: () => assert.fail('no account for a project that does not resolve') }, PLACED), 'move the group "Inside" to the project "Nowhere"');
+  assert.equal(card({ changes: false }), 'move the group "Inside" [cg-in] to the project "Work" [cp-w]');
+  assert.equal(card({ changes: true, to: 'Team', active: false }), 'move the group "Inside" [cg-in] to the project "Work" [cp-w], which runs its sessions on Team');
+  assert.equal(card({ changes: true, to: 'Main', active: true }), 'move the group "Inside" [cg-in] to the project "Work" [cp-w], which runs its sessions on the active account, now Main');
+  assert.equal(card({ changes: true, to: 'Team', spills: true, overflow: null }), 'move the group "Inside" [cg-in] to the project "Work" [cp-w], which runs its sessions on Team, with no overflow account');
+  assert.equal(card({ changes: true }), 'move the group "Inside" [cg-in] to the project "Work" [cp-w], which may change the account its sessions run on');
+  assert.equal(layoutSummary('move_group_to_project', { group: 'inside', project: 'Nowhere' }, { ...subsFor(), groupAccount: () => assert.fail('no account for a project that does not resolve') }, PLACED), 'move the group "Inside" [cg-in] to the project "Nowhere"');
 });
 
 test('the card for moving a group still reads when the project list cannot be read, and never throws', () => {
   const broken = { projects() { throw new Error('layout broke'); } };
-  assert.equal(layoutSummary('move_group_to_project', { group: 'inside', project: 'Work' }, broken, PLACED), 'move the group "Inside" to the project "Work"');
-  assert.equal(layoutSummary('move_group_to_project', { group: 'inside' }, broken, PLACED), 'move the group "Inside" to Home');
+  assert.equal(layoutSummary('move_group_to_project', { group: 'inside', project: 'Work' }, broken, PLACED), 'move the group "Inside" [cg-in] to the project "Work"');
+  assert.equal(layoutSummary('move_group_to_project', { group: 'inside' }, broken, PLACED), 'move the group "Inside" [cg-in] to Home');
 });
 
 const CHIPS = [

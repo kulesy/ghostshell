@@ -43,7 +43,7 @@ const WRITES = [
   ['move_session_to_group', { session_id: 'loose', group: 'home' }, 'move "Loose" [loose] to "Home"'],
   ['create_project', { name: 'Fresh' }, 'create the project "Fresh"'],
   ['create_group', { name: 'Shiny', project: 'side' }, 'create the group "Shiny" in the project "Side"'],
-  ['move_group_to_project', { group: 'work', project: 'side' }, 'move the group "Work" to the project "Side"'],
+  ['move_group_to_project', { group: 'work', project: 'side' }, 'move the group "Work" [cg-work] to the project "Side" [cp-side]'],
 ];
 
 test('each write lands in layout.json as the layout route writes it, and the server lists the session as changed', async () => {
