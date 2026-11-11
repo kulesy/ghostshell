@@ -1044,7 +1044,7 @@ async function mainFlow(bundle, appearance, withChat) {
     process.kill(server.pid, 'SIGSTOP');
     await app.launch();
     await sleep(1500);
-    check(!app.hasButton('Sign In') && !app.texts().includes('Address'), 'a relaunch stays signed in');
+    check(!app.hasButton('Sign in') && !app.texts().includes('Address'), 'a relaunch stays signed in');
     await app.both('loading');
     process.kill(server.pid, 'SIGCONT');
     check(await until('rows', () => app.sessionRows().length === (withChat ? 9 : 8), 20), 'the list loads once the server answers');
@@ -1538,9 +1538,7 @@ async function filesFlow(bundle, appearance) {
     await opens('a missing file', 'gone.txt', 'There is no file at that path.');
     await sleep(600);
     await app.shot(`10-file-missing-${appearance}-default`);
-    // The panel keeps the sentence, so the alert's title is what goes.
-    check(app.press('OK'), 'the missing file alert has an OK button');
-    check(await until('alert closed', () => !app.hasText('Cannot open this file'), 10), 'the missing file alert closes');
+    check(!app.hasText('Cannot open this file'), 'a missing file is a note in the panel, not an alert');
 
     // A save after the file changed on disk meets the server's 409.
     await opens('a markdown file again', 'NOTES.md:14', 'Upload notes');

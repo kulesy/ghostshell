@@ -29,7 +29,11 @@ extension PDFPane: NSViewRepresentable {
 }
 #else
 extension PDFPane: UIViewRepresentable {
-    func makeUIView(context: Context) -> PDFView { makeView() }
+    func makeUIView(context: Context) -> PDFView {
+        let view = makeView()
+        view.backgroundColor = UIColor(Color.ghost.muted)
+        return view
+    }
     func updateUIView(_ view: PDFView, context: Context) {}
 }
 #endif
