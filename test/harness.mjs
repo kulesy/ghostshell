@@ -332,7 +332,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
 
 // A GitHub CLI that never leaves the machine. It logs its arguments to gh.log in the home, and answers from gh-state.json there: `pulls` is the
 // output of pr view for each address, `issues` the output of issue view for each, `threads` the unresolved flags of a pull request's review threads,
-// and `fail` makes every call fail. The login is octocat.
+// `updated` when each pull request last changed, `activity` its comments, reviews and commits as GraphQL nodes, and `fail` makes every call fail. The login is octocat.
 const FAKE_GH = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
@@ -353,6 +353,17 @@ else if (args[0] === 'pr' && args[1] === 'view') {
   const issue = (state.issues || {})[args[2]];
   if (!issue) fail('Could not resolve to an Issue.');
   console.log(JSON.stringify(issue));
+} else if (args[0] === 'api' && args[1] === 'graphql' && named('query').includes('updatedAt')) {
+  const data = {};
+  for (let i = 0; named('o' + i); i++) {
+    const url = 'https://github.com/' + named('o' + i) + '/' + named('n' + i) + '/pull/' + named('k' + i);
+    data['p' + i] = { pullRequest: { updatedAt: ((state.updated || {})[url]) || '2026-01-01T00:00:00Z' } };
+  }
+  console.log(JSON.stringify({ data }));
+} else if (args[0] === 'api' && args[1] === 'graphql' && named('query').includes('commits(last:20)')) {
+  const url = 'https://github.com/' + named('owner') + '/' + named('name') + '/pull/' + named('number');
+  const got = (state.activity || {})[url] || {};
+  console.log(JSON.stringify({ data: { repository: { pullRequest: { comments: { nodes: got.comments || [] }, reviews: { nodes: got.reviews || [] }, commits: { nodes: got.commits || [] } } } } }));
 } else if (args[0] === 'api' && args[1] === 'graphql') {
   const url = 'https://github.com/' + named('owner') + '/' + named('name') + '/pull/' + named('number');
   const nodes = ((state.threads || {})[url] || []).map(isResolved => ({ isResolved }));

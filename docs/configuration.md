@@ -32,6 +32,10 @@ The settings in `config.json` and `config.local.json`, and the ten environment v
 
 `groupUpdates` is `true` by default. GhostShell then posts a ranked list of a group's sessions in the group's chat when they change, which is a turn of the chat's model and spends tokens (see [a session for each group](adr/20261023-a-session-for-each-group.md)). Set it to `false` to post none. The Sub sessions tab stays live either way.
 
+### `prComments`
+
+`prComments` is `true` by default. Every 3 minutes GhostShell checks the pull request of each session active in the last 14 days. When someone other than the `gh` account or a bot adds a comment, a review or a commit, the session gets one message with the author and a link, never what they wrote. A session gets at most one such message every 10 minutes, and anything newer waits for the next one. An archived session is not woken. Its group's chat hears about it instead. Set it to `false` to send none.
+
 ### `autoTitle`
 
 `autoTitle` is `true` by default. GhostShell then names each session it starts: a session started with a title keeps it, and one you start by typing is named once its first reply finishes (see [naming a new session](session-list.md#naming-a-new-session)). That costs one short call to Haiku 5.5 for each typed session. Set it to `false` to make no such call and leave the first line of the first message as the title.

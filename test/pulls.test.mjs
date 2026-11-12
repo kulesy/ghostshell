@@ -631,3 +631,134 @@ test('an issue address given in another letter case is answered for each spellin
   assert.equal(f.of('issue').length, 1);
   assert.deepEqual([...found.keys()], [issue(4), other]);
 });
+
+// ---- the activity of a pull request ---------------------------------------------------------------------------------------------
+
+const at = n => `2026-11-0${n}T10:00:00Z`;
+const stampsFor = (args, stamp = at) => {
+  const query = args.find(a => a.startsWith('query=')).slice(6);
+  return JSON.stringify({ data: Object.fromEntries([...query.matchAll(/p(\d+):repository/g)].map(([, i]) => [`p${i}`, { pullRequest: { updatedAt: stamp(Number(i)) } }])) });
+};
+const activityFake = answer => {
+  const f = fake({ answer });
+  return { ...f, batches: () => f.calls.filter(c => c.args[1] === 'graphql') };
+};
+
+test('the update times of some pull requests are one call with the owner, name and number as variables and none in the query text', async () => {
+  const f = activityFake((file, args) => stampsFor(args, i => at(i + 1)));
+  const { pulls } = maker({ fake: f });
+  const found = await pulls.activity([pr(1), pr(2), issue(3), pr(1)]);
+  assert.deepEqual([...found], [[pr(1), at(1)], [pr(2), at(2)]]);
+  assert.equal(f.calls.length, 1);
+  const { args } = f.calls[0];
+  const query = args.find(a => a.startsWith('query=')).slice(6);
+  assert.equal(query, 'query($o0:String!,$n0:String!,$k0:Int!,$o1:String!,$n1:String!,$k1:Int!){p0:repository(owner:$o0,name:$n0){pullRequest(number:$k0){updatedAt}} p1:repository(owner:$o1,name:$n1){pullRequest(number:$k1){updatedAt}}}');
+  assert.deepEqual(args.filter(a => /^[onk]\d=/.test(a)), ['o0=example-org', 'n0=example-repo', 'k0=1', 'o1=example-org', 'n1=example-repo', 'k1=2']);
+  assert.equal(query.includes('example-org') || query.includes('example-repo'), false);
+});
+
+test('a string value is sent with -f and a number with -F, so a value that starts with @ is never read as a file', async () => {
+  const f = activityFake((file, args) => stampsFor(args));
+  const { pulls } = maker({ fake: f });
+  await pulls.activity([pr(5)]);
+  const { args } = f.calls[0];
+  for (const [i, a] of args.entries()) {
+    if (/^[on]0=/.test(a)) assert.equal(args[i - 1], '-f');
+    if (/^k0=/.test(a)) assert.equal(args[i - 1], '-F');
+  }
+});
+
+test('45 pull requests are asked in 3 calls of at most 20', async () => {
+  const f = activityFake((file, args) => stampsFor(args));
+  const { pulls } = maker({ fake: f });
+  const found = await pulls.activity(Array.from({ length: 45 }, (_, i) => pr(i + 1)));
+  assert.equal(found.size, 45);
+  assert.deepEqual(f.batches().map(c => c.args.filter(a => a.startsWith('k')).length), [20, 20, 5]);
+});
+
+test('a call that fails is repeated for each pull request alone, and one that fails alone is skipped for an hour and told once', async () => {
+  const f = activityFake((file, args) => {
+    const query = args.find(a => a.startsWith('query='));
+    if ((query.match(/updatedAt/g) ?? []).length > 1 || args.includes('k0=2')) throw Object.assign(new Error('x'), { stderr: 'Could not resolve to a PullRequest\n' });
+    return stampsFor(args);
+  });
+  const { pulls, clock, told } = maker({ fake: f });
+  const found = await pulls.activity([pr(1), pr(2), pr(3)]);
+  assert.deepEqual([...found.keys()], [pr(1), pr(3)]);
+  assert.equal(f.calls.length, 4, 'the batch, then one each');
+  assert.deepEqual(told, [`Could not read the activity of ${pr(2)}: Could not resolve to a PullRequest`]);
+  assert.deepEqual([...(await pulls.activity([pr(2)])).keys()], []);
+  assert.equal(f.calls.length, 4, 'skipped for an hour');
+  clock.at += 61 * 60_000;
+  await pulls.activity([pr(2)]);
+  assert.equal(f.calls.length, 5);
+  assert.equal(told.length, 1);
+});
+
+test('a pull request missing from a good answer is asked for alone', async () => {
+  const f = activityFake((file, args) => (args.includes('o1=example-org') && args.includes('k1=2') ? JSON.stringify({ data: { p0: { pullRequest: { updatedAt: at(1) } }, p1: { pullRequest: null } } }) : stampsFor(args)));
+  const { pulls } = maker({ fake: f });
+  const found = await pulls.activity([pr(1), pr(2)]);
+  assert.deepEqual([...found.keys()], [pr(1), pr(2)]);
+  assert.equal(f.calls.length, 2);
+});
+
+// What GitHub answers for the activity of a pull request, with the body fields it has but is never asked for.
+const RECORDED = {
+  data: { repository: { pullRequest: {
+    comments: { nodes: [{ id: 'IC_1', url: `${pr(12)}#issuecomment-1`, author: { login: 'octocat', __typename: 'User' } }, { id: 'IC_2', url: `${pr(12)}#issuecomment-2`, author: { login: 'dependabot', __typename: 'Bot' } }] },
+    reviews: { nodes: [
+      { id: 'PRR_1', url: `${pr(12)}#pullrequestreview-1`, author: { login: 'hubot', __typename: 'User' }, comments: { nodes: [{ url: `${pr(12)}#discussion_r1` }] } },
+      { id: 'PRR_2', url: null, author: null, comments: { nodes: [{ url: `${pr(12)}#discussion_r2` }] } },
+      { id: 'PRR_3', url: null, author: { login: 'monalisa', __typename: 'User' }, comments: { nodes: [{ url: `${pr(12)}#discussion_r3` }] } },
+    ] },
+    commits: { nodes: [{ commit: { oid: 'abc123', url: `${pr(12)}/commits/abc123`, author: { user: { login: 'hubot' } }, committer: { user: { login: 'octocat' } } } }, { commit: { oid: 'def456', url: `${pr(12)}/commits/def456`, author: { user: null }, committer: { user: null } } }] },
+  } } },
+};
+
+test('the recent items of a pull request are one call with variables, asking for no body, title or branch', async () => {
+  const f = activityFake(() => JSON.stringify(RECORDED));
+  const { pulls } = maker({ fake: f });
+  const items = await pulls.activityItems(pr(12));
+  const { args } = f.calls[0];
+  const query = args.find(a => a.startsWith('query=')).slice(6);
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(args.filter(a => /^(owner|name|number)=/.test(a)), ['owner=example-org', 'name=example-repo', 'number=12']);
+  assert.equal(args[args.indexOf('number=12') - 1], '-F');
+  assert.match(query, /comments\(last:50\)[\s\S]*reviews\(last:30\)[\s\S]*comments\(first:1\)[\s\S]*commits\(last:20\)/);
+  assert.doesNotMatch(query, /body|title|headRefName|bodyText|message/);
+  assert.equal(items.length, 7);
+});
+
+test('items are comments, reviews and commits with their author, a review once however many inline comments it has, and its first comment as its link when it has none', async () => {
+  const { pulls } = maker({ fake: activityFake(() => JSON.stringify(RECORDED)) });
+  const items = await pulls.activityItems(pr(12));
+  assert.deepEqual(items.map(i => [i.id, i.kind, i.login, i.bot, i.url]), [
+    ['IC_1', 'comment', 'octocat', false, `${pr(12)}#issuecomment-1`],
+    ['IC_2', 'comment', 'dependabot', true, `${pr(12)}#issuecomment-2`],
+    ['PRR_1', 'review', 'hubot', false, `${pr(12)}#pullrequestreview-1`],
+    ['PRR_2', 'review', null, false, `${pr(12)}#discussion_r2`],
+    ['PRR_3', 'review', 'monalisa', false, `${pr(12)}#discussion_r3`],
+    ['abc123', 'commit', 'hubot', false, `${pr(12)}/commits/abc123`],
+    ['def456', 'commit', null, false, `${pr(12)}/commits/def456`],
+  ]);
+  assert.equal(items.find(i => i.id === 'abc123').committer, 'octocat');
+});
+
+test('activity that gh cannot give is null and told once, and an address that is not a pull request runs nothing', async () => {
+  const f = activityFake(() => JSON.stringify({ data: { repository: { pullRequest: null } } }));
+  const { pulls, told } = maker({ fake: f });
+  assert.equal(await pulls.activityItems(pr(12)), null);
+  assert.equal(await pulls.activityItems(pr(12)), null);
+  assert.equal(told.length, 1);
+  assert.equal(await pulls.activityItems(issue(1)), null);
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual([...(await pulls.activity([issue(1), 'x']))], []);
+  assert.equal(f.calls.length, 2);
+});
+
+test('the viewer is the login the pull request lookups use', async () => {
+  const { pulls, f } = maker();
+  assert.equal(await pulls.viewer(), 'octocat');
+  assert.equal(f.of('user').length, 1);
+});

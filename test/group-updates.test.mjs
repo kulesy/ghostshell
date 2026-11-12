@@ -283,6 +283,19 @@ test('the second update has no rules, waits 10 minutes after the first, and keep
   assert.doesNotMatch(w.sent[1].text, /Alpha" finished/, 'the first batch is not repeated');
 });
 
+test('news about an archived member goes out in the next update, though the member is not in the group\'s live sessions, and a chat nobody watches is not told', async () => {
+  const w = world();
+  w.updates.activity('chat', { id: 'old', text: 'ignored' });
+  await w.updates.tick();
+  w.updates.activity('other', { id: 'old', text: 'ignored' });
+  w.updates.activity('chat', { id: 'old', text: '"Old one" (archived) has new activity on its pull request https://github.com/o/r/pull/1.' });
+  await w.step(1);
+  await w.step(3);
+  assert.equal(w.sent.length, 1);
+  assert.match(w.sent[0].text, /Changed since the last update:\n- "Old one" \(archived\) has new activity on its pull request https:\/\/github\.com\/o\/r\/pull\/1\.\n/);
+  assert.doesNotMatch(w.sent[0].text, /ignored/);
+});
+
 test('a busy chat, typing, an owner message, a cold cache and the daily cap each hold the batch, and it goes when they lift', async () => {
   const w = world();
   await w.updates.tick();
