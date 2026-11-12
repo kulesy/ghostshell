@@ -1024,6 +1024,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
     /// A long press on a row, then one item of its menu.
     private func menu(_ app: XCUIApplication, _ title: String, _ items: String...) {
         let line = reveal(app, rowStarting(app, title))
+        // A row can be hittable while the footer covers its middle, so it is scrolled up until it clears the bar.
+        for _ in 0..<3 where line.frame.midY > app.frame.height - 110 { app.swipeUp() }
         line.press(forDuration: 1.0)
         for item in items {
             let entry = app.buttons[item].firstMatch
@@ -1144,15 +1146,16 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
     func testTheRowMoreMenuRenamesInline() throws {
         let app = organiseApp()
-        let more = reveal(app, app.buttons["Actions for Check the nightly build"])
-        assertTouchable(more, "Actions for Check the nightly build")
+        // Edit mode archives the nightly build row earlier in the same run, and a pinned row stays on screen.
+        let more = reveal(app, app.buttons["Actions for Add dark mode to the chart"])
+        assertTouchable(more, "Actions for Add dark mode to the chart")
         more.tap()
         let rename = app.buttons["Rename\u{2026}"].firstMatch
         XCTAssertTrue(rename.waitForExistence(timeout: 5), "The row's menu has the long press's items\n\(app.debugDescription)")
         shot("organise-row-more-menu")
         rename.tap()
-        name(app, as: "Nightly check", prompt: "Title", shot: "organise-row-more-inline-rename")
-        XCTAssertTrue(rowStarting(app, "Nightly check").waitForExistence(timeout: 10), app.debugDescription)
+        name(app, as: "Dark mode chart", prompt: "Title", shot: "organise-row-more-inline-rename")
+        XCTAssertTrue(rowStarting(app, "Dark mode chart").waitForExistence(timeout: 10), app.debugDescription)
     }
 
     func testTheTopBarAndFooterMenusAndSearch() throws {
@@ -1166,6 +1169,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.buttons["New group"].firstMatch.tap()
         let field = app.textFields["Name"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        // Return typed while the menu is still closing can miss the field, so it waits for the keyboard first.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         field.typeText("\n")
         XCTAssertTrue(field.waitForNonExistence(timeout: 5), "An empty name cancels")
 
