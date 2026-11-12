@@ -14,7 +14,7 @@ import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatHead, NewHereButton } from './group-button.js';
 import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } from './group-drag-rules.js';
-import { deleteDetail, groupById, newKeyRoute, newRoute, newUnderRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups } from './group-rules.js';
+import { deleteDetail, groupById, newKeyRoute, newRoute, newUnderRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups, supportsProjectOrder } from './group-rules.js';
 import { isWide, useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { carriedOf, leavers, manyNestTargets, manyTargets, manyUndoNote, movedNote, nestedNote, pinnedNote, placeName, placeTo, refuseNest, topmost, unnestedNote } from './many-rules.js';
@@ -377,6 +377,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   const mod = useModifier();
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const [drag, setDrag] = useState(null);
+  const [lift, setLift] = useState(null);
   const [form, setForm] = useState(null);
   const [shown, setShown] = useState(null);
   const [back, setBack] = useState(null);
@@ -406,6 +407,9 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   const latestSlot = useRef(null);
   const latestDrop = useRef(null);
   const latestHeader = useRef(null);
+  const latestProjectSlot = useRef(null);
+  const latestProjectDrop = useRef(null);
+  const latestProjectMenu = useRef(null);
   const latestClose = useRef(null);
   const latestMany = useRef(null);
   const carrying = useRef(null);
@@ -455,6 +459,19 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     slot: (x, y, id) => latestSlot.current(x, y, id),
     count: id => latestMany.current.picked(id)?.length ?? 1,
   }), []);
+
+  // A project is dragged in the projects sidebar, which is drawn only while it is open.
+  const orderable = supportsProjectOrder(ix) && ix.projects.length > 1;
+  useEffect(() => (projects.open && orderable && projects.box.current ? dragRows(projects.box.current, {
+    onStart: id => setLift({ id, over: null }),
+    onOver: over => setLift(l => l && { ...l, over }),
+    onEnd: (id, to) => {
+      setLift(null);
+      if (to) latestProjectDrop.current(id, to);
+    },
+    onMenu: (id, grip, point) => latestProjectMenu.current(id, grip, point),
+    slot: (x, y, id) => latestProjectSlot.current(x, y, id),
+  }) : undefined), [projects.open, projects.wide, orderable]);
 
   useEffect(() => swipeRows(box.current, {
     row: 'a.row[data-id]',
@@ -1133,6 +1150,13 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     setBack([headOf(g.id)]);
   }
 
+  // The sidebar draws a project that moved somewhere else, so the focus follows its row.
+  async function orderProject(p, beside, side, note = `Moved “${p.name}” ${side === 'before' ? 'up' : 'down'}.`) {
+    const moved = await change('api/layout/project/order', { id: p.id, [side]: beside });
+    if (moved) say(note);
+    setBack([scopeOf(p.id)]);
+  }
+
   async function addProject(name, away) {
     const { problem, made } = await edit('api/layout/project/add', { name });
     if (!made) return problem || 'Could not add the project.';
@@ -1187,6 +1211,16 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     });
   }
 
+  function projectMoves(p) {
+    if (!supportsProjectOrder(ix)) return [];
+    const ids = ix.projects.map(x => x.id);
+    const at = ids.indexOf(p.id);
+    return [
+      ...(at > 0 ? [{ label: 'Move up', icon: icons.arrowUp, run: () => orderProject(p, ids[at - 1], 'before') }] : []),
+      ...(at >= 0 && at < ids.length - 1 ? [{ label: 'Move down', icon: icons.arrowDown, run: () => orderProject(p, ids[at + 1], 'after') }] : []),
+    ];
+  }
+
   const tree = {
     form,
     shown,
@@ -1237,6 +1271,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       items: [
         { label: 'New group here', icon: icons.folderPlus, run: () => tree.newGroup(p, [scopeOf(p.id), '.add']) },
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'rename', project: p.id }) },
+        ...projectMoves(p),
         ...pinMenu('project', p.id, p.account, null, p.overflow),
         { separator: true },
         { label: 'Delete project', icon: icons.trash, danger: true, run: () => deleteProject(p) },
@@ -1279,6 +1314,29 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     if (menu) pop(id, menu, bar.querySelector('.more[aria-haspopup]'), { point });
   };
 
+  latestProjectSlot.current = (x, y, id) => {
+    const rail = projects.box.current;
+    const order = ix.projects.map(p => p.id);
+    const rows = order.map(pid => rail?.querySelector(`.scope[data-project="${CSS.escape(pid)}"]`));
+    if (rows.some(row => !row)) return null;
+    const rects = rows.map(row => row.getBoundingClientRect());
+    const list = rail.querySelector('.scopes').getBoundingClientRect();
+    const mids = Object.fromEntries(order.map((pid, n) => [pid, rects[n].top + rects[n].height / 2]));
+    return slotTarget(slotFor({ order, carried: id, mids, area: { left: list.left, right: list.right, top: rects[0].top, bottom: rects.at(-1).bottom }, at: { x, y } }));
+  };
+
+  latestProjectDrop.current = (id, to) => {
+    const p = ix.projects.find(x => x.id === id);
+    const target = parseTarget(to);
+    const beside = target?.side && ix.projects.find(x => x.id === target.beside);
+    if (p && beside) orderProject(p, beside.id, target.side, orderNote(p.name, beside.name, target.side));
+  };
+
+  latestProjectMenu.current = (id, grip, point) => {
+    const p = ix.projects.find(x => x.id === id);
+    if (p) pop(id, tree.projectMenu(p), grip, { point, rail: true });
+  };
+
   const groupDrag = drag?.kind === 'group' ? drag : null;
   const strip = ix && groupDrag && !projects.open ? viewTargets(ix.projects, view) : [];
 
@@ -1294,7 +1352,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   };
 
   return html`<${Fragment}>
-  <${ProjectsPanel} ix=${ix} projects=${projects} tree=${tree} carry=${groupDrag} creating=${form?.kind === 'project'} onNew=${() => setForm({ kind: 'project' })}
+  <${ProjectsPanel} ix=${ix} projects=${projects} tree=${tree} carry=${groupDrag} lift=${lift} creating=${form?.kind === 'project'} onNew=${() => setForm({ kind: 'project' })}
     onCancel=${away => closeFormAway(away, '.new-project')} onCreate=${addProject} />
   <nav class="list" aria-label="Sessions" ref=${nav} onKeyDown=${escapeList}>
     <header class="list-head">

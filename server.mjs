@@ -563,6 +563,7 @@ function subCtx(sessionId) {
     addProject: name => layout.addProject(name),
     addGroup: (name, project) => layout.addGroup(name, project),
     moveGroup: (id, project) => layout.moveGroup(id, project),
+    orderProject: (id, side) => layout.orderProject(id, side),
     // Whether a move of group `id` into `project` (an id, or null for Home) would change the account its sessions run on. A group with its own pin keeps it.
     // One that cannot be worked out counts as a change, so the owner is asked.
     groupAccount(id, project) {
@@ -1405,6 +1406,7 @@ const STRUCTURE = new Map([
   ['/api/layout/group/add', b => layout.addGroup(b.name, b.project ?? null)],
   ['/api/layout/group/move', b => layout.moveGroup(b.id, b.project ?? null)],
   ['/api/layout/group/order', b => layout.orderGroup(b.id, { before: b.before, after: b.after })],
+  ['/api/layout/project/order', b => layout.orderProject(b.id, { before: b.before, after: b.after })],
   ['/api/layout/group/remove', b => removeGroup(b.id)],
   ['/api/layout/parent', newParent],
   ['/api/layout/parent/undo', undoParent],
@@ -2041,7 +2043,7 @@ async function api(req, res, u) {
       delete r.sortKey;
     }
     // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, the group a routine can be given for a heading in Home, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true } });
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, projectOrder: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);

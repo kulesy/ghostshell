@@ -1,7 +1,7 @@
 // Run with `npm test`. How a group's sessions fall into the parts of its panel and of the list tool, and the summary line over them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { besideDraft, BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newBesideRoute, newKeyRoute, newRoute, newUnderRoute, paneOf, parseNewRoute, RECENT_MS, startsFrom, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups } from '../public/ui/group-rules.js';
+import { besideDraft, BUCKETS, bucketOf, bucketsOf, deleteDetail, draftGroup, flipped, groupById, groupOfSession, litState, membersOf, newBesideRoute, newKeyRoute, newRoute, newUnderRoute, paneOf, parseNewRoute, RECENT_MS, startsFrom, summaryOf, supportsGroupEdits, supportsGroupRename, supportsGroups, supportsProjectOrder } from '../public/ui/group-rules.js';
 import { supportsSections } from '../public/ui/sections.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -69,6 +69,12 @@ test('a server says it can rename groups on the list, and one that does not say 
   assert.equal(supportsGroupRename(ix({ groupRename: true })), true);
   for (const features of [undefined, {}, { groupEdits: true }, { groupRename: false }]) assert.equal(supportsGroupRename(ix(features)), false);
   assert.equal(supportsGroupRename(null), false);
+});
+
+test('a server says it can order projects, and one that does not say so cannot, whatever else it says', () => {
+  assert.equal(supportsProjectOrder(ix({ projectOrder: true })), true);
+  for (const features of [undefined, {}, { groupEdits: true }, { projectOrder: false }]) assert.equal(supportsProjectOrder(ix(features)), false);
+  assert.equal(supportsProjectOrder(null), false);
 });
 
 test('the question before a group is deleted counts the sessions its header counts, nested ones included, and says what becomes of its chat', () => {
