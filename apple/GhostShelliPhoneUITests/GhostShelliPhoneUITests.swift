@@ -457,9 +457,20 @@ final class GhostShelliPhoneUITests: XCTestCase {
         signIn(app)
         app.buttons["More"].tap()
         XCTAssertTrue(app.buttons["Accounts"].waitForExistence(timeout: 5), app.debugDescription)
+        // The page's footer links come first, then its Account menu: Accounts, Passkeys, a separator and Sign out, with Sign out plain.
+        let order = ["Manage routines", "Manage scheduled sessions", "Accounts", "Passkeys", "Sign out"].map { app.buttons[$0] }
+        for item in order { XCTAssertTrue(item.exists, "More offers \(item.label)\n\(app.debugDescription)") }
+        XCTAssertEqual(order.map(\.frame.minY), order.map(\.frame.minY).sorted(), "More lists its items in the page's order")
+        XCTAssertFalse(app.buttons["Sign Out"].exists, "The page says Sign out")
         shot("11-more-menu")
         app.buttons["Accounts"].tap()
         XCTAssertTrue(app.staticTexts["Work"].waitForExistence(timeout: 15), app.debugDescription)
+        // The Chrome banner's two buttons sit side by side, as the page has them.
+        let open = app.buttons["Open in Chrome on the Mac"], dismiss = app.buttons["Dismiss"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10), app.debugDescription)
+        for (name, element) in [("Open in Chrome on the Mac", open), ("Dismiss", dismiss)] { assertTouchable(element, name) }
+        XCTAssertEqual(open.frame.midY, dismiss.frame.midY, accuracy: 2, "The banner's buttons share a row")
+        XCTAssertTrue(app.staticTexts["Plan usage"].exists, app.debugDescription)
         shot("09-accounts")
         app.swipeUp()
         app.swipeUp()
@@ -471,10 +482,16 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.buttons["Passkeys"].tap()
         XCTAssertTrue(app.staticTexts["MacBook Pro, Safari"].waitForExistence(timeout: 15), app.debugDescription)
         shot("10-passkeys")
-        assertTouchable(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Remove the passkey'")).firstMatch, "Remove passkey")
+        let remove = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Remove the passkey'")).firstMatch
+        assertTouchable(remove, "Remove passkey")
+        remove.tap()
+        XCTAssertTrue(app.staticTexts["Remove this passkey?"].waitForExistence(timeout: 5), app.debugDescription)
+        for name in ["Keep", "Remove"] { assertTouchable(app.buttons[name].firstMatch, name) }
+        app.buttons["Keep"].tap()
+        XCTAssertTrue(remove.waitForExistence(timeout: 5), "Keep puts the Remove button back")
         back(app)
         app.buttons["More"].tap()
-        app.buttons["Sign Out"].tap()
+        app.buttons["Sign out"].tap()
         XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 15), app.debugDescription)
     }
 
@@ -484,11 +501,15 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.buttons["More"].tap()
         app.buttons["Accounts"].tap()
         XCTAssertTrue(app.buttons["Add and sign in"].waitForExistence(timeout: 15), app.debugDescription)
+        assertTouchable(app.buttons["Add and sign in"], "Add and sign in")
+        XCTAssertTrue(app.switches["Switch accounts by itself"].exists, app.debugDescription)
         shot("09c-accounts-empty")
         back(app)
         app.buttons["More"].tap()
         app.buttons["Passkeys"].tap()
-        XCTAssertTrue(app.staticTexts["No passkeys added yet."].waitForExistence(timeout: 15), app.debugDescription)
+        let none = app.staticTexts["No passkeys added yet."]
+        XCTAssertTrue(none.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertLessThan(none.frame.minX, 40, "The empty line is flat on the left, not centred")
         shot("10b-passkeys-empty")
     }
 
@@ -842,6 +863,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         assertTouchable(kind, "Prompt kind")
         for name in ["Model", "Effort", "Permission mode"] { assertTouchable(reveal(app, app.buttons[name].firstMatch), name) }
         let prompt = app.textViews["Prompt"]
+        XCTAssertGreaterThanOrEqual(reveal(app, prompt).frame.height, 255, "The prompt box is at least 256pt tall, as the page has it")
         reveal(app, prompt).tap()
         prompt.typeText("Check the build")
         app.buttons["Save"].tap()
@@ -908,11 +930,13 @@ final class GhostShelliPhoneUITests: XCTestCase {
         signIn(app, stub: "routinesEmpty", expecting: "Look at the failing build")
         openFromMore(app, "Manage routines")
         XCTAssertTrue(app.staticTexts["No routines yet."].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertLessThan(app.staticTexts["No routines yet."].frame.minX, 40, "The empty state is left aligned, as the page has it")
         shot("routines-0-empty")
         for button in app.buttons.matching(NSPredicate(format: "label == 'New routine'")).allElementsBoundByIndex { assertTouchable(button, "New routine") }
         back(app)
         openFromMore(app, "Manage scheduled sessions")
         XCTAssertTrue(app.staticTexts["No scheduled sessions."].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertLessThan(app.staticTexts["No scheduled sessions."].frame.minX, 40, "The empty state is left aligned, as the page has it")
         shot("scheduled-0-empty")
         for button in app.buttons.matching(NSPredicate(format: "label == 'Schedule a session'")).allElementsBoundByIndex { assertTouchable(button, "Schedule a session") }
     }
@@ -940,7 +964,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         endEditing(app)
         for (name, element) in [("Cancel", app.buttons["Cancel"]), ("Save", app.buttons["Save"]), ("Date and time", app.datePickers.firstMatch)] { assertTouchable(element, name) }
         let prompt = app.textViews["Prompt"]
-        reveal(app, prompt)
+        XCTAssertGreaterThanOrEqual(reveal(app, prompt).frame.height, 255, "The prompt box is at least 256pt tall, as the page has it")
         shot("scheduled-3-form-bottom")
         prompt.tap()
         prompt.typeText("Say hello")
