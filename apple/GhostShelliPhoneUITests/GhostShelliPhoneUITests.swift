@@ -412,6 +412,46 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual((after.last?["body"] as? [String: Any])?["source"] as? String, "block")
     }
 
+    /// The parts of the thread that 03 and 04 do not show: a notice, a divider, a tool group opened to its rows and a tool's input, and the approval cards in their other states.
+    func testThreadPartsAreDrawnLikeThePage() throws {
+        let app = launch()
+        signIn(app)
+        open(app, "Fix the flaky upload test", expecting: "Thanks. Can you add a note to the changelog?")
+        // The thread may open above or below a part, depending on how much room the composer leaves.
+        // The drag runs down the thread's margin, since a swipe on the code block scrolls only the code sideways.
+        let messages = app.scrollViews["Messages"].firstMatch
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<10 where !element.isHittable {
+                let up = element.frame.minY > messages.frame.midY
+                let from = messages.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: up ? 0.8 : 0.2))
+                from.press(forDuration: 0.05, thenDragTo: messages.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: up ? 0.2 : 0.8)))
+            }
+        }
+        let notice = app.staticTexts["Conversation compacted"].firstMatch
+        reveal(notice)
+        XCTAssertTrue(notice.isHittable, app.debugDescription)
+        shot("11-chat-notice-divider")
+        let group = app.buttons.matching(NSPredicate(format: "label CONTAINS '+1'")).firstMatch
+        reveal(group)
+        XCTAssertTrue(group.waitForExistence(timeout: 5), "The group that edited a file\n\(app.debugDescription)")
+        group.tap()
+        shot("12-chat-group-open")
+        let tool = app.buttons.matching(NSPredicate(format: "value == 'collapsed' AND label CONTAINS 'helpers.js'")).firstMatch
+        XCTAssertTrue(tool.waitForExistence(timeout: 5), app.debugDescription)
+        tool.tap()
+        shot("13-chat-tool-input")
+        back(app)
+        open(app, "Choose the test setup", expecting: "Claude is asking")
+        app.buttons["node:test"].firstMatch.tap()
+        shot("14-question-picked")
+        back(app)
+        open(app, "Edit the upload helper", expecting: "I need your go-ahead before I go on.")
+        shot("15-approval-edit")
+        app.buttons["All input"].firstMatch.tap()
+        shot("16-approval-all-input")
+    }
+
+
     func testAccountsPasskeysAndSignOut() throws {
         let app = launch()
         signIn(app)

@@ -18,10 +18,10 @@ struct WidgetAsk: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(isLink ? "A widget wants to open a link" : "A widget wants to send this to Claude")
-                .font(ChatStyle.caption).fontWeight(.semibold).textCase(.uppercase).tracking(0.6).foregroundStyle(.secondary)
+                .font(ChatStyle.caption).fontWeight(.semibold).textCase(.uppercase).tracking(0.6).foregroundStyle(ChatStyle.muted)
             if isLink {
                 Text(verbatim: request.host).font(.system(size: 17, weight: .semibold)).textSelection(.enabled)
-                Text(verbatim: request.text).font(ChatStyle.monoSmall).foregroundStyle(.secondary).lineLimit(wide ? nil : 3).textSelection(.enabled)
+                Text(verbatim: request.text).font(ChatStyle.monoSmall).foregroundStyle(ChatStyle.muted).lineLimit(wide ? nil : 3).textSelection(.enabled)
             } else {
                 Text(verbatim: request.text).font(.system(size: 15)).lineLimit(wide ? nil : 4).textSelection(.enabled)
             }
@@ -57,8 +57,8 @@ struct WidgetAsk: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary))
+        .background(ChatStyle.card, in: RoundedRectangle(cornerRadius: ChatStyle.radiusCard))
+        .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusCard).strokeBorder(ChatStyle.border))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Request from the widget")
         .task(id: request.error) {

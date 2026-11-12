@@ -25,6 +25,10 @@ public struct GhostButtonStyle: ButtonStyle {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         configuration.label
             .font(.geist(14, weight: .medium))
+            // The label keeps its width, as the page's flex buttons do, so a row shares out the rest and no label wraps or truncates.
+            .fixedSize(horizontal: true, vertical: false)
+            // The button's height is fixed, so its label stops growing at the largest standard text size rather than spilling out.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .foregroundStyle(kind == .primary ? Color.ghost.primaryForeground : Color.ghost.foreground)
             .padding(.horizontal, size == .icon ? 0 : size == .compact ? 12 : 16)
             .frame(width: size == .icon ? 32 : nil, height: size == .regular ? Self.touch : 32)
@@ -33,7 +37,8 @@ public struct GhostButtonStyle: ButtonStyle {
             .overlay { if kind == .outline { shape.strokeBorder(Color.ghost.input, lineWidth: 1) } }
             .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.5)
             #if os(iOS)
-            .frame(minWidth: 44, minHeight: 44)
+            // Only an icon needs the wider touch area. A min width on a filling button lets a row overlap its neighbours.
+            .frame(minWidth: size == .icon ? 44 : nil, minHeight: 44)
             #endif
             .contentShape(Rectangle())
     }
