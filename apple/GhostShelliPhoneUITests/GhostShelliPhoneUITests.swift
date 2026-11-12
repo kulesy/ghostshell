@@ -54,7 +54,10 @@ final class GhostShelliPhoneUITests: XCTestCase {
         dismissKeyboardIntro(app)
         password.typeText(stub == "organise" ? env["GS_PASSWORD_ORGANISE"] ?? "" : "any-password")
         app.buttons["Sign in"].tap()
-        XCTAssertTrue(app.staticTexts[expecting].waitForExistence(timeout: 20), app.debugDescription)
+        // The list only draws the rows on screen, and a small phone shows few of them.
+        let label = app.staticTexts[expecting]
+        for _ in 0..<4 where !label.waitForExistence(timeout: 6) { app.swipeUp() }
+        XCTAssertTrue(label.waitForExistence(timeout: 10), app.debugDescription)
     }
 
     private func row(_ app: XCUIApplication, _ title: String) -> XCUIElement {
@@ -527,6 +530,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
     /// A link is a run inside a line of text. iOS 27 pads the line's frame by 16pt a side, so the end of the line is no longer on the link and the tap goes to the link itself.
     private func tapLink(_ app: XCUIApplication, line: String) {
+        sleep(1)
         let text = live(app, line)
         let link = text.links.firstMatch
         (link.exists ? link : text).coordinate(withNormalizedOffset: link.exists ? CGVector(dx: 0.5, dy: 0.5) : CGVector(dx: 0.93, dy: 0.5)).tap()
@@ -546,6 +550,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
     /// Taps a file link once and waits for the panel, which is the one place with a Close button.
     private func openFile(_ app: XCUIApplication, line: String, header: String, file: StaticString = #filePath, at: UInt = #line) {
         tapLink(app, line: line)
+        // If the tap at the link's centre opens nothing on iOS 27, the link element itself is pressed once before this fails.
+        if !app.buttons["Close"].firstMatch.waitForExistence(timeout: 4) { live(app, line).links.firstMatch.tap() }
         XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 10), "\(line) did not open the panel\n\(app.debugDescription)", file: file, line: at)
         XCTAssertTrue(app.staticTexts[header].firstMatch.waitForExistence(timeout: 10), "The panel for \(line) does not name \(header)", file: file, line: at)
     }

@@ -204,17 +204,16 @@ function runTests({ udid, device, appearance, out, address, only, stubs }) {
     const child = spawn('xcodebuild', args, { env });
     testing = child;
     let output = '';
-    let lastGrowth = Date.now();
-    child.stdout.on('data', chunk => { output += chunk; lastGrowth = Date.now(); });
-    child.stderr.on('data', chunk => { output += chunk; lastGrowth = Date.now(); });
-    // TEMPORARY for https://github.com/kulesy/ghostshell/issues/148: when the log stalls for 25 seconds the app is probably hung, so sample where its main thread is.
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    // TEMPORARY for https://github.com/kulesy/ghostshell/issues/148: every 30 seconds, sample where the app's main thread is, to find what the hangs on iOS 27 are doing.
     let samples = 0;
     const sampler = setInterval(() => {
-      if (Date.now() - lastGrowth < 25000 || samples >= 8) return;
-      lastGrowth = Date.now();
+      const pid = spawnSync('pgrep', ['-x', 'GhostShelliPhone'], { encoding: 'utf8' }).stdout.trim().split('\n')[0];
+      if (!pid || samples >= 60) return;
       samples += 1;
-      spawnSync('sample', ['GhostShelliPhone', '3', '-file', path.join(DERIVED, `sample-${device}-${appearance}-${samples}.txt`)], { timeout: 30000 });
-    }, 5000);
+      spawnSync('sample', [pid, '2', '-file', path.join(DERIVED, `sample-${device}-${appearance}-${String(samples).padStart(2, '0')}.txt`)], { timeout: 30000 });
+    }, 30000);
     child.on('close', status => {
       clearInterval(sampler);
       fs.writeFileSync(path.join(DERIVED, `last-${device}-${appearance}.log`), output);
