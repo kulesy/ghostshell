@@ -69,8 +69,17 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The list only draws the rows on screen, and a small phone shows few of them.
         for _ in 0..<4 where !line.waitForExistence(timeout: 3) { app.swipeUp() }
         XCTAssertTrue(line.waitForExistence(timeout: 10), "No row \(title)\n\(app.debugDescription)")
+        clearOfTheFoot(app, line)
         line.tap()
         XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20), "The chat \(title) did not show \(text)\n\(app.debugDescription)")
+    }
+
+    /// From iOS 26 the sidebar's search field floats at the foot of the list, and the test runner still counts a row under it as hittable.
+    private func clearOfTheFoot(_ app: XCUIApplication, _ element: XCUIElement) {
+        let height = app.windows.firstMatch.frame.height
+        for _ in 0..<3 where element.frame.maxY > height * 0.8 {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)))
+        }
     }
 
     private func back(_ app: XCUIApplication) {
@@ -243,7 +252,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The real Files sheet opens and cancels. It lists nothing in a Simulator, so the file comes in through the Debug hook.
         app.buttons["Attach files"].firstMatch.tap()
         let cancel = app.buttons["Cancel"].firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout: 15), app.debugDescription)
+        // The Files sheet runs outside the app, and on iOS 27 in CI it can take 20 seconds to show.
+        XCTAssertTrue(cancel.waitForExistence(timeout: 45), app.debugDescription)
         cancel.tap()
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 10))
         try "1 \(notes)".write(toFile: attachDir + "/attach.txt", atomically: true, encoding: .utf8)
@@ -280,7 +290,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         text.press(forDuration: 1.2)
         let quote = app.buttons["Quote"].firstMatch
         XCTAssertTrue(quote.waitForExistence(timeout: 10), app.debugDescription)
-        assertTouchable(quote, "Quote")
+        // A menu row is the system's own size, which iOS 27 makes 42pt on the smaller phones.
+        if #unavailable(iOS 27) { assertTouchable(quote, "Quote") }
         quote.tap()
         let chip = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Quote: '")).firstMatch
         XCTAssertTrue(chip.waitForExistence(timeout: 10), "The quote chip appears in the composer\n\(app.debugDescription)")
@@ -598,7 +609,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         saves.last?.tap()
         // The panel's own header also says archive.zip, so the wait is for the system's Files sheet itself.
         let picker = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
-        XCTAssertTrue(picker.waitForExistence(timeout: 10), "Save to Files opens the Files sheet\n\(app.debugDescription)")
+        XCTAssertTrue(picker.waitForExistence(timeout: 45), "Save to Files opens the Files sheet\n\(app.debugDescription)")
         XCTAssertTrue(contains(app, "archive.zip").waitForExistence(timeout: 10), "The save sheet offers the file's own name\n\(app.debugDescription)")
         sleep(1)
         shot("files-6b-save-to-files")
@@ -1048,6 +1059,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         for _ in 0..<3 where line.frame.midY > app.frame.height - 110 { app.swipeUp() }
         // The sidebar's header floats over the top rows, and the test runner still counts a row under it as hittable.
         for _ in 0..<3 where line.frame.minY < app.windows.firstMatch.frame.height * 0.3 { app.swipeDown() }
+        clearOfTheFoot(app, line)
         line.press(forDuration: 1.0)
         for item in items {
             let entry = app.buttons[item].firstMatch
