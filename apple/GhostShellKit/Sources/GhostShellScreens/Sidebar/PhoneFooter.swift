@@ -43,7 +43,7 @@ struct PhoneFooter: View {
     }
 }
 
-/// The circle-user button: Accounts, Passkeys, the notification switch and Sign Out, which the toolbar's More menu held before.
+/// The circle-user button: Accounts, Passkeys, the notification switch and Sign out, which the toolbar's More menu held before.
 private struct AccountMenu: View {
     @Environment(AppModel.self) private var model
 
@@ -53,7 +53,7 @@ private struct AccountMenu: View {
             Button("Passkeys", systemImage: "key") { model.navigator.show { PasskeysScreen() } }
             NotificationToggle()
             Divider()
-            Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { Task { await model.signOut() } }
+            Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") { Task { await model.signOut() } }
         } label: {
             Image(systemName: "person.crop.circle").font(.system(size: 19)).foregroundStyle(Color.ghost.sidebarMuted).phoneIconTouch()
         }

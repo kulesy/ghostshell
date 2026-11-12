@@ -1177,7 +1177,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let account = app.buttons["Account"]
         assertTouchable(account, "Account")
         account.tap()
-        for item in ["Accounts", "Passkeys", "Sign Out"] {
+        for item in ["Accounts", "Passkeys", "Sign out"] {
             XCTAssertTrue(app.buttons[item].firstMatch.waitForExistence(timeout: 5), "The account menu has \(item)\n\(app.debugDescription)")
         }
         shot("organise-account-menu")
