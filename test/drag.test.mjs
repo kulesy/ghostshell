@@ -45,6 +45,7 @@ async function mount({ count } = {}) {
   const copy = { attrs: {}, kids: [], classList: { add() {} }, removeAttribute() {}, setAttribute(name, value) { this.attrs[name] = value; }, append(el) { this.kids.push(el); }, querySelectorAll: () => [], style: {}, remove() {} };
   const row = { dataset: { id: 'r1' }, getBoundingClientRect: () => ({ left: 0, top: 570, width: 300 }), cloneNode: () => copy };
   const bar = { dataset: { handle: 'cg-1' }, getBoundingClientRect: () => ({ left: 0, top: 280, width: 300 }), cloneNode: () => copy };
+  const scope = { dataset: { project: 'cp-1' }, getBoundingClientRect: () => ({ left: 0, top: 280, width: 200 }), cloneNode: () => copy };
   const place = { slot: null };
   const box = Object.assign(target(), { scrollTop: 100, getBoundingClientRect: () => ({ left: 0, right: 300, top: 0, bottom: 600 }) });
   const log = [];
@@ -54,13 +55,13 @@ async function mount({ count } = {}) {
     onStart: (id, kind) => { log.push(['start', id]); kinds.push(['start', kind]); },
     onOver: over => log.push(['over', over]),
     onEnd: (id, section, kind) => { log.push(['end', id, section]); kinds.push(['end', kind]); },
-    onMenu: (id, element, point, kind) => { log.push(['menu', id, element === row || element === bar, point]); kinds.push(['menu', kind]); },
+    onMenu: (id, element, point, kind) => { log.push(['menu', id, element === row || element === bar || element === scope, point]); kinds.push(['menu', kind]); },
     slot: (x, y, id) => { kinds.push(['slot', id]); return place.slot; },
     ...(count && { count }),
   });
   const at = (clientX, clientY) => ({ isPrimary: true, clientX, clientY });
   return {
-    box, log, kinds, drop, place, stop, copy,
+    box, log, kinds, drop, place, stop, copy, scope,
     down: (kind, x, y, grip = row) => box.fire('pointerdown', { ...at(x, y), button: 0, ctrlKey: false, pointerType: kind, target: { closest: selector => (selector.includes('aria-haspopup') ? null : grip) } }),
     header: (kind, x, y, dots = false) => box.fire('pointerdown', { ...at(x, y), button: 0, ctrlKey: false, pointerType: kind, target: { closest: selector => (selector.includes('aria-haspopup') ? dots && {} : bar) } }),
     move: (x, y) => document.fire('pointermove', at(x, y)),
@@ -386,4 +387,76 @@ test('a header carries one group, so it never shows a number even when the count
   t.move(30, 290);
   assert.equal('data-count' in t.copy.attrs, false);
   t.up(30, 290);
+});
+
+test('a project in the sidebar lifts as a project after five pixels with the mouse, and a plain click on it lifts nothing', async () => {
+  const t = await mount();
+  t.down('mouse', 100, 300, t.scope);
+  t.move(103, 302);
+  t.up(103, 302);
+  assert.deepEqual(t.log, []);
+  assert.equal(swallowed('click'), false);
+  t.down('mouse', 100, 300, t.scope);
+  t.move(106, 300);
+  t.up(106, 300);
+  assert.deepEqual(t.log.filter(([name]) => name !== 'over'), [['start', 'cp-1'], ['end', 'cp-1', null]]);
+  assert.deepEqual(t.kinds.filter(([name]) => name !== 'slot'), [['start', 'project'], ['end', 'project']]);
+  assert.equal(swallowed('click'), true, 'the click after a drag does not open the project');
+  t.stop();
+});
+
+test('a carried project takes only the place among the projects, so a drop target under it counts for nothing', async () => {
+  const t = await mount();
+  t.down('mouse', 100, 300, t.scope);
+  t.move(110, 300);
+  t.drop.over = dropTarget('to:cp-one');
+  t.place.slot = 'after:cp-2';
+  t.move(110, 340);
+  t.drop.over = dropTarget('pinned');
+  t.move(110, 360);
+  t.up(110, 360);
+  assert.deepEqual(t.log.filter(([name]) => name === 'over' || name === 'end'), [['over', 'after:cp-2'], ['end', 'cp-1', 'after:cp-2']]);
+  assert.deepEqual(t.kinds.filter(([name]) => name === 'slot').at(-1), ['slot', 'cp-1']);
+  t.stop();
+});
+
+test('a finger held on a project lifts it, one held still asks for its menu, and a swipe before the long press lifts nothing', async () => {
+  const t = await mount();
+  t.down('touch', 100, 300, t.scope);
+  mock.timers.tick(HOLD_MS);
+  t.place.slot = 'before:cp-2';
+  t.move(100, 200);
+  t.up(100, 200);
+  assert.deepEqual(t.log.filter(([name]) => name !== 'over'), [['start', 'cp-1'], ['end', 'cp-1', 'before:cp-2']]);
+  t.log.length = 0;
+  t.down('touch', 100, 300, t.scope);
+  mock.timers.tick(HOLD_MS);
+  t.up(100, 300);
+  assert.deepEqual(t.log.filter(([name]) => name !== 'over'), [['start', 'cp-1'], ['end', 'cp-1', null], ['menu', 'cp-1', true, { x: 100, y: 300 }]]);
+  assert.deepEqual(t.kinds.at(-1), ['menu', 'project']);
+  t.log.length = 0;
+  t.down('touch', 100, 300, t.scope);
+  t.move(100, 320);
+  mock.timers.tick(HOLD_MS);
+  t.up(100, 320);
+  assert.deepEqual(t.log, []);
+  t.stop();
+});
+
+test('Esc cancels a dragged project, and one carried above the sidebar does not scroll it', async () => {
+  const t = await mount();
+  t.down('mouse', 100, 300, t.scope);
+  t.move(110, 300);
+  t.place.slot = 'before:cp-2';
+  t.move(110, 200);
+  document.fire('keydown', { key: 'Escape' });
+  t.up(110, 200);
+  assert.deepEqual(t.log.filter(([name]) => name === 'end'), [['end', 'cp-1', null]]);
+  t.down('mouse', 100, 300, t.scope);
+  t.move(110, 300);
+  t.move(110, -20);
+  for (let i = 0; i < 3; i++) t.frame();
+  assert.equal(t.box.scrollTop, 100);
+  t.up(110, -20);
+  t.stop();
 });

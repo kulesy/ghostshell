@@ -1,5 +1,5 @@
-// Drags a session row, or a user group's header, with pointer events so a mouse and a finger share the code. A mouse drags after a few
-// pixels and a finger after a long press, so a click or a swipe still works. A right click or a still long press asks for the menu.
+// Drags a session row, a user group's header or a project in the projects sidebar, with pointer events so a mouse and a finger share the
+// code. A mouse drags after a few pixels and a finger after a long press, so a click or a swipe still works. A right click or a still long press asks for the menu.
 const MOUSE_SLOP = 5;
 const HOLD_MS = 350;
 export const HOLD_SLOP = 8;
@@ -12,7 +12,7 @@ export function pointIn(el, e) {
   return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom ? { x: e.clientX, y: e.clientY } : null;
 }
 
-const GRIPS = 'a.row[data-id], .bar[data-handle]';
+const GRIPS = 'a.row[data-id], .bar[data-handle], .scope[data-project]';
 export const POPUPS = 'button.more, [aria-haspopup]';
 
 // The target a dragged header has under a point: a project or Home in the sidebar or the Move to strip, else the place among the groups.
@@ -34,7 +34,8 @@ function targetAt(x, y) {
 // `box` is the scrolling list. Rows are `a.row[data-id]` and drop targets carry `data-drop`. `onOver` gets the target under
 // the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. `onMenu` gets the row's id and
 // element, and where the click or the finger was, or null for the menu key.
-// A header is `.bar[data-handle]` and has only `to:` targets and `slot(x, y, id)`. `onStart`, `onEnd` and `onMenu` get the kind last.
+// A header is `.bar[data-handle]` and has only `to:` targets and `slot(x, y, id)`. A project is `.scope[data-project]` in a sidebar of its own, and
+// has only `slot(x, y, id)`. `onStart`, `onEnd` and `onMenu` get the kind last.
 // `count(id)` is how many sessions a lifted row carries. Above one, the lifted copy shows the number and stacks.
 // Returns a function that stops it.
 export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => null, count = () => 1 }) {
@@ -92,13 +93,14 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => nul
 
   function lift(x, y) {
     const { grip, start, touch } = press;
-    const kind = grip.dataset.handle === undefined ? 'row' : 'group';
+    const kind = grip.dataset.project !== undefined ? 'project' : grip.dataset.handle !== undefined ? 'group' : 'row';
     const at = grip.getBoundingClientRect();
     const copy = grip.cloneNode(true);
     copy.classList.add('lifted');
-    for (const attr of ['href', 'data-id', 'data-handle', 'aria-current', 'data-lifted', 'data-picked']) copy.removeAttribute(attr);
+    for (const attr of ['href', 'data-id', 'data-handle', 'data-project', 'aria-current', 'data-lifted', 'data-picked']) copy.removeAttribute(attr);
     copy.setAttribute('aria-hidden', 'true');
-    if (kind === 'group') {
+    if (kind === 'project') for (const attr of ['data-key', 'data-menu', 'data-over', 'data-drop']) copy.removeAttribute(attr);
+    if (kind !== 'row') {
       copy.setAttribute('inert', '');
       for (const el of copy.querySelectorAll('[data-key], [aria-controls]')) for (const attr of ['data-key', 'aria-controls']) el.removeAttribute(attr);
     }
@@ -116,7 +118,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => nul
     document.body.classList.add('dragging');
     clearTimeout(press.timer);
     press = null;
-    drag = { id: kind === 'group' ? grip.dataset.handle : grip.dataset.id, kind, grip, touch, start, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null, moved: !touch };
+    drag = { id: kind === 'group' ? grip.dataset.handle : kind === 'project' ? grip.dataset.project : grip.dataset.id, kind, grip, touch, start, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null, moved: !touch };
     swallowing(true);
     onStart(drag.id, kind);
     follow();
@@ -125,7 +127,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => nul
 
   function follow() {
     drag.copy.style.transform = `translate(${drag.x - drag.grabX}px, ${drag.y - drag.grabY}px)`;
-    const over = drag.kind === 'group' ? groupTargetAt(drag.x, drag.y, drag.id, slot) : targetAt(drag.x, drag.y);
+    const over = drag.kind === 'group' ? groupTargetAt(drag.x, drag.y, drag.id, slot) : drag.kind === 'project' ? slot(drag.x, drag.y, drag.id) : targetAt(drag.x, drag.y);
     if (over !== drag.over) {
       drag.over = over;
       onOver(over);
@@ -138,7 +140,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu, slot = () => nul
     if (!drag) return;
     const r = box.getBoundingClientRect();
     // A header carried over what sits above or below the list, such as the Move to strip, must not scroll it.
-    const away = drag.x < r.left || drag.x > r.right || (drag.kind === 'group' && (drag.y < r.top || drag.y > r.bottom));
+    const away = drag.x < r.left || drag.x > r.right || (drag.kind !== 'row' && (drag.y < r.top || drag.y > r.bottom));
     const pull = !drag.moved || away ? 0 : Math.max(drag.y - (r.bottom - EDGE), 0) - Math.max(r.top + EDGE - drag.y, 0);
     if (pull) {
       const was = box.scrollTop;

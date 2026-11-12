@@ -52,6 +52,7 @@ export const supportsGroups = ix => !!ix?.features?.groupSessions;
 
 // A server that can delete and order groups says so too. Against an older one the group menu keeps only its moves between projects.
 export const supportsGroupEdits = ix => !!ix?.features?.groupEdits;
+export const supportsProjectOrder = ix => !!ix?.features?.projectOrder;
 export const supportsGroupRename = ix => !!ix?.features?.groupRename;
 
 // A group's chat holds back a ranked update while its owner types. A server that does not say it takes the ping would answer it with a 404, and a

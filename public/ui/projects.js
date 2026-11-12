@@ -4,7 +4,8 @@
 import { Dialog } from './dialog.js';
 import { NameForm } from './forms.js';
 import { STATE_LABEL } from './format.js';
-import { MOVE, viewTargets } from './group-drag-rules.js';
+import { MOVE, parseTarget, viewTargets } from './group-drag-rules.js';
+import { supportsProjectOrder } from './group-rules.js';
 import { useLocal, useModifier, useWide } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { contextOpener, layerId, Menu, opener as menuOpener } from './menu.js';
@@ -109,12 +110,15 @@ const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hid
 // A project's row also has its actions, `{ label, menu, open(anchor, point, entry) }`: the dots at its end, a right click, the menu key and
 // a long press all open its menu. `menu` is the open menu while it is the row's. A menu asked for from the dots hangs from them, so Esc
 // gives the focus back to the dots, and any other hangs from the row. `drop` is the target a carried group's header can be dropped on,
-// when the row is one, and `over` whether it would land here now.
-function Scope({ home, id, name, count, lamp, current, onPick, actions, drop, over }) {
+// when the row is one, and `over` whether it would land here now. `grab` makes the row a handle for dragging the project, `lifted` dims the
+// one being carried and `line` is the side of the row a carried project would land on. A handle takes a long press for dragging, so its menu
+// comes from the right click and the drag's own still press.
+function Scope({ home, id, name, count, lamp, current, onPick, actions, drop, over, grab, lifted, line }) {
   const trigger = actions && menuOpener((button, entry) => actions.open(button, null, entry));
-  const asking = actions && contextOpener((area, point, from) => actions.open(from?.closest?.('.more') ?? area.querySelector('.scope'), point));
-  return html`<li class=${actions ? 'has-more' : null} ...${asking}>
-    <button class=${home ? 'scope home' : 'scope'} type="button" data-key=${id} aria-current=${current ? 'true' : null} data-menu=${actions?.menu ? 'true' : null} data-drop=${drop ?? null} data-over=${over || null} onClick=${onPick}>
+  const opens = contextOpener((area, point, from) => actions.open(from?.closest?.('.more') ?? area.querySelector('.scope'), point));
+  const asking = actions && (grab ? { onContextMenu: opens.onContextMenu } : opens);
+  return html`<li class=${actions ? 'has-more' : null} data-line=${line || null} ...${asking}>
+    <button class=${home ? 'scope home' : 'scope'} type="button" data-key=${id} data-project=${grab ? id : null} data-lifted=${lifted ? 'true' : null} aria-current=${current ? 'true' : null} data-menu=${actions?.menu ? 'true' : null} data-drop=${drop ?? null} data-over=${over || null} onClick=${onPick}>
       <span class="lamp" data-state=${lamp || 'idle'} aria-hidden="true"></span>
       <span class="scope-name">${name}</span>
       ${count === undefined ? null : html`<span class="badge scope-count">${count}</span>`}
@@ -130,8 +134,8 @@ const plus = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hid
 // `creating` is whether the New project form is open, and the list owns it. `onCreate(name, away)` resolves with the reason the server
 // refused, or an empty string, and `away` is whether the focus left the box. `tree` is the list's handle on what a project's row shares
 // with it: the menu and the rename form. A panel that closes with a form or the menu open ends it. `carry` is the group whose header is
-// being dragged, if one is: its rows are targets then, except the view it is in.
-export function ProjectsPanel({ ix, projects, tree, carry, creating, onNew, onCancel, onCreate }) {
+// being dragged, if one is: its rows are targets then, except the view it is in. `lift` is the project being dragged, if one is.
+export function ProjectsPanel({ ix, projects, tree, carry, lift, creating, onNew, onCancel, onCreate }) {
   const { view, wide, open, box, opener, pick, close } = projects;
   const { renamingProject: renaming } = tree;
   const held = !!tree.shown?.rail;
@@ -180,6 +184,8 @@ export function ProjectsPanel({ ix, projects, tree, carry, creating, onNew, onCa
     const to = MOVE + (id ?? '');
     return { drop: targets?.has(to) ? to : null, over: carry?.over === to };
   };
+  const grab = supportsProjectOrder(ix) && ix.projects.length > 1;
+  const place = parseTarget(lift?.over);
   const actions = p => ({
     label: `Actions for ${p.name}`,
     menu: held && tree.shown.key === p.id ? tree.shown : null,
@@ -195,7 +201,7 @@ export function ProjectsPanel({ ix, projects, tree, carry, creating, onNew, onCa
       <li class="scope-rule" aria-hidden="true"></li>
       ${(ix?.projects || []).map(p => (renaming === p.id
         ? html`<li key=${p.id}>${tree.renameForm(p)}</li>`
-        : html`<${Scope} key=${p.id} id=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => choosing(e, p.id)} actions=${actions(p)} ...${drops(p.id)} />`))}
+        : html`<${Scope} key=${p.id} id=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => choosing(e, p.id)} actions=${actions(p)} grab=${grab} lifted=${lift?.id === p.id} line=${place?.beside === p.id ? place.side : null} ...${drops(p.id)} />`))}
       <li>${creating
         ? html`<${NameForm} label="New project" placeholder="New project" onSubmit=${create} onCancel=${onCancel} />`
         : html`<button class="scope new-project" type="button" disabled=${!ix} onClick=${begin}>${plus()}<span class="scope-name">New project</span></button>`}</li>

@@ -186,6 +186,28 @@ test('a group is ordered before or after another in its view, and the list follo
   assert.deepEqual(places(await index(s, token)), { 'cg-a': null, 'cg-b': null, 'cg-c': null, [one.id]: project.id, [two.id]: project.id });
 });
 
+test('a project is ordered before or after another, and the list follows the file', async () => {
+  const { s, token } = await ready();
+  const made = [];
+  for (const name of ['One', 'Two', 'Three']) made.push((await post(s, token, 'project/add', { name })).body());
+  const ids = made.map(p => p.id);
+  const order = async () => (await index(s, token)).projects.map(p => p.id);
+  assert.equal((await index(s, token)).features.projectOrder, true);
+  assert.deepEqual(await order(), ids);
+
+  const moved = await post(s, token, 'project/order', { id: ids[2], before: ids[0] });
+  assert.equal(moved.status, 200);
+  assert.deepEqual(moved.body(), { id: ids[2], name: 'Three' });
+  assert.deepEqual(await order(), [ids[2], ids[0], ids[1]]);
+  assert.equal((await post(s, token, 'project/order', { id: ids[2], after: ids[1] })).status, 200);
+  assert.deepEqual(await order(), ids);
+  assert.deepEqual(onDisk(s).projects.map(p => p.id), ids, 'the file agrees');
+
+  await post(s, token, 'group/move', { id: 'cg-a', project: ids[1] });
+  assert.equal((await post(s, token, 'project/order', { id: ids[1], before: ids[0] })).status, 200);
+  assert.equal(places(await index(s, token))['cg-a'], ids[1], 'a project\'s groups stay with it');
+});
+
 test('a group copied from Desktop and then deleted does not come back when the server restarts, though Desktop still lists it', async () => {
   const { s } = await ready();
   const config = path.join(s.home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
@@ -242,6 +264,13 @@ test('a refused edit says why and writes nothing', async () => {
     ['group/order', { id: 'cg-a', before: 'cg-a' }, 400, /another group/],
     ['group/order', { id: 'cg-none', before: 'cg-a' }, 404, /Unknown group/],
     ['group/order', { id: 'cg-a', after: 'cg-none' }, 404, /Unknown group/],
+    ['project/order', { id: 'cp-x' }, 400, /before or after one other project/],
+    ['project/order', { id: 'cp-x', before: 'cp-y', after: 'cp-y' }, 400, /before or after one other project/],
+    ['project/order', { id: 'cp-x', before: 5 }, 400, /before or after one other project/],
+    ['project/order', { id: 'cp-x', before: 'cp-x' }, 400, /another project/],
+    ['project/order', { id: 'cp-none', before: 'cp-x' }, 404, /Unknown project/],
+    ['project/order', { id: 'cp-x', after: 'cp-none' }, 404, /Unknown project/],
+    ['project/order', { id: 'cg-a', after: 'cp-x' }, 404, /Unknown project/],
   ];
   for (const [url, body, status, message] of refusals) {
     const res = await post(s, token, url, body);
@@ -267,7 +296,7 @@ test('a layout file that cannot be read is reported, and no project is written o
 test('only a signed-in POST from this site changes anything, and a GET to these paths never does', async () => {
   const { s, token } = await ready({ layout: { projects: [{ id: 'cp-x', name: 'Capcom' }] } });
   const before = fs.readFileSync(s.layout, 'utf8');
-  const urls = ['project/add', 'project/rename', 'group/rename', 'project/remove', 'group/add', 'group/move', 'group/order', 'group/remove'];
+  const urls = ['project/add', 'project/rename', 'group/rename', 'project/remove', 'group/add', 'group/move', 'group/order', 'project/order', 'group/remove'];
   const body = { id: 'cp-x', name: 'Changed', project: 'cp-x' };
   for (const url of urls) {
     assert.equal((await request(s, 'GET', `/api/layout/${url}?id=cp-x&name=Changed&project=cp-x`, { headers: as(token) })).status, 404, `GET ${url}`);

@@ -28,6 +28,7 @@ const LAYOUT_CARDS = {
   mcp__capcom__create_project: 'Claude wants to create a project',
   mcp__capcom__create_group: 'Claude wants to create a group',
   mcp__capcom__move_group_to_project: 'Claude wants to move a group to a project',
+  mcp__capcom__move_project: 'Claude wants to move a project',
 };
 
 // Says exactly what is about to happen, so the answer is an informed one.
