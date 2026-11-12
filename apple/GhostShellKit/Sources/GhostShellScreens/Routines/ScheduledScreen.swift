@@ -32,6 +32,7 @@ struct ScheduledScreen: View {
             }
         }
         .navigationTitle("Scheduled sessions")
+        .ghostScreen()
         .toolbar {
             if store.features.scheduled {
                 ToolbarItem {
@@ -60,20 +61,17 @@ struct ScheduledScreen: View {
     }
 
     private var empty: some View {
-        ContentUnavailableView {
-            Label("No scheduled sessions.", systemImage: "clock")
-        } description: {
-            Text("A scheduled session starts once, at the date and time you pick, with the prompt you give it. For something that repeats, use a routine.")
-        } actions: {
-            Button("Schedule a session") { model.navigator.show { ScheduledFormScreen(id: nil) } }.buttonStyle(.borderedProminent).largeOnPhone()
+        FlatEmpty(title: "No scheduled sessions.",
+                  text: "A scheduled session starts once, at the date and time you pick, with the prompt you give it. For something that repeats, use a routine.") {
+            Button("Schedule a session") { model.navigator.show { ScheduledFormScreen(id: nil) } }.buttonStyle(.ghost(.outline, size: .compact, radius: GhostRadius.base))
         }
     }
 
     private func rows(_ list: [ScheduledSummary]) -> some View {
         List(list) { s in
-            ScheduledRow(entry: s) { deleting = s }
+            ScheduledRow(entry: s) { deleting = s }.ghostRow()
         }
-        .listStyle(.inset)
+        .ghostList()
     }
 }
 
@@ -86,7 +84,6 @@ private struct ScheduledRow: View {
     var body: some View {
         let s = entry
         RowLayout { info } controls: { controls }
-        .padding(.vertical, 6)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .contextMenu { ScheduledMenu(entry: s, askDelete: askDelete) }
         .accessibilityElement(children: .contain)
@@ -95,14 +92,14 @@ private struct ScheduledRow: View {
     private var info: some View {
         let s = entry
         return VStack(alignment: .leading, spacing: 4) {
-            Text(s.title).font(.headline).lineLimit(1)
+            Text(s.title).font(.geist(16, weight: .semibold)).foregroundStyle(Color.ghost.foreground).lineLimit(1)
             status
-            Text(place).font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-            if let problem = s.problem, !problem.isEmpty { alert(problem, .red) }
+            place
+            if let problem = s.problem, !problem.isEmpty { alert(problem, Color.ghost.destructive) }
             if let retry = s.retry, s.status == "pending" {
-                alert("\(retryWords(retry)). The last try said: \(s.lastError ?? "no reason given")", .orange)
+                alert("\(retryWords(retry)). The last try said: \(s.lastError ?? "no reason given")", Color.ghost.warningForeground)
             } else if let error = s.lastError, !error.isEmpty, s.status == "skipped" || s.status == "started" {
-                alert(error, .orange)
+                alert(error, Color.ghost.warningForeground)
             }
         }
     }
@@ -110,12 +107,12 @@ private struct ScheduledRow: View {
     private var controls: some View {
         HStack(spacing: 10) {
             if entry.isPending {
-                Button("Start now") { busy = true; Task { await model.routines.startNow(entry); busy = false } }.disabled(entry.running || busy).phoneTouch()
+                Button("Start now") { busy = true; Task { await model.routines.startNow(entry); busy = false } }.disabled(entry.running || busy).buttonStyle(.ghost(.outline, size: .compact))
             }
             Menu {
                 ScheduledMenu(entry: entry, askDelete: askDelete)
             } label: {
-                Label("Actions for \(entry.title)", systemImage: "ellipsis.circle").labelStyle(.iconOnly).phoneIconTouch()
+                Label("Actions for \(entry.title)", systemImage: "ellipsis").labelStyle(.iconOnly).foregroundStyle(Color.ghost.foreground).phoneIconTouch()
             }
             .menuStyle(.borderlessButton).fixedSize()
         }
@@ -123,21 +120,29 @@ private struct ScheduledRow: View {
 
     @ViewBuilder private var status: some View {
         if entry.status == "started", let id = entry.sessionId, !id.isEmpty {
-            Button("Started \(fireTime(entry.startedAt))") { model.navigator.openSession(id) }
-                .buttonStyle(.borderless).foregroundStyle(Color.accentColor).font(.callout).phoneTouch()
+            Button { model.navigator.openSession(id) } label: { Text("Started \(fireTime(entry.startedAt))").underline() }
+                .buttonStyle(.plain).font(.geist(16)).foregroundStyle(Color.ghost.foreground).frame(minHeight: 44, alignment: .leading).contentShape(Rectangle())
         } else {
             let when = ["pending", "cancelled", "skipped"].contains(entry.status) ? fireTime(entry.at) : ""
-            Text([statusWords(entry), when].filter { !$0.isEmpty }.joined(separator: " · ")).font(.callout).foregroundStyle(.secondary)
+            HStack(spacing: 24) {
+                Text(statusWords(entry))
+                if !when.isEmpty { Text(when) }
+            }
+            .font(.geist(16)).foregroundStyle(Color.ghost.foreground)
         }
     }
 
-    private var place: String {
+    private var place: some View {
         let group = entry.group.map { _ in entry.groupName.map { "Group \($0)" } ?? "A group that has been deleted" } ?? "Home"
-        return "\(entry.cwd) · \(group)"
+        return HStack(spacing: 24) {
+            Text(entry.cwd).lineLimit(1).truncationMode(.middle)
+            Text(group).layoutPriority(1)
+        }
+        .ghostMuted()
     }
 
     private func alert(_ text: String, _ tint: Color) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
+        Label(text, systemImage: "exclamationmark.triangle.fill").font(.geist(14)).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
     }
 }
 

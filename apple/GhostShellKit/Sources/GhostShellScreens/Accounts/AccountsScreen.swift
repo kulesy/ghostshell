@@ -9,35 +9,39 @@ public struct AccountsScreen: View {
     public init() {}
 
     public var body: some View {
-        Form {
+        FlatForm(spacing: 16) {
             if let card = chromeCard(state.list?.chrome) {
-                Section {
-                    BannerCardView(card: card, problem: state.refused["chrome"] ?? "", busy: state.pending.contains("chrome"),
-                                   onAction: { act("chrome") { try await $0.chromeOpen() } },
-                                   onDismiss: { act("chrome") { try await $0.chromeSeen() } })
-                }
+                BannerCardView(card: card, problem: state.refused["chrome"] ?? "", busy: state.pending.contains("chrome"),
+                               onAction: { act("chrome") { try await $0.chromeOpen() } },
+                               onDismiss: { act("chrome") { try await $0.chromeSeen() } })
             }
-            Section {
-                Text(state.list.map(accountsLead) ?? "Chats and routines run on the active account.").font(.callout).foregroundStyle(.secondary)
-            }
+            Text(state.list.map(accountsLead) ?? "Chats and routines run on the active account.").ghostMuted(16).fixedSize(horizontal: false, vertical: true)
             if let list = state.list {
-                ForEach(list.accounts) { account in
-                    Section { AccountRow(account: account, list: list, state: state) }
+                if !list.accounts.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Rule()
+                        ForEach(list.accounts) { account in
+                            AccountRow(account: account, list: list, state: state)
+                            Rule()
+                        }
+                    }
                 }
                 addForm(list)
-                Section {
-                    Toggle("Switch accounts by itself", isOn: Binding(get: { list.autoSwitch }, set: { on in act("auto") { try await $0.setAutoSwitch(on) } }))
-                        .disabled(state.pending.contains("auto"))
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle(isOn: Binding(get: { list.autoSwitch }, set: { on in act("auto") { try await $0.setAutoSwitch(on) } })) {
+                        Text("Switch accounts by itself").font(.geist(14, weight: .medium)).foregroundStyle(Color.ghost.foreground)
+                    }
+                    .tint(Color.ghost.primary)
+                    .disabled(state.pending.contains("auto"))
                     Text("When the active account runs out of usage, new messages go to another signed-in account. A chat that is mid-turn finishes where it is.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .ghostMuted().fixedSize(horizontal: false, vertical: true)
                     if let words = state.refused["auto"] { Notice(text: words) }
                 }
             } else if state.problem.isEmpty {
-                Section { Text("Loading accounts").foregroundStyle(.secondary) }
+                Text("Loading accounts").ghostMuted()
             }
-            if !state.problem.isEmpty { Section { Notice(text: state.problem) } }
+            if !state.problem.isEmpty { Notice(text: state.problem) }
         }
-        .formStyle(.grouped)
         .navigationTitle("Accounts")
         .onAppear { AccountsPresence.shared.open = true }
         .onDisappear { AccountsPresence.shared.open = false }
@@ -58,16 +62,18 @@ public struct AccountsScreen: View {
 
     private func addForm(_ list: AccountList) -> some View {
         let clean = cleanName(name)
-        return Section("Add an account") {
-            SideBySide(alignment: .center) {
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Add an account").font(.geist(14, weight: .medium)).foregroundStyle(Color.ghost.foreground)
+            HStack(spacing: 8) {
                 TextField("Name", text: $name, prompt: Text("Name, such as Work"))
                     .onChange(of: name) { _, text in if text.count > addNameLimit { name = String(text.prefix(addNameLimit)) } }
                     .onSubmit { add(clean, list) }
+                    .ghostInput()
                 Button("Add and sign in") { add(clean, list) }
                     .disabled(clean.isEmpty || list.waiting || state.pending.contains("add"))
-                    .phoneTouch(boxed: true)
+                    .buttonStyle(.ghost(.primary))
             }
-            Text("Signing in opens a page in the browser on the Mac. Approve it with the Claude account you want to add.").font(.caption).foregroundStyle(.secondary)
+            Text("Signing in opens a page in the browser on the Mac. Approve it with the Claude account you want to add.").ghostMuted(13).fixedSize(horizontal: false, vertical: true)
             if let words = state.refused["add"] { Notice(text: words) }
         }
     }
@@ -88,44 +94,48 @@ struct AccountRow: View {
 
     var body: some View {
         let waiting = account.stage == .waiting
-        let pins = pinnedWords(account.pinned)
-        let noChrome = pinnedChromeWords(account, in: list.accounts)
         let same = account.sameAs == nil ? "" : sameAccountWords(account, in: list)
         let plan = planRows(account.plan?.limits)
         VStack(alignment: .leading, spacing: 8) {
-            SideBySide {
-                VStack(alignment: .leading, spacing: 3) {
-                    if renaming { renameForm } else { title }
-                    let meta = [account.email, account.planType].compactMap { $0 }.filter { !$0.isEmpty }
-                    if !meta.isEmpty { Text(meta.joined(separator: " · ")).font(.callout).foregroundStyle(.secondary) }
-                    Text(signInLine(account)).font(.callout).foregroundStyle(.secondary)
-                    if !pins.isEmpty { Text(pins).font(.callout).foregroundStyle(.secondary) }
-                    if !noChrome.isEmpty { Text(noChrome).font(.callout).foregroundStyle(.secondary) }
-                }
-                #if os(macOS)
-                Spacer(minLength: 8)
-                #endif
-                actions(waiting: waiting)
+            // The buttons sit beside the details when both fit on a line, and drop under them when they do not, as the page's wrapping row does.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 8) { details; Spacer(minLength: 8); actions(waiting: waiting) }
+                VStack(alignment: .leading, spacing: 8) { details; actions(waiting: waiting) }
             }
             if let out = account.out { Notice(text: outWords(out)) }
             if !same.isEmpty { Notice(text: same) }
-            if waiting { Text(waitingWords(account)).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if waiting { Text(waitingWords(account)).ghostMuted().fixedSize(horizontal: false, vertical: true) }
             if let words = state.refused[account.id] ?? (account.stage == .failed && !account.problem.isEmpty ? account.problem : nil) { Notice(text: words) }
             if !plan.isEmpty, let at = account.plan?.at {
-                PlanBars(rows: plan)
-                Text("As of \(planAsOf(at))").font(.caption).foregroundStyle(.secondary)
+                Text("Plan usage").ghostMuted(13)
+                PlanBars(rows: plan, page: true)
+                Text("As of \(planAsOf(at))").ghostMuted(12)
             }
             if !account.chats.isEmpty { chats }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 14)
+    }
+
+    private var pins: String { pinnedWords(account.pinned) }
+    private var noChrome: String { pinnedChromeWords(account, in: list.accounts) }
+
+    private var details: some View {
+        let meta = [account.email, account.planType].compactMap { $0 }.filter { !$0.isEmpty }
+        return VStack(alignment: .leading, spacing: 3) {
+            if renaming { renameForm } else { title }
+            if !meta.isEmpty { Text(meta.joined(separator: "   ")).font(.geistMono(12)).foregroundStyle(Color.ghost.mutedForeground) }
+            Text(signInLine(account)).ghostMuted()
+            if !pins.isEmpty { Text(pins).ghostMuted() }
+            if !noChrome.isEmpty { Text(noChrome).ghostMuted() }
+        }
     }
 
     private var title: some View {
         HStack(spacing: 6) {
-            Text(account.name).font(.headline)
+            Text(account.name).font(.geist(16, weight: .semibold)).foregroundStyle(Color.ghost.foreground)
             if account.active {
-                Text("Active").font(.caption.weight(.medium)).padding(.horizontal, 6).padding(.vertical, 1)
-                    .background(.quaternary, in: Capsule())
+                Text("Active").font(.geist(12, weight: .medium)).foregroundStyle(Color.ghost.foreground).padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Color.ghost.muted, in: RoundedRectangle(cornerRadius: GhostRadius.sm, style: .continuous))
             }
         }
         .accessibilityElement(children: .combine)
@@ -137,8 +147,9 @@ struct AccountRow: View {
                 .labelsHidden()
                 .onChange(of: draft) { _, text in if text.count > renameLimit { draft = String(text.prefix(renameLimit)) } }
                 .onSubmit(save)
-            Button("Save", action: save).disabled(cleanName(draft).isEmpty).phoneTouch()
-            Button("Cancel") { renaming = false }.phoneTouch()
+                .ghostInput()
+            Button("Save", action: save).disabled(cleanName(draft).isEmpty).buttonStyle(.ghost(.primary, size: .compact))
+            Button("Cancel") { renaming = false }.buttonStyle(.ghost(.outline, size: .compact))
         }
     }
 
@@ -152,21 +163,19 @@ struct AccountRow: View {
         let busy = state.pending.contains(account.id)
         HStack(spacing: 6) {
             if !account.active && !account.signedOut {
-                Button("Switch to this") { run { try await $0.use(account: account.id) } }.disabled(busy).phoneTouch(boxed: true)
+                Button("Switch to this") { run { try await $0.use(account: account.id) } }.disabled(busy).buttonStyle(.ghost(.outline, size: .compact))
             }
             if needsSignIn(account) {
                 Button(waiting ? "Waiting for the Mac" : "Sign in") { run { try await $0.signIn(account: account.id) } }
                     .disabled(busy || waiting || list.waiting)
-                    .phoneTouch(boxed: true)
+                    .buttonStyle(.ghost(.primary, size: .compact))
             }
             if !renaming {
                 Button("Rename") { draft = account.name; renaming = true }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.ghost(.ghost, size: .compact))
                     .accessibilityLabel("Rename \(account.name)")
-                    .phoneTouch()
             }
         }
-        .controlSize(.small)
     }
 
     private func run(_ call: @escaping @Sendable (GhostShellClient) async throws -> AccountList) {
@@ -176,13 +185,13 @@ struct AccountRow: View {
 
     private var chats: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Running chats").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text("Running chats").font(.geist(12, weight: .semibold)).foregroundStyle(Color.ghost.mutedForeground)
             ForEach(account.chats) { chat in
                 HStack {
-                    Button { model.navigator.openSession(chat.id) } label: { Text(chat.title.isEmpty ? "Untitled" : chat.title).lineLimit(1) }
-                        .buttonStyle(.plain).foregroundStyle(.tint).phoneTouch()
+                    Button { model.navigator.openSession(chat.id) } label: { Text(chat.title.isEmpty ? "Untitled" : chat.title).font(.geist(14)).lineLimit(1) }
+                        .buttonStyle(.plain).foregroundStyle(Color.ghost.foreground).frame(minHeight: 44).contentShape(Rectangle())
                     Spacer(minLength: 8)
-                    Text(chatStateWords(chat.state)).font(.caption).foregroundStyle(.secondary)
+                    Text(chatStateWords(chat.state)).ghostMuted(12)
                 }
             }
         }

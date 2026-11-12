@@ -48,13 +48,13 @@ struct FormField<Control: View>: View {
     @ViewBuilder var control: Control
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.subheadline.weight(.medium))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.geist(14, weight: .medium)).foregroundStyle(Color.ghost.foreground)
             control.multilineTextAlignment(.leading)
-            if let hint { Text(hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if let hint { Text(hint).ghostMuted(13).fixedSize(horizontal: false, vertical: true) }
             if let message {
                 Label(message, systemImage: "exclamationmark.circle.fill")
-                    .font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    .font(.geist(13)).foregroundStyle(Color.ghost.destructive).fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -68,6 +68,8 @@ struct SuggestField<Tag: Hashable>: View {
     @Binding var text: String
     let options: [String]
     var prompt: String?
+    var mono = false
+    var invalid = false
     var focus: FocusState<Tag?>.Binding
     let tag: Tag
 
@@ -78,7 +80,7 @@ struct SuggestField<Tag: Hashable>: View {
                 Menu {
                     ForEach(options, id: \.self) { option in Button(option) { text = option } }
                 } label: {
-                    Image(systemName: "chevron.down.circle").phoneIconTouch()
+                    Image(systemName: "chevron.down").font(.footnote).foregroundStyle(Color.ghost.mutedForeground).phoneIconTouch()
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -86,6 +88,7 @@ struct SuggestField<Tag: Hashable>: View {
                 .accessibilityLabel("\(label) choices")
             }
         }
+        .ghostInput(mono: mono, invalid: invalid)
     }
 }
 
@@ -106,9 +109,10 @@ struct ChoicePicker: View {
             HStack(spacing: 8) {
                 Text(choices.first { $0.value == value }?.label ?? value)
                 Spacer(minLength: 8)
-                Image(systemName: "chevron.up.chevron.down").font(.footnote).foregroundStyle(.secondary)
+                Image(systemName: "chevron.up.chevron.down").font(.footnote).foregroundStyle(Color.ghost.mutedForeground)
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .ghostInput()
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .accessibilityLabel(label)
@@ -160,7 +164,7 @@ struct PhoneDeleteSection: View {
     var body: some View {
         #if os(iOS)
         if show {
-            Section { Button("Delete", role: .destructive, action: delete).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }
+            HStack { Spacer(); Button("Delete", action: delete).buttonStyle(.ghost(.destructive)) }
         }
         #endif
     }
@@ -201,16 +205,36 @@ func serverZoneWords(_ zone: TimeZone?) -> String {
     "in the GhostShell server's time zone" + (zone?.abbreviation().map { " (\($0))" } ?? "")
 }
 
+#if os(macOS)
 extension View {
-    /// A set of radio buttons side by side on the Mac, and a segmented control on a phone, where two short options fit on one line.
-    @ViewBuilder func radioGroup() -> some View {
-        #if os(macOS)
-        pickerStyle(.radioGroup).horizontalRadioGroupLayout()
-        #else
-        pickerStyle(.segmented)
-        #endif
+    /// A set of radio buttons side by side.
+    func radioGroup() -> some View { pickerStyle(.radioGroup).horizontalRadioGroupLayout() }
+}
+#else
+/// The page's radio pair on a phone, a ring and a label per option side by side, each a 44pt target. UIKit's segmented control stays 31pt tall.
+struct PhoneRadios<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(label: String, value: Value)]
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ForEach(options, id: \.label) { option in
+                let chosen = selection == option.value
+                Button { selection = option.value } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: chosen ? "largecircle.fill.circle" : "circle").foregroundStyle(chosen ? Color.ghost.primary : Color.ghost.input)
+                        Text(option.label).font(.geist(16)).foregroundStyle(Color.ghost.foreground).lineLimit(1).minimumScaleFactor(0.85)
+                    }
+                    .frame(minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
     }
 }
+#endif
 
 /// A list row's text with its controls beside it, or under it when the pane is too narrow. A phone always puts them under, so no row wraps its buttons.
 struct RowLayout<Info: View, Controls: View>: View {

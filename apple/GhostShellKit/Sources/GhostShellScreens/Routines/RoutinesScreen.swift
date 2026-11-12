@@ -30,6 +30,7 @@ struct RoutinesScreen: View {
             }
         }
         .navigationTitle("Routines")
+        .ghostScreen()
         .toolbar {
             if store.features.routineEdits {
                 ToolbarItem {
@@ -58,24 +59,20 @@ struct RoutinesScreen: View {
     }
 
     private var empty: some View {
-        ContentUnavailableView {
-            Label("No routines yet.", systemImage: "calendar.badge.clock")
-        } description: {
-            Text(store.features.routineEdits
-                 ? "A routine runs a prompt on a schedule, such as weekdays at 07:30. GhostShell starts a session for each run."
-                 : "Routines are listed here once they are in routines.json in the GhostShell folder.")
-        } actions: {
+        FlatEmpty(title: "No routines yet.", text: store.features.routineEdits
+                  ? "A routine runs a prompt on a schedule, such as weekdays at 07:30. GhostShell starts a session for each run."
+                  : "Routines are listed here once they are in routines.json in the GhostShell folder.") {
             if store.features.routineEdits {
-                Button("New routine") { model.navigator.show { RoutineFormScreen(id: nil) } }.buttonStyle(.borderedProminent).largeOnPhone()
+                Button("New routine") { model.navigator.show { RoutineFormScreen(id: nil) } }.buttonStyle(.ghost(.outline, size: .compact, radius: GhostRadius.base))
             }
         }
     }
 
     private func list(_ routines: [RoutineSummary]) -> some View {
         List(routines) { r in
-            RoutineRow(routine: r) { deleting = r }
+            RoutineRow(routine: r) { deleting = r }.ghostRow()
         }
-        .listStyle(.inset)
+        .ghostList()
     }
 }
 
@@ -84,12 +81,16 @@ struct ProblemBanner: View {
     let text: String
 
     var body: some View {
-        Label(text, systemImage: "exclamationmark.triangle.fill")
-            .font(.callout)
+        let shape = RoundedRectangle(cornerRadius: GhostRadius.base, style: .continuous)
+        Text(text)
+            .font(.geist(14))
+            .foregroundStyle(Color.ghost.warningForeground)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
-            .background(.orange.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
             .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.ghost.warningMuted, in: shape)
+            .overlay { shape.strokeBorder(Color.ghost.warning, lineWidth: 1) }
+            .padding(.horizontal, 16)
             .padding(.vertical, 8)
     }
 }
@@ -107,7 +108,6 @@ private struct RoutineRow: View {
         let r = routine
         // The controls drop under the text when the pane is too narrow for both side by side.
         RowLayout { info } controls: { controls }
-        .padding(.vertical, 6)
         .contextMenu { RoutineMenu(routine: r, withRun: true, askDelete: askDelete) }
         .accessibilityElement(children: .contain)
     }
@@ -115,7 +115,7 @@ private struct RoutineRow: View {
     private var info: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text(routine.title).font(.headline).lineLimit(1)
+                Text(routine.title).font(.geist(16, weight: .semibold)).foregroundStyle(Color.ghost.foreground).lineLimit(1)
                 if routine.running { RunningMark() }
             }
             schedule
@@ -125,41 +125,39 @@ private struct RoutineRow: View {
     }
 
     private var schedule: some View {
-        HStack(spacing: 6) {
-            if let words = scheduleWords(routine.cron, jitterSeconds: routine.jitterSeconds) { Text(words) }
-            Text(routine.cron).font(.callout.monospaced()).foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            if let words = scheduleWords(routine.cron, jitterSeconds: routine.jitterSeconds) { Text(words).font(.geist(14)).foregroundStyle(Color.ghost.foreground) }
+            Text(routine.cron).font(.geistMono(12)).foregroundStyle(Color.ghost.mutedForeground)
         }
         .lineLimit(2)
     }
 
     private var times: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 14) {
             Text(routine.enabled ? (routine.next.map { "Next \(fireTime($0))" } ?? "No upcoming run") : "Off")
-            Text("·").foregroundStyle(.tertiary)
             if let id = routine.lastSessionId, !id.isEmpty, routine.lastRunAt != nil {
-                Button("Last run \(fireTime(routine.lastRunAt))") { model.navigator.openSession(id) }
-                    .buttonStyle(.borderless).foregroundStyle(Color.accentColor).phoneTouch()
+                Button { model.navigator.openSession(id) } label: { Text("Last run \(fireTime(routine.lastRunAt))").underline() }
+                    .buttonStyle(.plain).frame(minHeight: 44, alignment: .leading).contentShape(Rectangle())
             } else {
                 Text(routine.lastRunAt == nil ? "Never run" : "Last run \(fireTime(routine.lastRunAt))")
             }
         }
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .ghostMuted(13)
     }
 
     @ViewBuilder private var alerts: some View {
-        if let problem = routine.problem, !problem.isEmpty { alert(problem, .red) }
+        if let problem = routine.problem, !problem.isEmpty { alert(problem, Color.ghost.destructive) }
         if let retry = routine.retry, routine.enabled {
-            alert("\(retryWords(retry)). The last try said: \(routine.lastError ?? "no reason given")", .orange)
+            alert("\(retryWords(retry)). The last try said: \(routine.lastError ?? "no reason given")", Color.ghost.warningForeground)
         } else if let error = routine.lastError, !error.isEmpty {
-            alert("The last run did not start: \(error)", .orange)
+            alert("The last run did not start: \(error)", Color.ghost.warningForeground)
         }
-        if let skipped = routine.skipped { alert(skippedWords(skipped), .secondary) }
+        if let skipped = routine.skipped { alert(skippedWords(skipped), Color.ghost.mutedForeground, icon: "forward.end") }
     }
 
-    private func alert(_ text: String, _ tint: Color) -> some View {
-        Label(text, systemImage: tint == .secondary ? "forward.end" : "exclamationmark.triangle.fill")
-            .font(.callout).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
+    private func alert(_ text: String, _ tint: Color, icon: String = "exclamationmark.triangle.fill") -> some View {
+        Label(text, systemImage: icon)
+            .font(.geist(14)).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
     }
 
     private var controls: some View {
@@ -167,15 +165,15 @@ private struct RoutineRow: View {
             Toggle("Run \(routine.title) on its schedule", isOn: Binding(get: { routine.enabled }, set: { on in
                 Task { await store.setEnabled(routine, on) }
             }))
-            .toggleStyle(.switch).labelsHidden().compactOnMac()
+            .toggleStyle(.switch).labelsHidden().compactOnMac().tint(Color.ghost.primary)
             Button("Run now") { busy = true; Task { await store.run(routine); busy = false } }
                 .disabled(routine.running || busy)
-                .phoneTouch()
+                .buttonStyle(.ghost(.outline, size: .compact))
             if editable {
                 Menu {
                     RoutineMenu(routine: routine, withRun: false, askDelete: askDelete)
                 } label: {
-                    Label("Actions for \(routine.title)", systemImage: "ellipsis.circle").labelStyle(.iconOnly).phoneIconTouch()
+                    Label("Actions for \(routine.title)", systemImage: "ellipsis").labelStyle(.iconOnly).foregroundStyle(Color.ghost.foreground).phoneIconTouch()
                 }
                 .menuStyle(.borderlessButton).fixedSize()
             }

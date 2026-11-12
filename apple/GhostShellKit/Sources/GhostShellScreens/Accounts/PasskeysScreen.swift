@@ -10,31 +10,35 @@ public struct PasskeysScreen: View {
     public init() {}
 
     public var body: some View {
-        Form {
-            Section { Text(passkeyLead).font(.callout).foregroundStyle(.secondary) }
+        FlatForm(spacing: 16) {
+            Text(passkeyLead).ghostMuted(16).fixedSize(horizontal: false, vertical: true)
             if let list {
-                Section {
+                VStack(alignment: .leading, spacing: 0) {
+                    Rule()
                     if list.passkeys.isEmpty {
-                        Text("No passkeys added yet.").foregroundStyle(.secondary)
+                        Text("No passkeys added yet.").ghostMuted(16).padding(.vertical, 14)
+                        Rule()
                     } else {
-                        ForEach(list.passkeys) { passkey in row(passkey) }
+                        ForEach(list.passkeys) { passkey in
+                            row(passkey)
+                            Rule()
+                        }
                     }
                 }
-                Section {
-                    // A passkey is made by the browser, which this app is not, so the page does the adding.
-                    if let url = pageURL {
-                        Text("Add a passkey from the page in a browser.").font(.callout)
-                        Link(url.absoluteString, destination: url).font(.callout)
+                // A passkey is made by the browser, which this app is not, so the page does the adding.
+                if let url = pageURL {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Add a passkey from the page in a browser.").font(.geist(14)).foregroundStyle(Color.ghost.foreground)
+                        Link(url.absoluteString, destination: url).font(.geist(14)).frame(minHeight: 44, alignment: .leading)
                     }
-                    if !list.available { Text(passkeyUnavailable).font(.caption).foregroundStyle(.secondary) }
                 }
-                if !list.passkeys.isEmpty { Section { Text(passkeyFootnote).font(.caption).foregroundStyle(.secondary) } }
+                if !list.available { Text(passkeyUnavailable).ghostMuted(13).fixedSize(horizontal: false, vertical: true) }
+                if !list.passkeys.isEmpty { Text(passkeyFootnote).ghostMuted(13).fixedSize(horizontal: false, vertical: true) }
             } else if problem.isEmpty {
-                Section { Text("Loading passkeys").foregroundStyle(.secondary) }
+                Text("Loading passkeys").ghostMuted()
             }
-            if !problem.isEmpty { Section { Notice(text: problem) } }
+            if !problem.isEmpty { Notice(text: problem) }
         }
-        .formStyle(.grouped)
         .navigationTitle("Passkeys")
         .task { await load() }
     }
@@ -45,29 +49,29 @@ public struct PasskeysScreen: View {
     }
 
     private func row(_ passkey: Passkey) -> some View {
-        SideBySide {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(passkeyDevice(passkey)).font(.headline)
-                Text([passkey.rpId, "Added \(passkeyDate(passkey.created))", lastUsedWords(passkey.used)].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            #if os(macOS)
-            Spacer(minLength: 8)
-            #endif
-            if asking == passkey.id {
-                SideBySide(alignment: .center, spacing: 6) {
-                    Text("Remove this passkey?").font(.callout)
-                    Button("Keep") { asking = nil }.phoneTouch()
-                    Button("Remove", role: .destructive) { Task { await remove(passkey.id) } }.phoneTouch()
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(passkeyDevice(passkey)).font(.geist(16, weight: .semibold)).foregroundStyle(Color.ghost.foreground)
+                    Text([passkey.rpId, "Added \(passkeyDate(passkey.created))", lastUsedWords(passkey.used)].filter { !$0.isEmpty }.joined(separator: "   "))
+                        .font(.geistMono(12)).foregroundStyle(Color.ghost.mutedForeground)
                 }
-                .controlSize(.small)
-            } else {
-                Button("Remove") { asking = passkey.id }
-                    .controlSize(.small)
-                    .phoneTouch()
-                    .accessibilityLabel("Remove the passkey for \(passkey.device.isEmpty ? "an unknown browser" : passkey.device), added \(passkeyDate(passkey.created))")
+                Spacer(minLength: 8)
+                if asking != passkey.id {
+                    Button("Remove") { asking = passkey.id }
+                        .buttonStyle(.ghost(.outline, size: .compact))
+                        .accessibilityLabel("Remove the passkey for \(passkey.device.isEmpty ? "an unknown browser" : passkey.device), added \(passkeyDate(passkey.created))")
+                }
+            }
+            if asking == passkey.id {
+                HStack(spacing: 8) {
+                    Text("Remove this passkey?").font(.geist(14)).foregroundStyle(Color.ghost.foreground)
+                    Button("Keep") { asking = nil }.buttonStyle(.ghost(.outline, size: .compact))
+                    Button("Remove") { Task { await remove(passkey.id) } }.buttonStyle(.ghost(.destructive, size: .compact))
+                }
             }
         }
+        .padding(.vertical, 14)
     }
 
     private func load() async {

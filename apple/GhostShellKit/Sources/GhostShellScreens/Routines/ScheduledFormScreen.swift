@@ -19,10 +19,7 @@ struct ScheduledFormScreen: View {
             }
         }
         .navigationTitle(id == nil ? "Schedule a session" : "Edit scheduled session")
-        #if os(iOS)
-        // A large title sits over the first card of a form that is already scrolling, so the form uses the inline title.
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .ghostScreen()
         .task(id: id) { await open() }
     }
 
@@ -67,56 +64,41 @@ private struct ScheduledFields: View {
     private var store: RoutinesStore { model.routines }
 
     var body: some View {
-        Form {
+        FlatForm {
             if let notice {
-                Section { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                Label(notice, systemImage: "exclamationmark.triangle.fill").font(.geist(14)).foregroundStyle(Color.ghost.destructive)
             }
-            Section {
-                FormField(label: "Title", hint: "The session is called this.", message: problems["title"]) {
-                    TextField("Title", text: $draft.title).labelsHidden().phoneField($focus, .title)
-                }
-                FormField(label: "Date and time", hint: "In the GhostShell server's time zone. If GhostShell is off then, it starts as soon as it is back, unless that is more than 12 hours late.",
-                          message: problems["at"]) {
-                    DatePicker("Date and time", selection: $draft.at, displayedComponents: [.date, .hourAndMinute]).labelsHidden().phoneField().environment(\.timeZone, draft.zone).focused($focus, equals: .at)
-                }
+            FormField(label: "Title", hint: "The session is called this.", message: problems["title"]) {
+                TextField("Title", text: $draft.title).labelsHidden().ghostInput(invalid: problems["title"] != nil).phoneField($focus, .title)
             }
-            Section("Where it runs") {
-                FormField(label: "Folder", hint: "The full path of the folder the session starts in.", message: problems["cwd"]) {
-                    SuggestField(label: "Folder", text: $draft.cwd, options: folders, focus: $focus, tag: .cwd)
-                }
-                FormField(label: "Model", message: problems["model"]) {
-                    ChoicePicker(label: "Model", value: $draft.model, choices: modelChoices(current: was?.model)).focused($focus, equals: .model)
-                }
-                FormField(label: "Effort", message: problems["effort"]) {
-                    ChoicePicker(label: "Effort", value: $draft.effort, choices: effortChoices(current: was?.effort)).focused($focus, equals: .effort)
-                }
-                FormField(label: "Permission mode", hint: defaultFollowsNote, message: problems["mode"]) {
-                    ChoicePicker(label: "Permission mode", value: $draft.mode, choices: modeChoices(current: was?.mode)).focused($focus, equals: .mode)
-                }
-                FormField(label: "Group", hint: "The session goes into this group when it starts. With none it starts on Home.", message: problems["group"]) {
-                    ChoicePicker(label: "Group", value: $draft.group, choices: groupChoices(model.index?.groups ?? [], current: was?.group)).focused($focus, equals: .group)
-                }
+            FormField(label: "Date and time", hint: "In the GhostShell server's time zone. If GhostShell is off then, it starts as soon as it is back, unless that is more than 12 hours late.",
+                      message: problems["at"]) {
+                DatePicker("Date and time", selection: $draft.at, displayedComponents: [.date, .hourAndMinute]).labelsHidden().phoneField().tint(Color.ghost.primary)
+                    .environment(\.timeZone, draft.zone).focused($focus, equals: .at)
             }
-            Section("Prompt") {
-                VStack(alignment: .leading, spacing: 4) {
-                    TextEditor(text: $draft.prompt)
-                        .font(.body.monospaced())
-                        .frame(minHeight: 14 * 17)
-                        .scrollContentBackground(.hidden)
-                        .padding(6)
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(problems["prompt"] == nil ? Color.secondary.opacity(0.25) : .red))
-                        .focused($focus, equals: .prompt)
-                        .accessibilityLabel("Prompt")
-                    if let text = problems["prompt"] {
-                        Label(text, systemImage: "exclamationmark.circle.fill").font(.caption).foregroundStyle(.red)
-                    }
-                }
-                Text("GhostShell sends it as the session's first message, with a note that nobody is there to answer.").font(.caption).foregroundStyle(.secondary)
+            FormField(label: "Folder", hint: "The full path of the folder the session starts in.", message: problems["cwd"]) {
+                SuggestField(label: "Folder", text: $draft.cwd, options: folders, mono: true, invalid: problems["cwd"] != nil, focus: $focus, tag: .cwd)
+            }
+            FormField(label: "Model", message: problems["model"]) {
+                ChoicePicker(label: "Model", value: $draft.model, choices: modelChoices(current: was?.model)).focused($focus, equals: .model)
+            }
+            FormField(label: "Effort", message: problems["effort"]) {
+                ChoicePicker(label: "Effort", value: $draft.effort, choices: effortChoices(current: was?.effort)).focused($focus, equals: .effort)
+            }
+            FormField(label: "Permission mode", hint: defaultFollowsNote, message: problems["mode"]) {
+                ChoicePicker(label: "Permission mode", value: $draft.mode, choices: modeChoices(current: was?.mode)).focused($focus, equals: .mode)
+            }
+            FormField(label: "Group", hint: "The session goes into this group when it starts. With none it starts on Home.", message: problems["group"]) {
+                ChoicePicker(label: "Group", value: $draft.group, choices: groupChoices(model.index?.groups ?? [], current: was?.group)).focused($focus, equals: .group)
+            }
+            FormField(label: "Prompt", hint: "GhostShell sends it as the session's first message, with a note that nobody is there to answer.", message: problems["prompt"]) {
+                TextEditor(text: $draft.prompt)
+                    .ghostEditor(invalid: problems["prompt"] != nil)
+                    .focused($focus, equals: .prompt)
+                    .accessibilityLabel("Prompt")
             }
             PhoneDeleteSection(show: was != nil) { deleting = true }
         }
-        .formStyle(.grouped)
         .disabled(saving)
         .toolbar {
             FormToolbar(canDelete: was != nil, saving: saving, delete: { deleting = true }, cancel: leave, save: { Task { await save() } })

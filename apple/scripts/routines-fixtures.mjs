@@ -4,7 +4,8 @@
 import http from 'node:http';
 
 // Returns the server without listening, so the caller picks the port. `writes` holds each write, and GET /__writes returns them to a test.
-export function routinesStub({ accept = false } = {}) {
+// `empty` serves no routines and no scheduled sessions, for the empty states.
+export function routinesStub({ accept = false, empty = false } = {}) {
   const now = Date.now();
   const day = 86_400_000;
   const iso = ms => {
@@ -44,6 +45,7 @@ export function routinesStub({ accept = false } = {}) {
     scheduled('keys', 'Rotate the keys', { at: iso(at(-1, 8)), status: 'skipped', lastError: 'The folder /Users/me/gone is not there.' }),
     scheduled('done', 'Archive the old logs', { at: iso(at(-2, 18)), status: 'started', sessionId: 'u-1', startedAt: iso(at(-2, 18)) }),
   ] };
+  if (empty) { routineList.routines = []; scheduledList.scheduled = []; }
   const writes = [];
   const send = (res, status, body) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
   // Accept mode: the same lists the GET routes serve, changed the way the real server changes them.
