@@ -69,16 +69,27 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The list only draws the rows on screen, and a small phone shows few of them.
         for _ in 0..<4 where !line.waitForExistence(timeout: 3) { app.swipeUp() }
         XCTAssertTrue(line.waitForExistence(timeout: 10), "No row \(title)\n\(app.debugDescription)")
-        clearOfTheFoot(app, line)
+        clearOfTheBars(app, line)
         line.tap()
         XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20), "The chat \(title) did not show \(text)\n\(app.debugDescription)")
     }
 
-    /// From iOS 26 the sidebar's search field floats at the foot of the list, and the test runner still counts a row under it as hittable.
-    private func clearOfTheFoot(_ app: XCUIApplication, _ element: XCUIElement) {
+    /// From iOS 26 the bars float over the content: the nav bar and the sidebar's header at the top, the search field or the composer at the foot.
+    /// The test runner still counts an element under one as hittable and the tap is lost, so the element is dragged into the open area between them.
+    private func clearOfTheBars(_ app: XCUIApplication, _ element: XCUIElement) {
         let height = app.windows.firstMatch.frame.height
-        for _ in 0..<3 where element.frame.maxY > height * 0.8 {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)))
+        let bar = app.navigationBars.firstMatch
+        // The sidebar's header sits under the nav bar and is about 50pt tall.
+        let top = (bar.exists ? bar.frame.maxY : 0) + 56
+        let composer = message(app)
+        let bottom = min(height * 0.8, composer.exists ? composer.frame.minY - 8 : height)
+        // The drag runs down the margin, since one on a code block scrolls only the code sideways.
+        func drag(_ from: CGFloat, _ to: CGFloat) {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: from)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: to)))
+        }
+        for _ in 0..<3 {
+            let frame = element.frame
+            if frame.minY < top { drag(0.35, 0.6) } else if frame.maxY > bottom { drag(0.6, 0.35) } else { break }
         }
     }
 
@@ -542,6 +553,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
     /// A link is a run inside a line of text. iOS 27 pads the line's frame by 16pt a side, so the end of the line is no longer on the link and the tap goes to the link itself.
     private func tapLink(_ app: XCUIApplication, line: String) {
         let text = live(app, line)
+        clearOfTheBars(app, text)
         let link = text.links.firstMatch
         (link.exists ? link : text).coordinate(withNormalizedOffset: link.exists ? CGVector(dx: 0.5, dy: 0.5) : CGVector(dx: 0.93, dy: 0.5)).tap()
     }
@@ -684,12 +696,18 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // A long press on a word in the widget selects it and offers the system's callout with Copy. The press goes on the text, because a fixed point lands beside the heading on the wider phones.
         // The composer takes the foot of the screen, and an earlier test's send can push the widget above the bar, so bring the text into the open area first.
         let words = app.webViews.staticTexts["Pick one and I will carry on from there."].firstMatch
-        for _ in 0..<6 {
-            let y = words.frame.midY
-            if y < app.frame.height * 0.2 { app.swipeDown() } else if y > app.frame.height * 0.7 { app.swipeUp() } else { break }
+        XCTAssertTrue(words.waitForExistence(timeout: 20), "The widget draws its text\n\(app.debugDescription)")
+        let copy = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Copy")).firstMatch
+        // On iOS 27 in CI the first press sometimes selects nothing, so a press that brings no menu is made again.
+        for _ in 0..<3 {
+            for _ in 0..<6 {
+                let y = words.frame.midY
+                if y < app.frame.height * 0.2 { app.swipeDown() } else if y > app.frame.height * 0.7 { app.swipeUp() } else { break }
+            }
+            words.press(forDuration: 1.3)
+            if copy.waitForExistence(timeout: 4) { break }
         }
-        words.press(forDuration: 1.3)
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 5), "A long press in a widget offers Copy\n\(app.debugDescription)")
+        XCTAssertTrue(copy.exists, "A long press in a widget offers Copy\n\(app.debugDescription)")
         sleep(1)
         shot("widgets-2-long-press")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97)).tap()
@@ -1059,7 +1077,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         for _ in 0..<3 where line.frame.midY > app.frame.height - 110 { app.swipeUp() }
         // The sidebar's header floats over the top rows, and the test runner still counts a row under it as hittable.
         for _ in 0..<3 where line.frame.minY < app.windows.firstMatch.frame.height * 0.3 { app.swipeDown() }
-        clearOfTheFoot(app, line)
+        clearOfTheBars(app, line)
         line.press(forDuration: 1.0)
         for item in items {
             let entry = app.buttons[item].firstMatch
