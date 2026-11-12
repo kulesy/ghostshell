@@ -92,6 +92,7 @@ const rightClick = (page, selector) => page.evaluate(`(el => { const r = el.getB
 const itemsOf = (page, menu) => page.evaluate(`[...document.querySelectorAll('${menu} [role^=menuitem]')].map(el => el.querySelector('.menu-text').textContent + (el.getAttribute('aria-checked') === 'true' ? ' (checked)' : '') + (el.hasAttribute('data-disabled') ? ' (disabled)' : ''))`);
 const labels = (page, menu = MENU) => page.evaluate(`[...document.querySelectorAll('${menu} [role^=menuitem] .menu-text')].map(el => el.textContent)`);
 const choose = async (page, menu, label) => {
+  await page.until(`[...document.querySelectorAll('${menu} [role^=menuitem] .menu-text')].some(el => el.textContent === ${JSON.stringify(label)})`, 15_000);
   await page.evaluate(`[...document.querySelectorAll('${menu} [role^=menuitem]')].find(el => el.querySelector('.menu-text').textContent === ${JSON.stringify(label)}).setAttribute('data-picked', '')`);
   await page.click(`${menu} [data-picked]`);
 };

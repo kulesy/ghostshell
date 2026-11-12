@@ -193,7 +193,11 @@ async function appPage(t, origin, { hash = '', phone = false } = {}) {
 const text = (page, selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
 const titles = page => page.evaluate(`[...document.querySelectorAll('.routine-title')].map(el => el.textContent)`);
 const row = id => `[data-routine="${id}"]`;
-const focused = page => page.evaluate(`document.activeElement.id || document.activeElement.className || document.activeElement.tagName`);
+// The focus moves in an effect after the text it goes with, so a miss waits for it and then reports where it is.
+const focused = async page => {
+  await page.until(`document.activeElement !== document.body`, 2000).catch(() => {});
+  return page.evaluate(`document.activeElement.id || document.activeElement.className || document.activeElement.tagName`);
+};
 const toast = page => page.until(`!!document.querySelector('[data-sonner-toast] [data-title]')`).then(() => text(page, '[data-sonner-toast] [data-title]'));
 const menuOf = page => page.evaluate(`[...document.querySelectorAll('${MENU} > [role=menuitem], ${MENU} > [role=separator]')].map(el => (el.getAttribute('role') === 'separator' ? '${SEPARATOR}' : el.querySelector('.menu-text').textContent))`);
 
