@@ -9,6 +9,7 @@ import { supportsProjectOrder } from './group-rules.js';
 import { useLocal, useModifier, useWide } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { contextOpener, layerId, Menu, opener as menuOpener } from './menu.js';
+import { unrunRoutines } from './routine-rules.js';
 import { countOf, EVERY_VIEW, HOME_VIEW, holder, lampOf, NO_VIEW, othersWaiting, viewIn } from './scopes.js';
 import { keyHint } from './shortcuts.js';
 import { nextStop } from './tree.js';
@@ -135,7 +136,7 @@ const plus = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hid
 // refused, or an empty string, and `away` is whether the focus left the box. `tree` is the list's handle on what a project's row shares
 // with it: the menu and the rename form. A panel that closes with a form or the menu open ends it. `carry` is the group whose header is
 // being dragged, if one is: its rows are targets then, except the view it is in. `lift` is the project being dragged, if one is.
-export function ProjectsPanel({ ix, projects, tree, carry, lift, creating, onNew, onCancel, onCreate }) {
+export function ProjectsPanel({ ix, projects, routines, tree, carry, lift, creating, onNew, onCancel, onCreate }) {
   const { view, wide, open, box, opener, pick, close } = projects;
   const { renamingProject: renaming } = tree;
   const held = !!tree.shown?.rail;
@@ -191,6 +192,7 @@ export function ProjectsPanel({ ix, projects, tree, carry, lift, creating, onNew
     menu: held && tree.shown.key === p.id ? tree.shown : null,
     open: (anchor, point, entry) => tree.pop(p.id, tree.projectMenu(p), anchor, { point, entry, rail: true }),
   });
+  const unrun = unrunRoutines(ix, routines);
   const panel = html`<nav class="rail" id=${PANEL} ref=${box} aria-labelledby="projectsTitle" onKeyDown=${key}>
     <div class="rail-head">
       ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" ref=${toggle} aria-label="Projects" data-tip="Projects" data-tip-key=${keyHint(mod, 'B')} aria-expanded="true" onClick=${close}>${sidebar()}</button>`}
@@ -201,7 +203,7 @@ export function ProjectsPanel({ ix, projects, tree, carry, lift, creating, onNew
       <li class="scope-rule" aria-hidden="true"></li>
       ${(ix?.projects || []).map(p => (renaming === p.id
         ? html`<li key=${p.id}>${tree.renameForm(p)}</li>`
-        : html`<${Scope} key=${p.id} id=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => choosing(e, p.id)} actions=${actions(p)} grab=${grab} lifted=${lift?.id === p.id} line=${place?.beside === p.id ? place.side : null} ...${drops(p.id)} />`))}
+        : html`<${Scope} key=${p.id} id=${p.id} name=${p.name} count=${countOf(ix, p.id, unrun)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => choosing(e, p.id)} actions=${actions(p)} grab=${grab} lifted=${lift?.id === p.id} line=${place?.beside === p.id ? place.side : null} ...${drops(p.id)} />`))}
       <li>${creating
         ? html`<${NameForm} label="New project" placeholder="New project" onSubmit=${create} onCancel=${onCancel} />`
         : html`<button class="scope new-project" type="button" disabled=${!ix} onClick=${begin}>${plus()}<span class="scope-name">New project</span></button>`}</li>

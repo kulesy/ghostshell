@@ -55,14 +55,16 @@ export const lampOf = (ix, view) => lampFrom([...rowsIn(ix, view).map(r => r.sta
 // The same for one group: its sessions and its own chat.
 export const groupLamp = g => lampFrom([...withKids(g.sessions).map(r => r.state), ...(g.session ? [g.session.state] : [])]);
 
-// A routine counts once, as its section counts it, however many runs it has.
-export const countOf = (ix, project) => groupsIn(ix, project).reduce((n, g) => n + withKids(g.sessions).length, 0) + routinesIn(ix, project).length;
+// A routine counts once, as its section counts it, however many runs it has. `unrun` is the routines with no run in the list, which the
+// section shows too.
+export const countOf = (ix, project, unrun = []) => groupsIn(ix, project).reduce((n, g) => n + withKids(g.sessions).length, 0) + routinesIn(ix, project).length
+  + unrun.filter(r => routineView(ix, r.id) === project).length;
 
 // Every view, Home first and then each project in the order the list gives them. Home has no count, because it holds everything
 // outside the projects.
-export const viewsOf = ix => [
+export const viewsOf = (ix, unrun = []) => [
   { id: HOME_VIEW, name: 'Home', lamp: lampOf(ix, HOME_VIEW) },
-  ...ix.projects.map(p => ({ id: p.id, name: p.name, lamp: lampOf(ix, p.id), count: countOf(ix, p.id) })),
+  ...ix.projects.map(p => ({ id: p.id, name: p.name, lamp: lampOf(ix, p.id), count: countOf(ix, p.id, unrun) })),
 ];
 
 // The views whose name has every one of the lower case words. No words keep every view.

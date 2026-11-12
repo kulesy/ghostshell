@@ -1363,7 +1363,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   };
 
   return html`<${Fragment}>
-  <${ProjectsPanel} ix=${ix} projects=${projects} tree=${tree} carry=${groupDrag} lift=${lift} creating=${form?.kind === 'project'} onNew=${() => setForm({ kind: 'project' })}
+  <${ProjectsPanel} ix=${ix} projects=${projects} routines=${routines} tree=${tree} carry=${groupDrag} lift=${lift} creating=${form?.kind === 'project'} onNew=${() => setForm({ kind: 'project' })}
     onCancel=${away => closeFormAway(away, '.new-project')} onCreate=${addProject} />
   <nav class="list" aria-label="Sessions" ref=${nav} onKeyDown=${escapeList}>
     <header class="list-head">
