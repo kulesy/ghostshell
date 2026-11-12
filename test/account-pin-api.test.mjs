@@ -331,24 +331,24 @@ test('the card for moving a group into a project names the account its sessions 
 test('a move inside the caller\'s tree that would change the session\'s account asks the owner and names the account, and one that leaves it the same goes with no card', async () => {
   const c = await open({ sessions: [{ id: 'top', title: 'Top', ago: 5 }, { id: 'kid', title: 'Kid', ago: 6, parent: 'top', group: 'cg-b' }, { id: 'solo', title: 'Solo', ago: 7 }] });
   assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
-  assert.equal(await moveAsk(c, 'top', { session_id: 'top', group: 'Work' }), 'move "Top" [top] to "Work", which runs it on the active account, now Main, and the 1 session under it can change account too', 'the session under it can follow');
+  assert.equal(await moveAsk(c, 'top', { session_id: 'top', group: 'Work' }), 'move "Top" [top] to "Work" [cg-a], which runs it on the active account, now Main, and the 1 session under it can change account too', 'the session under it can follow');
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'allowed', 'main to main with nothing under it');
-  assert.equal(await moveAsk(c, 'top', { session_id: 'kid', group: 'Work' }), 'move "Kid" [kid] to "Work", which runs it on the active account, now Main', 'out of a pinned group');
+  assert.equal(await moveAsk(c, 'top', { session_id: 'kid', group: 'Work' }), 'move "Kid" [kid] to "Work" [cg-a], which runs it on the active account, now Main', 'out of a pinned group');
   assert.equal(await moveAsk(c, 'kid', { session_id: 'kid', group: 'Loose' }), 'allowed', 'second to second');
-  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Loose' }), 'move "Solo" [solo] to "Loose", which runs it on Second', 'into a pinned group');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Loose' }), 'move "Solo" [solo] to "Loose" [cg-b], which runs it on Second', 'into a pinned group');
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Nowhere' }), 'move "Solo" [solo] to "Nowhere"', 'a group that is not there still asks, with no account to name');
 });
 
 test('a move that drops a pin on the active account\'s own id asks the owner, since a later switch would part them', async () => {
   const c = await open({ sessions: [{ id: 'held', title: 'Held', ago: 5, group: 'cg-b' }] });
   assert.equal((await pin(c, 'group', 'cg-b', 'main')).status, 200);
-  assert.equal(await moveAsk(c, 'held', { session_id: 'held', group: 'Work' }), 'move "Held" [held] to "Work", which runs it on the active account, now Main');
+  assert.equal(await moveAsk(c, 'held', { session_id: 'held', group: 'Work' }), 'move "Held" [held] to "Work" [cg-a], which runs it on the active account, now Main');
 });
 
 test('a move of a nested session asks the owner when it relinks a session off that session\'s pin', async () => {
   const c = await open({ sessions: [{ id: 'head', title: 'Head', ago: 5 }, { id: 'mid', title: 'Mid', ago: 6, parent: 'head' }, { id: 'low', title: 'Low', ago: 7, parent: 'mid' }] });
   assert.equal((await pin(c, 'session', 'mid', 'second')).status, 200);
-  assert.equal(await moveAsk(c, 'head', { session_id: 'mid', group: 'Work' }), 'move "Mid" [mid] to "Work", which runs it on Second, and the 1 session under it can change account too');
+  assert.equal(await moveAsk(c, 'head', { session_id: 'mid', group: 'Work' }), 'move "Mid" [mid] to "Work" [cg-a], which runs it on Second, and the 1 session under it can change account too');
 });
 
 test('a row says the account its process runs on when its parent has dropped out of the list for age', async () => {
@@ -611,8 +611,8 @@ test('a move that gains or drops an overflow asks the owner and names it', async
   const c = await open({ sessions: [{ id: 'solo', title: 'Solo', ago: 7, group: 'cg-b' }, { id: 'plain', title: 'Plain', ago: 8, group: 'cg-a' }] });
   await pinTo(c, 'group', 'cg-b', 'second', 'main');
   await pin(c, 'group', 'cg-a', 'second');
-  assert.equal(await moveAsk(c, 'plain', { session_id: 'plain', group: 'Loose' }), 'move "Plain" [plain] to "Loose", which runs it on Second, with Main taking over while that account is out of usage', 'a move that gains one');
-  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'move "Solo" [solo] to "Work", which runs it on Second, with no overflow account', 'a move that drops one');
+  assert.equal(await moveAsk(c, 'plain', { session_id: 'plain', group: 'Loose' }), 'move "Plain" [plain] to "Loose" [cg-b], which runs it on Second, with Main taking over while that account is out of usage', 'a move that gains one');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'move "Solo" [solo] to "Work" [cg-a], which runs it on Second, with no overflow account', 'a move that drops one');
   await pin(c, 'session', 'solo', 'second');
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'allowed', 'its own pin decides, wherever it goes');
 });
