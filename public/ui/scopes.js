@@ -55,7 +55,8 @@ export const lampOf = (ix, view) => lampFrom([...rowsIn(ix, view).map(r => r.sta
 // The same for one group: its sessions and its own chat.
 export const groupLamp = g => lampFrom([...withKids(g.sessions).map(r => r.state), ...(g.session ? [g.session.state] : [])]);
 
-export const countOf = (ix, project) => groupsIn(ix, project).reduce((n, g) => n + withKids(g.sessions).length, 0) + withKids(routinesIn(ix, project).flatMap(g => [g.latest, ...g.earlier])).length;
+// A routine counts once, as its section counts it, however many runs it has.
+export const countOf = (ix, project) => groupsIn(ix, project).reduce((n, g) => n + withKids(g.sessions).length, 0) + routinesIn(ix, project).length;
 
 // Every view, Home first and then each project in the order the list gives them. Home has no count, because it holds everything
 // outside the projects.

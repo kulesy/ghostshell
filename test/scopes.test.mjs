@@ -341,11 +341,11 @@ test('a routine in a project lights and counts that project and not Home, and mo
   const ix = routed({ 'daily-digest': APP }, { routines: [digest('waiting'), recap] });
   assert.equal(lampOf(ix, APP), 'waiting');
   assert.equal(lampOf(ix, HOME_VIEW), null);
-  assert.equal(countOf(ix, APP), 2, 'the latest run and the earlier one');
+  assert.equal(countOf(ix, APP), 1, 'once for the routine, not once per run');
   assert.equal(countOf(ix, HOME_VIEW), 1);
   const home = { ...ix, routineProjects: {} };
   assert.equal(lampOf(home, HOME_VIEW), 'waiting');
   assert.equal(countOf(home, APP), 0);
-  assert.equal(viewsOf(ix).find(v => v.id === APP).count, 2);
+  assert.equal(viewsOf(ix).find(v => v.id === APP).count, 1);
   assert.equal(othersWaiting(ix, HOME_VIEW), true, 'a project\'s routine run that waits is told to Home');
 });

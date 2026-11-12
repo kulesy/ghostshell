@@ -1188,7 +1188,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   function deleteProject(p) {
     const groups = ix.groups.filter(g => g.project === p.id).length;
     const routinesHere = Object.values(ix.routineProjects ?? {}).filter(id => id === p.id).length;
-    const moving = [groups && (groups === 1 ? '1 group' : `${groups} groups`), routinesHere && (routinesHere === 1 ? '1 routine' : `${routinesHere} routines`)].filter(Boolean);
+    const moving = [groups && (groups === 1 ? 'group' : `${groups} groups`), routinesHere && (routinesHere === 1 ? 'routine' : `${routinesHere} routines`)].filter(Boolean);
     const detail = moving.length ? `Its ${moving.join(' and ')} ${groups + routinesHere === 1 ? 'moves' : 'move'} to Home. No group, routine or session is deleted.` : 'It has no groups.';
     ask({
       action: 'Delete project',
