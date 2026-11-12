@@ -23,17 +23,17 @@ private struct WidgetBody: View {
 
     /// The frame's height until the widget has measured itself, as the page's 12rem.
     private static let placeholderHeight: CGFloat = 192
-    private static let radius: CGFloat = 14
+    private static let radius = ChatStyle.radiusCard
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if widget.closed {
                 Text("This widget tried to open another page, so GhostShell closed it.")
-                    .font(ChatStyle.body).foregroundStyle(.secondary)
+                    .font(ChatStyle.body).foregroundStyle(ChatStyle.muted)
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.background, in: RoundedRectangle(cornerRadius: Self.radius))
-                    .overlay(RoundedRectangle(cornerRadius: Self.radius).strokeBorder(.quaternary))
+                    .background(ChatStyle.card, in: RoundedRectangle(cornerRadius: Self.radius))
+                    .overlay(RoundedRectangle(cornerRadius: Self.radius).strokeBorder(ChatStyle.border))
             } else {
                 frame
                 if let request = widget.request {
@@ -60,7 +60,7 @@ private struct WidgetBody: View {
                 .frame(height: heightWithBorder)
                 .background(Self.cardColor(mode), in: RoundedRectangle(cornerRadius: Self.radius))
                 .clipShape(RoundedRectangle(cornerRadius: Self.radius))
-                .overlay(RoundedRectangle(cornerRadius: Self.radius).strokeBorder(.quaternary))
+                .overlay(RoundedRectangle(cornerRadius: Self.radius).strokeBorder(ChatStyle.border))
         } else {
             web.frame(maxWidth: .infinity).frame(height: height)
         }

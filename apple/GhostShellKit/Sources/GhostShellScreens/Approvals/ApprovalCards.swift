@@ -19,9 +19,10 @@ private struct CardFrame<Content: View, Actions: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Circle().fill(.orange).frame(width: 8, height: 8).accessibilityHidden(true)
-                Text(verbatim: title).font(ChatStyle.body).fontWeight(.semibold).textSelection(.enabled)
+            HStack(alignment: ChatStyle.titleAlignment, spacing: 8) {
+                ChatLamp(state: "waiting").padding(.top, ChatStyle.cardLamp).accessibilityHidden(true)
+                Text(verbatim: title).font(ChatStyle.body).fontWeight(.semibold).foregroundStyle(ChatStyle.warningText)
+                    .frame(minHeight: ChatStyle.titleHeight).textSelection(.enabled)
             }
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 10) { content }
@@ -30,7 +31,7 @@ private struct CardFrame<Content: View, Actions: View>: View {
             .frame(maxHeight: state.error == nil ? bodyCap : max(bodyCap - 25, 60))
             .fixedSize(horizontal: false, vertical: true)
             if let error = state.error {
-                Text(verbatim: error).font(ChatStyle.small).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                Text(verbatim: error).font(ChatStyle.small).foregroundStyle(ChatStyle.removed).fixedSize(horizontal: false, vertical: true)
             }
             // Three long labels don't fit side by side on a 375pt phone, so they stack rather than break mid-word.
             ViewThatFits(in: .horizontal) {
@@ -39,10 +40,11 @@ private struct CardFrame<Content: View, Actions: View>: View {
             }
             .disabled(state.busy)
         }
-        .padding(14)
+        .padding(ChatStyle.cardPadding)
+        .chatText()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary))
+        .background(ChatStyle.card, in: RoundedRectangle(cornerRadius: ChatStyle.radiusCard))
+        .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusCard).strokeBorder(ChatStyle.approvalEdge))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: title))
     }
@@ -59,8 +61,8 @@ private struct LabelledText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(verbatim: label).font(ChatStyle.small).foregroundStyle(.secondary)
-            ToolIO(text: text, maxHeight: maxHeight)
+            Text(verbatim: label).font(ChatStyle.small).fontWeight(ChatStyle.labelWeight).foregroundStyle(ChatStyle.muted)
+            ToolIO(text: text, maxHeight: maxHeight, command: true)
         }
     }
 }
@@ -71,19 +73,22 @@ private struct DiffBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(diff.removed.enumerated()), id: \.offset) { _, line in row("- ", line, .red) }
-            ForEach(Array(diff.added.enumerated()), id: \.offset) { _, line in row("+ ", line, .green) }
+            ForEach(Array(diff.removed.enumerated()), id: \.offset) { _, line in row("- ", line, ChatStyle.removed) }
+            ForEach(Array(diff.added.enumerated()), id: \.offset) { _, line in row("+ ", line, ChatStyle.added) }
         }
+        .padding(.vertical, ChatStyle.diffInset)
         .textSelection(.enabled)
-        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(ChatStyle.well, in: RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
+        .clipShape(RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
     }
 
+    /// The page colours the diff's text. The Mac tints each line's background.
     private func row(_ sign: String, _ line: String, _ tint: Color) -> some View {
-        Text(verbatim: sign + line).font(ChatStyle.monoSmall)
-            .padding(.horizontal, 10).padding(.vertical, 1)
+        Text(verbatim: sign + line).font(ChatStyle.commandMono).lineSpacing(ChatStyle.page ? 4 : 0)
+            .foregroundStyle(ChatStyle.page ? AnyShapeStyle(tint) : ChatStyle.text)
+            .padding(.horizontal, ChatStyle.diffRowPadding).padding(.vertical, 1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(tint.opacity(0.14))
+            .background(tint.opacity(ChatStyle.diffFill))
     }
 }
 
@@ -92,20 +97,70 @@ private struct AllInput: View {
     @Bindable var state: ApprovalCardState
 
     var body: some View {
-        DisclosureGroup("All input", isExpanded: $state.inputOpen) {
-            ToolIO(text: Approvals.allInput(of: prompt), maxHeight: 220).padding(.top, 4)
+        if ChatStyle.page {
+            VStack(alignment: .leading, spacing: 4) {
+                Button { state.inputOpen.toggle() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).rotationEffect(.degrees(state.inputOpen ? 90 : 0)).frame(width: 12)
+                        Text("All input").font(ChatStyle.body)
+                    }
+                    .frame(minHeight: ChatStyle.titleHeight)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(state.inputOpen ? "expanded" : "collapsed")
+                if state.inputOpen { ToolIO(text: Approvals.allInput(of: prompt), maxHeight: 220, command: true) }
+            }
+            .foregroundStyle(ChatStyle.muted)
+        } else {
+            DisclosureGroup("All input", isExpanded: $state.inputOpen) {
+                ToolIO(text: Approvals.allInput(of: prompt), maxHeight: 220).padding(.top, 4)
+            }
+            .font(ChatStyle.small).foregroundStyle(.secondary)
         }
-        .font(ChatStyle.small).foregroundStyle(.secondary)
+    }
+}
+
+/// The page's buttons: the first fills with the primary colour and the others are outlined. Each is 36pt tall and shares the row by the width of its label.
+private struct DecisionButtonStyle: ButtonStyle {
+    let primary: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        Face(configuration: configuration, primary: primary)
+    }
+
+    private struct Face: View {
+        let configuration: ButtonStyleConfiguration
+        let primary: Bool
+        @Environment(\.isEnabled) private var enabled
+        @Environment(\.colorScheme) private var scheme
+
+        var body: some View {
+            let shape = RoundedRectangle(cornerRadius: ChatStyle.radiusButton)
+            configuration.label
+                .font(ChatStyle.buttonFont).lineLimit(1)
+                // The label keeps its own width, so the row shares out the rest and no label truncates.
+                .fixedSize(horizontal: true, vertical: false)
+                .foregroundStyle(primary ? AnyShapeStyle(ChatStyle.primaryInk) : ChatStyle.text)
+                .padding(.horizontal, 16)
+                .frame(minHeight: ChatStyle.buttonHeight)
+                .frame(maxWidth: .infinity)
+                .background(primary ? ChatStyle.primaryFill : ChatStyle.outlineFill(scheme), in: shape)
+                .overlay { if !primary { shape.strokeBorder(scheme == .dark ? ChatStyle.fieldEdge : ChatStyle.border) } }
+                .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.5)
+                .frame(minHeight: ChatStyle.touchHeight)
+                .contentShape(Rectangle())
+        }
     }
 }
 
 private extension View {
-    func decisionButton() -> some View {
-        #if os(iOS)
-        buttonStyle(.bordered).controlSize(.large)
-        #else
-        buttonStyle(.bordered).controlSize(.regular)
-        #endif
+    @ViewBuilder func decisionButton(primary: Bool = false) -> some View {
+        if ChatStyle.page {
+            buttonStyle(DecisionButtonStyle(primary: primary))
+        } else {
+            buttonStyle(.bordered).controlSize(.regular)
+        }
     }
 }
 
@@ -120,19 +175,19 @@ struct PermissionCard: View {
         let id = prompt.requestID
         CardFrame(title: parts.title, state: state) {
             if let path = parts.path, !path.isEmpty {
-                Text(verbatim: path).font(ChatStyle.monoSmall).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(verbatim: path).font(ChatStyle.monoSmall).foregroundStyle(ChatStyle.muted).textSelection(.enabled)
             }
             ForEach(Array(parts.fields.filter { !$0.value.isEmpty }.enumerated()), id: \.offset) { _, field in
                 LabelledText(label: field.label, text: field.value)
             }
             if let diff = parts.diff { DiffBlock(diff: diff) }
             if let description = prompt.description, !description.isEmpty {
-                Text(verbatim: description).font(ChatStyle.body).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(verbatim: description).font(ChatStyle.body).foregroundStyle(ChatStyle.muted).textSelection(.enabled)
             }
             AllInput(prompt: prompt, state: state)
         } actions: {
             Button("Allow") { model.decide(.allow, requestID: id, in: chat) }
-                .decisionButton().accessibilityHint(Text(verbatim: parts.title))
+                .decisionButton(primary: true).accessibilityHint(Text(verbatim: parts.title))
             if prompt.always {
                 Button("Always allow") { model.decide(.always, requestID: id, in: chat) }
                     .decisionButton().accessibilityHint(Text(verbatim: parts.title))
@@ -154,13 +209,13 @@ struct PlanCard: View {
         CardFrame(title: "Claude has a plan", state: state) {
             MarkdownView(blocks: ChatMarkdown.parse(Approvals.plan(of: prompt) ?? "")).padding(12).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+                .background(ChatStyle.planWell, in: RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
             if let description = prompt.description, !description.isEmpty {
-                Text(verbatim: description).font(ChatStyle.body).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(verbatim: description).font(ChatStyle.body).foregroundStyle(ChatStyle.muted).textSelection(.enabled)
             }
             AllInput(prompt: prompt, state: state)
         } actions: {
-            Button("Approve plan") { model.decide(.allow, requestID: id, in: chat) }.decisionButton()
+            Button("Approve plan") { model.decide(.allow, requestID: id, in: chat) }.decisionButton(primary: true)
             if prompt.always {
                 Button("Always allow") { model.decide(.always, requestID: id, in: chat) }.decisionButton()
             }
@@ -187,7 +242,7 @@ struct QuestionCard: View {
             }
         } actions: {
             Button("Send answers") { model.decide(.answer(answers), requestID: id, in: chat) }
-                .decisionButton().disabled(!Approvals.isComplete(questions, answers: answers))
+                .decisionButton(primary: true).disabled(!Approvals.isComplete(questions, answers: answers))
             Button("Skip") { model.decide(.deny, requestID: id, in: chat) }.decisionButton()
         }
     }
@@ -213,15 +268,15 @@ private struct QuestionBlock: View {
     let busy: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: ChatStyle.questionGap) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 if let header = question.header {
-                    Text(verbatim: header).font(ChatStyle.caption).fontWeight(.medium).foregroundStyle(.secondary)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.16), in: Capsule())
+                    Text(verbatim: header).font(ChatStyle.chipFont).fontWeight(.medium).foregroundStyle(ChatStyle.chipInk)
+                        .padding(ChatStyle.chipPadding)
+                        .background(ChatStyle.chip, in: Capsule())
                 }
-                Text(verbatim: question.question).font(ChatStyle.body).fontWeight(.medium).fixedSize(horizontal: false, vertical: true)
-                if question.multiSelect { Text("(pick any)").font(ChatStyle.small).foregroundStyle(.secondary) }
+                Text(verbatim: question.question).font(ChatStyle.questionFont).fixedSize(horizontal: false, vertical: true)
+                if question.multiSelect { Text("(pick any)").font(ChatStyle.small).foregroundStyle(ChatStyle.muted) }
             }
             ForEach(Array(question.options.enumerated()), id: \.offset) { n, option in
                 let chosen = pick.chosen.contains(n)
@@ -232,9 +287,23 @@ private struct QuestionBlock: View {
             TextField("Or write your own answer", text: Binding(
                 get: { pick.other },
                 set: { pick.type($0, multiSelect: question.multiSelect) }))
-                .textFieldStyle(.roundedBorder).font(ChatStyle.body)
+                .modifier(AnswerField())
                 .disabled(busy)
                 .accessibilityLabel("Your own answer")
+        }
+    }
+}
+
+/// The "Or write your own answer" field. The page outlines it at 36pt with the input colour, and the Mac keeps the system's rounded field.
+private struct AnswerField: ViewModifier {
+    func body(content: Content) -> some View {
+        if ChatStyle.page {
+            content.textFieldStyle(.plain).font(ChatStyle.fieldFont)
+                .padding(.horizontal, 12)
+                .frame(minHeight: ChatStyle.fieldHeight)
+                .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusButton).strokeBorder(ChatStyle.fieldEdge))
+        } else {
+            content.textFieldStyle(.roundedBorder).font(ChatStyle.body)
         }
     }
 }
@@ -244,24 +313,27 @@ private struct OptionButton: View {
     let chosen: Bool
     let busy: Bool
     let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: chosen ? "checkmark.circle.fill" : "circle").foregroundStyle(chosen ? Color.accentColor : .secondary).accessibilityHidden(true)
+                if ChatStyle.optionRadio {
+                    Image(systemName: chosen ? "checkmark.circle.fill" : "circle").foregroundStyle(chosen ? Color.accentColor : .secondary).accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: option.label).font(ChatStyle.body).fontWeight(.medium)
                     if let description = option.description {
-                        Text(verbatim: description).font(ChatStyle.small).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                        Text(verbatim: description).font(ChatStyle.optionDescription).foregroundStyle(ChatStyle.muted).multilineTextAlignment(.leading)
                     }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10).padding(.vertical, 7)
+            .padding(ChatStyle.optionPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(chosen ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(chosen ? Color.accentColor.opacity(0.6) : .clear))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .background(chosen ? ChatStyle.selectedFill(scheme) : ChatStyle.optionFill, in: RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
+            .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusInner).strokeBorder(chosen ? ChatStyle.selectedBorder : ChatStyle.optionEdge))
+            .contentShape(RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
         }
         .buttonStyle(.plain)
         .disabled(busy)

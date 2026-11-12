@@ -12,7 +12,7 @@ struct ApprovalPrompts: View {
         let cap = max(chatHeight * 0.5, 120)
         if !pending.isEmpty {
             VStack(spacing: 0) {
-                Divider()
+                if !ChatStyle.page { Divider() }
                 ScrollView(.vertical) {
                     VStack(spacing: 10) {
                         ForEach(pending) { prompt in
@@ -22,13 +22,13 @@ struct ApprovalPrompts: View {
                     .frame(maxWidth: ChatStyle.column)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16).padding(.vertical, 10)
-                    // The title, the buttons and the padding take about 125pt, so the rest is the body's. CardFrame takes an error line off it.
-                    .environment(\.approvalBodyCap, max(cap - 125, 60))
+                    // The title, the buttons and the padding take ChatStyle.cardChrome, so the rest is the body's. CardFrame takes an error line off it.
+                    .environment(\.approvalBodyCap, max(cap - ChatStyle.cardChrome, 60))
                 }
                 .frame(maxHeight: cap)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            .background(.bar)
+            .background(ChatStyle.dock)
             .onChange(of: pending.map(\.requestID)) { _, ids in model.keep(Set(ids)) }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Waiting for your answer")

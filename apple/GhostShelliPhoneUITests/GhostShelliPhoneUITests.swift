@@ -412,6 +412,36 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual((after.last?["body"] as? [String: Any])?["source"] as? String, "block")
     }
 
+    /// The parts of the thread that 03 and 04 do not show: a notice, a divider, a tool group opened to its rows and a tool's input, and the approval cards in their other states.
+    func testThreadPartsAreDrawnLikeThePage() throws {
+        let app = launch()
+        signIn(app)
+        open(app, "Fix the flaky upload test", expecting: "Thanks. Can you add a note to the changelog?")
+        let notice = app.staticTexts["Conversation compacted"].firstMatch
+        for _ in 0..<6 where !notice.isHittable { app.swipeDown() }
+        XCTAssertTrue(notice.isHittable, app.debugDescription)
+        shot("11-chat-notice-divider")
+        let group = app.buttons.matching(NSPredicate(format: "label CONTAINS '+1'")).firstMatch
+        for _ in 0..<6 where !group.isHittable { app.swipeDown() }
+        XCTAssertTrue(group.waitForExistence(timeout: 5), "The group that edited a file\n\(app.debugDescription)")
+        group.tap()
+        shot("12-chat-group-open")
+        let tool = app.buttons.matching(NSPredicate(format: "value == 'collapsed' AND label CONTAINS 'helpers.js'")).firstMatch
+        XCTAssertTrue(tool.waitForExistence(timeout: 5), app.debugDescription)
+        tool.tap()
+        shot("13-chat-tool-input")
+        back(app)
+        open(app, "Choose the test setup", expecting: "Claude is asking")
+        app.buttons["node:test"].firstMatch.tap()
+        shot("14-question-picked")
+        back(app)
+        open(app, "Edit the upload helper", expecting: "I need your go-ahead before I go on.")
+        shot("15-approval-edit")
+        app.buttons["All input"].firstMatch.tap()
+        shot("16-approval-all-input")
+    }
+
+
     func testAccountsPasskeysAndSignOut() throws {
         let app = launch()
         signIn(app)
