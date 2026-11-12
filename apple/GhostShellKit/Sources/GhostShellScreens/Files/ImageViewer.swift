@@ -27,12 +27,12 @@ struct ImageViewerOverlay: View {
         // An overlay on a phone stops under the navigation bar, so the viewer is a page of its own that covers the screen.
         Color.clear.allowsHitTesting(false)
             .fullScreenCover(isPresented: Binding(get: { store.viewer != nil }, set: { if !$0 { store.closeViewer() } })) {
-                if let viewer = store.viewer { ViewerContent(store: store, viewer: viewer).presentationBackground(.black).preferredColorScheme(.dark) }
+                if let viewer = store.viewer { ViewerContent(store: store, viewer: viewer).presentationBackground(.clear).preferredColorScheme(.dark) }
             }
         #else
         ZStack {
             if let viewer = store.viewer {
-                ViewerContent(store: store, viewer: viewer).transition(.opacity)
+                ViewerContent(store: store, viewer: viewer).environment(\.colorScheme, .dark).transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.15), value: store.viewer != nil)
@@ -52,13 +52,13 @@ private struct ViewerContent: View {
     var body: some View {
         let total = viewer.pictures.count
         ZStack {
-            Color.black.opacity(0.94).ignoresSafeArea().onTapGesture { store.closeViewer() }
+            Color.black.opacity(0.9).ignoresSafeArea().onTapGesture { store.closeViewer() }
             if let loaded {
                 ZoomCanvas(image: loaded, alt: viewer.current.alt, controller: zoom) { store.closeViewer() }
                     .id(viewer.current.id)
                     .accessibilityLabel(viewer.current.alt)
             } else if failed {
-                Text("This image could not be loaded.").font(ChatStyle.body).foregroundStyle(.white.opacity(0.85))
+                Text("This image could not be loaded.").font(.geist(14, relativeTo: .subheadline)).foregroundStyle(.white.opacity(0.85))
             } else {
                 ProgressView().controlSize(.large).environment(\.colorScheme, .dark)
             }
@@ -74,27 +74,26 @@ private struct ViewerContent: View {
     private func chrome(_ total: Int) -> some View {
         ZStack {
             VStack {
-                HStack(spacing: 10) {
-                    if total > 1 {
-                        Text(verbatim: "\(viewer.index + 1) of \(total)")
-                            .font(ChatStyle.small.monospacedDigit()).foregroundStyle(.white)
-                            .padding(.horizontal, 10).frame(height: 30)
-                            .background(Color.black.opacity(0.5), in: Capsule())
-                    }
+                HStack(spacing: 4) {
                     Spacer()
-                    round(zoom.atFit ? "Actual size" : "Fit to window", zoom.atFit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left") {
+                    outline(zoom.atFit ? "Actual size" : "Fit to window", zoom.atFit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left") {
                         zoom.toggle()
                     }
                     .disabled(!zoom.canToggle || loaded == nil)
-                    round("Close", "xmark") { store.closeViewer() }.keyboardShortcut(.escape, modifiers: [])
+                    outline("Close", "xmark") { store.closeViewer() }.keyboardShortcut(.escape, modifiers: [])
                 }
                 Spacer()
             }
             if total > 1 {
-                HStack {
-                    round("Previous image", "chevron.left") { store.step(-1) }.disabled(viewer.index == 0)
+                VStack {
                     Spacer()
-                    round("Next image", "chevron.right") { store.step(1) }.disabled(viewer.index == total - 1)
+                    HStack(spacing: 8) {
+                        outline("Previous image", "chevron.left") { store.step(-1) }.disabled(viewer.index == 0)
+                        Text(verbatim: "\(viewer.index + 1) of \(total)")
+                            .font(.geist(14, relativeTo: .subheadline).monospacedDigit()).foregroundStyle(Color.ghost.mutedForeground)
+                            .frame(minWidth: 72)
+                        outline("Next image", "chevron.right") { store.step(1) }.disabled(viewer.index == total - 1)
+                    }
                 }
                 // The arrow keys step only while the picture is fitted, because a zoomed picture uses them to scroll.
                 keys.disabled(!zoom.atFit)
@@ -111,15 +110,9 @@ private struct ViewerContent: View {
         .frame(width: 0, height: 0).opacity(0).allowsHitTesting(false).accessibilityHidden(true)
     }
 
-    private func round(_ name: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(Color.black.opacity(0.5), in: Circle())
-                .phoneIconTouch()
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain).help(name).accessibilityLabel(name)
+    private func outline(_ name: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: symbol).font(.system(size: 14, weight: .medium)) }
+            .buttonStyle(.ghost(.outline, size: .icon)).help(name).accessibilityLabel(name)
     }
 
     private func load() async {

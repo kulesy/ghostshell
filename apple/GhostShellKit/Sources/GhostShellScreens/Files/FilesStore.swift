@@ -119,7 +119,6 @@ final class FilesStore {
             case .failure(let error):
                 let sentence = error.localizedDescription
                 file = Opened(path: path, line: line, error: sentence)
-                alert = Alert(title: "Cannot open this file", message: sentence)
                 chat.filePanelOpen = true
             }
         }

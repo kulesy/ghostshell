@@ -330,7 +330,11 @@ export async function startChatStub() {
       const body = () => { try { return JSON.parse(raw.toString() || '{}'); } catch { return {}; } };
       const vendor = /^\/vendor\/(tabler-icons\.(?:woff2|min\.css))$/.exec(url.pathname);
       if (vendor) return void res.writeHead(200, { 'Content-Type': vendor[1].endsWith('css') ? 'text/css' : 'font/woff2' }).end(fs.readFileSync(path.join(VENDOR, vendor[1])));
-      if (url.pathname === '/login') return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
+      if (url.pathname === '/login') {
+        // The password "wrong-password" is refused, as the server refuses a wrong one, so the sign-in screen's error can be shot.
+        if (raw.toString().includes('password=wrong-password')) return void res.writeHead(401, { 'Content-Type': 'text/html' }).end('That password did not match.');
+        return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
+      }
       if (url.pathname === '/api/sessions') return json(res, 200, { ungrouped: rows });
       if (url.pathname === '/api/uploads') {
         if (req.method === 'GET') return json(res, 200, { maxBytes: 20_000_000, maxFiles: 5 });

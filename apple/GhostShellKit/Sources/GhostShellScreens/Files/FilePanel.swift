@@ -13,7 +13,7 @@ struct FilePanel: View {
         VStack(spacing: 0) {
             if let file = store.file {
                 FileHeader(store: store, file: file)
-                Divider()
+                Rule()
                 FileNotes(store: store, file: file)
                 FileBody(store: store, file: file)
                     // A new file or line starts a fresh view, so the text scrolls to its own line.
@@ -21,9 +21,10 @@ struct FilePanel: View {
                     .clipped()
                 FileFooter(file: file)
             } else {
-                Text("No file open.").font(ChatStyle.small).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text("No file open.").font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .background(Color.ghost.background.ignoresSafeArea())
         .inspectorColumnWidth(min: 320, ideal: 460, max: 900)
         // The chat sets this on the layout, and the inspector is part of it. Set again so a link in a rendered file can only reach the chat's own path.
         .environment(\.openURL, OpenURLAction { url in
@@ -54,25 +55,35 @@ struct FilePanel: View {
     }
 }
 
+/// The page's 1px border between the panel's parts.
+struct Rule: View {
+    var body: some View { Rectangle().fill(Color.ghost.border).frame(height: 1) }
+}
+
 private struct FileHeader: View {
     let store: FilesStore
     let file: FilesStore.Opened
 
     var body: some View {
         let preview = file.preview
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
+        HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: ChatFiles.displayName(preview?.name.isEmpty == false ? preview!.name : (file.path as NSString).lastPathComponent))
-                    .font(ChatStyle.body.weight(.semibold)).lineLimit(1).truncationMode(.middle)
+                    .font(.geist(14, weight: .semibold, relativeTo: .subheadline)).foregroundStyle(Color.ghost.foreground)
+                    .lineLimit(1).truncationMode(.middle)
                     .help(file.path)
-                if let preview { Text(verbatim: ChatFiles.fileSize(preview.size)).font(ChatStyle.caption).foregroundStyle(.secondary) }
+                HStack(spacing: 12) {
+                    Text(verbatim: file.path).font(.geistMono(12, relativeTo: .caption)).lineLimit(1).truncationMode(.head)
+                    if let preview { Text(verbatim: ChatFiles.fileSize(preview.size)).font(.geist(12, relativeTo: .caption)).fixedSize() }
+                }
+                .foregroundStyle(Color.ghost.mutedForeground)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
             if store.edit != nil {
                 Button("Cancel") { dismissKeyboard(); store.cancelEdit() }
-                    .phoneTouch().phoneIconTouch().compactOnMac().disabled(store.edit?.saving == true)
+                    .buttonStyle(.ghost(.outline, size: .compact)).disabled(store.edit?.saving == true)
                 Button("Save") { dismissKeyboard(); store.save() }
-                    .buttonStyle(.borderedProminent).compactOnMac().phoneIconTouch()
+                    .buttonStyle(.ghost(.primary, size: .compact))
                     .keyboardShortcut("s", modifiers: .command)
                     .disabled(store.edit.map { $0.saving || !($0.changed || $0.conflict) } ?? true)
             } else {
@@ -90,12 +101,13 @@ private struct FileHeader: View {
                 iconButton("Close", "xmark") { store.close() }
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.leading, 12).padding(.trailing, 4).padding(.vertical, 4)
+        .frame(minHeight: 56)
     }
 
     private func iconButton(_ name: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Label(name, systemImage: symbol).labelStyle(.iconOnly) }
-            .buttonStyle(.borderless).phoneIconTouch().help(name)
+        Button(action: action) { Label(name, systemImage: symbol).labelStyle(.iconOnly).font(.system(size: 14, weight: .medium)) }
+            .buttonStyle(.ghost(.outline, size: .icon)).help(name)
     }
 }
 
@@ -104,24 +116,37 @@ private struct FileNotes: View {
     let store: FilesStore
     let file: FilesStore.Opened
 
+    // Editing with nothing to say shows no band at all, because an empty one is a stray grey block.
+    private var shown: Bool {
+        if store.saved != nil { return true }
+        if let edit = store.edit { return edit.conflict || edit.restored }
+        return file.preview?.readOnly != nil
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if store.edit == nil, let why = file.preview?.readOnly { note(why, "lock") }
-            if let edit = store.edit {
-                if edit.conflict {
-                    note("This file changed on disk after you opened it, so nothing was saved. Your text is still here.", "exclamationmark.triangle")
-                } else if edit.restored {
-                    note("These are your unsaved edits from earlier. Nothing is saved yet.", "clock.arrow.circlepath")
+        if shown {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if store.edit == nil, let why = file.preview?.readOnly { note(why, "lock") }
+                    if let edit = store.edit {
+                        if edit.conflict {
+                            note("This file changed on disk after you opened it, so nothing was saved. Your text is still here.", "exclamationmark.triangle")
+                        } else if edit.restored {
+                            note("These are your unsaved edits from earlier. Nothing is saved yet.", "clock.arrow.circlepath")
+                        }
+                    }
+                    if let saved = store.saved { note(saved, "checkmark.circle") }
                 }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Color.ghost.muted)
+                Rule()
             }
-            if let saved = store.saved { note(saved, "checkmark.circle") }
         }
-        .padding(.horizontal, 12).padding(.vertical, store.edit == nil && file.preview?.readOnly == nil && store.saved == nil ? 0 : 6)
     }
 
     private func note(_ words: String, _ symbol: String) -> some View {
         Label { Text(verbatim: words) } icon: { Image(systemName: symbol) }
-            .font(ChatStyle.small).foregroundStyle(.secondary)
+            .font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -132,10 +157,10 @@ private struct FileFooter: View {
     var body: some View {
         if let preview = file.preview, preview.truncated, let lines = file.lines {
             Text(verbatim: "Showing the first \(lines.count) lines of \(ChatFiles.fileSize(preview.size)).")
-                .font(ChatStyle.caption).foregroundStyle(.secondary)
+                .font(.geist(12, relativeTo: .caption)).foregroundStyle(Color.ghost.mutedForeground)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(.bar)
+                .background(Color.ghost.muted)
         }
     }
 }
@@ -182,10 +207,11 @@ private struct FileBody: View {
         ProgressView("Loading").controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// The page's inline file note, in the destructive colour because a problem is announced as an alert.
     private func problem(_ words: String) -> some View {
-        Text(verbatim: words).font(ChatStyle.small).foregroundStyle(.secondary)
-            .multilineTextAlignment(.center).padding(20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Text(verbatim: words).font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.destructive)
+            .multilineTextAlignment(.center).padding(32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -196,20 +222,25 @@ private struct FileCard: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "doc").font(.system(size: 32, weight: .light)).foregroundStyle(.secondary).accessibilityHidden(true)
-            Text(verbatim: ChatFiles.kindName(preview.name)).font(ChatStyle.body.weight(.semibold))
-            Text(verbatim: ChatFiles.fileSize(preview.size)).font(ChatStyle.small).foregroundStyle(.secondary)
+            Text(verbatim: ChatFiles.kindName(preview.name)).font(.geist(16, relativeTo: .body)).foregroundStyle(Color.ghost.foreground)
+            Text(verbatim: ChatFiles.fileSize(preview.size)).font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground)
             if preview.tooLarge {
-                Text("This file is too large to open here.").font(ChatStyle.small).foregroundStyle(.secondary)
+                Text("This file is too large to open here.").font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground)
             }
             #if os(macOS)
-            if !preview.tooLarge { Button("Download") { store.download() }.padding(.top, 4) }
+            if !preview.tooLarge {
+                Button { store.download() } label: { Label("Download", systemImage: "arrow.down.to.line") }
+                    .buttonStyle(.ghost(.outline)).padding(.top, 4)
+            }
             #else
-            if !preview.tooLarge { Button("Save to Files") { store.saveToFiles() }.phoneTouch(boxed: true).padding(.top, 4) }
+            if !preview.tooLarge {
+                Button { store.saveToFiles() } label: { Label("Save to Files", systemImage: "square.and.arrow.down") }
+                    .buttonStyle(.ghost(.outline)).padding(.top, 4)
+            }
             #endif
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 32).padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -217,24 +248,29 @@ private struct FileCard: View {
 private struct NumberedText: View {
     let lines: [String]
     let highlight: Int?
+    @ScaledMetric(relativeTo: .body) private var glyph: CGFloat = 7.8
 
     var body: some View {
         if lines.isEmpty {
-            Text("This file is empty.").font(ChatStyle.small).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            Text("This file is empty.").font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            let gutter = CGFloat(String(lines.count).count) * 7.6 + 4
+            let gutter = CGFloat(String(lines.count).count) * glyph + 4
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(lines.indices, id: \.self) { row in
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text(verbatim: String(row + 1)).font(ChatStyle.monoSmall).foregroundStyle(.tertiary)
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                Text(verbatim: String(row + 1)).font(.geistMono(13, relativeTo: .body))
+                                    .lineLimit(1).fixedSize()
+                                    .foregroundStyle(highlight == row + 1 ? Color.ghost.foreground : Color.ghost.mutedForeground)
                                     .frame(width: gutter, alignment: .trailing).accessibilityHidden(true)
-                                Text(verbatim: lines[row].isEmpty ? " " : lines[row]).font(ChatStyle.mono)
+                                Text(verbatim: lines[row].isEmpty ? " " : lines[row]).font(.geistMono(13, relativeTo: .body))
+                                    .foregroundStyle(Color.ghost.foreground)
                                     .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .padding(.horizontal, 10)
-                            .background(highlight == row + 1 ? Color.accentColor.opacity(0.2) : Color.clear)
+                            .lineSpacing(2.5)
+                            .padding(.leading, 16).padding(.trailing, 12)
+                            .background(highlight == row + 1 ? Color.ghost.foreground.opacity(0.08) : Color.clear)
                             .id(row + 1)
                         }
                     }
@@ -261,12 +297,13 @@ private struct FileEditor: View {
         CodeTextView(text: text, readOnly: readOnly).padding(.horizontal, 8).padding(.vertical, 6)
         #else
         TextEditor(text: text)
-            .font(ChatStyle.mono)
+            .font(.geistMono(16, relativeTo: .body))
+            .foregroundStyle(Color.ghost.foreground)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .disabled(readOnly)
             .scrollContentBackground(.hidden)
-            .padding(.horizontal, 8).padding(.vertical, 6)
+            .padding(.horizontal, 11).padding(.vertical, 8)
             .accessibilityLabel("File text")
         #endif
     }

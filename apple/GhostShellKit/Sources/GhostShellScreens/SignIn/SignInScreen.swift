@@ -28,14 +28,53 @@ public struct SignInScreen: View {
     }
 
     public var body: some View {
+        GeometryReader { screen in
+            ScrollViewReader { scroll in
+                ScrollView {
+                    card
+                        .frame(maxWidth: 384)
+                        .padding(24)
+                        .frame(maxWidth: .infinity, minHeight: screen.size.height)
+                        .id(Self.top)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                // The keyboard scrolls the card up to show the field. When it goes away or a problem appears, the card returns to the top, below the status bar.
+                .onChange(of: focus) { if focus == nil { scroll.scrollTo(Self.top, anchor: .top) } }
+                .onChange(of: failure == nil) { scroll.scrollTo(Self.top, anchor: .top) }
+            }
+        }
+        .background(Color.ghost.muted.ignoresSafeArea())
+        .onAppear {
+            address = model.addressText
+            focus = address.isEmpty ? .address : .password
+        }
+    }
+
+    private var card: some View {
         VStack(spacing: 24) {
-            VStack(spacing: 10) {
-                ShellMark().frame(width: 56, height: 56)
-                Text("GhostShell").font(.title2.weight(.semibold))
+            VStack(spacing: 6) {
+                ShellMark().frame(width: 42, height: 42).foregroundStyle(Color.ghost.foreground).padding(.bottom, 6)
+                // The page draws the name as a Geist Mono wordmark graphic on two lines.
+                VStack(spacing: -6) {
+                    Text("GHOST")
+                    Text("SHELL")
+                }
+                .font(.geistMono(26, weight: .medium, relativeTo: .title))
+                .tracking(4)
+                .foregroundStyle(Color.ghost.foreground)
+                .padding(.bottom, 6)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("GhostShell")
+                .accessibilityAddTraits(.isHeader)
+                Text("Sign in to talk to your sessions on this Mac.")
+                    .font(.geist(14, relativeTo: .subheadline))
+                    .foregroundStyle(Color.ghost.mutedForeground)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: 16) {
-                field("Address", problem: addressProblem) {
-                    TextField("Address", text: $address, prompt: Text(Self.addressPrompt))
+                field("Address", problem: addressProblem, focused: focus == .address) {
+                    TextField("Address", text: $address, prompt: Text(Self.addressPrompt).foregroundStyle(Color.ghost.mutedForeground))
                         .focused($focus, equals: .address)
                         .submitLabel(.next)
                         .onSubmit { focus = .password }
@@ -45,7 +84,7 @@ public struct SignInScreen: View {
                         #endif
                         .autocorrectionDisabled()
                 }
-                field("Password", problem: passwordProblem) {
+                field("Password", problem: passwordProblem, focused: focus == .password) {
                     SecureField("Password", text: $password)
                         .focused($focus, equals: .password)
                         .submitLabel(.go)
@@ -55,37 +94,51 @@ public struct SignInScreen: View {
             Button(action: signIn) {
                 HStack(spacing: 8) {
                     if working { ProgressView().controlSize(.small) }
-                    Text(working ? "Signing in" : "Sign In")
+                    Text(working ? "Signing in" : "Sign in")
                 }
-                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(.ghost(.primary, radius: Self.fieldRadius, fills: true))
             .keyboardShortcut(.defaultAction)
             .disabled(working || password.isEmpty)
         }
-        .textFieldStyle(.roundedBorder)
-        .frame(maxWidth: 320)
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            address = model.addressText
-            focus = address.isEmpty ? .address : .password
-        }
+        .textFieldStyle(.plain)
+        .padding(24)
+        .background(Color.ghost.card, in: RoundedRectangle(cornerRadius: Self.cardRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Self.cardRadius, style: .continuous).strokeBorder(Color.ghost.border, lineWidth: 1))
+        .shadow(color: .black.opacity(0.06), radius: 2, y: 1)
     }
 
-    private func field<Input: View>(_ label: String, problem: String?, @ViewBuilder input: () -> Input) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.subheadline).foregroundStyle(.secondary)
+    // NOTE: [11 Nov 2026] EK - The sign-in page loads only app.css, so it keeps shadcn's own radii (14 card, 8 field) and not the 2 to 4 of GhostRadius.
+    private static let cardRadius: CGFloat = 14
+    private static let fieldRadius: CGFloat = 8
+    private static let top = "top"
+
+    private func field<Input: View>(_ label: String, problem: String?, focused: Bool, @ViewBuilder input: () -> Input) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label).font(.geist(14, weight: .medium, relativeTo: .subheadline)).foregroundStyle(Color.ghost.foreground)
             input()
-            if let problem {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-                    Text(problem).foregroundStyle(.primary)
+                .font(.geist(16))
+                .foregroundStyle(Color.ghost.cardForeground)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(Color.ghost.card, in: RoundedRectangle(cornerRadius: Self.fieldRadius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Self.fieldRadius, style: .continuous)
+                    .strokeBorder(problem != nil ? Color.ghost.destructive : focused ? Color.ghost.ring : Color.ghost.input, lineWidth: 1))
+                .overlay {
+                    if problem != nil || focused {
+                        RoundedRectangle(cornerRadius: Self.fieldRadius + 1.5, style: .continuous)
+                            .strokeBorder((problem != nil ? Color.ghost.destructive : Color.ghost.ring).opacity(problem != nil ? 0.2 : 0.5), lineWidth: 3)
+                            .padding(-3)
+                            .allowsHitTesting(false)
+                    }
                 }
-                .font(.footnote)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel("\(label) problem. \(problem)")
+                .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
+            if let problem {
+                Text(problem)
+                    .font(.geist(14, relativeTo: .subheadline))
+                    .foregroundStyle(Color.ghost.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("\(label) problem. \(problem)")
             }
         }
     }

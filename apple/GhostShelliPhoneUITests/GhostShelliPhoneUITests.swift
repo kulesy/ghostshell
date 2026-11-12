@@ -51,7 +51,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         password.tap()
         dismissKeyboardIntro(app)
         password.typeText(stub == "organise" ? env["GS_PASSWORD_ORGANISE"] ?? "" : "any-password")
-        app.buttons["Sign In"].tap()
+        app.buttons["Sign in"].tap()
         XCTAssertTrue(app.staticTexts[expecting].waitForExistence(timeout: 20), app.debugDescription)
     }
 
@@ -120,6 +120,23 @@ final class GhostShelliPhoneUITests: XCTestCase {
         open(app, "Fix the flaky upload test", expecting: "Thanks. Can you add a note to the changelog?")
     }
 
+    /// The chat stub refuses the password "wrong-password" with a 401, as the server does.
+    func testAWrongPasswordIsShownUnderTheField() throws {
+        let app = launch()
+        let password = app.secureTextFields.firstMatch
+        XCTAssertTrue(password.waitForExistence(timeout: 15), app.debugDescription)
+        password.tap()
+        dismissKeyboardIntro(app)
+        password.typeText("wrong-password")
+        assertTouchable(app.buttons["Sign in"], "Sign in")
+        app.buttons["Sign in"].tap()
+        let message = contains(app, "That password did not match.")
+        XCTAssertTrue(message.waitForExistence(timeout: 15), "A wrong password is said under the field\n\(app.debugDescription)")
+        XCTAssertEqual(app.alerts.count, 0, "The message is on the screen, not in an alert")
+        sleep(1)
+        shot("01b-sign-in-wrong")
+    }
+
     func testAWidgetButtonTapSendsOneMessage() async throws {
         let app = launch()
         signIn(app)
@@ -186,7 +203,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         back(app)
         app.buttons["More"].tap()
         app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["Sign In"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 15), app.debugDescription)
     }
 
     // MARK: Files
@@ -250,6 +267,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let play = app.buttons.matching(NSPredicate(format: "label IN {'Play', 'Pause'}")).firstMatch
         XCTAssertTrue(play.waitForExistence(timeout: 10), "The clip has a play control")
         assertTouchable(play, "Play")
+        XCTAssertTrue(contains(app, "1 of 2").waitForExistence(timeout: 10), "The clips are counted between Previous and Next\n\(app.debugDescription)")
+        for name in ["Previous", "Next"] { assertTouchable(app.buttons[name].firstMatch, name) }
         shot("files-5-audio")
         app.buttons["Close"].firstMatch.tap()
 
@@ -271,8 +290,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         tapLink(app, line: "An old log: gone.txt")
         XCTAssertTrue(app.staticTexts["There is no file at that path."].firstMatch.waitForExistence(timeout: 10), "A missing file says so\n\(app.debugDescription)")
         sleep(1)
+        XCTAssertEqual(app.alerts.count, 0, "A missing file is a note in the panel, not an alert")
         shot("files-7-missing")
-        if app.alerts.firstMatch.exists { app.alerts.buttons["OK"].firstMatch.tap() }
     }
 
     func testAFileCanBeEditedAndSaved() throws {
@@ -281,8 +300,11 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.buttons["Edit"].firstMatch.tap()
         let editor = app.textViews["File text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.buttons["Save"].firstMatch.isEnabled, "Save waits for a change")
+        shot("files-8a-editor-unchanged")
         editor.tap()
         editor.typeText("Typed on the phone. ")
+        XCTAssertTrue(app.buttons["Save"].firstMatch.isEnabled, "Save is on once the text changes")
         shot("files-8-editor")
         for name in ["Save", "Cancel"] { assertTouchable(app.buttons[name].firstMatch, name) }
         XCTAssertTrue(app.keyboards.firstMatch.exists, "The keyboard is up while typing")
