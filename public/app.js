@@ -9,12 +9,13 @@ import { ChatPane } from './ui/chat.js';
 import { renamerFor } from './ui/chat-rename.js';
 import { groupById, groupOfSession, parseNewRoute } from './ui/group-rules.js';
 import { GroupPane } from './ui/group.js';
-import { checkUploads, keepDrafts } from './ui/draft.js';
+import { checkUploads, keepDrafts, NEW } from './ui/draft.js';
 import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from './ui/html.js';
 import { guessMany } from './ui/many-rules.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useProjects } from './ui/projects.js';
+import { ReloadBar, useReload } from './ui/reload.js';
 import { useRenewal } from './ui/renew.js';
 import { routineRoute } from './ui/routine-rules.js';
 import { RoutinesPane } from './ui/routines.js';
@@ -325,6 +326,7 @@ function App() {
   // A group's session is not a row, but the list and the projects still follow it as the chat on screen.
   const groupSession = route.name === 'group' ? groupById(ix, route.id)?.session?.id ?? null : null;
   const current = view === 'chat' ? id ?? groupSession : null;
+  const reloadBar = useReload(ix, current ?? (view === 'chat' && route.name === 'new' ? NEW : null));
   // Drafts are pruned once a page load, against the first list the server sends. A later list can be a guess that hides a session for a
   // moment, such as an archive the server then refuses.
   const pruned = useRef(false);
@@ -363,6 +365,7 @@ function App() {
       scheduled=${scheduled} scheduledOpen=${route.name === 'scheduled'} refreshScheduled=${refreshScheduled}
       banner=${html`<${LoginBanner} ...${banners} />${supportsAccounts(ix) ? html`<${OutBanner} ...${banners} /><${AutoBanner} ...${banners} />${route.name !== 'accounts' ? html`<${ChromeBanner} chrome=${banners.banners?.chrome} load=${banners.load} />` : null}` : null}<${UpdateBanner} ...${banners} />${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null}`} />
     <main class="chat" id="chat">
+      ${reloadBar ? html`<${ReloadBar} />` : null}
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <div class="emblem" aria-hidden="true"><${Shell} class="emblem-shell" /><span class="emblem-shadow"></span></div>
         <p>Pick a session, press <kbd>${keyHint(mod, 'K')}</kbd> to find one, or <kbd>${keyHint(mod, 'N')}</kbd> to start a new one.</p>

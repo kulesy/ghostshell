@@ -1,7 +1,7 @@
 // The cards above the prompt box: what Claude is about to do, and its multiple-choice questions.
 import { chromeTool, clip, pre, toolLabel, toolSource } from './format.js';
 import { useStore } from './hooks.js';
-import { html, useState } from './html.js';
+import { html, useEffect, useState } from './html.js';
 
 const CHROME_FORMS = new Map(Object.entries({
   navigate: i => ['open a page', [['URL', i.url], ['Tab', i.tabId]]],
@@ -128,10 +128,21 @@ function QuestionCard({ p, onDecide }) {
     </div></article>`;
 }
 
+// Whether a card is on screen waiting for an answer, which a reload of the page would take away.
+const showing = new Set();
+export const approvalsOpen = () => showing.size > 0;
+
 // `place` is what the chat's session belongs to, a group or a section, for the card that asks to start a session in it.
 export function Approvals({ ctrl, place = 'group' }) {
   const pending = useStore(ctrl.store, s => s.status?.pending);
   const names = useStore(ctrl.store, s => s.session?.connectors);
+  const waiting = !!pending?.length;
+  useEffect(() => {
+    if (!waiting) return undefined;
+    const mark = {};
+    showing.add(mark);
+    return () => showing.delete(mark);
+  }, [waiting]);
   return html`<div class="approvals" id="approvals">${(pending || []).map(p => (p.tool === 'AskUserQuestion'
     ? html`<${QuestionCard} key=${p.requestId} p=${p} onDecide=${ctrl.decide} />`
     : html`<${ApprovalCard} key=${p.requestId} p=${p} names=${names} place=${place} onDecide=${ctrl.decide} />`))}</div>`;

@@ -116,6 +116,13 @@ test('the server, its libraries, package.json, config.json and the files it impo
   for (const file of ['public/app.js', 'public/ui/page-only.js', 'public/app.css', 'docs/a.md', 'README.md', 'test/x.test.mjs', 'bin/restart.mjs']) assert.equal(needsRestart(file, set), false, file);
 });
 
+test('the commit the server started on is kept, and is null when git cannot read it', async () => {
+  const r = rig();
+  assert.equal(await r.update.commit(), head(r));
+  const none = makeUpdate({ root: r.live, git: () => Promise.reject(new Error('no git')) });
+  assert.equal(await none.commit(), null);
+});
+
 test('a change to page files only is pulled with no restart, and the banner goes', async () => {
   const r = rig();
   r.merge('Move the button (#2)', { 'public/app.js': 'export const app = 2;\n', 'docs/a.md': 'b\n' });

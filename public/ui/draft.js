@@ -47,6 +47,13 @@ export const clearAttached = key => attachments.set({ [key]: undefined });
 // The quotes waiting to be sent, from whichever sessions they were taken in. One store for every chat.
 export const quoted = createStore({ quotes: [] });
 
+// Whether a reload would lose something unsent. Typed text counts only for the box on screen (`open`), since every draft's text is kept in localStorage
+// and comes back; images, files and quotes live for the page's life, so they count wherever they are.
+export const hasUnsent = open => (
+  !!draftText(open).trim() || quoted.get().quotes.length > 0
+  || Object.values(attachments.get()).some(a => a && (a.images.length || a.files.length || a.preparing))
+);
+
 // Drops the drafts of sessions that are not in `live`, the list's sessions, because they are archived or gone. `open` is the chat on screen,
 // whose box still holds its draft. The new session page's draft stays.
 // NOTE: [2 Nov 2026] EK - The list leaves out older sessions (60 per loose section, 12 runs per routine, terminal ones past `otherDays`),
