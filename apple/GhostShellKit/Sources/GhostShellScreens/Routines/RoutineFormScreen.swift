@@ -287,6 +287,8 @@ private struct RoutineFields: View {
 
     private func save() async {
         guard !saving, let client = model.client else { return }
+        // The form turns disabled while it saves, and on iOS 27 a focused field that turns disabled is refocused on every frame, so focus goes first.
+        focus = nil
         saving = true
         defer { saving = false }
         notice = nil
