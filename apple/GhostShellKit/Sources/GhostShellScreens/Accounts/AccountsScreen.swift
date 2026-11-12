@@ -94,22 +94,13 @@ struct AccountRow: View {
 
     var body: some View {
         let waiting = account.stage == .waiting
-        let pins = pinnedWords(account.pinned)
-        let noChrome = pinnedChromeWords(account, in: list.accounts)
         let same = account.sameAs == nil ? "" : sameAccountWords(account, in: list)
         let plan = planRows(account.plan?.limits)
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    if renaming { renameForm } else { title }
-                    let meta = [account.email, account.planType].compactMap { $0 }.filter { !$0.isEmpty }
-                    if !meta.isEmpty { Text(meta.joined(separator: "   ")).font(.geistMono(12)).foregroundStyle(Color.ghost.mutedForeground) }
-                    Text(signInLine(account)).ghostMuted()
-                    if !pins.isEmpty { Text(pins).ghostMuted() }
-                    if !noChrome.isEmpty { Text(noChrome).ghostMuted() }
-                }
-                Spacer(minLength: 8)
-                actions(waiting: waiting)
+            // The buttons sit beside the details when both fit on a line, and drop under them when they do not, as the page's wrapping row does.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 8) { details; Spacer(minLength: 8); actions(waiting: waiting) }
+                VStack(alignment: .leading, spacing: 8) { details; actions(waiting: waiting) }
             }
             if let out = account.out { Notice(text: outWords(out)) }
             if !same.isEmpty { Notice(text: same) }
@@ -123,6 +114,20 @@ struct AccountRow: View {
             if !account.chats.isEmpty { chats }
         }
         .padding(.vertical, 14)
+    }
+
+    private var pins: String { pinnedWords(account.pinned) }
+    private var noChrome: String { pinnedChromeWords(account, in: list.accounts) }
+
+    private var details: some View {
+        let meta = [account.email, account.planType].compactMap { $0 }.filter { !$0.isEmpty }
+        return VStack(alignment: .leading, spacing: 3) {
+            if renaming { renameForm } else { title }
+            if !meta.isEmpty { Text(meta.joined(separator: "   ")).font(.geistMono(12)).foregroundStyle(Color.ghost.mutedForeground) }
+            Text(signInLine(account)).ghostMuted()
+            if !pins.isEmpty { Text(pins).ghostMuted() }
+            if !noChrome.isEmpty { Text(noChrome).ghostMuted() }
+        }
     }
 
     private var title: some View {
