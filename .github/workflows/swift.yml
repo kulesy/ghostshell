@@ -1,6 +1,6 @@
 name: Swift app
 
-# The Swift builds, tests and screenshots run here so a Swift change never needs a full run on the owner's Mac.
+# The Swift builds, tests and most Mac screenshots run here, so a Swift change needs less of the owner's Mac.
 # See https://github.com/kulesy/ghostshell/issues/138.
 on:
   push:
@@ -17,6 +17,11 @@ on:
       - 'package.json'
       - '.github/workflows/swift.yml'
   workflow_dispatch:
+    inputs:
+      iphone:
+        description: Also run the iPhone UI tests, which fail on iOS 27 for now
+        type: boolean
+        default: false
 
 # NOTE: [11 Nov 2026] EK - The repo is public and forks run this, so the token stays read-only and no step reads a secret.
 permissions:
@@ -71,8 +76,9 @@ jobs:
           retention-days: 14
 
   # One job per device and appearance, because the four passes take about two hours in a row.
+  # NOTE: [12 Nov 2026] EK - Runs only by hand until the app passes on iOS 27, the only iOS the image has. See apple/README.md.
   iphone-shots:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    if: inputs.iphone
     runs-on: xcode-27
     timeout-minutes: 60
     strategy:
@@ -88,11 +94,7 @@ jobs:
         with:
           node-version: 20
           package-manager-cache: false
-      # NOTE: [11 Nov 2026] EK - The image has only iOS 27 and Xcode 27 can't download the Mac's iOS 18.6. On iOS 27 these four tests fail on
-      # 36pt toolbar buttons and the edit bar, so they run on a Mac until the app is fixed for iOS 27. See apple/README.md.
-      - run: >-
-          npm run apple:ios-shot -- --device ${{ matrix.device }} --only ${{ matrix.appearance }} --out "$RUNNER_TEMP/shots/iphone"
-          --skip testSignInThenBrowseAChat,testRoutines,testScheduledSessions,testSelectManySessionsInEditMode
+      - run: npm run apple:ios-shot -- --device ${{ matrix.device }} --only ${{ matrix.appearance }} --out "$RUNNER_TEMP/shots/iphone"
         env:
           GS_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-27-2
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
