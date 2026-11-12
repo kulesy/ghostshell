@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Screenshots the web page at phone width against the same stubs the iPhone run signs in to, so a screen shows the same data on both.
-// Headless Chromium only. It never opens a browser the owner uses, port 4310 or ~/.config/capcom.
+// Headless Chromium only. Set PLAYWRIGHT_CORE to the playwright-core folder of a checkout that has it. It never opens a browser the owner uses, port 4310 or ~/.config/capcom.
 //   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402] [--scheme light|dark] [--set chat,groups,empty] [--only <screen prefix>]
 // Writes <out>/page/<width>/<scheme>/<screen>.png. Screen names follow the iPhone UI tests' shot names where one exists.
 import fs from 'node:fs';
@@ -15,8 +15,8 @@ import { startGroupStub } from './group-fixtures.mjs';
 import { routinesStub } from './routines-fixtures.mjs';
 import { startScratch } from './test-server.mjs';
 
-// NOTE: [11 Nov 2026] EK - playwright-core is not a dependency of this repo, so it is read from a checkout that has it.
-const { chromium } = createRequire(import.meta.url)('/Users/elikent/Projects/tinacloud-e2e/node_modules/playwright-core');
+// NOTE: [12 Nov 2026] EK - playwright-core is not a dependency of this repo, so PLAYWRIGHT_CORE points at a checkout that has it.
+const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
 const SIZES = { 375: 667, 402: 874 };
