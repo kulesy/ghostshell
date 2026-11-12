@@ -136,7 +136,7 @@ export function TerminalTab({ ctrl, active, onLeave }) {
       <label class="term-cwd" for="term-input">${shown.run ? html`<span class="sr">Send to </span>${first}` : shown.ended ? 'That command has ended' : html`<span class="sr">Command in </span>${inHome(cwd, home)}`}</label>
       <div class="term-field">
         <span class="term-sign" aria-hidden="true">${shown.run || shown.ended ? '>' : '$'}</span>
-        <textarea id="term-input" class="term-input" ...${NO_GRAMMARLY} ref=${area} rows="1" value=${input} spellcheck=${false} autocomplete="off" autocapitalize="off" autocorrect="off"
+        <textarea id="term-input" class="term-input" ...${NO_GRAMMARLY} ref=${area} rows="1" value=${input} spellcheck=${false} autocomplete="off" autocapitalize="off" autocorrect=${false}
           placeholder=${shown.run ? 'Send a line to the running command' : 'Run a command'} aria-describedby="term-hint"
           onInput=${e => term.setInput(e.currentTarget.value)} onKeyDown=${onKeyDown}></textarea>
         <button class="btn" type="submit" data-size="icon-sm" aria-label=${shown.run || shown.ended ? 'Send line' : 'Run command'} data-tip=${shown.run || shown.ended ? 'Send line' : 'Run command'} disabled=${shown.ended || (!shown.run && !input.trim())}>${draw(icons.play, 'icon')}</button>

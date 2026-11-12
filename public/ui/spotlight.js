@@ -230,7 +230,7 @@ function Palette({ ix, scheduled, archive, onShow, onClose }) {
     <div data-slot="command" data-part="command-dialog-command">
       <div data-slot="command-input-wrapper">
         <${Search} />
-        <input data-slot="command-input" cmdk-input="" ref=${input} type="text" role="combobox" placeholder="Search" autocomplete="off" autocorrect="off" spellcheck=${false} enterkeyhint="search"
+        <input data-slot="command-input" cmdk-input="" ref=${input} type="text" role="combobox" placeholder="Search" autocomplete="off" autocorrect=${false} spellcheck=${false} enterkeyhint="search"
           aria-label="Search" aria-autocomplete="list" aria-expanded="true" aria-controls="command-list" aria-activedescendant=${flat[pick] ? `result-${pick}` : undefined} value=${query}
           onInput=${e => { setQuery(e.target.value); scroll.current = true; setHeld(FIRST); }} onKeyDown=${onKeyDown} />
       </div>

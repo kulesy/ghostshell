@@ -683,7 +683,7 @@ test('a chip that names a group starts its session in that group on its own, unl
   const sessions = MAKER.filter(r => r.id !== 'made');
   const s = await start({ sessions, groups: GROUPS, claude: true, chips: NAMED });
   const { token } = await signIn(s);
-  const res = await startChip(s, token, 'toolu_home');
+  const res = await startChip(s, token, 'toolu_home', { title: 'A chip' });
   assert.equal(res.status, 200, res.text);
   const { id } = res.body();
   assert.deepEqual([onDisk(s).parents[id], onDisk(s).assignments[id]], [null, 'cg-home']);

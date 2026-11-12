@@ -97,7 +97,7 @@ async function appPage(t, { phone = false, chat = 'chat' } = {}) {
     }
   }
   if (await page.evaluate(`localStorage.getItem('capcom.panels') !== null`)) {
-    await page.evaluate(`window.stale = true; localStorage.removeItem('capcom.panels'); location.reload()`);
+    await page.reload(`localStorage.removeItem('capcom.panels')`);
     await page.until(`!window.stale && document.readyState === 'complete' && ${LIST}`, 10_000);
   }
   await page.evaluate(`location.hash = '#/'`);

@@ -212,7 +212,7 @@ test('the header button closes the tab, opens it again, and a chat remembers tha
   await page.click('#subsButton');
   await page.until(`!document.querySelector('#panel')`);
   assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-expanded')`), 'false');
-  await page.evaluate(`window.oldDocument = true; location.reload()`);
+  await page.reload();
   await page.until(`!window.oldDocument && document.readyState === 'complete' && !!document.querySelector('#subsButton')`);
   assert.equal(await page.evaluate(`!!document.querySelector('#panel')`), false, 'a panel the owner closed stays closed');
   await page.click('#subsButton');
@@ -319,7 +319,7 @@ test('a panel that opened by itself is not saved, and goes instead of covering t
   assert.equal(await page.evaluate(`document.querySelector('#session').dataset.panel ?? null`), null);
   assert.equal(await page.evaluate(`[...document.querySelector('#session').children].some(el => el.inert)`), false, 'the chat can be reached');
   assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-expanded')`), 'false');
-  await page.evaluate(`window.oldDocument = true; location.reload()`);
+  await page.reload();
   await page.until(`!window.oldDocument && document.readyState === 'complete' && !!document.querySelector('#subsButton')`);
   assert.equal(await page.evaluate(`!!document.querySelector('#panel')`), false, 'a phone that never opened it is not shown it');
   await page.resize(1280, 860);
@@ -334,7 +334,7 @@ test('a panel the owner opened on a phone is saved and opens over the chat on th
   await phone.click('#subsButton');
   await phone.until(`document.querySelector('#panel')?.getAttribute('role') === 'dialog'`);
   assert.equal(await phone.evaluate(`JSON.parse(localStorage.getItem('capcom.panels')).top.open`), true);
-  await phone.evaluate(`window.oldDocument = true; location.reload()`);
+  await phone.reload();
   await phone.until(`!window.oldDocument && document.readyState === 'complete' && !!document.querySelector('#subsButton')`);
   await phone.until(`document.querySelector('#panel')?.getAttribute('role') === 'dialog'`);
   const wide = await appPage(t, '#/s/top');

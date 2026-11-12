@@ -942,7 +942,7 @@ test('a heading folds its rows away, says so to a screen reader, and stays folde
   assert.equal(await text(page, `${button} .count`), '3', 'a folded heading still counts');
   assert.equal(await page.evaluate(`!!document.querySelector('${headingNamed('Inbox')} a.row[data-id="c1"]')`), true, 'the others stay open');
   assert.equal((await gatherCollapsed(page))['routine-heading:Reports'], true);
-  await page.evaluate(`window.beforeReload = true; location.reload()`);
+  await page.reload();
   await page.until(`window.beforeReload === undefined && !!document.querySelector('a.row[data-id="c1"]')`);
   assert.equal(await page.evaluate(`!!document.querySelector('${reports}')`), true);
   assert.equal(await page.evaluate(`!!document.querySelector('${reports} a.row')`), false, 'still folded');

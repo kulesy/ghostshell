@@ -379,7 +379,7 @@ function RoutineForm({ id, ix, routines, error, refresh }) {
       <datalist id=${`${FIELD_IDS.heading}-names`}>${headingNames(routines?.routines).map(name => html`<option key=${name} value=${name}></option>`)}</datalist>
     <//>` : null}
     <${Field} id=${FIELD_IDS.cron} label="Schedule" hint="Five fields: minute, hour, day of the month, month and day of the week, in this Mac's time. For example 30 7 * * 1-5." error=${cronError}>
-      <input class="input routine-mono" id=${FIELD_IDS.cron} type="text" value=${form.cron} placeholder="30 7 * * 1-5" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck=${false} onInput=${set('cron')}
+      <input class="input routine-mono" id=${FIELD_IDS.cron} type="text" value=${form.cron} placeholder="30 7 * * 1-5" autocomplete="off" autocapitalize="off" autocorrect=${false} spellcheck=${false} onInput=${set('cron')}
         ...${aria(FIELD_IDS.cron, true, cronError)} />
       <${SchedulePreview} cron=${cron} jitter=${jitter} preview=${preview} now=${now} />
     <//>
@@ -388,7 +388,7 @@ function RoutineForm({ id, ix, routines, error, refresh }) {
         ...${aria(FIELD_IDS.jitterSeconds, true, jitterError)} />
     <//>
     <${Field} id=${FIELD_IDS.cwd} label="Folder" hint="The full path of the folder each run starts in." error=${refused('cwd')}>
-      <input class="input routine-mono" id=${FIELD_IDS.cwd} type="text" value=${form.cwd} autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck=${false} onInput=${set('cwd')}
+      <input class="input routine-mono" id=${FIELD_IDS.cwd} type="text" value=${form.cwd} autocomplete="off" autocapitalize="off" autocorrect=${false} spellcheck=${false} onInput=${set('cwd')}
         ...${aria(FIELD_IDS.cwd, true, refused('cwd'))} />
     <//>
     <div class="routine-trio">
@@ -415,7 +415,7 @@ function RoutineForm({ id, ix, routines, error, refresh }) {
             <label class="routine-choice"><input type="radio" name="routine-prompt-kind" id="routine-kind-file" value="file" checked=${fileMode} onChange=${pickKind('file')} />A prompt file</label>
           </div>
           ${fileMode
-            ? html`<input class="input routine-mono" id=${FIELD_IDS.file} type="text" value=${form.file} placeholder="/Users/you/prompts/daily-scrum.md" aria-label="Full path of the prompt file" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck=${false}
+            ? html`<input class="input routine-mono" id=${FIELD_IDS.file} type="text" value=${form.file} placeholder="/Users/you/prompts/daily-scrum.md" aria-label="Full path of the prompt file" autocomplete="off" autocapitalize="off" autocorrect=${false} spellcheck=${false}
                 onInput=${set('file')} ...${aria(FIELD_IDS.file, true, fileError)} />
               <p class="routine-hint" id=${`${FIELD_IDS.file}-hint`}>${promptHint('file', was?.kind)}</p>
               <p class="routine-error" id=${`${FIELD_IDS.file}-error`}>${fileError}</p>`

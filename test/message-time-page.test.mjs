@@ -86,7 +86,8 @@ test('both sides of a chat show the time, and an older message also shows its da
     assert.match(times[2], /^\d{1,2}:\d{2}/, 'today gives the time alone');
     assert.equal(times[2], times[3]);
     const side = selector => page.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).alignItems`);
-    assert.equal(await side('.msg.user'), 'flex-end', 'yours sits on the right, with the message');
+    // Chrome 158 reports flex-end as flow-end.
+    assert.match(await side('.msg.user'), /^(flex|flow)-end$/, 'yours sits on the right, with the message');
     assert.equal(await side('.msg.claude'), 'normal', 'Claude\'s sits on the left, with the message');
   } finally { await page.close(); }
 });

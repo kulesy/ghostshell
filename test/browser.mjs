@@ -143,11 +143,24 @@ export async function launch(chromium) {
       return result.value;
     }
 
+    // A call that lands as the document changes is refused, so it is asked again.
+    const seen = async expression => {
+      try { return await evaluate(expression); } catch (e) { if (/navigated or closed/.test(e.message)) return false; throw e; }
+    };
+
     async function until(expression, ms = 5000) {
-      for (const start = Date.now(); !(await evaluate(expression));) {
+      for (const start = Date.now(); !(await seen(expression));) {
         if (Date.now() - start > ms) throw new Error(`timed out waiting for ${expression}`);
         await new Promise(resolve => setTimeout(resolve, 20));
       }
+    }
+
+    // Reloads the page and returns once the new document has loaded. `setup` runs in the old one first. The reload is a protocol command,
+    // since `location.reload()` inside an evaluate makes a slow machine refuse that evaluate.
+    async function reload(setup = '') {
+      await evaluate(`${setup}; window.reloading = true`);
+      await call('Page.reload');
+      await until(`!window.reloading && document.readyState === 'complete'`, 15_000);
     }
 
     // Input waits for the next frame and the effects that follow it, as a person's does, because a menu adds its Esc listener only then.
@@ -262,6 +275,7 @@ export async function launch(chromium) {
       problems,
       evaluate,
       until,
+      reload,
       press,
       insert,
       click,

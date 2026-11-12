@@ -201,6 +201,6 @@ export function Editor({ name, focus, saving, view }) {
     if (ev.key === 'Escape') { ev.preventDefault(); return; }
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); saveEdit(view); }
   };
-  return html`<textarea class="file-editor" ref=${box} readOnly=${saving} aria-label=${`Edit ${name}`} spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off"
+  return html`<textarea class="file-editor" ref=${box} readOnly=${saving} aria-label=${`Edit ${name}`} spellcheck="false" autocapitalize="off" autocorrect=${false} autocomplete="off"
     onInput=${ev => changeText(ev.currentTarget.value)} onKeyDown=${onKeyDown}></textarea>`;
 }

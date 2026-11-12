@@ -285,6 +285,8 @@ function App() {
     const onHash = () => setHash(location.hash);
     document.addEventListener('visibilitychange', refresh);
     window.addEventListener('hashchange', onHash);
+    // A hash set between the first draw and this effect fires no event this listener hears.
+    onHash();
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', refresh);

@@ -236,7 +236,7 @@ test('the Accounts page says what is pinned under each account and that a switch
   assert.equal((await pin(c, 'session', 'other', 'second')).status, 200);
   assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
   assert.equal((await pin(c, 'project', 'cp-a', 'main')).status, 200);
-  await page.evaluate(`location.reload()`);
+  await page.reload();
   await page.until(`document.querySelectorAll('#accounts .account').length === 2 && [...document.querySelectorAll('#accounts .account-line')].some(p => p.textContent.startsWith('Pinned'))`, 15_000);
   const [main, second] = await lines();
   assert.deepEqual(main.filter(x => x.startsWith('Pinned')), ['Pinned: 1 project']);
@@ -248,7 +248,7 @@ test('the Accounts page says what is pinned under each account and that a switch
   assert.equal((await pin(c, 'group', 'cg-b', null)).status, 200);
   assert.equal((await pin(c, 'session', 'live', null)).status, 200);
   assert.equal((await pin(c, 'session', 'other', null)).status, 200);
-  await page.evaluate(`location.reload()`);
+  await page.reload();
   await page.until(`document.querySelectorAll('#accounts .account').length === 2`, 15_000);
   assert.equal((await lines()).flat().some(x => x.startsWith('Pinned')), false);
   assert.doesNotMatch(await lead(), /pinned work/);

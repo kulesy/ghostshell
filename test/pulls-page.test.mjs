@@ -337,7 +337,7 @@ test('the header button counts a pull request that needs the owner with the pane
   await closed.until(`!!document.querySelector('#subsButton')`);
   await closed.click('#subsButton');
   await closed.until(`!document.querySelector('#panel')`);
-  await closed.evaluate(`window.oldDocument = true; location.reload()`);
+  await closed.reload();
   // A poll that lands mid-navigation is refused, so it is asked again.
   for (let tries = 0; ; tries++) {
     try { await closed.until(`!window.oldDocument && document.readyState === 'complete' && !!document.querySelector('#subsButton')`); break; } catch (e) { if (tries > 40 || !/navigated or closed/.test(e.message)) throw e; }
@@ -398,7 +398,7 @@ test('a second look at the same sessions within the minute asks the server for n
   await new Promise(resolve => setTimeout(resolve, 800));
   assert.equal(watch.pulls().length, first, 'the tab closed and opened, and the chat left and come back to');
   const before = ghCalls();
-  await page.evaluate(`window.oldDocument = true; location.reload()`);
+  await page.reload();
   await page.until(`!window.oldDocument && !!document.querySelector('#panel .sub-pull')`, 15_000);
   assert.equal(watch.pulls().length, first + 1, 'a new page knows nothing and asks');
   assert.equal(ghCalls(), before, 'and the server answers from its cache');
