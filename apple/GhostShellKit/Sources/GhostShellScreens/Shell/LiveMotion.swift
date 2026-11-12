@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A scripted test run sets `still`, so no spinner turns and no clock ticks, and the test runner can see the app go idle. See https://github.com/kulesy/ghostshell/issues/148.
+/// A scripted test run sets `still`, so no spinner turns, no clock ticks and no sidebar row can be dragged, and the test runner can see the app go idle. See https://github.com/kulesy/ghostshell/issues/148.
 @MainActor public enum LiveMotion {
     public static var still = false
 }

@@ -530,7 +530,6 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
     /// A link is a run inside a line of text. iOS 27 pads the line's frame by 16pt a side, so the end of the line is no longer on the link and the tap goes to the link itself.
     private func tapLink(_ app: XCUIApplication, line: String) {
-        sleep(1)
         let text = live(app, line)
         let link = text.links.firstMatch
         (link.exists ? link : text).coordinate(withNormalizedOffset: link.exists ? CGVector(dx: 0.5, dy: 0.5) : CGVector(dx: 0.93, dy: 0.5)).tap()
@@ -550,8 +549,6 @@ final class GhostShelliPhoneUITests: XCTestCase {
     /// Taps a file link once and waits for the panel, which is the one place with a Close button.
     private func openFile(_ app: XCUIApplication, line: String, header: String, file: StaticString = #filePath, at: UInt = #line) {
         tapLink(app, line: line)
-        // If the tap at the link's centre opens nothing on iOS 27, the link element itself is pressed once before this fails.
-        if !app.buttons["Close"].firstMatch.waitForExistence(timeout: 4) { live(app, line).links.firstMatch.tap() }
         XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 10), "\(line) did not open the panel\n\(app.debugDescription)", file: file, line: at)
         XCTAssertTrue(app.staticTexts[header].firstMatch.waitForExistence(timeout: 10), "The panel for \(line) does not name \(header)", file: file, line: at)
     }
@@ -711,7 +708,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let app = launch(stub: "groups")
         signIn(app, expecting: "A session outside the group")
         assertTouchable(headingIcon(app), "The heading's chat icon")
-        let heading = rowStarting(app, "Release")
+        // Sign-in scrolls a small phone down to its last row, which takes the heading under the bar.
+        let heading = reveal(app, rowStarting(app, "Release"))
         heading.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).press(forDuration: 1.0)
         let item = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Open group chat")).firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 5), "A long press on the heading offers Open group chat\n\(app.debugDescription)")
@@ -1104,9 +1102,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         menu(app, "Add dark mode to the chart", "Pin")
         XCTAssertTrue(heading(app, "Pinned").waitForExistence(timeout: 10), "A pinned session makes the Pinned section\n\(app.debugDescription)")
         shot("organise-4-pinned")
-        rowStarting(app, "Add dark mode to the chart").press(forDuration: 1.0)
-        XCTAssertTrue(app.buttons["Unpin"].firstMatch.waitForExistence(timeout: 5), "A pinned session offers Unpin")
-        app.buttons["Unpin"].firstMatch.tap()
+        menu(app, "Add dark mode to the chart", "Unpin")
         XCTAssertTrue(heading(app, "Pinned").waitForNonExistence(timeout: 10))
 
         // Archive.
@@ -1256,7 +1252,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(place.waitForExistence(timeout: 5), app.debugDescription)
         place.tap()
         XCTAssertTrue(done.waitForNonExistence(timeout: 10), "A finished bulk write leaves edit mode")
-        XCTAssertTrue(heading(app, "Pinned").waitForExistence(timeout: 10), "Both sessions were pinned\n\(app.debugDescription)")
+        XCTAssertTrue(reveal(app, heading(app, "Pinned")).exists, "Both sessions were pinned\n\(app.debugDescription)")
         shot("organise-select-4-after-move")
 
         // Done clears the choice.

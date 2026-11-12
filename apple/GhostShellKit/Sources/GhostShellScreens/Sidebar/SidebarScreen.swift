@@ -34,7 +34,7 @@ private struct SidebarHost: View {
         #else
         @Bindable var state = state
         SidebarList()
-            .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader() }
+            .headerAbove { SidebarHeader() }
             .searchable(text: $state.query, placement: .sidebar, prompt: "Search")
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if model.connection == .unreachable { UnreachableLine() }
@@ -51,6 +51,17 @@ private struct SidebarHost: View {
             .navigationTitle("Sessions")
             // Last, so the header, toolbar and watch slot all read the same state.
             .environment(state)
+        #endif
+    }
+}
+
+private extension View {
+    /// The rows scroll under the header, so on a phone it needs a backing: iOS 26's bar blurs what is under it, and before that the header carries the bar's material.
+    @ViewBuilder func headerAbove(@ViewBuilder _ header: () -> some View) -> some View {
+        #if os(iOS)
+        if #available(iOS 26, *) { safeAreaBar(edge: .top, spacing: 0, content: header) } else { safeAreaInset(edge: .top, spacing: 0) { header().background(.bar) } }
+        #else
+        safeAreaInset(edge: .top, spacing: 0, content: header)
         #endif
     }
 }
