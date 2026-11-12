@@ -27,14 +27,17 @@ struct SessionRowView: View {
 }
 
 /// How long the open turn has run, counted on this Mac's clock and redrawn each second.
-private struct TurnTimer: View {
+struct TurnTimer: View {
     let start: Date
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            Text(SidebarOutline.duration(ms: context.date.timeIntervalSince(start) * 1000))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+            let text = Text(SidebarOutline.duration(ms: context.date.timeIntervalSince(start) * 1000))
+            #if os(iOS)
+            text.font(.geistMono(11, relativeTo: .caption2)).foregroundStyle(Color.ghost.sidebarMuted)
+            #else
+            text.font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            #endif
         }
     }
 }

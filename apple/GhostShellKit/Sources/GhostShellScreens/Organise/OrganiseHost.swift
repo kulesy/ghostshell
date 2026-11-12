@@ -29,7 +29,7 @@ struct OrganiseHost: ViewModifier {
             } message: { ask in
                 Text(ask.detail)
             }
-            .sheet(item: $organise.naming) { NameSheet(organise: organise, naming: $0) }
+            .sheet(item: Binding(get: { organise.naming.flatMap { $0.inline ? nil : $0 } }, set: { if $0 == nil { organise.naming = nil } })) { NameSheet(organise: organise, naming: $0) }
     }
 }
 

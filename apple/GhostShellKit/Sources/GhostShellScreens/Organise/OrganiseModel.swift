@@ -24,7 +24,20 @@ final class OrganiseModel {
         var text: String
         var was: String
         var limit: Int
+        var target: Target = .sheet
         var run: @MainActor (String) async -> String?
+
+        /// Where the name is typed. A phone types a session's or group's name on its own row and a new group's at the top of the list. The rest use the sheet.
+        enum Target: Equatable { case sheet, session(String), group(String), newGroup }
+
+        /// True where the list draws the field itself, so no sheet opens.
+        var inline: Bool {
+            #if os(iOS)
+            target != .sheet
+            #else
+            false
+            #endif
+        }
     }
 
     var problem: String?
@@ -89,15 +102,15 @@ final class OrganiseModel {
 
     func cancelName() { naming = nil; namingProblem = nil }
 
-    private func askName(_ title: String, prompt: String, text: String = "", limit: Int, run: @escaping @MainActor (String) async -> String?) {
+    private func askName(_ title: String, prompt: String, text: String = "", limit: Int, target: Naming.Target = .sheet, run: @escaping @MainActor (String) async -> String?) {
         namingProblem = nil
-        naming = Naming(title: title, prompt: prompt, text: text, was: text, limit: limit, run: run)
+        naming = Naming(title: title, prompt: prompt, text: text, was: text, limit: limit, target: target, run: run)
     }
 
     // MARK: One session
 
     func rename(_ row: SessionRow) {
-        askName("Rename session", prompt: "Title", text: row.title, limit: OrganiseRules.titleMax) { [self] text in
+        askName("Rename session", prompt: "Title", text: row.title, limit: OrganiseRules.titleMax, target: .session(row.id)) { [self] text in
             await attempt { try await $0.renameSession(row.id, title: OrganiseRules.clean(text)) }
         }
     }
@@ -262,13 +275,13 @@ final class OrganiseModel {
     func newGroup() {
         let project = view
         let name = project.flatMap { id in index.projects.first { $0.id == id }?.name }
-        askName(name.map { "New group in \($0)" } ?? "New group", prompt: "Name", limit: OrganiseRules.nameMax) { [self] text in
+        askName(name.map { "New group in \($0)" } ?? "New group", prompt: "Name", limit: OrganiseRules.nameMax, target: .newGroup) { [self] text in
             await attempt { _ = try await $0.addGroup(name: text, project: project) }
         }
     }
 
     func rename(_ group: SessionGroup) {
-        askName("Rename group", prompt: "Name", text: group.name, limit: OrganiseRules.nameMax) { [self] text in
+        askName("Rename group", prompt: "Name", text: group.name, limit: OrganiseRules.nameMax, target: .group(group.id)) { [self] text in
             await attempt { try await $0.renameGroup(group.id, name: text) }
         }
     }

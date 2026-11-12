@@ -116,7 +116,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         field.typeText(address)
         signIn(app)
         shot("02-sidebar")
-        assertTouchable(app.buttons["More"], "More")
+        assertTouchable(app.buttons["Account"], "Account")
         assertTouchable(row(app, "Fix the flaky upload test"), "A session row")
 
         open(app, "Fix the flaky upload test", expecting: "Thanks. Can you add a note to the changelog?")
@@ -125,7 +125,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         for _ in 0..<3 { app.swipeDown() }
         shot("04-chat-scrolled")
         back(app)
-        XCTAssertTrue(app.buttons["More"].waitForExistence(timeout: 10), "Back returns to the list")
+        XCTAssertTrue(app.buttons["Account"].waitForExistence(timeout: 10), "Back returns to the list")
 
         // The same session opens again, which only works when Back cleared the navigator.
         open(app, "Fix the flaky upload test", expecting: "Thanks. Can you add a note to the changelog?")
@@ -455,12 +455,12 @@ final class GhostShelliPhoneUITests: XCTestCase {
     func testAccountsPasskeysAndSignOut() throws {
         let app = launch()
         signIn(app)
-        app.buttons["More"].tap()
+        app.buttons["Account"].tap()
         XCTAssertTrue(app.buttons["Accounts"].waitForExistence(timeout: 5), app.debugDescription)
-        // The page's footer links come first, then its Account menu: Accounts, Passkeys, a separator and Sign out, with Sign out plain. This stub has no scheduled sessions, so that link is absent.
-        let order = ["Manage routines", "Accounts", "Passkeys", "Sign out"].map { app.buttons[$0] }
-        for item in order { XCTAssertTrue(item.exists, "More offers \(item.label)\n\(app.debugDescription)") }
-        XCTAssertEqual(order.map(\.frame.minY), order.map(\.frame.minY).sorted(), "More lists its items in the page's order")
+        // The page's Account menu: Accounts, Passkeys, a separator and Sign out, with Sign out plain.
+        let order = ["Accounts", "Passkeys", "Sign out"].map { app.buttons[$0] }
+        for item in order { XCTAssertTrue(item.exists, "Account offers \(item.label)\n\(app.debugDescription)") }
+        XCTAssertEqual(order.map(\.frame.minY), order.map(\.frame.minY).sorted(), "Account lists its items in the page's order")
         XCTAssertFalse(app.buttons["Sign Out"].exists, "The page says Sign out")
         shot("11-more-menu")
         app.buttons["Accounts"].tap()
@@ -478,7 +478,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         shot("09b-accounts-scrolled")
         for name in ["Switch to this", "Sign in", "Rename Personal"] { assertTouchable(app.buttons[name].firstMatch, name) }
         back(app)
-        app.buttons["More"].tap()
+        app.buttons["Account"].tap()
         app.buttons["Passkeys"].tap()
         XCTAssertTrue(app.staticTexts["MacBook Pro, Safari"].waitForExistence(timeout: 15), app.debugDescription)
         shot("10-passkeys")
@@ -490,7 +490,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.buttons["Keep"].tap()
         XCTAssertTrue(remove.waitForExistence(timeout: 5), "Keep puts the Remove button back")
         back(app)
-        app.buttons["More"].tap()
+        app.buttons["Account"].tap()
         app.buttons["Sign out"].tap()
         XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 15), app.debugDescription)
     }
@@ -498,14 +498,14 @@ final class GhostShelliPhoneUITests: XCTestCase {
     func testAccountsAndPasskeysEmptyStates() throws {
         let app = launch(stub: "accountsEmpty")
         signIn(app)
-        app.buttons["More"].tap()
+        app.buttons["Account"].tap()
         app.buttons["Accounts"].tap()
         XCTAssertTrue(app.buttons["Add and sign in"].waitForExistence(timeout: 15), app.debugDescription)
         assertTouchable(app.buttons["Add and sign in"], "Add and sign in")
         XCTAssertTrue(app.switches["Switch accounts by itself"].exists, app.debugDescription)
         shot("09c-accounts-empty")
         back(app)
-        app.buttons["More"].tap()
+        app.buttons["Account"].tap()
         app.buttons["Passkeys"].tap()
         let none = app.staticTexts["No passkeys added yet."]
         XCTAssertTrue(none.waitForExistence(timeout: 15), app.debugDescription)
@@ -683,7 +683,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
     }
 
-    /// The icon is named in capitals on a phone, because a list header uppercases its text, so the name is matched without case.
+    /// The icon is named in capitals on a phone, so the name is matched without case.
     private func headingIcon(_ app: XCUIApplication) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Open the Release chat")).firstMatch
     }
@@ -692,7 +692,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let icon = headingIcon(app)
         XCTAssertTrue(icon.waitForExistence(timeout: 5), "The heading's chat icon is a button\n\(app.debugDescription)")
         icon.tap()
-        XCTAssertTrue(app.segmentedControls.buttons["Sub sessions"].firstMatch.waitForExistence(timeout: 15), "The group chat opens\n\(app.debugDescription)")
+        XCTAssertTrue(app.buttons["Sub sessions"].firstMatch.waitForExistence(timeout: 15), "The group chat opens\n\(app.debugDescription)")
     }
 
     func testAGroupHeadingOpensItsChatFromTheIconAndTheLongPress() throws {
@@ -703,11 +703,10 @@ final class GhostShelliPhoneUITests: XCTestCase {
         heading.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).press(forDuration: 1.0)
         let item = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Open group chat")).firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 5), "A long press on the heading offers Open group chat\n\(app.debugDescription)")
-        XCTAssertTrue(app.buttons["Cancel"].firstMatch.exists)
         shot("groups-1b-heading-menu")
         assertTouchable(item, "Open group chat")
         item.tap()
-        XCTAssertTrue(app.segmentedControls.buttons["Sub sessions"].firstMatch.waitForExistence(timeout: 15), "The menu opens the group chat\n\(app.debugDescription)")
+        XCTAssertTrue(app.buttons["Sub sessions"].firstMatch.waitForExistence(timeout: 15), "The menu opens the group chat\n\(app.debugDescription)")
     }
 
     func testAGroupChatShowsItsChipsAndSubSessions() throws {
@@ -726,7 +725,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         sleep(2)
         shot("groups-3-chip-start")
 
-        app.segmentedControls.buttons["Sub sessions"].firstMatch.tap()
+        app.buttons["Sub sessions"].firstMatch.tap()
         let reply = app.buttons["Reply to Draft the release notes"].firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout: 10), app.debugDescription)
         sleep(1)
@@ -777,14 +776,12 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
     private func body(_ write: [String: Any]?) -> [String: Any] { write?["body"] as? [String: Any] ?? [:] }
 
-    /// Opens a screen from the More menu, which is how a phone reaches Routines and Scheduled sessions.
-    private func openFromMore(_ app: XCUIApplication, _ item: String) {
-        let more = app.buttons["More"]
-        XCTAssertTrue(more.waitForExistence(timeout: 10), app.debugDescription)
-        more.tap()
-        let entry = app.buttons[item]
-        XCTAssertTrue(entry.waitForExistence(timeout: 5), "More offers \(item)\n\(app.debugDescription)")
-        entry.tap()
+    /// Opens a screen from the list's footer, which is how a phone reaches Routines and Scheduled sessions.
+    private func openFromFooter(_ app: XCUIApplication, _ item: String) {
+        let link = app.buttons[item]
+        XCTAssertTrue(link.waitForExistence(timeout: 10), "The footer has \(item)\n\(app.debugDescription)")
+        assertTouchable(link, item)
+        link.tap()
     }
 
     /// Clears a field and types a new value, because a phone has no select-all key.
@@ -829,7 +826,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
     func testRoutines() async throws {
         let app = routinesApp()
         shot("routines-1-sidebar")
-        openFromMore(app, "Manage routines")
+        openFromFooter(app, "Routines")
         XCTAssertTrue(app.staticTexts["Nightly check"].waitForExistence(timeout: 10), app.debugDescription)
         shot("routines-2-list")
         for name in ["Run now", "Actions for Nightly check", "New routine"] {
@@ -929,13 +926,13 @@ final class GhostShelliPhoneUITests: XCTestCase {
     func testRoutinesAndScheduledEmptyStates() throws {
         let app = launch(stub: "routinesEmpty")
         signIn(app, stub: "routinesEmpty", expecting: "Look at the failing build")
-        openFromMore(app, "Manage routines")
+        openFromFooter(app, "Routines")
         XCTAssertTrue(app.staticTexts["No routines yet."].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertLessThan(app.staticTexts["No routines yet."].frame.minX, 40, "The empty state is left aligned, as the page has it")
         shot("routines-0-empty")
         for button in app.buttons.matching(NSPredicate(format: "label == 'New routine'")).allElementsBoundByIndex { assertTouchable(button, "New routine") }
         back(app)
-        openFromMore(app, "Manage scheduled sessions")
+        openFromFooter(app, "Scheduled")
         XCTAssertTrue(app.staticTexts["No scheduled sessions."].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertLessThan(app.staticTexts["No scheduled sessions."].frame.minX, 40, "The empty state is left aligned, as the page has it")
         shot("scheduled-0-empty")
@@ -944,7 +941,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
     func testScheduledSessions() async throws {
         let app = routinesApp()
-        openFromMore(app, "Manage scheduled sessions")
+        openFromFooter(app, "Scheduled")
         XCTAssertTrue(app.staticTexts["Quarterly review"].waitForExistence(timeout: 10), app.debugDescription)
         shot("scheduled-1-list")
         for name in ["Start now", "Actions for Quarterly review", "Schedule a session"] { assertTouchable(app.buttons[name].firstMatch, name) }
@@ -1039,34 +1036,40 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label ==[c] %@", name)).firstMatch
     }
 
-    /// The name sheet: type, then Save. Its buttons are checked on the way.
-    private func name(_ app: XCUIApplication, as text: String, sheet: String, prompt: String = "Name") {
+    /// The page's inline name form: the row or heading becomes a field with its text selected, and Return saves.
+    private func name(_ app: XCUIApplication, as text: String, prompt: String = "Name", shot named: String? = nil) {
         let field = app.textFields[prompt]
-        XCTAssertTrue(field.waitForExistence(timeout: 5), "The \(sheet) sheet has its field\n\(app.debugDescription)")
-        XCTAssertTrue(app.navigationBars[sheet].exists, "The sheet is titled \(sheet)\n\(app.debugDescription)")
-        endEditing(app)
-        focusByEdge(field, "\(sheet) \(prompt)")
-        for (label, element) in [("Cancel", app.buttons["Cancel"]), ("Save", app.buttons["Save"])] { assertTouchable(element, "\(sheet) \(label)") }
-        shot("organise-sheet-\(sheet.lowercased().replacingOccurrences(of: " ", with: "-"))")
-        replace(field, with: text)
-        app.buttons["Save"].tap()
-        XCTAssertTrue(app.buttons["Save"].waitForNonExistence(timeout: 10), "The sheet closes\n\(app.debugDescription)")
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "The row has a field named \(prompt)\n\(app.debugDescription)")
+        XCTAssertTrue(app.sheets.firstMatch.exists == false && app.navigationBars[prompt].exists == false, "No sheet opens\n\(app.debugDescription)")
+        if let named { shot(named) }
+        field.typeText(text + "\n")
+        XCTAssertTrue(field.waitForNonExistence(timeout: 10), "The field closes once the name is saved\n\(app.debugDescription)")
+    }
+
+    /// The + menu's New group.
+    private func newGroup(_ app: XCUIApplication) {
+        let plus = app.buttons["New"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 10), app.debugDescription)
+        plus.tap()
+        let item = app.buttons["New group"].firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "The + menu offers New group\n\(app.debugDescription)")
+        item.tap()
     }
 
     func testOrganiseASessionFromItsMenu() throws {
         let app = organiseApp()
         shot("organise-1-list")
-        assertTouchable(app.buttons["New group"].firstMatch, "New group")
+        assertTouchable(app.buttons["New"], "New")
 
         // Rename.
         menu(app, "Plan the release notes", "Rename\u{2026}")
-        name(app, as: "Release plan", sheet: "Rename session", prompt: "Title")
+        name(app, as: "Release plan", prompt: "Title", shot: "organise-inline-rename")
         XCTAssertTrue(rowStarting(app, "Release plan").waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertFalse(rowStarting(app, "Plan the release notes").exists)
 
         // New group, then Move to it.
-        app.buttons["New group"].firstMatch.tap()
-        name(app, as: "Sprint nine", sheet: "New group")
+        newGroup(app)
+        name(app, as: "Sprint nine", shot: "organise-inline-new-group")
         let group = heading(app, "Sprint nine")
         XCTAssertTrue(group.waitForExistence(timeout: 10), "The new group has a heading\n\(app.debugDescription)")
         menu(app, "Review the sign-in change", "Move to", "Sprint nine")
@@ -1100,19 +1103,19 @@ final class GhostShelliPhoneUITests: XCTestCase {
     func testOrganiseGroupsFromTheirHeadings() throws {
         let app = organiseApp()
         for text in ["Heading one", "Heading two"] {
-            app.buttons["New group"].firstMatch.tap()
-            name(app, as: text, sheet: "New group")
+            newGroup(app)
+            name(app, as: text)
             XCTAssertTrue(heading(app, text).waitForExistence(timeout: 10), app.debugDescription)
         }
         shot("organise-groups-1-two-groups")
 
-        // Rename, from the long-press dialog.
+        // Rename, from the long-press menu.
         heading(app, "Heading one").press(forDuration: 1.0)
         let rename = app.buttons["Rename\u{2026}"].firstMatch
-        XCTAssertTrue(rename.waitForExistence(timeout: 5), "A heading's long press asks what to do\n\(app.debugDescription)")
-        shot("organise-groups-2-heading-dialog")
+        XCTAssertTrue(rename.waitForExistence(timeout: 5), "A heading's long press opens its menu\n\(app.debugDescription)")
+        shot("organise-groups-2-heading-menu")
         rename.tap()
-        name(app, as: "Heading uno", sheet: "Rename group")
+        name(app, as: "Heading uno", shot: "organise-groups-2b-heading-rename")
         XCTAssertTrue(heading(app, "Heading uno").waitForExistence(timeout: 10), app.debugDescription)
 
         // Move down: the first group goes below the second.
@@ -1139,37 +1142,86 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(heading(app, "Heading two").exists)
     }
 
+    func testTheRowMoreMenuRenamesInline() throws {
+        let app = organiseApp()
+        let more = reveal(app, app.buttons["Actions for Check the nightly build"])
+        assertTouchable(more, "Actions for Check the nightly build")
+        more.tap()
+        let rename = app.buttons["Rename\u{2026}"].firstMatch
+        XCTAssertTrue(rename.waitForExistence(timeout: 5), "The row's menu has the long press's items\n\(app.debugDescription)")
+        shot("organise-row-more-menu")
+        rename.tap()
+        name(app, as: "Nightly check", prompt: "Title", shot: "organise-row-more-inline-rename")
+        XCTAssertTrue(rowStarting(app, "Nightly check").waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    func testTheTopBarAndFooterMenusAndSearch() throws {
+        let app = organiseApp()
+        let plus = app.buttons["New"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 10), app.debugDescription)
+        plus.tap()
+        XCTAssertTrue(app.buttons["New session"].firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["New group"].firstMatch.exists)
+        shot("organise-plus-menu")
+        app.buttons["New group"].firstMatch.tap()
+        let field = app.textFields["Name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        field.typeText("\n")
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5), "An empty name cancels")
+
+        let account = app.buttons["Account"]
+        assertTouchable(account, "Account")
+        account.tap()
+        for item in ["Accounts", "Passkeys", "Sign Out"] {
+            XCTAssertTrue(app.buttons[item].firstMatch.waitForExistence(timeout: 5), "The account menu has \(item)\n\(app.debugDescription)")
+        }
+        shot("organise-account-menu")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).tap()
+
+        let search = app.buttons["Search"]
+        assertTouchable(search, "Search")
+        search.tap()
+        let box = app.textFields["Search"]
+        XCTAssertTrue(box.waitForExistence(timeout: 5), app.debugDescription)
+        shot("organise-search-open")
+        box.typeText("zzzz-no-match")
+        XCTAssertTrue(app.staticTexts["Nothing matches that search."].waitForExistence(timeout: 5), app.debugDescription)
+        shot("organise-empty-list")
+        app.buttons["Close search"].tap()
+        XCTAssertTrue(box.waitForNonExistence(timeout: 5), "Close hides the field")
+    }
+
     func testSelectManySessionsInEditMode() throws {
         let app = organiseApp()
-        let list = app.buttons["New group"].firstMatch
+        let list = app.buttons["New"]
         menu(app, "Write the migration guide", "Select")
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5), "Select starts edit mode\n\(app.debugDescription)")
         XCTAssertTrue(list.exists, "Select leaves the list on screen, with no chat opened")
-        XCTAssertTrue(app.staticTexts["1 chosen"].exists, app.debugDescription)
+        XCTAssertTrue(app.staticTexts["1 selected"].exists, app.debugDescription)
         // The bar takes room from the list, so the chosen row is brought back above it.
         let chosen = rowStarting(app, "Write the migration guide")
-        let bar = app.toolbars.firstMatch
+        let bar = app.buttons["Archive"].firstMatch
         var visible = false
         for _ in 0..<20 where !visible {
             visible = chosen.exists && chosen.isHittable && chosen.frame.maxY <= bar.frame.minY
             if !visible { usleep(250_000) }
         }
-        XCTAssertTrue(visible, "The chosen row is above the bottom bar\n\(chosen.frame) \(bar.frame)")
+        XCTAssertTrue(visible, "The chosen row is above the select bar\n\(chosen.frame) \(bar.frame)")
         shot("organise-select-1-edit-mode")
         assertTouchable(done, "Done")
         assertTouchable(app.buttons["Actions"], "Actions")
 
         // A tap chooses another row and opens nothing.
         reveal(app, rowStarting(app, "Check the nightly build")).tap()
-        XCTAssertTrue(app.staticTexts["2 chosen"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["2 selected"].waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(list.exists, "A tap in edit mode does not open a chat")
         rowStarting(app, "Write the migration guide").tap()
-        XCTAssertTrue(app.staticTexts["1 chosen"].waitForExistence(timeout: 5), "A second tap takes the row off")
+        XCTAssertTrue(app.staticTexts["1 selected"].waitForExistence(timeout: 5), "A second tap takes the row off")
         rowStarting(app, "Write the migration guide").tap()
         shot("organise-select-2-two-chosen")
 
-        // The Mac's selection menu, in the bottom bar.
+        // The Mac's selection menu, in the select bar.
         app.buttons["Actions"].tap()
         for item in ["Move to", "Nest under", "Archive 2 sessions", "Clear selection"] {
             XCTAssertTrue(app.buttons[item].firstMatch.waitForExistence(timeout: 5), "Actions offers \(item)\n\(app.debugDescription)")

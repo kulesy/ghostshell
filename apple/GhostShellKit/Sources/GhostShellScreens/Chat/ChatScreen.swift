@@ -6,14 +6,17 @@ struct ChatScreen: View {
     let sessionID: String
     /// A chat that is not a row in the list, such as a group's own, is named by the screen that holds it.
     var title: String?
+    /// "Group" or "Section" for a group's own chat. A phone then draws the kind and the model under the title.
+    var groupKind: String?
 
-    var body: some View { ChatHost(sessionID: sessionID, named: title).id(sessionID) }
+    var body: some View { ChatHost(sessionID: sessionID, named: title, groupKind: groupKind).id(sessionID) }
 }
 
 private struct ChatHost: View {
     @Environment(AppModel.self) private var app
     let sessionID: String
     var named: String?
+    var groupKind: String?
     @State private var model: ChatModel?
 
     var body: some View {
@@ -24,6 +27,9 @@ private struct ChatHost: View {
         .navigationTitle(title.isEmpty ? "Untitled" : title)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let groupKind, let model { ToolbarItem(placement: .principal) { GroupTitle(name: title, kind: groupKind, chat: model.chat) } }
+        }
         #endif
         .task {
             guard let client = app.client else { return }
@@ -40,6 +46,24 @@ extension EnvironmentValues {
     /// surroundings could change what it measured and never settle.
     @Entry var chatHeight: CGFloat = 560
 }
+
+#if os(iOS)
+/// A group chat's title as the page draws it: the name, then "Group session" and the model in muted mono.
+private struct GroupTitle: View {
+    let name: String
+    let kind: String
+    let chat: ChatContext
+
+    var body: some View {
+        let model = (chat.status?.shownModel ?? chat.status?.model).map { ComposerOptions.modelName($0) }
+        VStack(spacing: 0) {
+            Text(name).font(.geist(17, weight: .bold, relativeTo: .headline)).foregroundStyle(Color.ghost.foreground).lineLimit(1)
+            Text(["\(kind) session", model].compactMap { $0 }.joined(separator: " \u{00B7} ")).font(.geistMono(12, relativeTo: .caption)).foregroundStyle(Color.ghost.mutedForeground).lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+#endif
 
 private struct ChatLayout: View {
     let model: ChatModel

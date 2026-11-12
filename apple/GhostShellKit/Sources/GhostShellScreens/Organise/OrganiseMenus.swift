@@ -127,6 +127,7 @@ struct SelectionMenu: View {
 }
 
 /// A Move to menu. A project's groups sit under the project's name.
+// NOTE: [11 Nov 2026] EK - A native submenu: iOS menus cannot hold a search field, which the page's Move to has.
 private struct PlaceMenu: View {
     let entries: [PlaceEntry]
     let pick: (String) -> Void
