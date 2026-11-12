@@ -16,7 +16,7 @@ struct SidebarHeading: Hashable, Sendable, Identifiable {
     var group: SessionGroup?
 }
 
-/// Buttons at the end of the sidebar's toolbar, beside Sign Out.
+/// Buttons at the end of the Mac sidebar's toolbar, beside Sign Out. The iPhone draws its own top bar and footer instead.
 struct SidebarToolbarSlot: View {
     var body: some View {
         NotificationToggle()

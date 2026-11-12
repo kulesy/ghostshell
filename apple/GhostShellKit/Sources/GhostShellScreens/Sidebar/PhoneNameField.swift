@@ -51,6 +51,8 @@ struct PhoneNameField: View {
         .onAppear {
             focused = true
         }
+        // A row that leaves the list mid-save, say archived on another device, takes its field with it, so the name ends there and the footer comes back.
+        .onDisappear { if organise.naming?.id == naming.id { organise.cancelName() } }
         .task {
             // The selection is ignored until the field has taken focus, so it is set a beat later.
             try? await Task.sleep(for: .milliseconds(200))

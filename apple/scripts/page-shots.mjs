@@ -222,6 +222,7 @@ const SCREENS = {
     }],
     ['organise-new-menu', async (page, ctx) => { await ctx.go('#/'); await page.locator('button.add').click(); await page.locator('[role=menu]').waitFor(); }],
     ['organise-find', async (page, ctx) => { await ctx.go('#/'); await page.locator('button.find').click(); await sleep(600); }],
+    ['organise-find-results', async (page, ctx) => { await ctx.go('#/'); await page.locator('button.find').click(); await page.keyboard.type('release'); await sleep(600); }],
     ['organise-projects-menu', async (page, ctx) => { await ctx.go('#/'); await page.locator('button.projects-toggle').click(); await sleep(600); }],
   ],
   empty: [

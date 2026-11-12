@@ -1042,7 +1042,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
     private func name(_ app: XCUIApplication, as text: String, prompt: String = "Name", shot named: String? = nil) {
         let field = app.textFields[prompt]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "The row has a field named \(prompt)\n\(app.debugDescription)")
-        XCTAssertTrue(app.sheets.firstMatch.exists == false && app.navigationBars[prompt].exists == false, "No sheet opens\n\(app.debugDescription)")
+        let sheetBar = app.navigationBars.matching(NSPredicate(format: "identifier BEGINSWITH 'Rename' OR identifier BEGINSWITH 'New group'"))
+        XCTAssertTrue(sheetBar.count == 0 && !app.buttons["Save"].exists, "No name sheet opens\n\(app.debugDescription)")
         if let named { shot(named) }
         field.typeText(text + "\n")
         XCTAssertTrue(field.waitForNonExistence(timeout: 10), "The field closes once the name is saved\n\(app.debugDescription)")
@@ -1189,7 +1190,11 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let box = app.textFields["Search"]
         XCTAssertTrue(box.waitForExistence(timeout: 5), app.debugDescription)
         shot("organise-search-open")
-        box.typeText("zzzz-no-match")
+        box.typeText("migration")
+        let hit = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Write the migration guide'")).firstMatch
+        XCTAssertTrue(hit.waitForExistence(timeout: 5), "Search finds the row\n\(app.debugDescription)")
+        shot("organise-search-results")
+        box.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "migration".count) + "zzzz-no-match")
         XCTAssertTrue(app.staticTexts["Nothing matches that search."].waitForExistence(timeout: 5), app.debugDescription)
         shot("organise-empty-list")
         app.buttons["Close search"].tap()

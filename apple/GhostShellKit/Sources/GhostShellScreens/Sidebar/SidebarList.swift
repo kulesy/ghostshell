@@ -44,7 +44,7 @@ struct SidebarList: View {
                 #endif
                 .overlay {
                     // A new group's field sits in the list, so the empty notice keeps out of its way.
-                    if organise.naming?.target == .newGroup {
+                    if organise.naming?.target == .newGroup, organise.naming?.inline == true {
                         EmptyView()
                     } else if searching, hits.sessions.isEmpty, hits.subSessions.isEmpty, hits.archived.isEmpty {
                         #if os(iOS)
