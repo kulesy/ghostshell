@@ -1,4 +1,3 @@
-#if os(macOS)
 import GhostShellKit
 import SwiftUI
 
@@ -26,6 +25,7 @@ struct TerminalRunButton: View {
         if chat.terminalAvailable, let runnable = TerminalRules.runnableBlock(language: block.language, text: block.text) {
             Button("Run") { run() }
                 .buttonStyle(.borderless).font(ChatStyle.caption).foregroundStyle(runnable.hidden ? .tertiary : .secondary)
+                .phoneIconTouch()
                 .disabled(runnable.hidden)
                 .help(runnable.hidden ? "This block holds hidden characters, so it cannot be run" : "Run in terminal")
                 .accessibilityLabel(runnable.hidden ? "Run in terminal, unavailable because the block holds hidden characters" : "Run in terminal")
@@ -45,4 +45,3 @@ struct TerminalRunButton: View {
         Task { if let problem = await terminal.run(runnable.command, source: .block) { terminal.report(problem) } }
     }
 }
-#endif

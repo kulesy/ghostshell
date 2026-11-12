@@ -92,6 +92,7 @@ struct ChatThreadView: View {
             .padding(.vertical, 20)
         }
         .scrollPosition($position)
+        .scrollDismissesKeyboard(.interactively)
         .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.1) { visible = $0 }
         .onScrollGeometryChange(for: ScrollMetrics.self) { geometry in
             ScrollMetrics(top: geometry.visibleRect.minY, gap: geometry.contentSize.height - geometry.visibleRect.maxY,

@@ -63,12 +63,18 @@ private let chipHeight: CGFloat = 48
 
 private struct RemoveButton: View {
     let label: String
+    /// Sits on a picture, so the glyph gets a backing of its own and the 44pt touch area stays clear.
+    var onPicture = false
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) { Image(systemName: "xmark.circle.fill").symbolRenderingMode(.hierarchical).font(.system(size: 14)) }
+        Button(action: action) {
+            Image(systemName: "xmark.circle.fill").symbolRenderingMode(.hierarchical).font(.system(size: 14))
+                .background { if onPicture { Circle().fill(.regularMaterial) } }
+        }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
+            .phoneIconTouch()
             .accessibilityLabel(label)
             .help(label)
     }
@@ -91,8 +97,7 @@ private struct PictureChip: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
         .overlay(alignment: .topTrailing) {
-            RemoveButton(label: "Remove \(item.name)", action: remove)
-                .background(.regularMaterial, in: Circle())
+            RemoveButton(label: "Remove \(item.name)", onPicture: true, action: remove)
                 .padding(2)
         }
         .accessibilityElement(children: .contain)

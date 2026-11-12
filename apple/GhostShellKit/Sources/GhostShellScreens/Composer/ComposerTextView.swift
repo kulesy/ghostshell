@@ -202,6 +202,7 @@ struct ComposerTextView: View {
     let text: String
     let settle: ComposerModel.Settle
     let focusRequests: Int
+    /// Unused: the keyboard would cover the thread when a chat opens, so a phone's box takes focus only when tapped or asked.
     let autofocus: Bool
     @FocusState private var focus: Bool
 
@@ -212,6 +213,7 @@ struct ComposerTextView: View {
             .font(ChatStyle.body)
             .lineLimit(1...8)
             .focused($focus)
+            .phoneFieldRow($focus)
             .autocorrectionDisabled(model.text.hasPrefix("/"))
             .accessibilityLabel("Message")
             .onChange(of: model.text, initial: true) { _, now in model.caret = now.utf16.count }

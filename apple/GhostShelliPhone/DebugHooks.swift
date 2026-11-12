@@ -20,7 +20,27 @@ enum DebugHooks {
         if ProcessInfo.processInfo.arguments.contains("-GSKeychainService") { ClipSound.silent = true }
         let store: TokenStore = args.string(forKey: "GSKeychainService").map { KeychainTokenStore(service: $0) } ?? KeychainTokenStore()
         let defaults = args.string(forKey: "GSDefaultsSuite").flatMap { UserDefaults(suiteName: $0) } ?? .standard
+        if let folder = args.string(forKey: "GSAttachDir") { AttachWatcher.start(folder: URL(fileURLWithPath: folder)) }
         return AppModel(store: store, defaults: defaults, address: args.string(forKey: "GSAddress"))
+    }
+}
+
+/// The Files sheet is empty on a fresh Simulator, and a test can't put a file into it. With `-GSAttachDir <folder>` a test writes `attach.txt` holding
+/// `<number> <file path>` there, and the composer attaches that file as if the sheet had returned it. The Photos picker is driven for real.
+@MainActor
+enum AttachWatcher {
+    private static var handled = ""
+    private static var timer: Timer?
+
+    static func start(folder: URL) {
+        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                guard let request = try? String(contentsOf: folder.appendingPathComponent("attach.txt"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+                      request != handled, let space = request.firstIndex(of: " ") else { return }
+                handled = request
+                NotificationCenter.default.post(name: Notification.Name("GSDebugAttach"), object: String(request[request.index(after: space)...]))
+            }
+        }
     }
 }
 #endif

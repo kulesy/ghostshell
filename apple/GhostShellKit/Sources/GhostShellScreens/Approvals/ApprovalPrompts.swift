@@ -4,11 +4,12 @@ import SwiftUI
 /// The prompts waiting on this chat, oldest first, above the composer. The stack scrolls once it passes about half the chat's height, so the thread stays visible.
 struct ApprovalPrompts: View {
     let chat: ChatContext
-    @State private var cap: CGFloat = 280
+    @Environment(\.chatHeight) private var chatHeight
 
     var body: some View {
         let model = chat.store(ApprovalsModel.self) { ApprovalsModel() }
         let pending = chat.status?.pending ?? []
+        let cap = max(chatHeight * 0.5, 120)
         if !pending.isEmpty {
             VStack(spacing: 0) {
                 Divider()
@@ -26,11 +27,6 @@ struct ApprovalPrompts: View {
                 }
                 .frame(maxHeight: cap)
                 .fixedSize(horizontal: false, vertical: true)
-                .background {
-                    Color.clear
-                        .containerRelativeFrame(.vertical) { length, _ in length * 0.5 }
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cap = max($0, 120) }
-                }
             }
             .background(.bar)
             .onChange(of: pending.map(\.requestID)) { _, ids in model.keep(Set(ids)) }

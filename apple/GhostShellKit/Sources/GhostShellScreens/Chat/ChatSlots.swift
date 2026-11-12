@@ -20,14 +20,7 @@ struct ChatCodeBlock: Hashable {
 @MainActor
 enum ChatSlots {
     // https://github.com/kulesy/ghostshell/issues/84 - under the thread.
-    @ViewBuilder static func composer(_ chat: ChatContext) -> some View {
-        #if os(iOS)
-        // https://github.com/kulesy/ghostshell/issues/118 - the iPhone gets the composer there, with its own pickers and Simulator tests.
-        EmptyView()
-        #else
-        ComposerHost(chat: chat)
-        #endif
-    }
+    @ViewBuilder static func composer(_ chat: ChatContext) -> some View { ComposerHost(chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/85 - above the composer, for `chat.status?.pending`: permissions, questions and plan approvals.
     @ViewBuilder static func prompts(_ chat: ChatContext) -> some View { ApprovalPrompts(chat: chat) }
@@ -47,19 +40,11 @@ enum ChatSlots {
     // https://github.com/kulesy/ghostshell/issues/90 - a `*__show_widget` call with `input.widget_code`.
     @ViewBuilder static func widget(_ tool: ToolCall, _ chat: ChatContext) -> some View { WidgetView(tool: tool, chat: chat) }
 
-    // https://github.com/kulesy/ghostshell/issues/91 - the panel under the thread, shown while `chat.terminalOpen`. Mac only, so the three terminal slots draw nothing on iOS.
-    @ViewBuilder static func terminal(_ chat: ChatContext) -> some View {
-        #if os(macOS)
-        TerminalPanel(chat: chat)
-        #endif
-    }
+    // https://github.com/kulesy/ghostshell/issues/91 - the panel under the thread, shown while `chat.terminalOpen`. A phone draws it over the whole chat instead, as the file panel is.
+    @ViewBuilder static func terminal(_ chat: ChatContext) -> some View { TerminalPanel(chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/91 - in the head of each code block.
-    @ViewBuilder static func runButton(_ code: ChatCodeBlock, _ chat: ChatContext) -> some View {
-        #if os(macOS)
-        TerminalRunButton(block: code, chat: chat)
-        #endif
-    }
+    @ViewBuilder static func runButton(_ code: ChatCodeBlock, _ chat: ChatContext) -> some View { TerminalRunButton(block: code, chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/84 (quoting a message) - the context menu items of a user or assistant message.
     @ViewBuilder static func messageActions(_ message: ChatItem, _ chat: ChatContext) -> some View { QuoteMenuItem(message: message, chat: chat) }
@@ -68,11 +53,7 @@ enum ChatSlots {
     @ViewBuilder static func fileToolbar(_ chat: ChatContext) -> some View { FilesSlot.toolbar(chat) }
 
     // https://github.com/kulesy/ghostshell/issues/91 - toolbar buttons, such as the terminal toggle.
-    @ViewBuilder static func terminalToolbar(_ chat: ChatContext) -> some View {
-        #if os(macOS)
-        TerminalToggle(chat: chat)
-        #endif
-    }
+    @ViewBuilder static func terminalToolbar(_ chat: ChatContext) -> some View { TerminalToggle(chat: chat) }
 
     // https://github.com/kulesy/ghostshell/issues/88 - under a suggested task card: Start, Dismiss and what became of it.
     @ViewBuilder static func chipActions(_ call: ToolCall, _ chat: ChatContext) -> some View { ChipActions(call: call, chat: chat) }
