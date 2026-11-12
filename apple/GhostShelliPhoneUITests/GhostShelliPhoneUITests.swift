@@ -457,8 +457,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         signIn(app)
         app.buttons["More"].tap()
         XCTAssertTrue(app.buttons["Accounts"].waitForExistence(timeout: 5), app.debugDescription)
-        // The page's footer links come first, then its Account menu: Accounts, Passkeys, a separator and Sign out, with Sign out plain.
-        let order = ["Manage routines", "Manage scheduled sessions", "Accounts", "Passkeys", "Sign out"].map { app.buttons[$0] }
+        // The page's footer links come first, then its Account menu: Accounts, Passkeys, a separator and Sign out, with Sign out plain. This stub has no scheduled sessions, so that link is absent.
+        let order = ["Manage routines", "Accounts", "Passkeys", "Sign out"].map { app.buttons[$0] }
         for item in order { XCTAssertTrue(item.exists, "More offers \(item.label)\n\(app.debugDescription)") }
         XCTAssertEqual(order.map(\.frame.minY), order.map(\.frame.minY).sorted(), "More lists its items in the page's order")
         XCTAssertFalse(app.buttons["Sign Out"].exists, "The page says Sign out")

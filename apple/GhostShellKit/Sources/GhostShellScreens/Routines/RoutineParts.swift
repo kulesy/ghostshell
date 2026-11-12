@@ -211,7 +211,7 @@ extension View {
         #if os(macOS)
         pickerStyle(.radioGroup).horizontalRadioGroupLayout()
         #else
-        pickerStyle(.segmented)
+        pickerStyle(.segmented).controlSize(.large).frame(minHeight: 44)
         #endif
     }
 }
