@@ -11,7 +11,7 @@ struct LiveArea: View {
             if let think = model.think { LiveThink(think: think, open: think.done ? model.opened.contains("live-think") : true) }
             if !model.live.isEmpty {
                 MarkdownView(blocks: ChatMarkdown.parse(model.live, fileLinks: model.chat.fileLinks))
-                    .textSelection(.enabled)
+                    .selectableMarkdown()
                     .accessibilityLabel("Claude is writing")
             }
             if model.turn != .none { WorkingLine() }

@@ -590,6 +590,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
         openFile(app, line: "The bundle: archive.zip", header: "archive.zip")
         shot("files-6-binary")
+        // The panel offers Save once the file has loaded.
+        _ = app.buttons["Save to Files"].firstMatch.waitForExistence(timeout: 10)
         let saves = app.buttons.matching(NSPredicate(format: "label == 'Save to Files'")).allElementsBoundByIndex
         XCTAssertFalse(saves.isEmpty, "A file with no preview can be saved to Files")
         for save in saves { assertTouchable(save, "Save to Files") }
@@ -1036,6 +1038,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let line = reveal(app, rowStarting(app, title))
         // A row can be hittable while the footer covers its middle, so it is scrolled up until it clears the bar.
         for _ in 0..<3 where line.frame.midY > app.frame.height - 110 { app.swipeUp() }
+        // The sidebar's header floats over the top rows, and the test runner still counts a row under it as hittable.
+        for _ in 0..<3 where line.frame.minY < app.windows.firstMatch.frame.height * 0.3 { app.swipeDown() }
         line.press(forDuration: 1.0)
         for item in items {
             let entry = app.buttons[item].firstMatch

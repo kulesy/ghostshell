@@ -190,10 +190,12 @@ let testing = null;
 let interrupted = false;
 
 function runTests({ udid, device, appearance, out, address, only, stubs }) {
+  // The stubs listen on 127.0.0.1 only, and on iOS 27 the Simulator's requests to localhost at times fail as unreachable.
+  const ipv4 = a => a.replace('//localhost:', '//127.0.0.1:');
   const env = {
     ...process.env,
-    TEST_RUNNER_GS_ADDRESS: address, TEST_RUNNER_GS_PASSWORD_ORGANISE: stubs.password, TEST_RUNNER_GS_SHOTDIR: out, TEST_RUNNER_GS_DEVICE: device, TEST_RUNNER_GS_APPEARANCE: appearance,
-    ...Object.fromEntries(Object.entries(stubs.addresses).map(([name, a]) => [`TEST_RUNNER_GS_ADDRESS_${name.toUpperCase()}`, a])),
+    TEST_RUNNER_GS_ADDRESS: ipv4(address), TEST_RUNNER_GS_PASSWORD_ORGANISE: stubs.password, TEST_RUNNER_GS_SHOTDIR: out, TEST_RUNNER_GS_DEVICE: device, TEST_RUNNER_GS_APPEARANCE: appearance,
+    ...Object.fromEntries(Object.entries(stubs.addresses).map(([name, a]) => [`TEST_RUNNER_GS_ADDRESS_${name.toUpperCase()}`, ipv4(a)])),
   };
   const result = path.join(DERIVED, 'results', `${device}-${appearance}.xcresult`);
   fs.rmSync(result, { recursive: true, force: true });

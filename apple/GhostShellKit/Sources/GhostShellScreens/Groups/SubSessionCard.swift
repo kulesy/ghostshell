@@ -155,7 +155,7 @@ private struct DetailsView: View {
                     // NOTE: [8 Nov 2026] EK - The markdown view reads a ChatModel from the environment for its code blocks. This one never runs, so it opens no stream and marks nothing read.
                     MarkdownView(blocks: ChatMarkdown.parse(held.summary.reply ?? ""), font: ChatStyle.small)
                         .environment(model)
-                        .textSelection(.enabled)
+                        .selectableMarkdown()
                         .accessibilityLabel("Latest reply of \(row.title.isEmpty ? SidebarOutline.untitled : row.title)")
                 }
             } else if let problem = cards.replyProblems[row.id] {

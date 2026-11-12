@@ -57,5 +57,6 @@ struct GroupReplyBox: View {
     /// The id of the Send and Cancel row, which the panel scrolls above the keyboard.
     static func buttonsID(_ row: String) -> String { "reply-buttons-\(row)" }
 
-    private func send() { Task { await cards.send(row.id, name: name) } }
+    // On iOS 27 an editor that turns disabled while still focused is refocused on every frame, which hangs the app, so the keyboard goes first.
+    private func send() { dismissKeyboard(); Task { await cards.send(row.id, name: name) } }
 }

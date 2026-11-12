@@ -185,7 +185,7 @@ struct AssistantMessageView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             MarkdownView(blocks: model.blocks(key: item.key, text: text), canRun: true)
-                .textSelection(.enabled)
+                .selectableMarkdown()
             MessageTime(at: item.at)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
