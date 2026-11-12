@@ -418,9 +418,13 @@ final class GhostShelliPhoneUITests: XCTestCase {
         signIn(app)
         open(app, "Fix the flaky upload test", expecting: "Thanks. Can you add a note to the changelog?")
         // The thread may open above or below a part, depending on how much room the composer leaves.
+        // The drag runs down the thread's margin, since a swipe on the code block scrolls only the code sideways.
+        let messages = app.scrollViews["Messages"].firstMatch
         func reveal(_ element: XCUIElement) {
-            for _ in 0..<8 where !element.isHittable {
-                if element.frame.minY > app.frame.height / 2 { app.swipeUp() } else { app.swipeDown() }
+            for _ in 0..<10 where !element.isHittable {
+                let up = element.frame.minY > messages.frame.midY
+                let from = messages.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: up ? 0.8 : 0.2))
+                from.press(forDuration: 0.05, thenDragTo: messages.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: up ? 0.2 : 0.8)))
             }
         }
         let notice = app.staticTexts["Conversation compacted"].firstMatch
