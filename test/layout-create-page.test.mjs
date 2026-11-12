@@ -56,7 +56,7 @@ test('the card for a new project and a new group has its own title and says what
   await page.until(`document.querySelectorAll('.approval').length === 2`);
   const cards = await page.evaluate(`[...document.querySelectorAll('.approval')].map(a => [a.querySelector('h3').textContent, a.querySelector('.approval-path')?.textContent])`);
   assert.deepEqual(cards.sort(), [
-    ['Claude wants to create a group', 'create the group "Shiny" in the project "Side"'],
+    ['Claude wants to create a group', 'create the group "Shiny" in the project "Side" [cp-side]'],
     ['Claude wants to create a project', 'create the project "Fresh one"'],
   ]);
   assert.deepEqual(page.problems, []);
