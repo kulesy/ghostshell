@@ -19,6 +19,19 @@ private struct SidebarHost: View {
     init(defaults: UserDefaults) { _state = State(initialValue: SidebarState(defaults: defaults)) }
 
     var body: some View {
+        #if os(iOS)
+        // The page's own top bar and footer replace the navigation bar, the search field and the toolbar. The title stays for the Back button of a chat.
+        SidebarList()
+            .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader() }
+            .safeAreaInset(edge: .bottom, spacing: 0) { PhoneFooter() }
+            .background(Color.ghost.sidebar.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
+            .modifier(SidebarWatchSlot())
+            .modifier(OrganiseHost())
+            .navigationTitle("Sessions")
+            // Last, so the header, footer and watch slot all read the same state.
+            .environment(state)
+        #else
         @Bindable var state = state
         SidebarList()
             .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader() }
@@ -29,12 +42,8 @@ private struct SidebarHost: View {
             .toolbar {
                 ToolbarItemGroup {
                     SidebarToolbarSlot()
-                    #if os(iOS)
-                    PhoneMenu()
-                    #else
                     Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right") { Task { await model.signOut() } }
                         .help("Sign Out")
-                    #endif
                 }
             }
             .modifier(SidebarWatchSlot())
@@ -42,5 +51,6 @@ private struct SidebarHost: View {
             .navigationTitle("Sessions")
             // Last, so the header, toolbar and watch slot all read the same state.
             .environment(state)
+        #endif
     }
 }

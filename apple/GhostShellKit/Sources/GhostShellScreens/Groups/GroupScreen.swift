@@ -72,13 +72,16 @@ private struct Stub: View {
 }
 
 /// The chat and the panel. A pane too narrow for both shows one at a time, picked from a bar above them.
-// NOTE: [8 Nov 2026] EK - The picker is not a toolbar item. Next to ChatScreen's own toolbar it made AppKit throw while registering a separator, which crashed the app.
+// NOTE: [8 Nov 2026] EK - The Mac's picker is not a toolbar item. Next to ChatScreen's own toolbar it made AppKit throw while registering a separator, which crashed the app.
 private struct GroupLayout: View {
     @Environment(AppModel.self) private var app
     let target: GroupTarget
     let session: String
     @Binding var showPanel: Bool
     @State private var cards: GroupCards?
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
 
     private static let panelWidth: CGFloat = 320
     private static let both: CGFloat = 680
@@ -87,7 +90,12 @@ private struct GroupLayout: View {
         GeometryReader { box in
             let narrow = box.size.width < Self.both
             VStack(spacing: 0) {
-                if narrow {
+                #if os(iOS)
+                let picker = false
+                #else
+                let picker = narrow
+                #endif
+                if picker {
                     Picker("Show", selection: $showPanel) {
                         Text("Chat").tag(false)
                         Text("Sub sessions").tag(true)
@@ -98,7 +106,7 @@ private struct GroupLayout: View {
                     Divider()
                 }
                 HStack(spacing: 0) {
-                    if !(narrow && showPanel) { ChatScreen(sessionID: session, title: target.name) }
+                    if !(narrow && showPanel) { ChatScreen(sessionID: session, title: target.name, groupKind: target.kind) }
                     if (showPanel || !narrow), let cards {
                         if !narrow { Divider() }
                         SubSessionsPanel(target: target, chat: session, cards: cards)
@@ -108,6 +116,42 @@ private struct GroupLayout: View {
                 }
             }
         }
+        #if os(iOS)
+        // A phone's bar holds the button for the panel, so the Chat and Sub sessions switch is gone from the body.
+        .toolbar {
+            if sizeClass == .compact {
+                ToolbarItem(placement: .topBarTrailing) { SubSessionsButton(count: target.sessions.count, showing: $showPanel) }
+            }
+        }
+        #endif
         .onAppear { if cards == nil, let client = app.client { cards = GroupCards(client: client, refreshIndex: { [app] in await app.refreshIndex() }) } }
     }
 }
+
+#if os(iOS)
+/// The bar button that swaps the chat for the group's sub sessions and back, with the number of sessions the group holds.
+private struct SubSessionsButton: View {
+    let count: Int
+    @Binding var showing: Bool
+
+    var body: some View {
+        Button { showing.toggle() } label: {
+            Image(systemName: showing ? "bubble.left" : "square.stack.3d.up")
+                .font(.system(size: 17))
+                .foregroundStyle(Color.ghost.foreground)
+                .phoneIconTouch()
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 && !showing {
+                        Text("\(count)").font(.geist(10, weight: .semibold, relativeTo: .caption2)).monospacedDigit()
+                            .foregroundStyle(Color.ghost.primaryForeground)
+                            .padding(.horizontal, 4)
+                            .background(Color.ghost.primary, in: Capsule())
+                            .padding(.top, 4)
+                    }
+                }
+        }
+        .accessibilityLabel(showing ? "Chat" : "Sub sessions")
+        .accessibilityValue(showing ? "" : "\(count)")
+    }
+}
+#endif

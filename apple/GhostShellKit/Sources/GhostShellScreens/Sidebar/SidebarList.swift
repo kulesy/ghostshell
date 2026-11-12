@@ -5,6 +5,7 @@ import SwiftUI
 struct SidebarList: View {
     @Environment(AppModel.self) private var model
     @Environment(SidebarState.self) private var state
+    @Environment(OrganiseModel.self) private var organise
     @State private var archived: [SessionRow] = []
 
     private var searching: Bool { !state.query.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -25,17 +26,32 @@ struct SidebarList: View {
             } else {
                 // One list serves both the sections and the hits, so typing in the search field never swaps the list under it and drops its focus.
                 List(selection: $state.selection) {
+                    #if os(iOS)
+                    PhoneNewGroupRow()
+                    #endif
                     if searching {
                         SearchSections(hits: hits)
                     } else {
                         if SidebarOutline.view(state.project, in: index) == nil { HomeTopSectionsSlot() }
                         SidebarSections(sections: sections)
-                        if noGroups, !sections.isEmpty { EmptyNotice(noGroups: true) }
+                        if noGroups, !sections.isEmpty { noGroupsNotice }
                     }
                 }
+                #if os(iOS)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 0)
+                #endif
                 .overlay {
-                    if searching, hits.sessions.isEmpty, hits.subSessions.isEmpty, hits.archived.isEmpty {
+                    // A new group's field sits in the list, so the empty notice keeps out of its way.
+                    if organise.naming?.target == .newGroup, organise.naming?.inline == true {
+                        EmptyView()
+                    } else if searching, hits.sessions.isEmpty, hits.subSessions.isEmpty, hits.archived.isEmpty {
+                        #if os(iOS)
+                        EmptyNotice(noGroups: false, searching: true)
+                        #else
                         ContentUnavailableView.search(text: state.query)
+                        #endif
                     } else if !searching, sections.isEmpty {
                         EmptyNotice(noGroups: noGroups)
                     }
@@ -51,6 +67,14 @@ struct SidebarList: View {
             if let id, !state.selection.contains(id) { state.selection = [id] } else if id == nil { state.selection = [] }
             if let id { reveal(id) }
         }
+    }
+
+    @ViewBuilder private var noGroupsNotice: some View {
+        #if os(iOS)
+        Text("No groups yet. Tap + to make one.").font(.geist(12, relativeTo: .caption)).foregroundStyle(Color.ghost.sidebarMuted).padding(.leading, 6).phoneListRow()
+        #else
+        EmptyNotice(noGroups: true)
+        #endif
     }
 
     // Opening a session shows where it lives: its project's view, and its family unfolded. This happens once per open, not on later refreshes.

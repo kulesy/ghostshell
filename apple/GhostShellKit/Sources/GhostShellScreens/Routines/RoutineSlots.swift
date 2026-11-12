@@ -38,11 +38,16 @@ struct ScheduledSection: View {
     var body: some View {
         let shown = ordered(inSidebar(model.routines.scheduled ?? []))
         if model.routines.features.scheduled, !shown.isEmpty {
+            #if os(iOS)
+            PhoneHeadingRow(heading: SidebarHeading(id: id, title: "Scheduled", kind: .other), count: shown.count, first: true)
+            if state.isOpen(id) { ForEach(shown) { ScheduledSidebarRow(entry: $0) } }
+            #else
             Section(isExpanded: Binding(get: { state.isOpen(id) }, set: { state.setOpen(id, $0) })) {
                 ForEach(shown) { ScheduledSidebarRow(entry: $0) }
             } header: {
                 HeadingRow(heading: SidebarHeading(id: id, title: "Scheduled", kind: .other), count: shown.count)
             }
+            #endif
         }
     }
 }
@@ -63,6 +68,7 @@ private struct ScheduledSidebarRow: View {
         .accessibilityLabel("\(entry.title), \(note.text)")
         .help("\(entry.title): \(note.text)")
         .contextMenu { ScheduledMenu(entry: entry) }
+        .modifier(PhoneRowStyle())
     }
 }
 
@@ -95,7 +101,19 @@ struct IdleRoutineRow: View {
             .accessibilityLabel("\(full.title), \(words)")
             .help("\(full.title): \(words)")
             .contextMenu { RoutineMenu(routine: full, withRun: true, askDelete: nil) }
+            .modifier(PhoneRowStyle())
         }
+    }
+}
+
+/// Draws a quiet row as a plain row of the phone's list. The Mac keeps the list's own.
+private struct PhoneRowStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.phoneListRow().selectionDisabled()
+        #else
+        content
+        #endif
     }
 }
 
@@ -106,6 +124,16 @@ private struct QuietRow: View {
     let tint: Color?
 
     var body: some View {
+        #if os(iOS)
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title).font(.geist(14, relativeTo: .body)).foregroundStyle(Color.ghost.sidebarForeground).lineLimit(1)
+            Text(line).font(.geist(12, relativeTo: .caption)).foregroundStyle(tint ?? Color.ghost.sidebarMuted).lineLimit(1)
+        }
+        .padding(.leading, 6)
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        #else
         HStack(spacing: 10) {
             StateMark(dot: nil)
             VStack(alignment: .leading, spacing: 1) {
@@ -116,5 +144,6 @@ private struct QuietRow: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        #endif
     }
 }

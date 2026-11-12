@@ -7,6 +7,14 @@ struct SidebarSections: View {
     let sections: [OutlineSection]
 
     var body: some View {
+        #if os(iOS)
+        ForEach(Array(sections.enumerated()), id: \.element.id) { at, section in
+            PhoneHeadingRow(heading: SidebarHeading(section), count: section.count, first: at == 0)
+            if state.isOpen(section.id) {
+                if section.kind == .routines { RoutineBuckets(buckets: section.buckets) } else { FamilyRows(rows: section.rows) }
+            }
+        }
+        #else
         ForEach(sections) { section in
             Section(isExpanded: open(section.id)) {
                 if section.kind == .routines { RoutineBuckets(buckets: section.buckets) } else { FamilyRows(rows: section.rows) }
@@ -14,6 +22,7 @@ struct SidebarSections: View {
                 HeadingRow(heading: SidebarHeading(section), count: section.count)
             }
         }
+        #endif
     }
 
     private func open(_ id: String) -> Binding<Bool> {
@@ -29,11 +38,16 @@ private struct RoutineBuckets: View {
     var body: some View {
         ForEach(buckets.filter { $0.heading == nil }) { Rows(bucket: $0) }
         ForEach(buckets.filter { $0.heading != nil }) { bucket in
+            #if os(iOS)
+            PhoneHeadingRow(heading: SidebarHeading(id: bucket.id, title: bucket.heading ?? "", kind: .routineHeading), count: bucket.routines.count + bucket.idle.count)
+            if state.isOpen(bucket.id) { Rows(bucket: bucket) }
+            #else
             DisclosureGroup(isExpanded: Binding(get: { state.isOpen(bucket.id) }, set: { state.setOpen(bucket.id, $0) })) {
                 Rows(bucket: bucket)
             } label: {
                 HeadingRow(heading: SidebarHeading(id: bucket.id, title: bucket.heading ?? "", kind: .routineHeading), count: bucket.routines.count + bucket.idle.count)
             }
+            #endif
         }
     }
 
@@ -61,7 +75,7 @@ extension SidebarHeading {
     }
 }
 
-/// A section, group or routine heading: its name in capitals, then the slot buttons and the count, which stays when it is folded.
+/// A section, group or routine heading on the Mac: its name in capitals, then the slot buttons and the count, which stays when it is folded.
 struct HeadingRow: View {
     let heading: SidebarHeading
     let count: Int
@@ -77,27 +91,7 @@ struct HeadingRow: View {
         // Row timers and chevrons end this far inside the list's edge, so the count lines up with them.
         .padding(.trailing, 13.5)
         .contentShape(Rectangle())
-        #if os(iOS)
-        .modifier(HeadingLongPressMenu(heading: heading))
-        #else
         .contextMenu { HeadingMenuSlot(heading: heading) }
-        #endif
         .modifier(HeadingSlot(heading: heading))
     }
 }
-
-#if os(iOS)
-/// A phone's list header takes a long press as a tap on the fold, so `.contextMenu` never opens there. A long press asks with an action sheet instead.
-// NOTE: [9 Nov 2026] EK - Items in HeadingMenuSlot must be plain Buttons on iOS, because a confirmationDialog drops Menus and other content.
-private struct HeadingLongPressMenu: ViewModifier {
-    let heading: SidebarHeading
-    @State private var asking = false
-
-    func body(content: Content) -> some View {
-        // A routine sub-heading has no items, so its long press stays off rather than open a dialog with only Cancel.
-        content
-            .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in asking = true }, including: heading.kind == .routineHeading ? .subviews : .all)
-            .confirmationDialog(heading.title, isPresented: $asking, titleVisibility: .visible) { HeadingMenuSlot(heading: heading).textCase(nil) }
-    }
-}
-#endif

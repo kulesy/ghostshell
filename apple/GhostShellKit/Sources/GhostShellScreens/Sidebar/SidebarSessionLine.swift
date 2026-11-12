@@ -3,20 +3,37 @@ import SwiftUI
 
 /// One session in the list, with its tooltip and the slots every row carries. `title` overrides the row's own, as a routine's runs do.
 struct SessionLine: View {
+    #if os(iOS)
+    @Environment(OrganiseModel.self) private var organise
+    @Environment(SidebarState.self) private var state
+    #endif
     let row: SessionRow
     var title: String?
     var dot: SessionDot?
     var fold: RowFold?
     var nested = false
+    var last = false
 
     var body: some View {
         let shown = title ?? row.title
+        #if os(iOS)
+        if let naming = organise.naming, naming.target == .session(row.id) {
+            PhoneNameField(naming: naming).id(naming.id).padding(.leading, nested ? 19 : 0).phoneListRow()
+        } else {
+            PhoneSessionRow(row: row, title: shown, dot: dot ?? row.dot, fold: fold, nested: nested, last: last)
+                .tag(row.id)
+                .contextMenu { SessionRowMenuSlot(row: row) }
+                .modifier(SessionRowSlot(row: row))
+                .phoneListRow(picked: state.editing && state.selection.contains(row.id))
+        }
+        #else
         SessionRowView(title: shown, dot: dot ?? row.dot, turnStart: row.turnStart, fold: fold)
             .padding(.leading, nested ? 14 : 0)
             .tag(row.id)
             .help(SidebarOutline.tooltip(row, title: shown))
             .contextMenu { SessionRowMenuSlot(row: row) }
             .modifier(SessionRowSlot(row: row))
+        #endif
     }
 }
 
@@ -34,7 +51,7 @@ struct FamilyRows: View {
                 let note = SidebarOutline.familyNote(row)
                 SessionLine(row: row, dot: open ? nil : note.dot,
                             fold: RowFold(open: open, label: open ? SidebarOutline.nested(row.children.count) : note.label) { state.setUnfolded(row.id, !open) })
-                if open { ForEach(row.children) { SessionLine(row: $0, nested: true) } }
+                if open { ForEach(row.children) { SessionLine(row: $0, nested: true, last: $0.id == row.children.last?.id) } }
             }
         }
     }
@@ -52,7 +69,7 @@ struct RoutineRows: View {
             if open { state.openEarlier.remove(routine.id) } else { state.openEarlier.insert(routine.id) }
         })
         if open {
-            ForEach(routine.earlier) { SessionLine(row: $0, title: SidebarOutline.when($0.lastActivityAt), nested: true) }
+            ForEach(routine.earlier) { SessionLine(row: $0, title: SidebarOutline.when($0.lastActivityAt), nested: true, last: $0.id == routine.earlier.last?.id) }
         }
     }
 }
