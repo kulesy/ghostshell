@@ -93,6 +93,16 @@ const TITLE = `document.querySelector('.chat-name h2')?.textContent`;
 const BOX = `.chat-name .name-form .input`;
 const onDisk = s => JSON.parse(fs.readFileSync(s.layout, 'utf8'));
 const typeName = (page, value) => page.evaluate(`(input => { input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event('input', { bubbles: true })); })(document.querySelector('${BOX}'))`);
+// What one character past `max` leaves in the box, and how many characters a name of `max` that ends in an emoji keeps.
+const limitOf = async (page, max) => {
+  const was = await page.evaluate(`document.querySelector('${BOX}').value`);
+  await typeName(page, 'x'.repeat(max + 1));
+  const over = await page.evaluate(`document.querySelector('${BOX}').value`);
+  await typeName(page, `${'x'.repeat(max - 1)}✅`);
+  const full = await page.evaluate(`[...document.querySelector('${BOX}').value].length`);
+  await typeName(page, was);
+  return [over, full];
+};
 const open = async page => {
   await page.until(`!!document.querySelector('.chat-rename')`);
   await page.evaluate(`document.querySelector('.chat-rename').setAttribute('data-picked', '')`);
@@ -109,8 +119,9 @@ test('a session\'s title has a pencil, and the box that replaces it is named, se
   await page.until(`!!document.querySelector('.chat-rename') && !!document.querySelector('#terminalButton')`);
   const before = await heights(page);
   await open(page);
-  assert.deepEqual(await page.evaluate(`(i => [i.getAttribute('aria-label'), i.value, i.maxLength, i.selectionStart, i.selectionEnd, getComputedStyle(i).userSelect])(document.querySelector('${BOX}'))`), ['Rename session', 'In reviewing', 120, 0, 12, 'text']);
+  assert.deepEqual(await page.evaluate(`(i => [i.getAttribute('aria-label'), i.value, i.selectionStart, i.selectionEnd, getComputedStyle(i).userSelect])(document.querySelector('${BOX}'))`), ['Rename session', 'In reviewing', 0, 12, 'text']);
   assert.equal(await heights(page), before, 'the header does not change height');
+  assert.deepEqual(await limitOf(page, 120), ['In reviewing', 120]);
   assert.deepEqual(page.problems, []);
 });
 
@@ -153,7 +164,8 @@ test('a group\'s chat renames the group, limited to 80 characters, and the sideb
   await page.until(`${TITLE} === 'Backlog'`);
   assert.equal(await page.evaluate(`document.querySelector('.chat-rename').getAttribute('aria-label')`), 'Rename group');
   await open(page);
-  assert.deepEqual(await page.evaluate(`(i => [i.getAttribute('aria-label'), i.value, i.maxLength])(document.querySelector('${BOX}'))`), ['Rename group', 'Backlog', 80]);
+  assert.deepEqual(await page.evaluate(`(i => [i.getAttribute('aria-label'), i.value])(document.querySelector('${BOX}'))`), ['Rename group', 'Backlog']);
+  assert.deepEqual(await limitOf(page, 80), ['Backlog', 80]);
   await typeName(page, 'Open tasks');
   await page.press('Enter');
   await page.until(`!document.querySelector('.chat-name .name-form') && ${TITLE} === 'Open tasks'`);
@@ -167,10 +179,9 @@ test('a name the server refuses keeps the box open with the reason shown, and th
   const s = await start({ sessions: SESSIONS, groups: GROUPS, claude: true });
   const page = await appPage(t, s.origin, { hash: '#/g/cg-b' });
   await open(page);
-  await page.evaluate(`document.querySelector('${BOX}').removeAttribute('maxlength')`);
-  await typeName(page, 'x'.repeat(81));
+  await typeName(page, '\u200b');
   await page.press('Enter');
-  await page.until(`/80 characters/.test(document.body.textContent)`);
+  await page.until(`/Give it a name/.test(document.body.textContent)`);
   assert.equal(await page.evaluate(`!!document.querySelector('${BOX}')`), true);
   assert.equal(onDisk(s).groups[1].name, 'Backlog');
   assert.deepEqual(page.problems.filter(p => !/400/.test(p)), []);
