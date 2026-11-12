@@ -62,7 +62,7 @@ A run differs from one on the Mac in these ways:
 
 1. The runner has macOS 27.0.1, where SwiftUI crashes the app in the `chats`, `files`, `groups`, `terminal` and `composer` flows, and the `marks`, `accounts` and `organise` flows fail checks. The crashes are inside SwiftUI and do not happen on 27.2. A change those flows cover still needs `npm run apple:shot -- --flow <flow>` on the Mac, under the lock below, until the runner image reaches 27.2.
 2. The Mac shots skip the real Haiku chat, because a runner has no signed-in `claude`. A change to that path still needs `npm run apple:shot -- --flow main` on the Mac.
-3. The runner image has only the iOS 27 Simulators, and Xcode 27 can't download iOS 18.6, the runtime `iphone.mjs` uses on the Mac. On iOS 27.2, 11 of the iPhone UI tests fail: toolbar and sheet buttons are 34 to 36pt, under the 44pt touch target, file links in a chat don't open the panel, the approvals and group chat tests time out, and in edit mode the chosen row sits under the bottom bar. So the iPhone jobs run only when started by hand, and a Swift change runs `npm run apple:ios-shot` on the Mac under the lock until the app passes on iOS 27.
+3. The runner image has only the iOS 27 Simulators, and Xcode 27 can't download iOS 18.6. So `iphone.mjs` uses iOS 27.2 by default, the runtime the runner has. A few iPhone UI tests still fail at random on iOS 27, so the iPhone jobs run only when started by hand with `-f iphone=true`. A Mac needs that runtime too (`xcodebuild -downloadPlatform iOS`), or `GS_IOS_RUNTIME` set to one it has, such as `com.apple.CoreSimulator.SimRuntime.iOS-18-6`. The app still has to pass on iOS 18, its deployment target, so a change to the iPhone app also runs `npm run apple:ios-shot` with `GS_IOS_RUNTIME` set to the iOS 18.6 runtime on the Mac under the lock.
 
 A session finds the run for its newest commit, waits for it and fetches the screenshots like this:
 
@@ -73,7 +73,7 @@ gh run view "$run" --log-failed
 gh run download "$run" --name mac-screenshots --dir <folder>
 ```
 
-The filter leaves out the run a same-repo pull request starts, whose jobs all skip. A push that touches none of those paths starts no run, so when the list comes back empty, start one with `gh workflow run swift.yml --ref <branch>` and look again. `gh workflow run swift.yml --ref <branch> -f iphone=true` also runs the iPhone jobs, whose screenshots come down with `gh run download "$run" --pattern 'iphone-screenshots-*' --dir <folder>`. The screenshots then go into the PR body the usual way.
+The filter leaves out the run a same-repo pull request starts, whose jobs all skip. A push that touches none of those paths starts no run, so when the list comes back empty, start one with `gh workflow run swift.yml --ref <branch>` and look again. `gh workflow run swift.yml --ref <branch> -f iphone=true` also runs the iPhone jobs, and adding `-f tests=<name>,<name>` runs only those iPhone UI tests, to rerun a failure without the full run of about 30 minutes. The iPhone screenshots come down with `gh run download "$run" --pattern 'iphone-screenshots-*' --dir <folder>`. The screenshots then go into the PR body the usual way.
 
 The workflow's token can only read, and no step reads a secret, so a run from a fork cannot write to the repo. Anyone can download the artifacts of a public repo, so the fixtures hold no real names, paths or addresses.
 

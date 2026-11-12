@@ -26,6 +26,8 @@ private struct ChatHost: View {
         }
         .navigationTitle(title.isEmpty ? "Untitled" : title)
         #if os(iOS)
+        // A large title collapses as the thread scrolls, which resizes the thread and moves it again, so a chat on iOS 26 never settles.
+        // See https://github.com/kulesy/ghostshell/issues/148.
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let groupKind, let model { ToolbarItem(placement: .principal) { GroupTitle(name: title, kind: groupKind, chat: model.chat) } }

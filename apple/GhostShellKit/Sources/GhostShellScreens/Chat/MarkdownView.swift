@@ -465,6 +465,16 @@ extension View {
     /// Gives each link in `text` an accessibility action that opens it through the app's link handler. A link's own accessibility press hands its URL to the
     /// system instead, so without these a person using VoiceOver, or a script driving the app, could not open a file link.
     func linkActions(_ text: AttributedString) -> some View { modifier(LinkActions(text: text)) }
+
+    /// Lets the markdown's text be selected, except on iOS 27, where selectable text spends a tap on itself and every link took two taps.
+    /// A chat message there is copied from its menu. See https://github.com/kulesy/ghostshell/issues/148.
+    @ViewBuilder func selectableMarkdown() -> some View {
+        #if os(iOS)
+        if #available(iOS 27, *) { self } else { textSelection(.enabled) }
+        #else
+        textSelection(.enabled)
+        #endif
+    }
 }
 
 private struct LinkActions: ViewModifier {

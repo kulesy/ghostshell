@@ -185,7 +185,7 @@ struct AssistantMessageView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             MarkdownView(blocks: model.blocks(key: item.key, text: text), canRun: true)
-                .textSelection(.enabled)
+                .selectableMarkdown()
             MessageTime(at: item.at)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -381,7 +381,7 @@ struct ToolGroupView: View {
         VStack(alignment: .leading, spacing: 2) {
             DisclosureLine(open: open, minHeight: ChatStyle.groupHeight, toggle: { model.toggle(group.id) }) {
                 HStack(spacing: 6) {
-                    if running { ProgressView().controlSize(.mini) }
+                    if running { Spinner(size: .mini) }
                     Text(running ? ChatFold.step(group.rows, connectors: connectors) : summary.title)
                         .fontWeight(.medium).lineLimit(1).truncationMode(.tail)
                 }
@@ -393,8 +393,8 @@ struct ToolGroupView: View {
                         Text("-\(summary.removed)").foregroundStyle(ChatStyle.removed)
                     }
                     if running, let began = ChatFold.start(of: group.rows) {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            Text(ChatText.duration(ms: Int(context.date.timeIntervalSince(began) * 1000)))
+                        EverySecond { now in
+                            Text(ChatText.duration(ms: Int(now.timeIntervalSince(began) * 1000)))
                         }
                     } else {
                         Text(summary.note).foregroundStyle(summary.status == .failed ? AnyShapeStyle(ChatStyle.removed) : ChatStyle.muted)

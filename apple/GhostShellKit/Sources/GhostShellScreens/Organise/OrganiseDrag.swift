@@ -17,7 +17,8 @@ struct RowDragDrop: ViewModifier {
     @State private var targeted = false
 
     func body(content: Content) -> some View {
-        if row.archived {
+        // A test run sets `still`: while a draggable row's menu is open, iOS 27's test runner waits 60s a step on its lift animation.
+        if row.archived || LiveMotion.still {
             content
         } else {
             content

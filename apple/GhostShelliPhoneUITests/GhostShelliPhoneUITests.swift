@@ -54,7 +54,10 @@ final class GhostShelliPhoneUITests: XCTestCase {
         dismissKeyboardIntro(app)
         password.typeText(stub == "organise" ? env["GS_PASSWORD_ORGANISE"] ?? "" : "any-password")
         app.buttons["Sign in"].tap()
-        XCTAssertTrue(app.staticTexts[expecting].waitForExistence(timeout: 20), app.debugDescription)
+        // The list only draws the rows on screen, and a small phone shows few of them.
+        let label = app.staticTexts[expecting]
+        for _ in 0..<4 where !label.waitForExistence(timeout: 6) { app.swipeUp() }
+        XCTAssertTrue(label.waitForExistence(timeout: 10), app.debugDescription)
     }
 
     private func row(_ app: XCUIApplication, _ title: String) -> XCUIElement {
@@ -62,12 +65,31 @@ final class GhostShelliPhoneUITests: XCTestCase {
     }
 
     private func open(_ app: XCUIApplication, _ title: String, expecting text: String) {
-        let line = row(app, title)
-        // The list only draws the rows on screen, and a small phone shows few of them.
-        for _ in 0..<4 where !line.waitForExistence(timeout: 3) { app.swipeUp() }
-        XCTAssertTrue(line.waitForExistence(timeout: 10), "No row \(title)\n\(app.debugDescription)")
+        // The list only draws the rows on screen, and sign-in can leave a small phone scrolled past a row near the top.
+        let line = reveal(app, row(app, title))
+        clearOfTheBars(app, line)
         line.tap()
         XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20), "The chat \(title) did not show \(text)\n\(app.debugDescription)")
+    }
+
+    /// The content scrolls under the bars: a chat's nav bar and composer, and the list's header and footer.
+    /// The test runner still counts an element under one as hittable and the tap is lost, so the element is dragged into the open area between them.
+    private func clearOfTheBars(_ app: XCUIApplication, _ element: XCUIElement) {
+        let height = app.windows.firstMatch.frame.height
+        let bar = app.navigationBars.firstMatch
+        let header = app.buttons["New"].firstMatch
+        let top = max(bar.exists ? bar.frame.maxY : 0, header.exists && header.isHittable ? header.frame.maxY : 0) + 8
+        // A chat's thread ends where the composer starts, and the list's footer takes about the last 110pt.
+        let thread = app.scrollViews["Messages"].firstMatch
+        let bottom = min(height * 0.8, thread.exists ? thread.frame.maxY - 8 : height)
+        // The drag runs down the margin, since one on a code block scrolls only the code sideways.
+        func drag(_ from: CGFloat, _ to: CGFloat) {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: from)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: to)))
+        }
+        for _ in 0..<3 {
+            let frame = element.frame
+            if frame.minY < top { drag(0.35, 0.6) } else if frame.maxY > bottom { drag(0.6, 0.35) } else { break }
+        }
     }
 
     private func back(_ app: XCUIApplication) {
@@ -83,10 +105,14 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: focused, object: field)], timeout: 5), .completed, "The edge of the \(name) row focuses the field: \(field.debugDescription)", file: file, line: line)
     }
 
-    private func assertTouchable(_ element: XCUIElement, _ name: String, file: StaticString = #filePath, line: UInt = #line) {
+    /// From iOS 26 a bar button sits inside a 44pt glass capsule and reports the 36pt inside it, so a bar button needs 34pt there.
+    /// `bar` is for the bottom bar, whose own frame iOS 27 reports as the whole screen.
+    private func assertTouchable(_ element: XCUIElement, _ name: String, bar: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
         let frame = element.frame
-        XCTAssertGreaterThanOrEqual(frame.height, 43.5, "\(name) is \(frame.height)pt tall", file: file, line: line)
-        XCTAssertGreaterThanOrEqual(frame.width, 43.5, "\(name) is \(frame.width)pt wide", file: file, line: line)
+        var least: CGFloat = 43.5
+        if #available(iOS 26, *), bar || XCUIApplication().navigationBars.allElementsBoundByIndex.contains(where: { $0.frame.contains(frame) }) { least = 34 }
+        XCTAssertGreaterThanOrEqual(frame.height, least, "\(name) is \(frame.height)pt tall", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(frame.width, least, "\(name) is \(frame.width)pt wide", file: file, line: line)
     }
 
     private func get(_ path: String, stub: String? = nil) async throws -> [[String: Any]] {
@@ -225,7 +251,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The real photo picker: the newest photo in the Simulator's library is the one script put there.
         app.buttons["Attach photos"].firstMatch.tap()
         let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
-        XCTAssertTrue(photo.waitForExistence(timeout: 15), app.debugDescription)
+        // The picker runs outside the app, and on iOS 27 in CI it can still say Loading after 15 seconds.
+        XCTAssertTrue(photo.waitForExistence(timeout: 45), app.debugDescription)
         photo.tap()
         let add = app.buttons["Add"].firstMatch
         XCTAssertTrue(add.waitForExistence(timeout: 10), app.debugDescription)
@@ -236,7 +263,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The real Files sheet opens and cancels. It lists nothing in a Simulator, so the file comes in through the Debug hook.
         app.buttons["Attach files"].firstMatch.tap()
         let cancel = app.buttons["Cancel"].firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout: 15), app.debugDescription)
+        // The Files sheet runs outside the app, and on iOS 27 in CI it can take 20 seconds to show.
+        XCTAssertTrue(cancel.waitForExistence(timeout: 45), app.debugDescription)
         cancel.tap()
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 10))
         try "1 \(notes)".write(toFile: attachDir + "/attach.txt", atomically: true, encoding: .utf8)
@@ -273,7 +301,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         text.press(forDuration: 1.2)
         let quote = app.buttons["Quote"].firstMatch
         XCTAssertTrue(quote.waitForExistence(timeout: 10), app.debugDescription)
-        assertTouchable(quote, "Quote")
+        // A menu row is the system's own size, which iOS 27 makes 42pt on the smaller phones.
+        if #unavailable(iOS 27) { assertTouchable(quote, "Quote") }
         quote.tap()
         let chip = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Quote: '")).firstMatch
         XCTAssertTrue(chip.waitForExistence(timeout: 10), "The quote chip appears in the composer\n\(app.debugDescription)")
@@ -292,9 +321,13 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let app = launch()
         signIn(app)
         let before = try await calls("created").count
-        let button = app.buttons["New Session"].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 10), app.debugDescription)
-        assertTouchable(button, "New Session")
+        // The header's New menu holds New session and New group.
+        let plus = app.buttons["New"].firstMatch
+        XCTAssertTrue(plus.waitForExistence(timeout: 10), app.debugDescription)
+        assertTouchable(plus, "New")
+        plus.tap()
+        let button = app.buttons["New session"].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 5), app.debugDescription)
         button.tap()
         let folder = app.textFields["Folder"].firstMatch
         XCTAssertTrue(folder.waitForExistence(timeout: 15), app.debugDescription)
@@ -521,9 +554,12 @@ final class GhostShelliPhoneUITests: XCTestCase {
         return all.element(boundBy: max(all.count - 1, 0))
     }
 
-    /// A link is a run inside a line of text, so a tap goes at the end of the line, where every link of the files fixture sits.
+    /// A link is a run inside a line of text. iOS 27 pads the line's frame by 16pt a side, so the end of the line is no longer on the link and the tap goes to the link itself.
     private func tapLink(_ app: XCUIApplication, line: String) {
-        live(app, line).coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        let text = live(app, line)
+        clearOfTheBars(app, text)
+        let link = text.links.firstMatch
+        (link.exists ? link : text).coordinate(withNormalizedOffset: link.exists ? CGVector(dx: 0.5, dy: 0.5) : CGVector(dx: 0.93, dy: 0.5)).tap()
     }
 
     private func contains(_ app: XCUIApplication, _ text: String) -> XCUIElement {
@@ -581,16 +617,26 @@ final class GhostShelliPhoneUITests: XCTestCase {
 
         openFile(app, line: "The bundle: archive.zip", header: "archive.zip")
         shot("files-6-binary")
+        // The panel offers Save once the file has loaded.
+        _ = app.buttons["Save to Files"].firstMatch.waitForExistence(timeout: 10)
         let saves = app.buttons.matching(NSPredicate(format: "label == 'Save to Files'")).allElementsBoundByIndex
         XCTAssertFalse(saves.isEmpty, "A file with no preview can be saved to Files")
         for save in saves { assertTouchable(save, "Save to Files") }
         saves.last?.tap()
+        // The panel's own header also says archive.zip, so the wait is for the system's Files sheet itself.
+        let picker = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 45), "Save to Files opens the Files sheet\n\(app.debugDescription)")
         XCTAssertTrue(contains(app, "archive.zip").waitForExistence(timeout: 10), "The save sheet offers the file's own name\n\(app.debugDescription)")
         sleep(1)
         shot("files-6b-save-to-files")
-        // The system's Files sheet has no Cancel on this OS, so a drag down from its top edge puts it away.
-        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
-        top.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        // The Files sheet has Cancel on iOS 27. Where it has none, a drag down from its top edge puts it away.
+        if picker.buttons["Cancel"].exists {
+            picker.buttons["Cancel"].tap()
+        } else {
+            let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            top.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        }
+        XCTAssertTrue(picker.waitForNonExistence(timeout: 10), "The Files sheet goes away\n\(app.debugDescription)")
         XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 10), "The panel is back under the sheet\n\(app.debugDescription)")
         app.buttons["Close"].firstMatch.tap()
 
@@ -651,15 +697,21 @@ final class GhostShelliPhoneUITests: XCTestCase {
         sleep(2)
         shot("widgets-1-chart")
         XCTAssertGreaterThan(app.webViews.count, 0, "The widget draws in a web view")
-        // A long press in the widget selects the word under it and offers the system's callout with Copy.
-        // The composer takes the foot of the screen, and an earlier test's send can push the widget above the bar, so bring the press point into the open area first.
-        let widget = app.webViews.element(boundBy: app.webViews.count - 1)
-        for _ in 0..<6 {
-            let y = widget.frame.minY + widget.frame.height * 0.2
-            if y < app.frame.height * 0.2 { app.swipeDown() } else if y > app.frame.height * 0.7 { app.swipeUp() } else { break }
+        // A long press on a word in the widget selects it and offers the system's callout with Copy. The press goes on the text, because a fixed point lands beside the heading on the wider phones.
+        // The composer takes the foot of the screen, and an earlier test's send can push the widget above the bar, so bring the text into the open area first.
+        let words = app.webViews.staticTexts["Pick one and I will carry on from there."].firstMatch
+        XCTAssertTrue(words.waitForExistence(timeout: 20), "The widget draws its text\n\(app.debugDescription)")
+        let copy = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Copy")).firstMatch
+        // On iOS 27 in CI the first press sometimes selects nothing, so a press that brings no menu is made again.
+        for _ in 0..<3 {
+            for _ in 0..<6 {
+                let y = words.frame.midY
+                if y < app.frame.height * 0.2 { app.swipeDown() } else if y > app.frame.height * 0.7 { app.swipeUp() } else { break }
+            }
+            words.press(forDuration: 1.3)
+            if copy.waitForExistence(timeout: 4) { break }
         }
-        widget.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(forDuration: 1.3)
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 5), "A long press in a widget offers Copy\n\(app.debugDescription)")
+        XCTAssertTrue(copy.exists, "A long press in a widget offers Copy\n\(app.debugDescription)")
         sleep(1)
         shot("widgets-2-long-press")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97)).tap()
@@ -699,12 +751,14 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let app = launch(stub: "groups")
         signIn(app, expecting: "A session outside the group")
         assertTouchable(headingIcon(app), "The heading's chat icon")
-        let heading = rowStarting(app, "Release")
+        // Sign-in scrolls a small phone down to its last row, which takes the heading under the bar.
+        let heading = reveal(app, rowStarting(app, "Release"))
         heading.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).press(forDuration: 1.0)
         let item = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Open group chat")).firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 5), "A long press on the heading offers Open group chat\n\(app.debugDescription)")
         shot("groups-1b-heading-menu")
-        assertTouchable(item, "Open group chat")
+        // A menu row is the system's own size, which iOS 27 makes 42pt.
+        if #unavailable(iOS 27) { assertTouchable(item, "Open group chat") }
         item.tap()
         XCTAssertTrue(app.buttons["Sub sessions"].firstMatch.waitForExistence(timeout: 15), "The menu opens the group chat\n\(app.debugDescription)")
     }
@@ -878,8 +932,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The switch.
         let sync = app.switches["Run Sync the docs on its schedule"]
         reveal(app, sync)
-        // The switch is UIKit's own 31pt control; a frame or content shape on it either leaves it 31pt or stops it taking taps.
-        XCTAssertGreaterThanOrEqual(sync.frame.height, 31)
+        // The switch is UIKit's own control, 31pt before iOS 26 and 28pt from it; a frame or content shape on it either leaves it that size or stops it taking taps.
+        if #available(iOS 26, *) { XCTAssertGreaterThanOrEqual(sync.frame.height, 28) } else { XCTAssertGreaterThanOrEqual(sync.frame.height, 31) }
         sync.tap()
         try await Task.sleep(for: .seconds(1))
         let toggled = try await writes("POST", "/api/routines/sync/enabled").last
@@ -1026,6 +1080,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let line = reveal(app, rowStarting(app, title))
         // A row can be hittable while the footer covers its middle, so it is scrolled up until it clears the bar.
         for _ in 0..<3 where line.frame.midY > app.frame.height - 110 { app.swipeUp() }
+        clearOfTheBars(app, line)
         line.press(forDuration: 1.0)
         for item in items {
             let entry = app.buttons[item].firstMatch
@@ -1092,9 +1147,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         menu(app, "Add dark mode to the chart", "Pin")
         XCTAssertTrue(heading(app, "Pinned").waitForExistence(timeout: 10), "A pinned session makes the Pinned section\n\(app.debugDescription)")
         shot("organise-4-pinned")
-        rowStarting(app, "Add dark mode to the chart").press(forDuration: 1.0)
-        XCTAssertTrue(app.buttons["Unpin"].firstMatch.waitForExistence(timeout: 5), "A pinned session offers Unpin")
-        app.buttons["Unpin"].firstMatch.tap()
+        menu(app, "Add dark mode to the chart", "Unpin")
         XCTAssertTrue(heading(app, "Pinned").waitForNonExistence(timeout: 10))
 
         // Archive.
@@ -1244,7 +1297,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(place.waitForExistence(timeout: 5), app.debugDescription)
         place.tap()
         XCTAssertTrue(done.waitForNonExistence(timeout: 10), "A finished bulk write leaves edit mode")
-        XCTAssertTrue(heading(app, "Pinned").waitForExistence(timeout: 10), "Both sessions were pinned\n\(app.debugDescription)")
+        XCTAssertTrue(reveal(app, heading(app, "Pinned")).exists, "Both sessions were pinned\n\(app.debugDescription)")
         shot("organise-select-4-after-move")
 
         // Done clears the choice.

@@ -24,8 +24,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const apple = path.resolve(here, '..');
 const PROJECT = path.join(apple, 'GhostShell.xcodeproj');
 const DERIVED = path.join(apple, 'build', 'ios');
-// The Actions runner has only iOS 27 and can't download 18.6, so a run there names its own.
-const RUNTIME = process.env.GS_IOS_RUNTIME || 'com.apple.CoreSimulator.SimRuntime.iOS-18-6';
+// iOS 27.2 is the runtime the Actions runner has. Set GS_IOS_RUNTIME to try another, such as ...SimRuntime.iOS-18-6.
+const RUNTIME = process.env.GS_IOS_RUNTIME || 'com.apple.CoreSimulator.SimRuntime.iOS-27-2';
 const DEVICES = {
   se: { name: 'iPhone SE (3rd generation)', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation' },
   '16pro': { name: 'iPhone 16 Pro', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro' },
@@ -69,6 +69,9 @@ const simctl = (...args) => spawnSync('xcrun', ['simctl', ...args], { encoding: 
 const WORKTREE = crypto.createHash('sha1').update(path.resolve(apple, '..')).digest('hex').slice(0, 6);
 
 function findOrCreate({ name: base, type }) {
+  if (!JSON.parse(simctl('list', 'runtimes', '-j').stdout).runtimes.some(r => r.identifier === RUNTIME && r.isAvailable)) {
+    throw new Error(`The ${RUNTIME} runtime is not installed. Install it with \`xcodebuild -downloadPlatform iOS\`, or set GS_IOS_RUNTIME to one that is.`);
+  }
   const name = `${base} (${WORKTREE})`;
   const list = JSON.parse(simctl('list', 'devices', '-j', 'available').stdout).devices[RUNTIME] ?? [];
   const found = list.find(d => d.name === name);
@@ -187,10 +190,12 @@ let testing = null;
 let interrupted = false;
 
 function runTests({ udid, device, appearance, out, address, only, stubs }) {
+  // The stubs listen on 127.0.0.1 only, and on iOS 27 the Simulator's requests to localhost at times fail as unreachable.
+  const ipv4 = a => a.replace('//localhost:', '//127.0.0.1:');
   const env = {
     ...process.env,
-    TEST_RUNNER_GS_ADDRESS: address, TEST_RUNNER_GS_PASSWORD_ORGANISE: stubs.password, TEST_RUNNER_GS_SHOTDIR: out, TEST_RUNNER_GS_DEVICE: device, TEST_RUNNER_GS_APPEARANCE: appearance,
-    ...Object.fromEntries(Object.entries(stubs.addresses).map(([name, a]) => [`TEST_RUNNER_GS_ADDRESS_${name.toUpperCase()}`, a])),
+    TEST_RUNNER_GS_ADDRESS: ipv4(address), TEST_RUNNER_GS_PASSWORD_ORGANISE: stubs.password, TEST_RUNNER_GS_SHOTDIR: out, TEST_RUNNER_GS_DEVICE: device, TEST_RUNNER_GS_APPEARANCE: appearance,
+    ...Object.fromEntries(Object.entries(stubs.addresses).map(([name, a]) => [`TEST_RUNNER_GS_ADDRESS_${name.toUpperCase()}`, ipv4(a)])),
   };
   const result = path.join(DERIVED, 'results', `${device}-${appearance}.xcresult`);
   fs.rmSync(result, { recursive: true, force: true });

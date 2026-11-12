@@ -1401,7 +1401,8 @@ async function routinesFlow(bundle, appearance) {
     app.submit();
     // Home: Scheduled, Routines, Release and Ungrouped. The idle rows are plain buttons with their words as hover text.
     check(await until('home', () => app.headings() >= 4 && hasRow('Weekly report:') && hasRow('Old backup:')), 'Home lists the idle routines under Routines');
-    check(hasRow('Draft the release notes:') && hasRow('Rotate the keys:') && !hasRow('Archive the old logs:'), 'Scheduled lists the pending and skipped sessions and not the started one');
+    // Scheduled loads on its own fetch, so it can land after the routines.
+    check(await until('scheduled', () => hasRow('Draft the release notes:') && hasRow('Rotate the keys:') && !hasRow('Archive the old logs:')), 'Scheduled lists the pending and skipped sessions and not the started one');
     await app.both('sidebar-routines');
 
     check(app.pick('View', 'Manage routines'), 'Manage routines is in the view menu');

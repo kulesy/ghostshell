@@ -135,7 +135,7 @@ private struct SendButton: View {
             ZStack {
                 Circle().fill(stop || model.canSend ? Color.accentColor : Color.secondary.opacity(0.3))
                 if model.sending {
-                    ProgressView().controlSize(.small).tint(scheme == .dark ? .black : .white)
+                    Spinner().tint(scheme == .dark ? .black : .white)
                 } else {
                     Image(systemName: stop ? "stop.fill" : "arrow.up").font(.system(size: 11, weight: .bold)).foregroundStyle(stop || model.canSend ? AnyShapeStyle(.background) : AnyShapeStyle(.secondary))
                 }

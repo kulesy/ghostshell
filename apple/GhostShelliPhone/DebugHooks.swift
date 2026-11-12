@@ -16,8 +16,8 @@ enum DebugHooks {
 
     @MainActor static func makeModel() -> AppModel {
         let args = UserDefaults.standard
-        // A UI test run always passes this, and the Simulator plays a clip through the Mac's speakers. See https://github.com/kulesy/ghostshell/issues/127.
-        if ProcessInfo.processInfo.arguments.contains("-GSKeychainService") { ClipSound.silent = true }
+        // A UI test run always passes this. The Simulator plays a clip through the Mac's speakers (https://github.com/kulesy/ghostshell/issues/127). It also stills spinners and clocks so the iOS 27 runner is not left waiting on them (https://github.com/kulesy/ghostshell/issues/148).
+        if ProcessInfo.processInfo.arguments.contains("-GSKeychainService") { ClipSound.silent = true; LiveMotion.still = true }
         let store: TokenStore = args.string(forKey: "GSKeychainService").map { KeychainTokenStore(service: $0) } ?? KeychainTokenStore()
         let defaults = args.string(forKey: "GSDefaultsSuite").flatMap { UserDefaults(suiteName: $0) } ?? .standard
         if let folder = args.string(forKey: "GSAttachDir") { AttachWatcher.start(folder: URL(fileURLWithPath: folder)) }

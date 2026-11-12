@@ -50,7 +50,7 @@ private struct CardFrame<Content: View, Actions: View>: View {
     }
 
     @ViewBuilder private var busyMark: some View {
-        if state.busy { ProgressView().controlSize(.small) }
+        if state.busy { Spinner() }
     }
 }
 

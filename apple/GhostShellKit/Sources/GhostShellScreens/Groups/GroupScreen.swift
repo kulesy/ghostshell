@@ -24,6 +24,11 @@ struct GroupScreen: View {
             }
         }
         .navigationTitle(title(pane))
+        #if os(iOS)
+        // A large title collapses as the thread scrolls, which resizes the thread and moves it again, so a chat on iOS 26 never settles.
+        // See https://github.com/kulesy/ghostshell/issues/148.
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     private var kind: String { GroupRules.sectionName(id) == nil ? "Group" : "Section" }

@@ -84,7 +84,7 @@ private struct ReplyButtonsInView: ViewModifier {
 
     private func reveal() {
         guard let id = cards.focusing else { return }
-        withAnimation { proxy.scrollTo(GroupReplyBox.buttonsID(id), anchor: .bottom) }
+        proxy.scrollTo(GroupReplyBox.buttonsID(id), anchor: .bottom)
     }
 }
 #endif
