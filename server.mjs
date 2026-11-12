@@ -412,6 +412,8 @@ function buildIndex({ archived = false } = {}) {
     station: cfg.station,
     problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
     projects: own.projects.map(({ id, name, account, overflow }) => ({ id, name, ...(account && { account }), ...(account && overflow && { overflow }) })),
+    // The project each routine belongs to, by routine id. A routine whose project is gone is on Home, so it is left out here, as a group's is.
+    routineProjects: Object.fromEntries(Object.entries(own.routineProjects ?? {}).filter(([, project]) => projectIds.has(project))),
     pinned,
     groups,
     routines: [...routines.values()].sort((a, b) => byLatest(a.latest, b.latest)),
@@ -560,6 +562,9 @@ function subCtx(sessionId) {
     move: (id, group) => { editableRow(id); CHANGES.move(id, group); },
     // The same calls as the project and group add routes, so a name is cleaned and limited the same way.
     projects: () => layout.read().projects.map(({ id, name }) => ({ id, name })),
+    routines: () => routineStore.read().routines.map(({ id, title }) => ({ id, name: title })),
+    routineProject: id => layout.read().routineProjects?.[id] ?? null,
+    moveRoutine: (id, project) => layout.moveRoutine(id, project),
     addProject: name => layout.addProject(name),
     addGroup: (name, project) => layout.addGroup(name, project),
     moveGroup: (id, project) => layout.moveGroup(id, project),
@@ -1397,6 +1402,13 @@ function removeGroup(id) {
   return { ...group, ...(stopped && { stopped: true }) };
 }
 
+// A routine is given a project, or none for Home, in the layout. Clearing needs no routine, so a link left by a deleted one can still be cleared.
+function moveRoutine(b) {
+  const project = b.project ?? null;
+  if (project !== null && !routineStore.read().routines.some(r => r.id === b.id)) throw refuse(404, 'Unknown routine.');
+  return layout.moveRoutine(b.id, project);
+}
+
 // Projects, groups and new parents change by POST only, each with a JSON body, and a GET to these paths is a 404 that changes nothing.
 const STRUCTURE = new Map([
   ['/api/layout/project/add', b => layout.addProject(b.name)],
@@ -1405,6 +1417,7 @@ const STRUCTURE = new Map([
   ['/api/layout/project/remove', b => layout.removeProject(b.id)],
   ['/api/layout/group/add', b => layout.addGroup(b.name, b.project ?? null)],
   ['/api/layout/group/move', b => layout.moveGroup(b.id, b.project ?? null)],
+  ['/api/layout/routine/move', moveRoutine],
   ['/api/layout/group/order', b => layout.orderGroup(b.id, { before: b.before, after: b.after })],
   ['/api/layout/project/order', b => layout.orderProject(b.id, { before: b.before, after: b.after })],
   ['/api/layout/group/remove', b => removeGroup(b.id)],
@@ -2042,8 +2055,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, the group a routine can be given for a heading in Home, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write.
-    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, projectOrder: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, the group a routine can be given for a heading in Home, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write, and giving a routine a project.
+    return send(res, 200, { ...index, features: { groupSessions: true, sectionSessions: true, groupEdits: true, projectOrder: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true, routineProjects: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);

@@ -399,6 +399,51 @@ test('deleting a project sends its groups back to the top level and deletes no g
   assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, projects: [], groups: [{ id: 'cg-a', name: 'Reviewing', colour: 'blue' }, { id: 'cg-b', name: 'Backlog' }, { id: 'cg-c', name: 'Loose' }] });
 });
 
+test('a routine is put in a project and sent back to Home, and an emptied map is left out of the file', () => {
+  const f = folder(WITH_PROJECTS);
+  assert.equal(f.layout.read().routineProjects, undefined, 'a file with no links has no map');
+  assert.deepEqual(f.layout.moveRoutine('daily-digest', 'cp-a'), { id: 'daily-digest', project: 'cp-a' });
+  f.layout.moveRoutine('weekly-recap', 'cp-b');
+  assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, routineProjects: { 'daily-digest': 'cp-a', 'weekly-recap': 'cp-b' } });
+  f.layout.moveRoutine('daily-digest', 'cp-b');
+  assert.deepEqual(f.layout.read().routineProjects, { 'daily-digest': 'cp-b', 'weekly-recap': 'cp-b' }, 'moving again replaces the link');
+  assert.deepEqual(f.layout.moveRoutine('daily-digest', null), { id: 'daily-digest', project: null });
+  f.layout.moveRoutine('weekly-recap', null);
+  assert.deepEqual(f.onDisk(), WITH_PROJECTS);
+  assert.deepEqual(f.layout.moveRoutine('never-linked', null), { id: 'never-linked', project: null }, 'clearing a routine that has no link is harmless');
+});
+
+test('a routine move to a project that is not there, or of a bad id, is refused and writes nothing', () => {
+  const f = folder({ ...WITH_PROJECTS, routineProjects: { 'daily-digest': 'cp-a' } });
+  const before = fs.readFileSync(f.file, 'utf8');
+  for (const [edit, status, what] of [
+    [() => f.layout.moveRoutine('daily-digest', 'cp-none'), 404, /Unknown project/],
+    [() => f.layout.moveRoutine('daily-digest', 'cg-a'), 404, /Unknown project/],
+    [() => f.layout.moveRoutine('daily-digest', ''), 404, /Unknown project/],
+    [() => f.layout.moveRoutine('daily-digest', undefined), 404, /Unknown project/],
+    [() => f.layout.moveRoutine(undefined, 'cp-a'), 400, /Unknown routine/],
+    [() => f.layout.moveRoutine('a/b', 'cp-a'), 400, /Unknown routine/],
+  ]) assert.throws(edit, { status, message: what }, String(edit));
+  assert.equal(fs.readFileSync(f.file, 'utf8'), before);
+});
+
+test('routine links load from a file, drop the ones with no project, and a bad shape is a problem the layout refuses to edit through', () => {
+  const f = folder({ ...WITH_PROJECTS, routineProjects: { 'daily-digest': 'cp-a', empty: '', number: 4 } });
+  assert.deepEqual(f.layout.read().routineProjects, { 'daily-digest': 'cp-a' });
+  const bad = folder({ ...WITH_PROJECTS, routineProjects: ['daily-digest'] });
+  assert.match(bad.layout.read().problem, /routineProjects/);
+  assert.throws(() => bad.layout.moveRoutine('daily-digest', 'cp-a'), { status: 500 });
+});
+
+test('deleting a project sends its routines to Home and leaves the links of other projects and the keys it does not know', () => {
+  const f = folder({ ...WITH_PROJECTS, later: { kept: true }, routineProjects: { 'daily-digest': 'cp-a', 'weekly-recap': 'cp-b' } });
+  f.layout.removeProject('cp-a');
+  assert.deepEqual(f.onDisk().routineProjects, { 'weekly-recap': 'cp-b' });
+  assert.deepEqual(f.onDisk().later, { kept: true });
+  f.layout.removeProject('cp-b');
+  assert.equal('routineProjects' in f.onDisk(), false, 'the last link takes the map with it');
+});
+
 test('a project or group that is not there is refused with a 404, and a refused change writes nothing', () => {
   const f = folder(WITH_PROJECTS);
   const before = fs.readFileSync(f.file, 'utf8');

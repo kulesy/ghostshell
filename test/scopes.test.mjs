@@ -2,7 +2,7 @@
 // worked out, and which views a search finds, for the rules that need no page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { countOf, EVERY_VIEW, groupLamp, groupsIn, HOME_VIEW, holder, lampOf, NO_VIEW, othersWaiting, viewIn, viewsNamed, viewsOf } from '../public/ui/scopes.js';
+import { countOf, EVERY_VIEW, groupLamp, groupsIn, HOME_VIEW, holder, lampOf, NO_VIEW, othersWaiting, routinesIn, routineView, viewIn, viewsNamed, viewsOf } from '../public/ui/scopes.js';
 
 const row = (id, state = 'idle') => ({ id, title: id, state });
 const group = (id, project, sessions) => ({ id, name: id, project, sessions });
@@ -311,3 +311,41 @@ test('the view that holds a built-in section\'s own session is every view for Pi
   assert.equal(holder({ ...ix, sections: undefined }, 'chat-pinned'), NO_VIEW);
 });
 
+
+const digest = (state = 'idle') => ({ name: 'daily-digest', title: 'Daily digest', latest: row('digest-2', state), earlier: [row('digest-1')] });
+const recap = { name: 'weekly-recap', title: 'Weekly recap', latest: row('recap-1'), earlier: [] };
+const routed = (routineProjects, extra = {}) => list({ routines: [digest(), recap], routineProjects, groups: [], started: [], ungrouped: [], other: [], ...extra });
+
+test('a routine is in the view of its project, and in Home with no project, a project that is gone, or a server that sends none', () => {
+  const ix = routed({ 'daily-digest': APP, 'weekly-recap': 'cp-gone' });
+  assert.equal(routineView(ix, 'daily-digest'), APP);
+  assert.equal(routineView(ix, 'weekly-recap'), HOME_VIEW, 'its project is gone');
+  assert.equal(routineView(ix, 'never-run'), HOME_VIEW, 'it has no link');
+  assert.equal(routineView({ ...ix, routineProjects: undefined }, 'daily-digest'), HOME_VIEW, 'an older server sends no map');
+});
+
+test('Home\'s Routines hold only the routines with no project, and a project\'s hold its own', () => {
+  const ix = routed({ 'daily-digest': APP });
+  assert.deepEqual(routinesIn(ix, HOME_VIEW).map(g => g.name), ['weekly-recap']);
+  assert.deepEqual(routinesIn(ix, APP).map(g => g.name), ['daily-digest']);
+  assert.deepEqual(routinesIn(ix, WEB), []);
+});
+
+test('every run of a routine in a project is held by that project, and the run of one on Home by Home', () => {
+  const ix = routed({ 'daily-digest': APP });
+  for (const id of ['digest-2', 'digest-1']) assert.equal(holder(ix, id), APP, id);
+  assert.equal(holder(ix, 'recap-1'), HOME_VIEW);
+});
+
+test('a routine in a project lights and counts that project and not Home, and moving it back moves both', () => {
+  const ix = routed({ 'daily-digest': APP }, { routines: [digest('waiting'), recap] });
+  assert.equal(lampOf(ix, APP), 'waiting');
+  assert.equal(lampOf(ix, HOME_VIEW), null);
+  assert.equal(countOf(ix, APP), 2, 'the latest run and the earlier one');
+  assert.equal(countOf(ix, HOME_VIEW), 1);
+  const home = { ...ix, routineProjects: {} };
+  assert.equal(lampOf(home, HOME_VIEW), 'waiting');
+  assert.equal(countOf(home, APP), 0);
+  assert.equal(viewsOf(ix).find(v => v.id === APP).count, 2);
+  assert.equal(othersWaiting(ix, HOME_VIEW), true, 'a project\'s routine run that waits is told to Home');
+});

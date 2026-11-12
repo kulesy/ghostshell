@@ -23,11 +23,11 @@ import { UNTITLED } from './order.js';
 import { ParentForm } from './parent-form.js';
 import { anchorAt, archiveNote, extend, inOrder, NO_PICK, parentNote, parentUndoNote, prune, sessions, stayAfter, step, stopDetail, supportsMany, supportsNewParent, toggle as toggleRow, unarchiveNote, withSubs } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
-import { byHeading, idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, ROUTINES_HASH, supportsRoutineEdits, titledRoutine, unrunRoutines } from './routine-rules.js';
-import { ManageRoutines, renameRoutine, routineItems } from './routines.js';
+import { byHeading, idleWords, isEarlierRun, retryTip, retryWords, routineFor, routineHash, routineMoveTargets, ROUTINES_HASH, supportsRoutineEdits, supportsRoutineProjects, titledRoutine, unrunRoutines } from './routine-rules.js';
+import { ManageRoutines, moveToProject, renameRoutine, routineItems } from './routines.js';
 import { ManageScheduled, scheduledItems } from './scheduled.js';
 import { inSidebar, noteOf, ordered, scheduledHash, SCHEDULED_HASH, supportsScheduled } from './scheduled-rules.js';
-import { groupsIn, HOME_VIEW } from './scopes.js';
+import { groupsIn, HOME_VIEW, routinesIn, routineView } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
 import { archiveHint, keyHint, onMac, shortcut } from './shortcuts.js';
@@ -264,20 +264,21 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
     line: place?.beside === g.id ? place.side : null,
   });
   const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;
-  const idle = home ? unrunRoutines(ix, routines) : [];
+  const idle = unrunRoutines(ix, routines).filter(r => routineView(ix, r.id) === view);
+  const here = routinesIn(ix, view);
   const waiting = home && supportsScheduled(ix) ? ordered(inSidebar(scheduled?.scheduled)) : [];
   const routineRows = ({ runs, idle }) => [
     ...runs.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} routine=${routines?.routines?.find(r => r.id === g.name)} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`),
     ...idle.map(r => html`<${IdleRoutine} key=${`idle:${r.id}`} r=${r} editable=${supportsRoutineEdits(ix)} tree=${tree} />`),
   ];
-  const { loose, headings } = byHeading(ix.routines, idle);
+  const { loose, headings } = byHeading(here, idle);
   const parts = [
     home && supportsScheduled(ix) && section('scheduled', 'Scheduled', waiting, waiting.map(s => html`<${ScheduledRow} key=${s.id} s=${s} tree=${tree} />`),
       { drop: false, extra: html`<${ManageScheduled} current=${scheduledOpen} />` }),
-    home && section('routines', 'Routines', [...ix.routines, ...idle], [
+    section('routines', 'Routines', [...here, ...idle], [
       ...routineRows(loose),
       ...headings.map((h, i) => html`<${RoutineHeading} key=${`heading:${h.name}`} name=${h.name} index=${i} count=${h.runs.length + h.idle.length} collapsed=${collapsed} toggle=${toggle}>${routineRows(h)}<//>`),
-    ], { drop: false, chat: groupById(ix, 'routines'), extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
+    ], { drop: false, chat: home ? groupById(ix, 'routines') : null, extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned), { chat: groupById(ix, 'pinned') }),
     ...groups.map(group),
     adding && tree.groupForm(project),
@@ -965,7 +966,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
       entry,
       label: `Actions for ${title}`,
       items: [
-        ...(routine ? [...routineItems(routine, { editable: supportsRoutineEdits(ix), refresh: refreshRoutines, back: () => box.current.querySelector(rowOf(id)) }), { separator: true }] : []),
+        ...(routine ? [...routineItems(routine, { editable: supportsRoutineEdits(ix), moves: routineMoves(routine), refresh: refreshRoutines, back: () => box.current.querySelector(rowOf(id)) }), { separator: true }] : []),
         ...(isEarlierRun(ix, id) ? [] : [{ label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'session', session: id }) }]),
         ...(parent ? [{ label: `Move out of “${parent.title || UNTITLED}”`, icon: icons.indentDecrease, run: () => nestSession(id, title, null, parent.title || UNTITLED) }] : []),
         ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(nestItem), find: q => findSessions(under, q).map(f => nestItem(f.row)), findLabel: 'Search sessions' }] : []),
@@ -1143,6 +1144,14 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     setBack(moved ? [beside && headOf(beside), '.add'].filter(Boolean) : [headOf(g.id)]);
   }
 
+  // A routine moved leaves the view on screen, so the note says where it went. Its menu offers the move only on a server that has it.
+  async function moveRoutine(r, project) {
+    const to = ix.projects.find(p => p.id === project)?.name ?? 'Home';
+    const moved = await change('api/layout/routine/move', { id: r.id, project });
+    if (moved) say(`Moved “${r.title}” to ${to}.`);
+  }
+  const routineMoves = r => (supportsRoutineProjects(ix) && ix.projects.length ? moveToProject(routineMoveTargets(ix, r.id), project => moveRoutine(r, project)) : null);
+
   // A group moved up or down is drawn somewhere else by the new order, so the focus follows its header.
   async function orderGroup(g, beside, side, note = `Moved “${g.name}” ${side === 'before' ? 'up' : 'down'}.`) {
     const moved = await change('api/layout/group/order', { id: g.id, [side]: beside });
@@ -1178,7 +1187,9 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   // focus back to where it was.
   function deleteProject(p) {
     const groups = ix.groups.filter(g => g.project === p.id).length;
-    const detail = groups ? `Its ${groups === 1 ? 'group moves' : `${groups} groups move`} to Home. No group or session is deleted.` : 'It has no groups.';
+    const routinesHere = Object.values(ix.routineProjects ?? {}).filter(id => id === p.id).length;
+    const moving = [groups && (groups === 1 ? '1 group' : `${groups} groups`), routinesHere && (routinesHere === 1 ? '1 routine' : `${routinesHere} routines`)].filter(Boolean);
+    const detail = moving.length ? `Its ${moving.join(' and ')} ${groups + routinesHere === 1 ? 'moves' : 'move'} to Home. No group, routine or session is deleted.` : 'It has no groups.';
     ask({
       action: 'Delete project',
       title: p.name,
@@ -1235,7 +1246,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     sessionForm: r => { const routine = titledRoutine(ix, r.id); return html`<${NameForm} label=${routine ? 'Rename routine' : 'Rename session'} value=${form.sent ?? routine?.title ?? r.title} was=${routine?.title ?? r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`; },
     routineMenu: r => ({
       label: `Actions for ${r.title}`,
-      items: routineItems(r, { editable: supportsRoutineEdits(ix), refresh: refreshRoutines, back: () => box.current.querySelector(`a.row[data-idle="${CSS.escape(r.id)}"]`) }),
+      items: routineItems(r, { editable: supportsRoutineEdits(ix), moves: routineMoves(r), refresh: refreshRoutines, back: () => box.current.querySelector(`a.row[data-idle="${CSS.escape(r.id)}"]`) }),
     }),
     scheduledMenu: s => ({
       label: `Actions for ${s.title}`,

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { as, cliCalls, listen, request, signIn, start, until as waitFor } from './harness.mjs';
+import { as, cliCalls, listen, request, restart, signIn, start, until as waitFor } from './harness.mjs';
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 const GROUPS = [{ id: 'cg-work', name: 'Work', session: WORK }, { id: 'cg-home', name: 'Home' }];
@@ -46,6 +46,8 @@ const WRITES = [
   ['move_group_to_project', { group: 'work', project: 'side' }, 'move the group "Work" [cg-work] to the project "Side" [cp-side]'],
   ['move_project', { project: 'side', after: 'LAB' }, 'move the project "Side" [cp-side] after "Lab" [cp-lab]'],
   ['move_project', { project: 'lab', before: 'nowhere' }, 'move the project "Lab" [cp-lab] before "nowhere"'],
+  ['move_routine_to_project', { routine: 'Daily digest', project: 'side' }, 'move the routine "Daily digest" to the project "Side" [cp-side]'],
+  ['move_routine_to_project', { routine: 'daily-digest' }, 'move the routine "daily-digest" to Home'],
 ];
 
 test('each write lands in layout.json as the layout route writes it, and the server lists the session as changed', async () => {
@@ -151,7 +153,7 @@ test('a group\'s chat is given the layout tools and uses them, and its own chat 
   await sendTo(s, token, WORK, 'list the tools');
   await until(() => replies(s).length === 1);
   const listed = replies(s)[0].result.tools.map(t => t.name);
-  for (const name of ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'send_session']) assert.ok(listed.includes(name), name);
+  for (const name of ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project', 'send_session']) assert.ok(listed.includes(name), name);
   const moved = textOf(await callTool(s, token, WORK, 'move_session_to_group', { session_id: 'loose', group: 'Work' }));
   assert.match(moved, /^Moved "Loose" \[loose\] to the group "Work"/);
   assert.match(moved, /This group's chat can now read it with read_group_session\.$/);
@@ -416,4 +418,63 @@ test('a name or project already in use is refused with the id, in any case and w
   assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'nothing was written');
   assert.match(textOf(await callTool(s, token, 'top', 'create_group', { name: 'Proj', project: 'Proj' })), /^Created the group "Proj"/, 'a group may share a project\'s name');
   assert.equal((await post(s, token, '/api/layout/group/add', { name: 'Inside' })).status, 200, 'the owner may still make a twin');
+});
+
+// A signed-in server whose routines.json holds two made-up routines, which the tool and the route both look up.
+async function withRoutines() {
+  const first = await start({ sessions: SESSIONS, groups: GROUPS, chips: CHIPS, claude: true, layout: { projects: PROJECTS } });
+  const work = path.join(first.home, 'work');
+  const file = path.join(first.home, 'desktop', 'daily-digest', 'SKILL.md');
+  fs.mkdirSync(work);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, '---\nname: daily-digest\ndescription: A made-up routine\n---\n\nSummarise the board.\n');
+  const routine = (id, title) => ({ id, title, cron: '30 7 * * 1-5', jitterSeconds: 0, file, cwd: work, model: null, effort: null, mode: null, enabled: false });
+  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({ routines: [routine('daily-digest', 'Daily digest'), routine('weekly-recap', 'Weekly recap')] }));
+  const s = await restart(first);
+  return { s, ...(await signIn(s)) };
+}
+
+test('a routine moves into a project and back to Home by the tool, as the route writes it, and the page is told the project', async () => {
+  const { s, token } = await withRoutines();
+  const run = async args => textOf(await callTool(s, token, 'top', 'move_routine_to_project', args));
+  const index = async () => (await get(s, token, '/api/sessions')).body();
+  assert.equal((await index()).features.routineProjects, true);
+  assert.equal(await run({ routine: ' DAILY digest ', project: 'side' }), 'Moved the routine "Daily digest" [daily-digest] into the project "Side" [cp-side]. Its runs moved with it.');
+  assert.deepEqual(onDisk(s).routineProjects, { 'daily-digest': 'cp-side' });
+  assert.deepEqual((await index()).routineProjects, { 'daily-digest': 'cp-side' });
+  const before = fs.readFileSync(s.layout, 'utf8');
+  assert.equal(await run({ routine: 'daily-digest', project: 'Side' }), 'The routine "Daily digest" [daily-digest] is already in the project "Side" [cp-side]. Nothing changed.');
+  assert.equal(await run({ routine: 'weekly-recap' }), 'The routine "Weekly recap" [weekly-recap] is already on Home. Nothing changed.');
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'nothing was written');
+  const refused = async args => {
+    const reply = await callTool(s, token, 'top', 'move_routine_to_project', args);
+    assert.equal(reply.result.isError, true, JSON.stringify(args));
+    return textOf(reply);
+  };
+  assert.equal(await refused({ routine: 'Nightly', project: 'side' }), 'move_routine_to_project has no routine called "Nightly". The routines are "Daily digest", "Weekly recap".');
+  assert.equal(await refused({ routine: 'daily-digest', project: 'Nowhere' }), 'move_routine_to_project has no project called "Nowhere". The projects are "Side", "Lab".');
+  assert.equal(await refused({ project: 'side' }), 'Give the routine as routine, by its title as the routines list shows it or by its id.');
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'nothing was written');
+  assert.match(await run({ routine: 'Daily digest', project: null }), /^Moved the routine "Daily digest" \[daily-digest\] to Home\./);
+  assert.equal(onDisk(s).routineProjects, undefined, 'the last link takes the map out of the file');
+  assert.equal(fs.existsSync(path.join(s.state, 'routines.json')) && JSON.parse(fs.readFileSync(path.join(s.state, 'routines.json'), 'utf8')).routines.every(r => !('project' in r)), true, 'the routines file is never written by the tool');
+});
+
+test('the routine route is a signed-in POST that refuses an unknown project or routine, clears a link for a routine that is gone, and a project delete sends its routines to Home', async () => {
+  const { s, token } = await withRoutines();
+  const move = body => post(s, token, '/api/layout/routine/move', body);
+  assert.equal((await request(s, 'POST', '/api/layout/routine/move', { json: { id: 'daily-digest', project: 'cp-side' } })).status, 401, 'signed out');
+  assert.equal((await get(s, token, '/api/layout/routine/move')).status, 404, 'GET is not a route');
+  assert.equal((await move({ id: 'daily-digest', project: 'cp-none' })).status, 404);
+  assert.equal((await move({ id: 'no-such-routine', project: 'cp-side' })).status, 404);
+  assert.equal(onDisk(s).routineProjects, undefined, 'a refusal writes nothing');
+  assert.equal((await move({ id: 'daily-digest', project: 'cp-side' })).status, 200);
+  assert.equal((await move({ id: 'weekly-recap', project: 'cp-lab' })).status, 200);
+  assert.deepEqual(onDisk(s).routineProjects, { 'daily-digest': 'cp-side', 'weekly-recap': 'cp-lab' });
+  assert.equal((await post(s, token, '/api/layout/project/remove', { id: 'cp-side' })).status, 200);
+  assert.deepEqual(onDisk(s).routineProjects, { 'weekly-recap': 'cp-lab' });
+  assert.deepEqual((await get(s, token, '/api/sessions')).body().routineProjects, { 'weekly-recap': 'cp-lab' });
+  assert.equal((await move({ id: 'weekly-recap', project: null })).status, 200);
+  assert.equal(onDisk(s).routineProjects, undefined);
+  assert.equal((await move({ id: 'long-gone', project: null })).status, 200, 'a link left by a deleted routine can still be cleared');
 });
