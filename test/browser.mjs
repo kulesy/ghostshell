@@ -150,7 +150,8 @@ export async function launch(chromium) {
       try { return await evaluate(expression); } catch (e) { if (/navigated or closed/.test(e.message)) return false; throw e; }
     };
 
-    async function until(expression, ms = 5000) {
+    // A runner shared with other files is slow to draw, so it waits longer before it calls a page stuck.
+    async function until(expression, ms = process.env.CI ? 15_000 : 5000) {
       for (const start = Date.now(); !(await seen(expression));) {
         if (Date.now() - start > ms) throw new Error(`timed out waiting for ${expression}`);
         await new Promise(resolve => setTimeout(resolve, 20));

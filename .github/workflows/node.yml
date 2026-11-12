@@ -1,6 +1,6 @@
 name: Node suite
 
-# The Node tests, on every push. `npm test` runs them 4 files at a time, so a run needs far less of the owner's Mac than `node --test` alone.
+# The Node tests, on every push. `npm test` runs them 2 files at a time, so a run needs far less of the owner's Mac than `node --test` alone.
 # See https://github.com/kulesy/ghostshell/issues/151.
 on:
   push:
