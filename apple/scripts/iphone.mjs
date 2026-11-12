@@ -99,7 +99,8 @@ function boot(udid) {
 
 // The chat stub does not know the accounts, banners or passkeys routes, and answers an approval with 404. This sits in front of it, answers those,
 // forwards the rest, and keeps what the tests need to read: the widget sends and the approval decisions.
-function startFixtures(stub) {
+// `empty` serves no accounts and no passkeys, for the empty states.
+function startFixtures(stub, { empty = false } = {}) {
   const day = 86_400_000;
   const now = Date.now();
   const work = { id: 'work', name: 'Work' };
@@ -121,6 +122,7 @@ function startFixtures(stub) {
   const passkeys = { available: true, passkeys: [
     { id: 'pk-1', device: 'MacBook Pro, Safari', rpId: 'example.ts.net', created: new Date(now - 40 * day).toISOString(), used: new Date(now - 2 * day).toISOString() },
   ] };
+  if (empty) { accounts.accounts = []; passkeys.passkeys = []; }
   const decisions = [];
   const json = (res, body, status = 200) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
   const server = http.createServer((req, res) => {
@@ -166,15 +168,15 @@ async function startStubs() {
   const files = await startFilesStub();
   const groups = await startGroupStub();
   const routines = routinesStub({ accept: true });
+  const routinesEmpty = routinesStub({ accept: true, empty: true });
   const scratch = await startScratch();
   return {
-    addresses: { files: files.address, groups: groups.address, routines: await listen(routines.server), organise: scratch.address },
+    addresses: { files: files.address, groups: groups.address, routines: await listen(routines.server), routinesempty: await listen(routinesEmpty.server), organise: scratch.address },
     password: fs.readFileSync(scratch.passwordFile, 'utf8').trim(),
     stop: async () => {
       files.stop();
       groups.stop();
-      routines.server.closeAllConnections();
-      routines.server.close();
+      for (const { server } of [routines, routinesEmpty]) { server.closeAllConnections(); server.close(); }
       await scratch.stop();
     },
   };
@@ -232,6 +234,7 @@ async function shoot() {
 
   const stub = await startChatStub();
   const fixtures = await startFixtures(stub);
+  const emptyFixtures = await startFixtures(stub, { empty: true });
   const booted = [];
   let ok = true;
   const release = await acquire(SIMULATOR_LOCK, { what: 'the Simulators', checkout: path.resolve(apple, '..') });
@@ -250,6 +253,7 @@ async function shoot() {
         console.log(`\n== ${DEVICES[device].name}, ${appearance}`);
         // Fresh stubs for each run, because a chip started or a file saved in one run would change what the next one sees.
         const stubs = await startStubs();
+        stubs.addresses.accountsempty = emptyFixtures.address;
         const since = new Date().toLocaleString('sv-SE');
         const r = await runTests({ udid, device, appearance, out, address: fixtures.address, only: option('--test'), stubs }).finally(() => stubs.stop());
         console.log(r.ok ? `PASS: ${r.summary}` : `FAIL: ${r.summary}\n${r.failed.join('\n')}`);
@@ -262,6 +266,7 @@ async function shoot() {
   } finally {
     for (const udid of booted) simctl('shutdown', udid);
     fixtures.stop();
+    emptyFixtures.stop();
     stub.stop();
     release();
   }

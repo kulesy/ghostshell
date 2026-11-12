@@ -456,6 +456,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let app = launch()
         signIn(app)
         app.buttons["More"].tap()
+        XCTAssertTrue(app.buttons["Accounts"].waitForExistence(timeout: 5), app.debugDescription)
+        shot("11-more-menu")
         app.buttons["Accounts"].tap()
         XCTAssertTrue(app.staticTexts["Work"].waitForExistence(timeout: 15), app.debugDescription)
         shot("09-accounts")
@@ -474,6 +476,20 @@ final class GhostShelliPhoneUITests: XCTestCase {
         app.buttons["More"].tap()
         app.buttons["Sign Out"].tap()
         XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 15), app.debugDescription)
+    }
+
+    func testAccountsAndPasskeysEmptyStates() throws {
+        let app = launch(stub: "accountsEmpty")
+        signIn(app)
+        app.buttons["More"].tap()
+        app.buttons["Accounts"].tap()
+        XCTAssertTrue(app.buttons["Add and sign in"].waitForExistence(timeout: 15), app.debugDescription)
+        shot("09c-accounts-empty")
+        back(app)
+        app.buttons["More"].tap()
+        app.buttons["Passkeys"].tap()
+        XCTAssertTrue(app.staticTexts["No passkeys added yet."].waitForExistence(timeout: 15), app.debugDescription)
+        shot("10b-passkeys-empty")
     }
 
     // MARK: Files
@@ -885,6 +901,20 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Phone check 2"].waitForNonExistence(timeout: 10), "The deleted routine is gone")
         let deleted = try await writes("DELETE", "/api/routines/made-")
         XCTAssertEqual(deleted.count, 1)
+    }
+
+    func testRoutinesAndScheduledEmptyStates() throws {
+        let app = launch(stub: "routinesEmpty")
+        signIn(app, stub: "routinesEmpty", expecting: "Look at the failing build")
+        openFromMore(app, "Manage routines")
+        XCTAssertTrue(app.staticTexts["No routines yet."].waitForExistence(timeout: 10), app.debugDescription)
+        shot("routines-0-empty")
+        for button in app.buttons.matching(NSPredicate(format: "label == 'New routine'")).allElementsBoundByIndex { assertTouchable(button, "New routine") }
+        back(app)
+        openFromMore(app, "Manage scheduled sessions")
+        XCTAssertTrue(app.staticTexts["No scheduled sessions."].waitForExistence(timeout: 10), app.debugDescription)
+        shot("scheduled-0-empty")
+        for button in app.buttons.matching(NSPredicate(format: "label == 'Schedule a session'")).allElementsBoundByIndex { assertTouchable(button, "Schedule a session") }
     }
 
     func testScheduledSessions() async throws {
