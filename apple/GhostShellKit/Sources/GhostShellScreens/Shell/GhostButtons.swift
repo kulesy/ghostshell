@@ -10,6 +10,7 @@ public struct GhostButtonStyle: ButtonStyle {
     let radius: CGFloat
     let fills: Bool
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(_ kind: Kind = .primary, size: Size = .regular, radius: CGFloat = GhostRadius.sm, fills: Bool = false) {
         (self.kind, self.size, self.radius, self.fills) = (kind, size, radius, fills)
@@ -32,7 +33,8 @@ public struct GhostButtonStyle: ButtonStyle {
     private var fill: Color {
         switch kind {
         case .primary: Color.ghost.primary
-        case .destructive: Color.ghost.destructive
+        // The page's dark destructive fill is 60% of the red, since the full red fails contrast with white text. `public/app.css`.
+        case .destructive: colorScheme == .dark ? Color.ghost.destructive.opacity(0.6) : Color.ghost.destructive
         case .outline: Color.ghost.card
         case .ghost: Color.clear
         }
