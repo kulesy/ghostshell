@@ -42,7 +42,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-23 | [Roll a session's sub session status up to every parent, from the transcripts, with no model calls](20261023-roll-sub-session-status-up.md) | Accepted, amended 2026-10-26, 2026-10-27, 2026-10-28, 2026-10-29 and 2026-10-30 |
 | 2026-10-24 | [Manage routines from a page, and keep the prompts GhostShell writes in its own folder](20261024-manage-routines-from-a-page.md) | Partly superseded by [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) |
 | 2026-10-25 | [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md) | Accepted |
-| 2026-10-26 | [Show pull request status on session cards, read from the gh CLI on the server](20261026-show-pull-request-status-on-session-cards.md) | Accepted |
+| 2026-10-26 | [Show pull request status on session cards, read from the gh CLI on the server](20261026-show-pull-request-status-on-session-cards.md) | Accepted, amended 2026-11-04 and 2026-11-12 |
 | 2026-10-26 | [Show the helpers a session started in the side panel, read from the transcript folder and pushed over the events stream](20261026-subagents-in-the-side-panel.md) | Accepted |
 | 2026-10-27 | [Name sessions from their first turn, with a small model, and keep titles that are given](20261027-name-sessions-from-their-first-turn.md) | Accepted |
 | 2026-10-27 | [Let a chip name the group its session opens in](20261027-chips-name-their-group.md) | Accepted |

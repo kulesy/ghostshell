@@ -22,6 +22,7 @@ import { makeMarks } from './lib/marks.mjs';
 import { pendingLines } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
 import { makePulls } from './lib/pulls.mjs';
+import { archivedText, makeCommentWatch, scaled as scaledComments } from './lib/pr-comments.mjs';
 import { startPullLinks } from './lib/pull-links.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
@@ -511,6 +512,20 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 // What a chat is waiting on for the owner's say-so.
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
+// The same path as a message typed into the session: its chat is resumed if it has no process, and queued behind a running turn. Answers the state it found.
+function sendToSession(row, text) {
+  const chat = getChat(row.id);
+  if (!chat?.proc && row.state === 'active') return 'elsewhere';
+  const was = chat?.state ?? 'idle';
+  // A pinned account that is signed out refuses the start. The tool tells the model in words, and nothing is queued.
+  try {
+    ensureChat(row.id, row).send(text);
+  } catch (e) {
+    throw e.blocked ? refusal(`Refused: ${e.message}`) : e;
+  }
+  return was;
+}
+
 // What a chat reaches the sessions under it through, and what every chat sends to, archives, unarchives, renames and moves any session with. Each call looks the index up again, so a session archived or nested since is seen
 // as it is now. Every row is in the index whether archived or not, and `parent` skips the archived ones unless they are asked for. The sessions of groups and sections
 // are listed too, so one can send and be sent to, and none is ever below another. A deleted group's chat is left out, as nothing would answer its tools.
@@ -529,19 +544,7 @@ function subCtx(sessionId) {
     pullLinks: pullLinks.get,
     summary: (id, cwd) => summaries.get(id, cwd),
     pulls: async rows => (await pullsFor(rows)).lists,
-    // The same path as a message typed into the session: its chat is resumed if it has no process, and queued behind a running turn. Answers the state it found.
-    send(row, text) {
-      const chat = getChat(row.id);
-      if (!chat?.proc && row.state === 'active') return 'elsewhere';
-      const was = chat?.state ?? 'idle';
-      // A pinned account that is signed out refuses the start. The tool tells the model in words, and nothing is queued.
-      try {
-        ensureChat(row.id, row).send(text);
-      } catch (e) {
-        throw e.blocked ? refusal(`Refused: ${e.message}`) : e;
-      }
-      return was;
-    },
+    send: sendToSession,
     // The same changes the layout routes make, so a tool's and the owner's cannot differ. A session another app runs is left alone, and a running chat of Capcom's is not stopped.
     // Resolves with how it went. 'done' says how many sub sessions went with it, and a refusal says whether the session itself stood in the way and how many below it did.
     archive(id) {
@@ -1839,6 +1842,22 @@ const groupUpdates = makeGroupUpdates({
   store: makeUpdateStore(cfg.stateDir),
 });
 
+// The group a session is in, when that group has a chat to tell.
+const groupChatOf = row => layout.read().groups.find(g => g.id === row.group && g.session)?.session;
+
+const commentWatch = makeCommentWatch({
+  timing: scaledComments(cfg.groupUpdateScale),
+  enabled: () => cfg.prComments,
+  rows: () => [...buildIndex({ archived: true }).rows.values()].filter(r => !r.archived || groupChatOf(r)),
+  urlsFor: pulls.urlsFor,
+  viewer: pulls.viewer,
+  activity: pulls.activity,
+  activityItems: pulls.activityItems,
+  deliver: sendToSession,
+  noteArchived: (row, url) => groupUpdates.activity(groupChatOf(row), { id: row.id, text: archivedText(row, url) }),
+  store: makeUpdateStore(cfg.stateDir, 'pr-comments.json'),
+});
+
 // The sidebar banners: when Claude's sign-in ends, and merged changes waiting on main. Both answer from what was last worked out, so a request waits
 // on no git, keychain or CLI work. See docs/adr/20261102-banners-for-sign-in-and-updates.md.
 // Each account has a sign-in of its own, a mark when it is out of usage, and its last plan usage. See docs/adr/20261102-switch-claude-accounts.md.
@@ -2439,6 +2458,7 @@ server.listen(cfg.port, '127.0.0.1', () => {
 });
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
 setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates failed: ${e.message}`)), scaled(cfg.groupUpdateScale).tick).unref();
+setInterval(() => commentWatch.tick().catch(e => console.error(`Pull request comments failed: ${e.message}`)), scaledComments(cfg.groupUpdateScale).tick).unref();
 // Whatever the terminal started ends with Capcom, so a restart leaves nothing running behind. A signal ends the process through
 // exit, which kills the command groups; without a handler the default would end it first.
 process.on('exit', () => { terminal.killAll(); accountLogins.stopAll(); });
