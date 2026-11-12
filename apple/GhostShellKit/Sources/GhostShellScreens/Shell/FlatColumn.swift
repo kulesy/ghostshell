@@ -78,8 +78,8 @@ extension View {
     }
 }
 
-extension TextEditor {
-    /// The page's prompt box: Geist 16pt, at least 256pt tall, boxed like an input.
+extension View {
+    /// The page's prompt box, for a TextEditor: Geist 16pt, at least 256pt tall, boxed like an input.
     func ghostEditor(invalid: Bool = false) -> some View {
         font(.geist(16))
             .foregroundStyle(Color.ghost.foreground)
