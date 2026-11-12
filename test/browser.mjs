@@ -132,6 +132,8 @@ export async function launch(chromium) {
     await call('Page.enable');
     // The page keeps the focus whichever tab the browser has in front, so the focus it hands out can be read back.
     await call('Emulation.setFocusEmulationEnabled', { enabled: true });
+    // The runner's own motion setting would otherwise decide whether the fades play, so the pages see the usual one.
+    await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
     await call('Emulation.setDeviceMetricsOverride', phone ? { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } : { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
     if (phone) await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     const { errorText } = await call('Page.navigate', { url });

@@ -541,8 +541,6 @@ test('the pointer moving off a lit result onto the box leaves it lit, and Enter 
 
 test('a sub-menu opened again while it fades out has an empty box and no lit result, in the element that was fading', { skip, timeout }, async t => {
   const page = await findPage(t);
-  // A slow machine takes longer than the fade between the two keys, so the fade and the 500 ms timer that ends it (presence.js) are stretched.
-  await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: '.menu[data-state="closed"] { animation-duration: 10s !important; }' })); const real = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => real(fn, ms === 500 ? 10000 : ms, ...rest)`);
   await openMoveTo(page);
   await type(page, 'web');
   await shows(page, ['Checkout', 'Release notes', 'Website ideas']);

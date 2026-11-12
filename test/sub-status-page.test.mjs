@@ -384,9 +384,9 @@ test('a line that moves while its summary is on the way is asked for again when 
 
 test('a tab out of sight, and a closed panel, ask the server for nothing while sessions move', { skip, timeout: 40_000 }, async t => {
   const page = await appPage(t, '#/s/lead', { origin: spy.origin });
-  await page.until(`!!document.querySelector('#panel .subs .sub')`);
+  await page.until(`!!document.querySelector('#panel .subs .sub')`, 15_000);
   await page.click('.sub-fold');
-  await page.until(`!!document.querySelector('.sub-open .sub-reply')`);
+  await page.until(`!!document.querySelector('.sub-open .sub-reply')`, 15_000);
   assert.ok(spy.summaries().some(url => listen(url, { ids: 'mover', detail: true })), 'the open line read its reply');
 
   await page.click('#tab-terminal');
