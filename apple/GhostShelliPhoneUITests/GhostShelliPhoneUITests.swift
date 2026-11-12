@@ -74,15 +74,16 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20), "The chat \(title) did not show \(text)\n\(app.debugDescription)")
     }
 
-    /// From iOS 26 the bars float over the content: the nav bar and the sidebar's header at the top, the search field or the composer at the foot.
+    /// The content scrolls under the bars: a chat's nav bar and composer, and the list's header and footer.
     /// The test runner still counts an element under one as hittable and the tap is lost, so the element is dragged into the open area between them.
     private func clearOfTheBars(_ app: XCUIApplication, _ element: XCUIElement) {
         let height = app.windows.firstMatch.frame.height
         let bar = app.navigationBars.firstMatch
-        // The sidebar's header sits under the nav bar and is about 50pt tall.
-        let top = (bar.exists ? bar.frame.maxY : 0) + 56
-        let composer = message(app)
-        let bottom = min(height * 0.8, composer.exists ? composer.frame.minY - 8 : height)
+        let header = app.buttons["New"].firstMatch
+        let top = max(bar.exists ? bar.frame.maxY : 0, header.exists && header.isHittable ? header.frame.maxY : 0) + 8
+        // A chat's thread ends where the composer starts, and the list's footer takes about the last 110pt.
+        let thread = app.scrollViews["Messages"].firstMatch
+        let bottom = min(height * 0.8, thread.exists ? thread.frame.maxY - 8 : height)
         // The drag runs down the margin, since one on a code block scrolls only the code sideways.
         func drag(_ from: CGFloat, _ to: CGFloat) {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: from)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: to)))
@@ -252,7 +253,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The real photo picker: the newest photo in the Simulator's library is the one script put there.
         app.buttons["Attach photos"].firstMatch.tap()
         let photo = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
-        XCTAssertTrue(photo.waitForExistence(timeout: 15), app.debugDescription)
+        // The picker runs outside the app, and on iOS 27 in CI it can still say Loading after 15 seconds.
+        XCTAssertTrue(photo.waitForExistence(timeout: 45), app.debugDescription)
         photo.tap()
         let add = app.buttons["Add"].firstMatch
         XCTAssertTrue(add.waitForExistence(timeout: 10), app.debugDescription)
@@ -1075,8 +1077,6 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let line = reveal(app, rowStarting(app, title))
         // A row can be hittable while the footer covers its middle, so it is scrolled up until it clears the bar.
         for _ in 0..<3 where line.frame.midY > app.frame.height - 110 { app.swipeUp() }
-        // The sidebar's header floats over the top rows, and the test runner still counts a row under it as hittable.
-        for _ in 0..<3 where line.frame.minY < app.windows.firstMatch.frame.height * 0.3 { app.swipeDown() }
         clearOfTheBars(app, line)
         line.press(forDuration: 1.0)
         for item in items {
