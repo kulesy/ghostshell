@@ -34,6 +34,7 @@ private struct ChatHost: View {
 
 private struct ChatLayout: View {
     let model: ChatModel
+    @State private var height: CGFloat = 560
 
     var body: some View {
         @Bindable var chat = model.chat
@@ -47,6 +48,8 @@ private struct ChatLayout: View {
             ChatSlots.prompts(chat)
             ChatSlots.composer(chat)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .environment(\.chatHeight, height)
         // NOTE: [8 Nov 2026] EK - Keep .toolbar before .inspector: AppKit throws when the toolbar item is inserted into the inspector's toolbar section.
         .toolbar {
             ToolbarItemGroup {
