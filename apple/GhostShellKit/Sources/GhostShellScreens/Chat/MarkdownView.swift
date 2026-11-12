@@ -19,26 +19,26 @@ enum ChatStyle {
     static let page = onPhone(true, mac: false)
 
     // MARK: Text
-    static let body = Font.system(size: 14)
-    static let small = Font.system(size: 12)
-    static let caption = Font.system(size: 11)
-    static let mono = Font.system(size: onPhone(13, mac: 12.5), design: .monospaced)
-    static let monoSmall = Font.system(size: 12, design: .monospaced)
-    static let commandMono = onPhone(Font.system(size: 13, design: .monospaced), mac: monoSmall)
+    static let body = onPhone(Font.geist(14), mac: Font.system(size: 14))
+    static let small = onPhone(Font.geist(12, relativeTo: .caption), mac: Font.system(size: 12))
+    static let caption = onPhone(Font.geist(11, relativeTo: .caption2), mac: Font.system(size: 11))
+    static let mono = onPhone(Font.geistMono(13), mac: Font.system(size: 12.5, design: .monospaced))
+    static let monoSmall = onPhone(Font.geistMono(12, relativeTo: .caption), mac: Font.system(size: 12, design: .monospaced))
+    static let commandMono = onPhone(Font.geistMono(13), mac: monoSmall)
     static let commandLineSpacing: CGFloat = onPhone(4, mac: 2)
     static let labelWeight = onPhone(Font.Weight.medium, mac: .regular)
     static let chipInk = onPhone(AnyShapeStyle(Color.ghost.foreground), mac: AnyShapeStyle(HierarchicalShapeStyle.secondary))
-    static let chipFont = onPhone(Font.system(size: 12, weight: .medium), mac: caption)
+    static let chipFont = onPhone(Font.geist(12, weight: .medium, relativeTo: .caption), mac: caption)
     static let optionDescription = onPhone(body, mac: small)
-    static let fieldFont = Font.system(size: 16)
+    static let fieldFont = onPhone(Font.geist(16), mac: Font.system(size: 16))
     /// A narrow space either side of inline code stands in for padding, which an attributed string can't give.
     static let codePad = "\u{202F}"
     static let summary = onPhone(body, mac: small)
     static let toolSummary = onPhone(monoSmall, mac: small)
-    static let detailValue = onPhone(Font.system(size: 12, design: .monospaced), mac: small)
+    static let detailValue = onPhone(monoSmall, mac: small)
     static let groupMeta = onPhone(monoSmall, mac: small)
     static let thinkText = onPhone(body, mac: small)
-    static let codeAction = onPhone(Font.system(size: 12, weight: .medium), mac: caption)
+    static let codeAction = onPhone(Font.geist(12, weight: .medium, relativeTo: .caption), mac: caption)
     static let linkWeight: Font.Weight? = onPhone(.medium, mac: nil)
     /// The page sets replies at 22.75 over 14, and code at 20.8 over 13.
     static let lineSpacing: CGFloat = onPhone(6, mac: 4)
@@ -139,7 +139,7 @@ enum ChatStyle {
     static let chipPadding = onPhone(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8), mac: EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
     static let optionPadding = onPhone(EdgeInsets(top: 11, leading: 13, bottom: 11, trailing: 13), mac: EdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10))
     static let optionRadio = !page
-    static let questionFont = onPhone(Font.system(size: 14, weight: .semibold), mac: Font.system(size: 14, weight: .medium))
+    static let questionFont = onPhone(Font.geist(14, weight: .semibold), mac: Font.system(size: 14, weight: .medium))
 }
 
 /// The page's lamp: a core in a dark socket with a thin ring, and a glow while something waits or works. The Mac draws a plain dot.
@@ -340,12 +340,8 @@ private struct MarkdownBlockView: View {
     }
 
     private static func headingFont(_ level: Int) -> Font {
-        switch level {
-        case 1: .system(size: 20)
-        case 2: .system(size: 18)
-        case 3: .system(size: 16)
-        default: .system(size: 14)
-        }
+        let size: CGFloat = switch level { case 1: 20; case 2: 18; case 3: 16; default: 14 }
+        return onPhone(Font.geist(size, relativeTo: .headline), mac: Font.system(size: size))
     }
 }
 
