@@ -1,6 +1,7 @@
 // What the Routines page says and sends, as rules that need no page, so node can test them. Times are the Mac's, as the server writes them.
 // NOTE: [8 Nov 2026] EK - The Swift app ports these words and rules in apple/GhostShellKit/Sources/GhostShellKit/Rules/RoutineRules.swift. A change here needs the same change there.
 import { EFFORTS, LONG, MAIN, modelName } from './model-rules.js';
+import { HOME_VIEW, routineView } from './scopes.js';
 import { everyRow } from './tree.js';
 
 // A server that cannot say leaves the page read-only: the list, Run now and the switch work on every server, the rest only on this one.
@@ -11,6 +12,9 @@ export const supportsRoutineFiles = ix => !!ix?.features?.routineFiles;
 
 // Without it a routine has no group, and the form has no Group field.
 export const supportsRoutineHeadings = ix => !!ix?.features?.routineHeadings;
+
+// Without it a routine cannot be given a project, and Home shows every routine.
+export const supportsRoutineProjects = ix => !!ix?.features?.routineProjects;
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -286,6 +290,12 @@ export const titledRoutine = (ix, rowId) => ix?.routines?.find(g => g.latest?.id
 
 // Whether `rowId` is one of the earlier runs folded under a routine's row, which show their date and are renamed from their own chat.
 export const isEarlierRun = (ix, rowId) => !!ix?.routines?.some(g => g.earlier.some(r => r.id === rowId));
+
+// Where a routine can go: Home and each project, with the one it is in marked.
+export function routineMoveTargets(ix, id) {
+  const here = routineView(ix, id);
+  return [{ label: 'Home', project: HOME_VIEW, current: here === HOME_VIEW }, ...ix.projects.map(p => ({ label: p.name, project: p.id, current: here === p.id }))];
+}
 
 // ---- routines with no run in the sidebar ---------------------------------------------------------
 

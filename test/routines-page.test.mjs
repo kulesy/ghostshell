@@ -1090,3 +1090,49 @@ test('a server that does not say it knows groups gets no Group field and sends n
   assert.equal(await page.evaluate(`!!document.querySelector('#routine-heading, datalist')`), false);
   assert.deepEqual(page.problems, []);
 });
+
+// A server with a project and two routines, one of them in it. The routines go yearly on 1 January so neither fires during a test.
+async function projected() {
+  const first = await start({
+    sessions: [{ id: 'd1', title: 'Digest run', routine: 'digest', ago: 5 }, { id: 'w1', title: 'Recap run', routine: 'recap', ago: 10 }],
+    layout: { projects: [{ id: 'cp-a', name: 'Garden' }], routineProjects: { digest: 'cp-a' } },
+    claude: true,
+  });
+  const work = path.join(first.home, 'work');
+  fs.mkdirSync(work);
+  fs.mkdirSync(path.join(first.state, 'routines'));
+  const routine = (id, title) => {
+    fs.writeFileSync(path.join(first.state, 'routines', `${id}.md`), `Do ${title}.\n`);
+    return { id, title, cron: '0 3 1 1 *', jitterSeconds: 0, file: path.join(first.state, 'routines', `${id}.md`), cwd: work, model: null, effort: null, mode: null, enabled: true };
+  };
+  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({ routines: [routine('digest', 'Daily digest'), routine('recap', 'Weekly recap')] }, null, 2));
+  return restart(first);
+}
+
+test('a routine in a project shows in that project\'s Routines, first, and not in Home, and its menu can move it to Home and to each project', { skip, timeout }, async t => {
+  const server = await projected();
+  const setter = await browser.open(`${server.origin}/healthz`);
+  await setter.evaluate(`localStorage.setItem('capcom.projectsDocked', 'true'); localStorage.setItem('capcom.scope', 'null')`);
+  await setter.close();
+  const page = await browser.open(`${server.origin}/`);
+  t.after(() => page.close());
+  await login(page);
+  await page.until(`!!document.querySelector('a.row[data-id="w1"]')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="d1"]')`), false, 'Home leaves out the routine that is in a project');
+  await page.click('.scope[data-key="cp-a"]');
+  await page.until(`!!document.querySelector('a.row[data-id="d1"]')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('a.row[data-id="w1"]')`), false, 'the project leaves out the routine on Home');
+  assert.equal(await page.evaluate(`document.querySelector('.group-head')?.dataset.key`), 'routines', 'Routines comes first, above Pinned');
+  await contextMenu(page, 'a.row[data-id="d1"]');
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  assert.deepEqual((await menuOf(page)).slice(0, 4), ['Run now', 'Pause', 'Move to project', 'Edit']);
+  await pick(page, MENU, 'Move to project');
+  const SUB = '.menu[data-sub]';
+  await page.until(`!!document.querySelector('${SUB}') && document.querySelector('${SUB}').dataset.state === 'open'`);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('${SUB} [role^=menuitem]')].map(el => el.querySelector('.menu-text').textContent + (el.getAttribute('aria-current') === 'page' ? ' (current)' : ''))`), ['Home', 'Garden (current)']);
+  await page.evaluate(`[...document.querySelectorAll('${SUB} [role^=menuitem]')].find(el => el.querySelector('.menu-text').textContent === 'Home').setAttribute('data-picked', '')`);
+  await page.click(`${SUB} [data-picked]`);
+  await page.until(`!document.querySelector('a.row[data-id="d1"]')`);
+  assert.deepEqual(JSON.parse(fs.readFileSync(server.layout, 'utf8')).routineProjects ?? {}, {}, 'the move is saved in the layout');
+  assert.deepEqual(page.problems, []);
+});

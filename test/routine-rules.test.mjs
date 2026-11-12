@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ago, byHeading, byTitle, choices, deleteDetail, effortChoices, FIELDS, fireTime, formOf, headingNames, idleWords, isEarlierRun, jitterOf, jitterWords, modelChoices, newForm, promptHint, promptSource, refusals, requestOf, retryTip, retryWords, routineFor, routineHash,
-  routineRoute, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, supportsRoutineHeadings, titledRoutine, unrunRoutines, wasOf,
+  routineRoute, scheduleWords, skippedWords, supportsRoutineEdits, supportsRoutineFiles, supportsRoutineHeadings, supportsRoutineProjects, routineMoveTargets, titledRoutine, unrunRoutines, wasOf,
 } from '../public/ui/routine-rules.js';
 
 test('a server that does not set routineEdits leaves the page read-only', () => {
@@ -467,4 +467,21 @@ test('Home\'s routine rows split by group: none first, then each group in name o
   assert.deepEqual(split.headings.map(h => [h.name, h.runs.map(g => g.name), h.idle.map(r => r.id)]), [['Inbox', ['c'], ['h']], ['Reports', ['b', 'e'], ['g']], ['Zebra', [], ['i']]]);
   assert.deepEqual(byHeading([], []), { loose: { runs: [], idle: [] }, headings: [] });
   assert.deepEqual(byHeading([run('x', '__proto__')], []).headings.map(h => h.name), ['__proto__']);
+});
+
+test('a server that does not set routineProjects offers no project for a routine', () => {
+  assert.equal(supportsRoutineProjects({ features: { routineProjects: true } }), true);
+  assert.equal(supportsRoutineProjects({ features: { routineEdits: true } }), false);
+  assert.equal(supportsRoutineProjects(null), false);
+});
+
+test('a routine can move to Home and to each project, with the one it is in marked', () => {
+  const ix = { projects: [{ id: 'cp-a', name: 'Website' }, { id: 'cp-b', name: 'Mobile app' }], routineProjects: { 'daily-digest': 'cp-b', 'weekly-recap': 'cp-gone' } };
+  assert.deepEqual(routineMoveTargets(ix, 'daily-digest'), [
+    { label: 'Home', project: null, current: false },
+    { label: 'Website', project: 'cp-a', current: false },
+    { label: 'Mobile app', project: 'cp-b', current: true },
+  ]);
+  assert.deepEqual(routineMoveTargets(ix, 'weekly-recap').map(t => t.current), [true, false, false], 'a project that is gone counts as Home');
+  assert.deepEqual(routineMoveTargets({ ...ix, projects: [] }, 'x'), [{ label: 'Home', project: null, current: true }]);
 });

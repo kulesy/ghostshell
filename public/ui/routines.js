@@ -88,15 +88,23 @@ export function deleteRoutine(r, { refresh, back, done }) {
   });
 }
 
+// The Move to project submenu of a routine's menu, from routineMoveTargets. The project it is in is marked and does nothing.
+export const moveToProject = (targets, move) => ({
+  label: 'Move to project',
+  icon: icons.folderInput,
+  items: targets.map(t => ({ label: t.label, current: t.current, run: () => { if (!t.current) move(t.project); } })),
+});
+
 const manageItems = (r, ctx) => [
   { label: 'Edit', icon: icons.pencil, run: () => { location.hash = routineHash(r.id); } },
   { label: 'Delete', icon: icons.trash, danger: true, run: () => deleteRoutine(r, ctx) },
 ];
 
 // What a routine's row menu in Home starts with. Add and edit only show on a server that has them.
-export const routineItems = (r, { editable, ...ctx }) => [
+export const routineItems = (r, { editable, moves = null, ...ctx }) => [
   { label: 'Run now', icon: icons.circlePlay, run: () => runRoutine(r, ctx.refresh) },
   { label: r.enabled ? 'Pause' : 'Resume', icon: r.enabled ? icons.pause : icons.play, run: async () => { if (await switchRoutine(r, !r.enabled, ctx.refresh)) say(`${r.enabled ? 'Paused' : 'Resumed'} “${r.title}”.`); } },
+  ...(moves ? [moves] : []),
   ...(editable ? manageItems(r, ctx) : []),
 ];
 

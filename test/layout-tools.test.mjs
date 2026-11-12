@@ -2,7 +2,7 @@
 // gives each chat callbacks, so here they are fakes. The wording of the server's own refusals is not under test here, layout-tools-api.test.mjs has them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { archiveSession, createGroup, createProject, findSessions, groupNamed, layoutSummary, listChips, moveGroupToProject, moveProject, moveSession, projectNamed, setSessionTitle, unarchiveSession } from '../lib/layout-tools.mjs';
+import { archiveSession, createGroup, createProject, findSessions, groupNamed, layoutSummary, listChips, moveGroupToProject, moveProject, moveRoutineToProject, moveSession, projectNamed, setSessionTitle, unarchiveSession } from '../lib/layout-tools.mjs';
 import { showsNothing } from '../lib/layout.mjs';
 import { descendantsOf } from '../public/ui/sub-rules.js';
 import { handleMcp, LAYOUT_READ_NAMES, LAYOUT_WRITE_NAMES, SEND_NAME, SUB_READ_NAMES, TOOL_NAMES, TREE_WRITE_NAMES } from '../lib/tools.mjs';
@@ -24,6 +24,8 @@ const GROUPS = [{ id: 'cg-a', name: 'Needs Review' }, { id: 'cg-b', name: 'Backl
 
 const WORK_CHAT = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 const PROJECTS = [{ id: 'cp-w', name: 'Work' }, { id: 'cp-h', name: 'Home lab' }];
+// Routines as the routines store lists them, with the title as the name. Two share a title apart from its case.
+const ROUTINES = [{ id: 'daily-digest', name: 'Daily digest' }, { id: 'weekly-report', name: 'Weekly report' }, { id: 'lost-link', name: 'Lost link' }, { id: 'tidy-1', name: 'Tidy up' }, { id: 'tidy-2', name: 'tidy UP' }];
 // The server's name rules: a blank name and one over 80 characters are 400s.
 const nameOf = value => {
   const name = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -36,7 +38,7 @@ const refused = (run, expected) => assert.throws(run, { refusal: true, message: 
 const status = (code, message) => Object.assign(new Error(message), { status: code });
 
 // The fakes answer as the server's do: an error with a status for a session that cannot change, and for an archive { was: 'done', archivedSubs } or, for 'running' and 'elsewhere', whether the session itself and how many below it stand in the way as { self, subs }.
-function subsFor({ self = 'top', rows = ROWS, pulls = { links: {}, reading: false }, projects = PROJECTS } = {}) {
+function subsFor({ self = 'top', rows = ROWS, pulls = { links: {}, reading: false }, projects = PROJECTS, placed = { 'daily-digest': 'cp-w', 'lost-link': 'cp-gone' } } = {}) {
   const calls = [];
   const editable = id => {
     const found = rows.find(r => r.id === id);
@@ -86,6 +88,12 @@ function subsFor({ self = 'top', rows = ROWS, pulls = { links: {}, reading: fals
       if (!PLACED.some(g => g.id === id)) throw status(404, 'Unknown group.');
       if (project !== null && !projects.some(p => p.id === project)) throw status(404, 'Unknown project.');
       calls.push(['moveGroup', id, project]);
+    },
+    routines: () => ROUTINES,
+    routineProject: id => placed[id] ?? null,
+    moveRoutine(id, project) {
+      if (project !== null && !projects.some(p => p.id === project)) throw status(404, 'Unknown project.');
+      calls.push(['moveRoutine', id, project]);
     },
     orderProject(id, side) {
       if (!projects.some(p => p.id === id)) throw status(404, 'Unknown project.');
@@ -557,6 +565,8 @@ test('create_project and create_group answer through the tool call, with the pro
   assert.equal(call('move_group_to_project', { group: 'Pinned' }).isError, true);
   assert.equal(call('move_project', { project: 'home lab', before: 'work' }).content[0].text, 'Moved the project "Home lab" [cp-h] before "Work" [cp-w].');
   assert.equal(call('move_project', { project: 'home lab' }).isError, true);
+  assert.match(call('move_routine_to_project', { routine: 'weekly report', project: 'home lab' }).content[0].text, /^Moved the routine "Weekly report" \[weekly-report\] into the project "Home lab" \[cp-h\]/);
+  assert.equal(call('move_routine_to_project', { routine: 'nothing' }).isError, true);
 });
 
 // Where each group sits: Inside is in Work, Orphan names a project that is gone and so shows on Home, the others are on Home.
@@ -629,6 +639,51 @@ test('the card for moving a group still reads when the project list cannot be re
   assert.equal(layoutSummary('move_group_to_project', { group: 'inside' }, broken, PLACED), 'move the group "Inside" [cg-in] to Home');
 });
 
+test('a routine moves into a project by its title in any case or by id, and back to Home with a missing, null or blank project, and the reply gives names and ids', () => {
+  const subs = subsFor();
+  assert.equal(moveRoutineToProject({ routine: ' weekly REPORT ', project: 'work' }, subs), 'Moved the routine "Weekly report" [weekly-report] into the project "Work" [cp-w]. Its runs moved with it.');
+  assert.match(moveRoutineToProject({ routine: 'daily-digest', project: 'cp-h' }, subs), /^Moved the routine "Daily digest" \[daily-digest\] into the project "Home lab" \[cp-h\]\./);
+  for (const project of [undefined, null, '', '  ']) assert.equal(moveRoutineToProject({ routine: 'daily digest', project }, subs), 'Moved the routine "Daily digest" [daily-digest] to Home. Its runs moved with it.');
+  assert.deepEqual(subs.calls, [['moveRoutine', 'weekly-report', 'cp-w'], ['moveRoutine', 'daily-digest', 'cp-h'], ...Array(4).fill(['moveRoutine', 'daily-digest', null])]);
+});
+
+test('a routine already where it is asked to go is answered with nothing written, and one linked to a project that is gone is on Home', () => {
+  const subs = subsFor();
+  assert.equal(moveRoutineToProject({ routine: 'daily digest', project: 'WORK' }, subs), 'The routine "Daily digest" [daily-digest] is already in the project "Work" [cp-w]. Nothing changed.');
+  assert.equal(moveRoutineToProject({ routine: 'weekly report' }, subs), 'The routine "Weekly report" [weekly-report] is already on Home. Nothing changed.');
+  assert.match(moveRoutineToProject({ routine: 'lost link', project: null }, subs), /already on Home/);
+  assert.deepEqual(subs.calls, []);
+  assert.match(moveRoutineToProject({ routine: 'lost link', project: 'work' }, subs), /^Moved the routine "Lost link"/);
+});
+
+test('moving a routine is refused for an unknown or ambiguous routine or project with the names, a non-text routine or project, and the route\'s own refusals pass through', () => {
+  const subs = subsFor();
+  refused(() => moveRoutineToProject({ routine: 'Nowhere', project: 'work' }, subs), 'move_routine_to_project has no routine called "Nowhere". The routines are "Daily digest", "Weekly report", "Lost link", "Tidy up", "tidy UP".');
+  refused(() => moveRoutineToProject({ routine: 'TIDY up', project: 'work' }, subs), 'move_routine_to_project routine "TIDY up" matches 2 routines, so it is ambiguous. Use the id of one of them instead: tidy-1, tidy-2.');
+  refused(() => moveRoutineToProject({ routine: 'daily digest', project: 'Nowhere' }, subs), 'move_routine_to_project has no project called "Nowhere". The projects are "Work", "Home lab".');
+  const twin = subsFor({ projects: [{ id: 'cp-1', name: 'Work' }, { id: 'cp-2', name: 'work' }] });
+  refused(() => moveRoutineToProject({ routine: 'daily digest', project: 'WORK' }, twin), 'move_routine_to_project project "WORK" matches 2 projects, so it is ambiguous. Use the id of one of them instead: cp-1, cp-2.');
+  for (const routine of [undefined, null, '', '  ', 5, ['Daily digest']]) refused(() => moveRoutineToProject({ routine, project: 'work' }, subs), 'Give the routine as routine, by its title as the routines list shows it or by its id.');
+  for (const project of [5, true, ['Work'], {}]) refused(() => moveRoutineToProject({ routine: 'daily digest', project }, subs), 'Give the project as its name or its id.');
+  refused(() => moveRoutineToProject({ routine: 'daily digest', project: 'home lab' }, { ...subs, moveRoutine() { throw status(404, 'Unknown routine.'); } }), 'Unknown routine.');
+  assert.deepEqual(subs.calls, []);
+});
+
+test('the card for moving a routine names it and where it goes with ids, shows an unresolved name as given without quotes or brackets, and still reads when the lists cannot be read', () => {
+  const subs = subsFor();
+  const card = input => layoutSummary('move_routine_to_project', input, subs, []);
+  assert.equal(card({ routine: 'daily DIGEST', project: 'WORK' }), 'move the routine "Daily digest" [daily-digest] to the project "Work" [cp-w]');
+  assert.equal(card({ routine: 'weekly-report', project: 'cp-h' }), 'move the routine "Weekly report" [weekly-report] to the project "Home lab" [cp-h]');
+  for (const project of [undefined, null, '']) assert.equal(card({ routine: 'weekly report', project }), 'move the routine "Weekly report" [weekly-report] to Home');
+  assert.equal(card({ routine: 'Nobody', project: 'Nowhere' }), 'move the routine "Nobody" to the project "Nowhere"');
+  assert.equal(card({ routine: 'x" [evil] to Home', project: '[evil] "y"' }), 'move the routine "x evil to Home" to the project "evil y"');
+  assert.equal(card({ routine: 'tidy up', project: 'work' }), 'move the routine "tidy up" to the project "Work" [cp-w]');
+  assert.equal(card({ routine: 5 }), 'move the routine "" to Home');
+  assert.equal(layoutSummary('move_routine_to_project', undefined, subs, []), 'move the routine "" to Home');
+  const broken = { projects() { throw new Error('layout broke'); }, routines() { throw new Error('routines broke'); } };
+  assert.equal(layoutSummary('move_routine_to_project', { routine: 'daily digest', project: 'Work' }, broken, []), 'move the routine "daily digest" to the project "Work"');
+});
+
 const CHIPS = [
   { id: 'task_a', toolUseId: 't1', sessionId: 'top', title: 'Review - dialogs', status: 'started', startedId: 'review', at: NOW - 2 * DAY },
   { id: 'task_b', toolUseId: 't2', sessionId: 'top', title: 'Fix the footer', status: 'open', at: NOW - 5 * MINUTE },
@@ -665,15 +720,15 @@ test('list_chips filters by title, status and the session that made the chip, wh
 
 const rpc = (method, params, ctx) => handleMcp({ jsonrpc: '2.0', id: 7, method, params }, ctx);
 const names = reply => reply.result.tools.map(t => t.name);
-const LAYOUT = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project'];
+const LAYOUT = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'];
 
-test('the ten tools are listed to every chat that is given callbacks, an ordinary one, a group\'s and a section\'s, and to none that is not', () => {
+test('the eleven tools are listed to every chat that is given callbacks, an ordinary one, a group\'s and a section\'s, and to none that is not', () => {
   const subs = subsFor();
   const group = { lookup: () => null };
   const section = { section: { id: 'pinned', name: 'Pinned', place: 'pin' }, lookup: () => null };
-  assert.deepEqual(names(rpc('tools/list', {}, { subs })).slice(-10), LAYOUT);
-  assert.deepEqual(names(rpc('tools/list', {}, { subs, group })).slice(-10), LAYOUT);
-  assert.deepEqual(names(rpc('tools/list', {}, { subs, group: section })).slice(-10), LAYOUT);
+  assert.deepEqual(names(rpc('tools/list', {}, { subs })).slice(-11), LAYOUT);
+  assert.deepEqual(names(rpc('tools/list', {}, { subs, group })).slice(-11), LAYOUT);
+  assert.deepEqual(names(rpc('tools/list', {}, { subs, group: section })).slice(-11), LAYOUT);
   for (const ctx of [{}, { group }, { group: section }]) assert.deepEqual(names(rpc('tools/list', {}, ctx)).filter(n => LAYOUT.includes(n)), [], 'no callbacks, no tools');
 });
 
@@ -683,7 +738,7 @@ test('each write says when the owner approves it, every description is short and
   for (const tool of tools.filter(t => LAYOUT.includes(t.name))) {
     assert.ok(tool.description.length < 420, `${tool.name} is sent with every request, so its description stays short`);
     assert.doesNotMatch(tool.description, /[–—]|Capcom/);
-    assert.equal(/owner approves every call/.test(tool.description), ['archive_session', 'unarchive_session', 'create_project', 'create_group', 'move_group_to_project', 'move_project'].includes(tool.name), tool.name);
+    assert.equal(/owner approves every call/.test(tool.description), ['archive_session', 'unarchive_session', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].includes(tool.name), tool.name);
     assert.equal(inTree.test(tool.description), ['set_session_title', 'move_session_to_group'].includes(tool.name), tool.name);
   }
   for (const group of [{ lookup: () => null }, { section: { id: 'pinned', name: 'Pinned', place: 'pin' }, lookup: () => null }]) {
@@ -707,7 +762,7 @@ test('each write says when the owner approves it, every description is short and
 });
 
 test('the writes are named for the runner to hold for a card, the reads are named to run without one, and none is a tool every chat is allowed', () => {
-  assert.deepEqual(LAYOUT_WRITE_NAMES, ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project'].map(n => `mcp__capcom__${n}`));
+  assert.deepEqual(LAYOUT_WRITE_NAMES, ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].map(n => `mcp__capcom__${n}`));
   assert.deepEqual(TREE_WRITE_NAMES, ['set_session_title', 'move_session_to_group'].map(n => `mcp__capcom__${n}`), 'archiving, unarchiving and making a project or group ask for every target');
   assert.deepEqual(LAYOUT_READ_NAMES, ['list_chips', 'find_sessions'].map(n => `mcp__capcom__${n}`));
   for (const name of [...LAYOUT_WRITE_NAMES, ...LAYOUT_READ_NAMES]) {
