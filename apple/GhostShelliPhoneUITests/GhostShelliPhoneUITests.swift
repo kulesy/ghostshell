@@ -1172,7 +1172,7 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // Return typed while the menu is still closing can miss the field, so it waits for the keyboard first.
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         field.typeText("\n")
-        XCTAssertTrue(field.waitForNonExistence(timeout: 5), "An empty name cancels")
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5), "An empty name cancels\n\(app.debugDescription)")
 
         let account = app.buttons["Account"]
         assertTouchable(account, "Account")

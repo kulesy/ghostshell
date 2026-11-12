@@ -19,6 +19,11 @@ struct PhoneNameField: View {
         _text = State(initialValue: naming.text)
     }
 
+    /// Runs a turn after Return or the focus loss, so the row is not removed from the list while the keyboard is still resigning.
+    private func commit() {
+        Task { @MainActor in organise.submitName(text) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             TextField(naming.prompt, text: $text, selection: $selection)
@@ -26,10 +31,10 @@ struct PhoneNameField: View {
                 .font(heading ? .geist(12, weight: .semibold, relativeTo: .caption) : .geist(14, relativeTo: .body))
                 .foregroundStyle(Color.ghost.sidebarForeground)
                 .submitLabel(.done)
-                .onSubmit { organise.submitName(text) }
+                .onSubmit { commit() }
                 .onChange(of: text) { _, new in if new.count > naming.limit { text = String(new.prefix(naming.limit)) } }
                 .onChange(of: focused) { _, now in
-                    if now { hadFocus = true } else if hadFocus { organise.submitName(text) }
+                    if now { hadFocus = true } else if hadFocus { commit() }
                 }
                 .padding(.horizontal, 8)
                 .frame(minHeight: 36)
