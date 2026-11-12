@@ -14,7 +14,7 @@ private func onPhone<T>(_ page: @autoclosure () -> T, mac: @autoclosure () -> T)
     #endif
 }
 
-/// Every size, colour and corner the thread is set in. The iPhone takes the page's values and the Mac keeps its own, so a view reads this and never asks which.
+/// Every size, colour and corner the thread is set in. The iPhone takes the page's values and the Mac keeps its own, so a view reads this and branches on `page` only where the iPhone's structure differs.
 enum ChatStyle {
     static let page = onPhone(true, mac: false)
 
@@ -39,7 +39,7 @@ enum ChatStyle {
     static let groupMeta = onPhone(monoSmall, mac: small)
     static let thinkText = onPhone(body, mac: small)
     static let codeAction = onPhone(Font.system(size: 12, weight: .medium), mac: caption)
-    static let linkWeight = onPhone(Font.Weight.medium, mac: .regular)
+    static let linkWeight: Font.Weight? = onPhone(.medium, mac: nil)
     /// The page sets replies at 22.75 over 14, and code at 20.8 over 13.
     static let lineSpacing: CGFloat = onPhone(6, mac: 4)
     static let codeLineSpacing: CGFloat = onPhone(5, mac: 3)
@@ -128,7 +128,6 @@ enum ChatStyle {
     static let cardPadding: CGFloat = onPhone(17, mac: 14)
     /// The height of an approval card around its body: padding, title, gaps and buttons.
     static let cardChrome: CGFloat = onPhone(140, mac: 125)
-    static let cardGap: CGFloat = onPhone(8, mac: 10)
     static let questionGap: CGFloat = onPhone(8, mac: 6)
     static let cardLamp: CGFloat = onPhone(4, mac: 0)
     static let titleAlignment = onPhone(VerticalAlignment.top, mac: .firstTextBaseline)
@@ -257,7 +256,7 @@ enum MarkdownText {
         var font = style.font
         if style.bold { font = font.bold() }
         if style.italic { font = font.italic() }
-        if style.link { font = font.weight(ChatStyle.linkWeight) }
+        if style.link, !style.bold, let weight = ChatStyle.linkWeight { font = font.weight(weight) }
         piece.font = font
         if style.struck { piece.strikethroughStyle = .single }
         return piece
@@ -355,11 +354,17 @@ private struct TableView: View {
     let rows: [[[MDInline]]]
     let font: Font
 
-    // A table wider than the thread scrolls sideways, as on the page. Left to size itself it widens the whole thread past the screen.
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            grid.frame(maxWidth: .infinity, alignment: .leading)
-            ScrollView(.horizontal) { grid }
+        Group {
+            // On the iPhone a table wider than the thread scrolls sideways, as on the page. Left to size itself it widens the whole thread past the screen.
+            if ChatStyle.page {
+                ViewThatFits(in: .horizontal) {
+                    grid.frame(maxWidth: .infinity, alignment: .leading)
+                    ScrollView(.horizontal) { grid }
+                }
+            } else {
+                grid.frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusInner).strokeBorder(ChatStyle.border))
     }
