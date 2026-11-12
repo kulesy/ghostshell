@@ -24,7 +24,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const apple = path.resolve(here, '..');
 const PROJECT = path.join(apple, 'GhostShell.xcodeproj');
 const DERIVED = path.join(apple, 'build', 'ios');
-// The app passes its UI tests on iOS 27.2, the runtime the Actions runner has. Set GS_IOS_RUNTIME to try another, such as ...SimRuntime.iOS-18-6.
+// iOS 27.2 is the runtime the Actions runner has. Set GS_IOS_RUNTIME to try another, such as ...SimRuntime.iOS-18-6.
 const RUNTIME = process.env.GS_IOS_RUNTIME || 'com.apple.CoreSimulator.SimRuntime.iOS-27-2';
 const DEVICES = {
   se: { name: 'iPhone SE (3rd generation)', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation' },

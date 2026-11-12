@@ -18,6 +18,10 @@ on:
       - '.github/workflows/swift.yml'
   workflow_dispatch:
     inputs:
+      iphone:
+        description: Also run the iPhone UI tests, which still have flaky tests on iOS 27
+        type: boolean
+        default: false
       tests:
         description: Run only these iPhone UI tests (comma list of test names), to rerun a failure quickly. Empty runs them all.
         type: string
@@ -76,8 +80,9 @@ jobs:
           retention-days: 14
 
   # One job per device and appearance, because the four passes take about two hours in a row.
+  # NOTE: [13 Nov 2026] EK - Runs only by hand until the flaky iOS 27 tests are fixed, so other branches' runs stay green. See apple/README.md.
   iphone-shots:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    if: inputs.iphone
     runs-on: xcode-27
     timeout-minutes: 60
     strategy:
