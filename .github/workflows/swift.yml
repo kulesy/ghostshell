@@ -108,7 +108,5 @@ jobs:
         if: failure() || cancelled()
         with:
           name: iphone-test-logs-${{ matrix.device }}-${{ matrix.appearance }}
-          path: |
-            apple/build/ios/last-*.log
-            apple/build/ios/sample-*.txt
+          path: apple/build/ios/last-*.log
           retention-days: 14

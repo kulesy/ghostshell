@@ -206,16 +206,7 @@ function runTests({ udid, device, appearance, out, address, only, stubs }) {
     let output = '';
     child.stdout.on('data', chunk => { output += chunk; });
     child.stderr.on('data', chunk => { output += chunk; });
-    // TEMPORARY for https://github.com/kulesy/ghostshell/issues/148: every 30 seconds, sample where the app's main thread is, to find what the hangs on iOS 27 are doing.
-    let samples = 0;
-    const sampler = setInterval(() => {
-      const pid = spawnSync('pgrep', ['-x', 'GhostShelliPhone'], { encoding: 'utf8' }).stdout.trim().split('\n')[0];
-      if (!pid || samples >= 60) return;
-      samples += 1;
-      spawnSync('sample', [pid, '2', '-file', path.join(DERIVED, `sample-${device}-${appearance}-${String(samples).padStart(2, '0')}.txt`)], { timeout: 30000 });
-    }, 30000);
     child.on('close', status => {
-      clearInterval(sampler);
       fs.writeFileSync(path.join(DERIVED, `last-${device}-${appearance}.log`), output);
       const lines = output.split('\n');
       const failed = lines.filter(l => /error:|Test Case .* failed|XCTAssert/.test(l));
