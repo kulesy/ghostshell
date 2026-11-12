@@ -18,17 +18,21 @@ struct CompactColumnFollowsNavigator: ViewModifier {
 }
 
 #if os(iOS)
-/// A phone has no menu bar, so the screens the Mac reaches from its View menu, and Sign Out, sit in one menu at the end of the sidebar's toolbar.
+/// A phone has no menu bar, so the screens the Mac reaches from its View menu, and Sign out, sit in one menu at the end of the sidebar's toolbar, in the order of the page's footer and Account menu.
 struct PhoneMenu: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Menu {
+            Button("Manage routines", systemImage: "calendar.badge.clock") { model.navigator.show { RoutinesScreen() } }
+            if model.routines.features.scheduled {
+                Button("Manage scheduled sessions", systemImage: "clock") { model.navigator.show { ScheduledScreen() } }
+            }
+            Divider()
             Button("Accounts", systemImage: "person.2") { model.navigator.show { AccountsScreen() } }
             Button("Passkeys", systemImage: "key") { model.navigator.show { PasskeysScreen() } }
-            RoutineMenuItems()
             Divider()
-            Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { Task { await model.signOut() } }
+            Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") { Task { await model.signOut() } }
         } label: {
             Label("More", systemImage: "ellipsis.circle")
         }

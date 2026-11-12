@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The page's button looks, `.btn`, `.btn[data-variant="outline"]` and `.btn[data-variant="destructive"]` in `public/app.css`, at phone width.
+/// The page's button looks, `.btn`, `.btn[data-variant="outline"]`, `.btn[data-variant="destructive"]` and `.btn[data-variant="ghost"]` in `public/app.css`, at phone width.
 public struct GhostButtonStyle: ButtonStyle {
-    public enum Kind: Sendable { case primary, outline, destructive }
+    public enum Kind: Sendable { case primary, outline, destructive, ghost }
     public enum Size: Sendable { case regular, compact, icon }
 
     let kind: Kind
@@ -21,6 +21,23 @@ public struct GhostButtonStyle: ButtonStyle {
     private static let touch: CGFloat = 36
     #endif
 
+    private var foreground: Color {
+        switch kind {
+        case .primary: Color.ghost.primaryForeground
+        case .destructive: Color.white
+        case .outline, .ghost: Color.ghost.foreground
+        }
+    }
+
+    private var fill: Color {
+        switch kind {
+        case .primary: Color.ghost.primary
+        case .destructive: Color.ghost.destructive
+        case .outline: Color.ghost.card
+        case .ghost: Color.clear
+        }
+    }
+
     public func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         configuration.label
@@ -29,11 +46,11 @@ public struct GhostButtonStyle: ButtonStyle {
             .fixedSize(horizontal: true, vertical: false)
             // The button's height is fixed, so its label stops growing at the largest standard text size rather than spilling out.
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            .foregroundStyle(kind == .outline ? Color.ghost.foreground : kind == .destructive ? Color.white : Color.ghost.primaryForeground)
+            .foregroundStyle(foreground)
             .padding(.horizontal, size == .icon ? 0 : size == .compact ? 12 : 16)
             .frame(width: size == .icon ? 32 : nil, height: size == .regular ? Self.touch : 32)
             .frame(maxWidth: fills ? .infinity : nil)
-            .background(kind == .primary ? Color.ghost.primary : kind == .destructive ? Color.ghost.destructive : Color.ghost.card, in: shape)
+            .background(fill, in: shape)
             .overlay { if kind == .outline { shape.strokeBorder(Color.ghost.input, lineWidth: 1) } }
             .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.5)
             #if os(iOS)

@@ -90,13 +90,14 @@ extension TextEditor {
     }
 }
 
-/// A screen's one column of fields on the page ground, 20pt apart, as the page lays a form out.
+/// A screen's one column of fields on the page ground, 20pt apart unless told otherwise, as the page lays a form out.
 struct FlatForm<Content: View>: View {
+    var spacing: CGFloat = 20
     @ViewBuilder var content: Content
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) { content }
+            VStack(alignment: .leading, spacing: spacing) { content }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 20)
                 .frame(maxWidth: 576, alignment: .leading)

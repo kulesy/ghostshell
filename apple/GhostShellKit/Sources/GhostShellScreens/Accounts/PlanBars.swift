@@ -1,18 +1,20 @@
 import GhostShellKit
 import SwiftUI
 
-/// The plan usage rows: a label, the words, and a bar. Amber and red are only for the rows the server marks.
+/// The plan usage rows: a label, the words, and an 8pt bar with square ends. Amber and red are only for the rows the server marks.
 struct PlanBars: View {
     let rows: [PlanRow]
+    /// The Accounts page sets the words at 16pt like the page, and the context popover keeps its smaller ones.
+    var page = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(rows) { row in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(row.label).font(.callout)
+                        Text(row.label).font(page ? .geist(16) : .callout).foregroundStyle(page ? Color.ghost.foreground : .primary)
                         Spacer(minLength: 8)
-                        Text(row.text).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                        Text(row.text).font(page ? .geist(16) : .caption).foregroundStyle(page ? Color.ghost.foreground : .secondary).multilineTextAlignment(.trailing)
                     }
                     bar(Double(min(max(row.percent, 0), 100)), tint(row.severity))
                 }
@@ -26,18 +28,19 @@ struct PlanBars: View {
     private func bar(_ percent: Double, _ color: Color) -> some View {
         GeometryReader { box in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.secondary.opacity(0.2))
-                Capsule().fill(color).frame(width: box.size.width * percent / 100)
+                Rectangle().fill(Color.ghost.muted)
+                Rectangle().fill(color).frame(width: box.size.width * percent / 100)
             }
+            .clipShape(RoundedRectangle(cornerRadius: GhostRadius.sm, style: .continuous))
         }
-        .frame(height: 6)
+        .frame(height: 8)
     }
 
     private func tint(_ severity: PlanSeverity?) -> Color {
         switch severity {
-        case .critical?: .red
-        case .warning?: .orange
-        default: .primary
+        case .critical?: Color.ghost.destructive
+        case .warning?: Color.ghost.warning
+        default: Color.ghost.primary
         }
     }
 }
