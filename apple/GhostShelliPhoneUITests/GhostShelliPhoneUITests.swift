@@ -596,12 +596,20 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertFalse(saves.isEmpty, "A file with no preview can be saved to Files")
         for save in saves { assertTouchable(save, "Save to Files") }
         saves.last?.tap()
+        // The panel's own header also says archive.zip, so the wait is for the system's Files sheet itself.
+        let picker = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 10), "Save to Files opens the Files sheet\n\(app.debugDescription)")
         XCTAssertTrue(contains(app, "archive.zip").waitForExistence(timeout: 10), "The save sheet offers the file's own name\n\(app.debugDescription)")
         sleep(1)
         shot("files-6b-save-to-files")
-        // The system's Files sheet has no Cancel on this OS, so a drag down from its top edge puts it away.
-        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
-        top.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        // The Files sheet has Cancel on iOS 27. Where it has none, a drag down from its top edge puts it away.
+        if picker.buttons["Cancel"].exists {
+            picker.buttons["Cancel"].tap()
+        } else {
+            let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            top.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        }
+        XCTAssertTrue(picker.waitForNonExistence(timeout: 10), "The Files sheet goes away\n\(app.debugDescription)")
         XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 10), "The panel is back under the sheet\n\(app.debugDescription)")
         app.buttons["Close"].firstMatch.tap()
 
@@ -662,14 +670,14 @@ final class GhostShelliPhoneUITests: XCTestCase {
         sleep(2)
         shot("widgets-1-chart")
         XCTAssertGreaterThan(app.webViews.count, 0, "The widget draws in a web view")
-        // A long press in the widget selects the word under it and offers the system's callout with Copy.
-        // The composer takes the foot of the screen, and an earlier test's send can push the widget above the bar, so bring the press point into the open area first.
-        let widget = app.webViews.element(boundBy: app.webViews.count - 1)
+        // A long press on a word in the widget selects it and offers the system's callout with Copy. The press goes on the text, because a fixed point lands beside the heading on the wider phones.
+        // The composer takes the foot of the screen, and an earlier test's send can push the widget above the bar, so bring the text into the open area first.
+        let words = app.webViews.staticTexts["Pick one and I will carry on from there."].firstMatch
         for _ in 0..<6 {
-            let y = widget.frame.minY + widget.frame.height * 0.2
+            let y = words.frame.midY
             if y < app.frame.height * 0.2 { app.swipeDown() } else if y > app.frame.height * 0.7 { app.swipeUp() } else { break }
         }
-        widget.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(forDuration: 1.3)
+        words.press(forDuration: 1.3)
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Copy")).firstMatch.waitForExistence(timeout: 5), "A long press in a widget offers Copy\n\(app.debugDescription)")
         sleep(1)
         shot("widgets-2-long-press")
