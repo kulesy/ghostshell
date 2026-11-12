@@ -11,6 +11,7 @@ import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './h
 import { draw, icons } from './menu.js';
 import { UNTITLED } from './order.js';
 import { withSubs } from './pick.js';
+import { unrunRoutines } from './routine-rules.js';
 import { HOME_VIEW } from './scopes.js';
 import { emptyText, sectionsFor } from './search-rules.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
@@ -69,13 +70,13 @@ const Hit = ({ it, id, selected, onPick, onMove }) => html`<div data-part="hit-s
 // `onShow(id, group)` shows a view of the list, a project id or null for Home, with a group in it in sight when `group` names one, and
 // closes the search. Opening anything else closes it here.
 // The dialog is always drawn and the search inside it is made afresh for each opening, so what was typed last time is gone.
-export function Spotlight({ open, ix, scheduled, archive, onShow, onClose }) {
+export function Spotlight({ open, ix, routines, scheduled, archive, onShow, onClose }) {
   return html`<${Dialog} open=${open} part="command-dialog-content" labelledBy="command-title" describedBy="command-description" onClose=${() => onClose()}>
-    <${Palette} ix=${ix} scheduled=${scheduled} archive=${archive} onShow=${onShow} onClose=${onClose} />
+    <${Palette} ix=${ix} routines=${routines} scheduled=${scheduled} archive=${archive} onShow=${onShow} onClose=${onClose} />
   <//>`;
 }
 
-function Palette({ ix, scheduled, archive, onShow, onClose }) {
+function Palette({ ix, routines, scheduled, archive, onShow, onClose }) {
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState('all');
   const [held, setHeld] = useState(FIRST);
@@ -113,8 +114,8 @@ function Palette({ ix, scheduled, archive, onShow, onClose }) {
   const sections = useMemo(() => {
     if (!ix) return [];
     const kept = archived.filter(r => !gone.includes(r.id));
-    return sectionsFor(chip, ix, kept, query, keyHint(mod, 'N'), scheduled?.scheduled, pulls.links).filter(s => s.items.length);
-  }, [ix, scheduled, archived, gone, pulls, chip, query, mod]);
+    return sectionsFor(chip, ix, kept, query, keyHint(mod, 'N'), scheduled?.scheduled, pulls.links, unrunRoutines(ix, routines)).filter(s => s.items.length);
+  }, [ix, routines, scheduled, archived, gone, pulls, chip, query, mod]);
   const flat = sections.flatMap(s => s.items);
   const keys = flat.map(it => it.key);
   let counted = 0;

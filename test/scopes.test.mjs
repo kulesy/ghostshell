@@ -248,6 +248,14 @@ test('a project counts the sessions nested in its groups, and the views carry th
   assert.deepEqual(viewsOf(ix).map(v => v.count), [undefined, 4, 1]);
 });
 
+test('a project counts each routine with no run that is in it, as its Routines section does', () => {
+  const ix = list({ groups: [group('cg-b', APP, [row('b-1')])], routineProjects: { idle: APP, gone: 'cp-gone' } });
+  const unrun = [{ id: 'idle' }, { id: 'gone' }, { id: 'home' }];
+  assert.equal(countOf(ix, APP, unrun), 2);
+  assert.equal(countOf(ix, WEB, unrun), 0, 'one whose project is not in the list stays on Home');
+  assert.deepEqual(viewsOf(ix, unrun).map(v => v.count), [undefined, 0, 2]);
+});
+
 test('another view is waiting when a session nested in it needs you', () => {
   const ix = list({ groups: [group('cg-a', APP, [holding('a-1', [row('a-kid', 'waiting')])])], routines: [], started: [], ungrouped: [], other: [] });
   assert.equal(othersWaiting(ix, WEB), true);

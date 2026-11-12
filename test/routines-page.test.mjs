@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { findChromium, launch, notFound } from './browser.mjs';
-import { PASSWORD, restart, start } from './harness.mjs';
+import { cliCalls, PASSWORD, request, restart, signIn, start, until } from './harness.mjs';
 
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
@@ -1095,8 +1095,9 @@ test('a server that does not say it knows groups gets no Group field and sends n
   assert.deepEqual(page.problems, []);
 });
 
-// A server with a project and two routines, one of them in it. The routines go yearly on 1 January so neither fires during a test.
-async function projected() {
+// A server with a project and two routines, one of them in it, and with `unrun` a third that has no run. The routines go yearly on 1 January so
+// none fires during a test.
+async function projected({ unrun = false } = {}) {
   const first = await start({
     sessions: [{ id: 'd1', title: 'Digest run', routine: 'digest', ago: 5 }, { id: 'w1', title: 'Recap run', routine: 'recap', ago: 10 }],
     layout: { projects: [{ id: 'cp-a', name: 'Garden' }], routineProjects: { digest: 'cp-a' } },
@@ -1109,8 +1110,19 @@ async function projected() {
     fs.writeFileSync(path.join(first.state, 'routines', `${id}.md`), `Do ${title}.\n`);
     return { id, title, cron: '0 3 1 1 *', jitterSeconds: 0, file: path.join(first.state, 'routines', `${id}.md`), cwd: work, model: null, effort: null, mode: null, enabled: true };
   };
-  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({ routines: [routine('digest', 'Daily digest'), routine('recap', 'Weekly recap')] }, null, 2));
+  const routines = [routine('digest', 'Daily digest'), routine('recap', 'Weekly recap'), ...(unrun ? [routine('tidy', 'Tidy up')] : [])];
+  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({ routines }, null, 2));
   return restart(first);
+}
+
+// Has a session call a tool through the made-up CLI and gives back its reply.
+async function callTool(s, token, id, tool, args) {
+  const replies = () => cliCalls(s).filter(c => c.mcp);
+  const before = replies().length;
+  const sent = await request(s, 'POST', `/api/sessions/${id}/send`, { headers: { cookie: `capcom=${token}` }, json: { text: `call ${tool} ${JSON.stringify(args)}` } });
+  assert.equal(sent.status, 200);
+  await until(() => replies().length > before);
+  return replies()[before].mcp.result.content[0].text;
 }
 
 test('a routine in a project shows in that project\'s Routines, first, and not in Home, and its menu can move it to Home and to each project', { skip, timeout }, async t => {
@@ -1138,5 +1150,28 @@ test('a routine in a project shows in that project\'s Routines, first, and not i
   await page.click(`${SUB} [data-picked]`);
   await page.until(`!document.querySelector('a.row[data-id="d1"]')`);
   assert.deepEqual(JSON.parse(fs.readFileSync(server.layout, 'utf8')).routineProjects ?? {}, {}, 'the move is saved in the layout');
+  assert.deepEqual(page.problems, []);
+});
+
+test('routines moved into a project by the tool show in its view and its count, a routine with no run included, without a reload', { skip, timeout }, async t => {
+  const server = await projected({ unrun: true });
+  const { token } = await signIn(server);
+  const setter = await browser.open(`${server.origin}/healthz`);
+  await setter.evaluate(`localStorage.setItem('capcom.projectsDocked', 'true'); localStorage.setItem('capcom.scope', 'null')`);
+  await setter.close();
+  const page = await browser.open(`${server.origin}/`);
+  t.after(() => page.close());
+  await login(page);
+  await page.click('.scope[data-key="cp-a"]');
+  await page.until(`!!document.querySelector('a.row[data-id="d1"]')`);
+  assert.equal(await text(page, '.scope[data-key="cp-a"] .scope-count'), '1');
+  await page.evaluate(`window.notReloaded = true`);
+  for (const routine of ['Weekly recap', 'Tidy up']) assert.match(await callTool(server, token, 'd1', 'move_routine_to_project', { routine, project: 'Garden' }), /^Moved the routine/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(server.layout, 'utf8')).routineProjects, { digest: 'cp-a', recap: 'cp-a', tidy: 'cp-a' });
+  await page.evaluate(`document.dispatchEvent(new Event('visibilitychange'))`);
+  await page.until(`!!document.querySelector('a.row[data-id="w1"]') && !!document.querySelector('a.row[data-idle="tidy"]')`);
+  assert.equal(await text(page, '.group-head[data-key="routines"] .count'), '3');
+  assert.equal(await text(page, '.scope[data-key="cp-a"] .scope-count'), '3', 'the count has the routine with no run, as the section does');
+  assert.equal(await page.evaluate(`window.notReloaded`), true);
   assert.deepEqual(page.problems, []);
 });

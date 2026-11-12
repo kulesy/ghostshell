@@ -145,6 +145,12 @@ test('the Projects chip lists Home and the projects whose names match, and a pro
   assert.equal(only.items[1].view.count, 3);
 });
 
+test('a project\'s count in search includes its routines with no run, as the sidebar\'s does', () => {
+  const ix = { ...list(), routineProjects: { tidy: WEB } };
+  const [only] = sectionsFor('projects', ix, [], '', NEW, [], {}, [{ id: 'tidy' }, { id: 'home' }]);
+  assert.equal(only.items[1].view.count, 4);
+});
+
 test('the Sessions chip with words lists sessions and then sub sessions, and leaves out a routine\'s runs', () => {
   const ix = list();
   const found = sectionsFor('sessions', ix, [], 'run', NEW);
