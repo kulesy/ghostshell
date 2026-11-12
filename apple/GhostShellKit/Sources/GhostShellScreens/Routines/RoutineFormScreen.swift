@@ -23,10 +23,7 @@ struct RoutineFormScreen: View {
             }
         }
         .navigationTitle(id == nil ? "New routine" : "Edit routine")
-        #if os(iOS)
-        // A large title sits over the first card of a form that is already scrolling, so the form uses the inline title.
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .ghostScreen()
         .task(id: id) { await open() }
     }
 
@@ -103,68 +100,65 @@ private struct RoutineFields: View {
     }
 
     var body: some View {
-        Form {
+        FlatForm {
             if let notice {
-                Section { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                Label(notice, systemImage: "exclamationmark.triangle.fill").font(.geist(14)).foregroundStyle(Color.ghost.destructive)
             }
             if !store.featuresLoaded {
                 if let failure = store.featuresFailure {
-                    Section { Label("Could not check what this server supports, so Save waits until it answers. \(failure)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                    Label("Could not check what this server supports, so Save waits until it answers. \(failure)", systemImage: "exclamationmark.triangle.fill")
+                        .font(.geist(14)).foregroundStyle(Color.ghost.destructive)
                 } else {
-                    Section { Label("Still asking the server what it offers. Save waits for the answer.", systemImage: "hourglass").foregroundStyle(.secondary) }
+                    Label("Still asking the server what it offers. Save waits for the answer.", systemImage: "hourglass").ghostMuted()
                 }
             }
-            Section {
-                FormField(label: "Title", message: problems["title"]) {
-                    TextField("Title", text: $draft.title).labelsHidden().phoneField($focus, .title)
-                }
-                if store.features.routineHeadings {
-                    FormField(label: "Group", hint: "Routines with the same group show under one heading in Home. Leave it empty for none.", message: problems["heading"]) {
-                        SuggestField(label: "Group", text: $draft.heading, options: headingNames(store.routines ?? []), focus: $focus, tag: .heading)
-                    }
+            FormField(label: "Title", message: problems["title"]) {
+                TextField("Title", text: $draft.title).labelsHidden().ghostInput(invalid: problems["title"] != nil).phoneField($focus, .title)
+            }
+            if store.features.routineHeadings {
+                FormField(label: "Group", hint: "Routines with the same group show under one heading in Home. Leave it empty for none.", message: problems["heading"]) {
+                    SuggestField(label: "Group", text: $draft.heading, options: headingNames(store.routines ?? []), invalid: problems["heading"] != nil, focus: $focus, tag: .heading)
                 }
             }
-            Section {
-                FormField(label: "Schedule", hint: "Five fields: minute, hour, day of the month, month and day of the week, \(serverZoneWords(store.serverZone)). For example 30 7 * * 1-5.",
-                          message: problems["cron"] ?? previewProblem) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        TextField("Schedule", text: $draft.cron, prompt: Text("30 7 * * 1-5")).labelsHidden().font(.body.monospaced()).autocorrectionDisabled().phoneField($focus, .cron)
-                        previewView
-                    }
-                }
-                FormField(label: "Jitter in seconds", hint: "Added to every fire time, so runs do not all start on the minute.",
-                          message: problems["jitterSeconds"] ?? (jitter == nil ? jitterProblem : nil)) {
-                    TextField("Jitter in seconds", text: $draft.jitterSeconds).labelsHidden().phoneField($focus, .jitterSeconds).frame(maxWidth: 120)
+            FormField(label: "Schedule", hint: "Five fields: minute, hour, day of the month, month and day of the week, \(serverZoneWords(store.serverZone)). For example 30 7 * * 1-5.",
+                      message: problems["cron"] ?? previewProblem) {
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("Schedule", text: $draft.cron, prompt: Text("30 7 * * 1-5")).labelsHidden().autocorrectionDisabled().ghostInput(mono: true, invalid: problems["cron"] != nil).phoneField($focus, .cron)
+                    previewView
                 }
             }
-            Section("Where it runs") {
-                FormField(label: "Folder", hint: "The full path of the folder each run starts in.", message: problems["cwd"]) {
-                    SuggestField(label: "Folder", text: $draft.cwd, options: folders, focus: $focus, tag: .cwd)
-                }
-                FormField(label: "Model", message: problems["model"]) {
-                    ChoicePicker(label: "Model", value: $draft.model, choices: modelChoices(current: baseline?.routine.model)).focused($focus, equals: .model)
-                }
-                FormField(label: "Effort", message: problems["effort"]) {
-                    ChoicePicker(label: "Effort", value: $draft.effort, choices: effortChoices(current: baseline?.routine.effort)).focused($focus, equals: .effort)
-                }
-                FormField(label: "Permission mode", hint: defaultFollowsNote, message: problems["mode"]) {
-                    ChoicePicker(label: "Permission mode", value: $draft.mode, choices: modeChoices(current: baseline?.routine.mode)).focused($focus, equals: .mode)
-                }
-                if offersAccount {
-                    FormField(label: "Account", hint: "\(accountPickNote) \(chromeNote(accounts))", message: problems["account"]) {
-                        ChoicePicker(label: "Account", value: $draft.account, choices: accountChoices(accounts, current: baseline?.routine.account)).focused($focus, equals: .account)
-                    }
+            FormField(label: "Jitter in seconds", hint: "Added to every fire time, so runs do not all start on the minute.",
+                      message: problems["jitterSeconds"] ?? (jitter == nil ? jitterProblem : nil)) {
+                TextField("Jitter in seconds", text: $draft.jitterSeconds).labelsHidden().ghostInput(invalid: problems["jitterSeconds"] != nil).phoneField($focus, .jitterSeconds).frame(maxWidth: 160)
+            }
+            FormField(label: "Folder", hint: "The full path of the folder each run starts in.", message: problems["cwd"]) {
+                SuggestField(label: "Folder", text: $draft.cwd, options: folders, mono: true, invalid: problems["cwd"] != nil, focus: $focus, tag: .cwd)
+            }
+            FormField(label: "Model", message: problems["model"]) {
+                ChoicePicker(label: "Model", value: $draft.model, choices: modelChoices(current: baseline?.routine.model)).focused($focus, equals: .model)
+            }
+            FormField(label: "Effort", message: problems["effort"]) {
+                ChoicePicker(label: "Effort", value: $draft.effort, choices: effortChoices(current: baseline?.routine.effort)).focused($focus, equals: .effort)
+            }
+            FormField(label: "Permission mode", hint: defaultFollowsNote, message: problems["mode"]) {
+                ChoicePicker(label: "Permission mode", value: $draft.mode, choices: modeChoices(current: baseline?.routine.mode)).focused($focus, equals: .mode)
+            }
+            if offersAccount {
+                FormField(label: "Account", hint: "\(accountPickNote) \(chromeNote(accounts))", message: problems["account"]) {
+                    ChoicePicker(label: "Account", value: $draft.account, choices: accountChoices(accounts, current: baseline?.routine.account)).focused($focus, equals: .account)
                 }
             }
             promptSection
-            Section {
-                Toggle("Run on its schedule", isOn: $draft.enabled)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 12) {
+                    Text("Run on its schedule").font(.geist(14, weight: .medium)).foregroundStyle(Color.ghost.foreground)
+                    Toggle("Run on its schedule", isOn: $draft.enabled).toggleStyle(.switch).labelsHidden().tint(Color.ghost.primary)
+                }
                 Text(adding ? "A new routine starts counting from the moment it is on." : "Off keeps the routine here without running it.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .ghostMuted(13).fixedSize(horizontal: false, vertical: true)
             }
             PhoneDeleteSection(show: !adding) { deleting = true }
         }
-        .formStyle(.grouped)
         .disabled(saving)
         .toolbar {
             FormToolbar(canDelete: !adding, saving: saving, canSave: store.featuresLoaded, delete: { deleting = true }, cancel: leave, save: { Task { await save() } })
@@ -185,23 +179,24 @@ private struct RoutineFields: View {
 
     @ViewBuilder private var promptSection: some View {
         let was = baseline?.kind
-        Section("Prompt") {
+        VStack(alignment: .leading, spacing: 12) {
             if files {
                 Picker("Prompt", selection: $draft.promptKind) {
                     Text("GhostShell's own text").tag(PromptKind.text)
                     Text("A prompt file").tag(PromptKind.file)
                 }
-                .labelsHidden().radioGroup()
+                .labelsHidden().radioGroup().tint(Color.ghost.primary)
             }
             if fileMode {
                 FormField(label: "Prompt file", message: problems["file"] ?? (loadedUnchanged ? loaded.error : nil)) {
-                    TextField("Full path of the prompt file", text: $draft.file, prompt: Text("/Users/you/prompts/daily-scrum.md")).labelsHidden().phoneField($focus, .file)
+                    TextField("Full path of the prompt file", text: $draft.file, prompt: Text("/Users/you/prompts/daily-scrum.md")).labelsHidden()
+                        .ghostInput(mono: true, invalid: problems["file"] != nil).phoneField($focus, .file)
                 }
             } else {
                 promptEditor
             }
             Text(files ? promptHint(draft.promptKind, was: was) : adding ? "GhostShell keeps the prompt in its own folder." : promptSource(loaded))
-                .font(.caption).foregroundStyle(.secondary)
+                .ghostMuted(13).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -209,16 +204,11 @@ private struct RoutineFields: View {
         VStack(alignment: .leading, spacing: 4) {
             TextEditor(text: $draft.prompt)
                 .disabled(!store.featuresLoaded)
-                .font(.body.monospaced())
-                .frame(minHeight: 14 * 17)
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(problems["prompt"] == nil ? Color.secondary.opacity(0.25) : .red))
+                .ghostEditor(invalid: problems["prompt"] != nil)
                 .focused($focus, equals: .prompt)
                 .accessibilityLabel("Prompt")
             if let text = problems["prompt"] ?? (!fileMode && loadedUnchanged ? loaded.error : nil) {
-                Label(text, systemImage: "exclamationmark.circle.fill").font(.caption).foregroundStyle(.red)
+                Label(text, systemImage: "exclamationmark.circle.fill").font(.geist(13)).foregroundStyle(Color.ghost.destructive)
             }
         }
     }
@@ -234,13 +224,13 @@ private struct RoutineFields: View {
         let cron = draft.cron.trimmingCharacters(in: .whitespaces)
         if !cron.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                if let words = scheduleWords(cron, jitterSeconds: jitter ?? 0) { Text(words).font(.callout) }
+                if let words = scheduleWords(cron, jitterSeconds: jitter ?? 0) { Text(words).font(.geist(14)).foregroundStyle(Color.ghost.foreground) }
                 switch preview {
                 case .fires(let times):
                     // Non-breaking spaces, so a narrow form wraps only between times.
-                    Text("Next \(times.map { fireTime($0).replacingOccurrences(of: " ", with: "\u{00A0}") }.joined(separator: " · "))").font(.callout).foregroundStyle(.secondary)
+                    Text("Next \(times.map { fireTime($0).replacingOccurrences(of: " ", with: "\u{00A0}") }.joined(separator: " · "))").ghostMuted(13)
                 case .never where jitter != nil:
-                    Text("This schedule never fires.").font(.callout).foregroundStyle(.secondary)
+                    Text("This schedule never fires.").ghostMuted(13)
                 default: EmptyView()
                 }
             }

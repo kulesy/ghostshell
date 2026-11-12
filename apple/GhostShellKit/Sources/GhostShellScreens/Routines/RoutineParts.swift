@@ -48,13 +48,13 @@ struct FormField<Control: View>: View {
     @ViewBuilder var control: Control
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.subheadline.weight(.medium))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.geist(14, weight: .medium)).foregroundStyle(Color.ghost.foreground)
             control.multilineTextAlignment(.leading)
-            if let hint { Text(hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if let hint { Text(hint).ghostMuted(13).fixedSize(horizontal: false, vertical: true) }
             if let message {
                 Label(message, systemImage: "exclamationmark.circle.fill")
-                    .font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    .font(.geist(13)).foregroundStyle(Color.ghost.destructive).fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -68,6 +68,8 @@ struct SuggestField<Tag: Hashable>: View {
     @Binding var text: String
     let options: [String]
     var prompt: String?
+    var mono = false
+    var invalid = false
     var focus: FocusState<Tag?>.Binding
     let tag: Tag
 
@@ -78,7 +80,7 @@ struct SuggestField<Tag: Hashable>: View {
                 Menu {
                     ForEach(options, id: \.self) { option in Button(option) { text = option } }
                 } label: {
-                    Image(systemName: "chevron.down.circle").phoneIconTouch()
+                    Image(systemName: "chevron.down").font(.footnote).foregroundStyle(Color.ghost.mutedForeground).phoneIconTouch()
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -86,6 +88,7 @@ struct SuggestField<Tag: Hashable>: View {
                 .accessibilityLabel("\(label) choices")
             }
         }
+        .ghostInput(mono: mono, invalid: invalid)
     }
 }
 
@@ -106,9 +109,10 @@ struct ChoicePicker: View {
             HStack(spacing: 8) {
                 Text(choices.first { $0.value == value }?.label ?? value)
                 Spacer(minLength: 8)
-                Image(systemName: "chevron.up.chevron.down").font(.footnote).foregroundStyle(.secondary)
+                Image(systemName: "chevron.up.chevron.down").font(.footnote).foregroundStyle(Color.ghost.mutedForeground)
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .ghostInput()
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .accessibilityLabel(label)
@@ -160,7 +164,7 @@ struct PhoneDeleteSection: View {
     var body: some View {
         #if os(iOS)
         if show {
-            Section { Button("Delete", role: .destructive, action: delete).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }
+            HStack { Spacer(); Button("Delete", action: delete).buttonStyle(.ghost(.destructive)) }
         }
         #endif
     }

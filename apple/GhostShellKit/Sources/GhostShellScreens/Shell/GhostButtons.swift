@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The page's two button looks, `.btn` and `.btn[data-variant="outline"]` in `public/app.css`, at phone width.
+/// The page's button looks, `.btn`, `.btn[data-variant="outline"]` and `.btn[data-variant="destructive"]` in `public/app.css`, at phone width.
 public struct GhostButtonStyle: ButtonStyle {
-    public enum Kind: Sendable { case primary, outline }
+    public enum Kind: Sendable { case primary, outline, destructive }
     public enum Size: Sendable { case regular, compact, icon }
 
     let kind: Kind
@@ -29,11 +29,11 @@ public struct GhostButtonStyle: ButtonStyle {
             .fixedSize(horizontal: true, vertical: false)
             // The button's height is fixed, so its label stops growing at the largest standard text size rather than spilling out.
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            .foregroundStyle(kind == .primary ? Color.ghost.primaryForeground : Color.ghost.foreground)
+            .foregroundStyle(kind == .outline ? Color.ghost.foreground : kind == .destructive ? Color.white : Color.ghost.primaryForeground)
             .padding(.horizontal, size == .icon ? 0 : size == .compact ? 12 : 16)
             .frame(width: size == .icon ? 32 : nil, height: size == .regular ? Self.touch : 32)
             .frame(maxWidth: fills ? .infinity : nil)
-            .background(kind == .primary ? Color.ghost.primary : Color.ghost.card, in: shape)
+            .background(kind == .primary ? Color.ghost.primary : kind == .destructive ? Color.ghost.destructive : Color.ghost.card, in: shape)
             .overlay { if kind == .outline { shape.strokeBorder(Color.ghost.input, lineWidth: 1) } }
             .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.5)
             #if os(iOS)
