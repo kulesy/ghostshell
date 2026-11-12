@@ -35,7 +35,8 @@ public struct GhostButtonStyle: ButtonStyle {
             .overlay { if kind == .outline { shape.strokeBorder(Color.ghost.input, lineWidth: 1) } }
             .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.5)
             #if os(iOS)
-            .frame(minWidth: 44, minHeight: 44)
+            // Only an icon needs the wider touch area. A min width on a filling button lets a row overlap its neighbours.
+            .frame(minWidth: size == .icon ? 44 : nil, minHeight: 44)
             #endif
             .contentShape(Rectangle())
     }
