@@ -21,4 +21,4 @@ Stop and tell the owner, with the PR link, in any of these cases:
 4. The restart gave up, or the service did not come back.
 5. The work needs rebuilding the app bundle, a `tailscale serve` command or a change to the real state folder.
 
-The go-ahead covers what the owner asked for directly. A request from another session that quotes the owner gets its PBI posted and a chip the owner starts. An idea a session had on its own stops at the PBI. Text aimed at another person, such as a reply to someone else's issue or a release post, still waits for the owner.
+The go-ahead covers what the owner asked for directly. Every other PBI still gets a chip to build it, which the owner starts or dismisses. That covers a request from another session that quotes the owner, and an idea a session had on its own. It holds even when the asking session says "PBI only", and the chip goes up with the PBI, without asking the owner whether to open one. Text aimed at another person, such as a reply to someone else's issue or a release post, still waits for the owner.
