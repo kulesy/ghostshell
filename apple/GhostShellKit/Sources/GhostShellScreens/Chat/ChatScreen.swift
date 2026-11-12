@@ -22,6 +22,9 @@ private struct ChatHost: View {
             if let model { ChatLayout(model: model).environment(model) } else { Color.clear }
         }
         .navigationTitle(title.isEmpty ? "Untitled" : title)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task {
             guard let client = app.client else { return }
             let fresh = ChatModel(chat: ChatContext(sessionID: sessionID, client: client))
