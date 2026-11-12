@@ -53,7 +53,7 @@ function setup(options = {}) {
     activity: world.activity,
     activityItems: options.activityItems ?? world.activityItems,
     deliver: async (r, text) => { sent.push({ id: r.id, text }); return options.deliver ? options.deliver(r, text) : 'idle'; },
-    noteArchived: (r, url) => noted.push({ id: r.id, url }),
+    noteArchived: (r, url) => { noted.push({ id: r.id, url }); return options.noteArchived?.(r, url); },
     store: makeUpdateStore(dir, 'pr-comments.json'),
     log: m => told.push(m),
   });
@@ -206,6 +206,38 @@ test('an archived session is never delivered to, its group is told, and the item
   w.world.stamp++;
   await w.watch.tick();
   assert.equal(w.noted.length, 1);
+});
+
+test('an archived session whose group chat is not watched keeps the news and tells it on a later tick', async () => {
+  const clock = { at: 100 * 24 * 3600_000 };
+  let answer = 'elsewhere';
+  const w = setup({ clock, noteArchived: () => answer, rows: [row('a', { archived: true, group: 'cg-work', lastActivityAt: clock.at - MINUTE })] });
+  await baseline(w);
+  w.world.add('comments', comment(2, 'hubot'));
+  await w.watch.tick();
+  assert.equal(w.noted.length, 1);
+  answer = undefined;
+  await w.watch.tick();
+  assert.equal(w.noted.length, 2, 'asked again at once, as no message was sent');
+  w.clock.at += 30 * MINUTE;
+  await w.watch.tick();
+  assert.equal(w.noted.length, 2, 'and not told a third time');
+});
+
+test('an item that drops out of the window and comes back is not told as new', async () => {
+  const w = setup();
+  await baseline(w);
+  w.world.add('comments', comment(2, 'hubot'));
+  await w.watch.tick();
+  assert.equal(w.sent.length, 1);
+  const x = w.world.comments.pop();
+  w.world.stamp++;
+  w.clock.at += 15 * MINUTE;
+  await w.watch.tick();
+  w.world.add('comments', x);
+  w.clock.at += 15 * MINUTE;
+  await w.watch.tick();
+  assert.equal(w.sent.length, 1);
 });
 
 test('the items are not read again while the pull request has not changed, and are read once for sessions on the same pull request', async () => {

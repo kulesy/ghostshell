@@ -34,7 +34,7 @@ The settings in `config.json` and `config.local.json`, and the ten environment v
 
 ### `prComments`
 
-`prComments` is `true` by default. Every 3 minutes GhostShell checks the pull request of each session active in the last 14 days. When someone other than the `gh` account or a bot adds a comment, a review or a commit, the session gets one message with the author and a link, never what they wrote. A session gets at most one such message every 10 minutes, and anything newer waits for the next one. An archived session is not woken. Its group's chat hears about it instead. Set it to `false` to send none.
+`prComments` is `true` by default. Every 3 minutes GhostShell checks the pull request of each session active in the last 14 days. When someone other than the `gh` account or a bot adds a comment, a review or a commit, the session gets one message with the author and a link, never what they wrote. A session gets at most one such message every 10 minutes, and anything newer waits for the next one. An archived session is not woken. Its group's chat hears about it instead, once a page has had that chat open in the last day, and until then the news waits. See [the decision record](adr/20261026-show-pull-request-status-on-session-cards.md). Set it to `false` to send none.
 
 ### `autoTitle`
 

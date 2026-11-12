@@ -296,6 +296,13 @@ test('news about an archived member goes out in the next update, though the memb
   assert.doesNotMatch(w.sent[0].text, /ignored/);
 });
 
+test('news for a chat nobody watches queues nothing and answers elsewhere, so the caller keeps it', async () => {
+  const w = world();
+  assert.equal(w.updates.activity('chat', { id: 'old', text: 'x' }), 'elsewhere');
+  await w.updates.tick();
+  assert.equal(w.updates.activity('chat', { id: 'old', text: 'x' }), undefined);
+});
+
 test('a busy chat, typing, an owner message, a cold cache and the daily cap each hold the batch, and it goes when they lift', async () => {
   const w = world();
   await w.updates.tick();
