@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { acquire } from '../../lib/lock.mjs';
 import { checkNoHooks } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
@@ -33,6 +34,8 @@ const DEVICES = {
 const argv = process.argv.slice(2);
 const command = argv[0];
 const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? '' : undefined);
+// One run boots Simulators at a time on the Mac, whichever worktree it is in.
+const SIMULATOR_LOCK = '/tmp/ghostshell-simulator.lock';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function xcodebuild(args, label) {
@@ -177,6 +180,10 @@ async function startStubs() {
   };
 }
 
+// The xcodebuild run in flight, and whether a signal has asked the run to stop. The loops in `shoot` check the flag between steps.
+let testing = null;
+let interrupted = false;
+
 function runTests({ udid, device, appearance, out, address, only, stubs }) {
   const env = {
     ...process.env,
@@ -190,6 +197,7 @@ function runTests({ udid, device, appearance, out, address, only, stubs }) {
   for (const name of only ? only.split(',') : []) args.push(`-only-testing:GhostShelliPhoneUITests/GhostShelliPhoneUITests/${name}`);
   return new Promise(resolve => {
     const child = spawn('xcodebuild', args, { env });
+    testing = child;
     let output = '';
     child.stdout.on('data', chunk => { output += chunk; });
     child.stderr.on('data', chunk => { output += chunk; });
@@ -226,13 +234,19 @@ async function shoot() {
   const fixtures = await startFixtures(stub);
   const booted = [];
   let ok = true;
+  const release = await acquire(SIMULATOR_LOCK, { what: 'the Simulators', checkout: path.resolve(apple, '..') });
+  // Installed once the lock is held, so the `finally` below still shuts down what this run booted and gives the lock back.
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { interrupted = true; testing?.kill(); });
   try {
     for (const device of devices) {
+      if (interrupted) break;
       const udid = findOrCreate(DEVICES[device]);
       const wasBooted = JSON.parse(simctl('list', 'devices', '-j').stdout).devices[RUNTIME].find(d => d.udid === udid)?.state === 'Booted';
-      boot(udid);
+      // Recorded before the boot, so a boot that fails or is interrupted midway is still shut down.
       if (!wasBooted) booted.push(udid);
+      boot(udid);
       for (const appearance of appearances) {
+        if (interrupted) break;
         console.log(`\n== ${DEVICES[device].name}, ${appearance}`);
         // Fresh stubs for each run, because a chip started or a file saved in one run would change what the next one sees.
         const stubs = await startStubs();
@@ -249,6 +263,7 @@ async function shoot() {
     for (const udid of booted) simctl('shutdown', udid);
     fixtures.stop();
     stub.stop();
+    release();
   }
   console.log(`Screenshots are in ${out}`);
   return ok;
@@ -257,7 +272,8 @@ async function shoot() {
 if (command === 'build') {
   console.log(build({ release: argv.includes('--release') }));
 } else if (command === 'shot') {
-  process.exit((await shoot()) ? 0 : 1);
+  const ok = await shoot();
+  process.exit(interrupted ? 130 : ok ? 0 : 1);
 } else {
   console.error('Usage: iphone.mjs build [--release] | shot [--out <folder>] [--device se|16pro] [--only light|dark] [--test <name>[,<name>...]]');
   process.exit(2);

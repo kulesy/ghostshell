@@ -1,0 +1,39 @@
+name: Node suite
+
+# The Node tests, on every push. `npm test` runs them 4 files at a time, so a run needs far less of the owner's Mac than `node --test` alone.
+# See https://github.com/kulesy/ghostshell/issues/151.
+on:
+  push:
+  # Same-repo branches already run on push, so a pull request only runs for a fork (see `if` on the job).
+  pull_request:
+  workflow_dispatch:
+
+# NOTE: [12 Nov 2026] EK - The repo is public and forks run this, so the token stays read-only and no step reads a secret.
+permissions:
+  contents: read
+
+concurrency:
+  group: node-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The page tests find the Chromium headless shell in Playwright's cache (test/browser.mjs), so the version that installs it is pinned here.
+  PLAYWRIGHT_VERSION: 1.65.0
+
+jobs:
+  test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    # macOS, because some test files use macOS-only features.
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          package-manager-cache: false
+      # Without the shell the page tests skip rather than fail, so a missing install would pass quietly.
+      - run: npx --yes playwright@${{ env.PLAYWRIGHT_VERSION }} install chromium-headless-shell
+      - run: npm test
