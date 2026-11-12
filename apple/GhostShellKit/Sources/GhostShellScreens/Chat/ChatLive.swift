@@ -57,9 +57,9 @@ private struct WorkingLine: View {
         let work = outside ? model.outside : model.work
         let since = outside ? model.outsideStart : model.turnStart
         HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(Self.text(work: work, since: since, now: context.date, connectors: model.chat.session.connectors))
+            Spinner()
+            EverySecond { now in
+                Text(Self.text(work: work, since: since, now: now, connectors: model.chat.session.connectors))
             }
             .monospacedDigit().lineLimit(1).truncationMode(.tail)
         }
@@ -101,9 +101,9 @@ struct AgentStrip: View {
                 .buttonStyle(.plain)
                 .accessibilityValue(open ? "expanded" : "collapsed")
                 if open {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                    EverySecond { now in
                         VStack(alignment: .leading, spacing: 4) {
-                            ForEach(running + finished) { heard in AgentLine(heard: heard, now: context.date) }
+                            ForEach(running + finished) { heard in AgentLine(heard: heard, now: now) }
                         }
                         .padding(.horizontal, 34).padding(.bottom, 8)
                     }

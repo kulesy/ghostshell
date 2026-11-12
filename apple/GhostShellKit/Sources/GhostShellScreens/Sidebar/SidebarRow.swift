@@ -31,8 +31,8 @@ struct TurnTimer: View {
     let start: Date
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let text = Text(SidebarOutline.duration(ms: context.date.timeIntervalSince(start) * 1000))
+        EverySecond { now in
+            let text = Text(SidebarOutline.duration(ms: now.timeIntervalSince(start) * 1000))
             #if os(iOS)
             text.font(.geistMono(11, relativeTo: .caption2)).foregroundStyle(Color.ghost.sidebarMuted)
             #else

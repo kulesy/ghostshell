@@ -890,8 +890,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         // The switch.
         let sync = app.switches["Run Sync the docs on its schedule"]
         reveal(app, sync)
-        // The switch is UIKit's own 31pt control; a frame or content shape on it either leaves it 31pt or stops it taking taps.
-        XCTAssertGreaterThanOrEqual(sync.frame.height, 31)
+        // The switch is UIKit's own control, 31pt before iOS 26 and 28pt from it; a frame or content shape on it either leaves it that size or stops it taking taps.
+        if #available(iOS 26, *) { XCTAssertGreaterThanOrEqual(sync.frame.height, 28) } else { XCTAssertGreaterThanOrEqual(sync.frame.height, 31) }
         sync.tap()
         try await Task.sleep(for: .seconds(1))
         let toggled = try await writes("POST", "/api/routines/sync/enabled").last
