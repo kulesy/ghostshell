@@ -198,10 +198,10 @@ test('a move into the calling group\'s own group says its chat can read the sess
   const rows = [row('top'), row('parent'), row('kid', { parent: 'parent' }), row('grandkid', { parent: 'kid', archived: true }), row('alone')];
   const subs = subsFor({ rows });
   const card = (id, own) => layoutSummary('move_session_to_group', { session_id: id, group: 'cg-a' }, subs, GROUPS, own);
-  assert.equal(card('parent', 'cg-a'), 'move "Session parent" [parent] to "Needs Review" (this group\'s chat can then read it and the 2 sessions under it)');
-  assert.equal(card('kid', 'cg-a'), 'move "Session kid" [kid] to "Needs Review" (this group\'s chat can then read it and the 1 session under it)');
-  assert.equal(card('alone', 'cg-a'), 'move "Session alone" [alone] to "Needs Review" (this group\'s chat can then read it)');
-  assert.equal(card('parent', 'cg-d'), 'move "Session parent" [parent] to "Needs Review"');
+  assert.equal(card('parent', 'cg-a'), 'move "Session parent" [parent] to "Needs Review" [cg-a] (this group\'s chat can then read it and the 2 sessions under it)');
+  assert.equal(card('kid', 'cg-a'), 'move "Session kid" [kid] to "Needs Review" [cg-a] (this group\'s chat can then read it and the 1 session under it)');
+  assert.equal(card('alone', 'cg-a'), 'move "Session alone" [alone] to "Needs Review" [cg-a] (this group\'s chat can then read it)');
+  assert.equal(card('parent', 'cg-d'), 'move "Session parent" [parent] to "Needs Review" [cg-a]');
   const text = moveSession({ session_id: 'parent', group: 'cg-a' }, subs, GROUPS, 'cg-a');
   assert.match(text, /The 2 sessions under it moved with it\./);
   assert.match(text, /This group's chat can now read it and the 2 sessions under it with read_group_session\.$/);
@@ -278,16 +278,16 @@ test('the card for each write names the session by its title and id and says wha
   assert.equal(card('archive_session', { session_id: 'review' }), 'archive "Review - dialogs" [review]');
   assert.equal(card('unarchive_session', { session_id: 'old' }), 'unarchive "Old review of dialogs" [old]');
   assert.equal(card('set_session_title', { session_id: 'review', title: 'New\nname' }), 'rename "Review - dialogs" [review] to "New name"');
-  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'cg-d' }), 'move "Review - dialogs" [review] to "Reviewing"');
+  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'cg-d' }), 'move "Review - dialogs" [review] to "Reviewing" [cg-d]');
   assert.equal(card('move_session_to_group', { session_id: 'review', group: 'backlog' }), 'move "Review - dialogs" [review] to "backlog"', 'an ambiguous name shows as given');
   assert.equal(card('archive_session', { session_id: 'nobody' }), 'archive an unknown session [nobody]');
   assert.equal(card('archive_session', undefined), 'archive an unknown session');
   assert.equal(card('set_session_title', { session_id: 'nobody', title: 'x' }), 'rename an unknown session [nobody] to "x"');
   assert.equal(layoutSummary('archive_session', { session_id: 'review' }, { lookup() { throw new Error('index broke'); } }, GROUPS), 'archive an unknown session [review]');
-  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'cg-a' }, 'cg-a'), 'move "Review - dialogs" [review] to "Needs Review" (this group\'s chat can then read it)');
-  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'Needs review' }, 'cg-a'), 'move "Review - dialogs" [review] to "Needs Review" (this group\'s chat can then read it)', 'a name reaches the same group as its id');
-  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'cg-d' }, 'cg-a'), 'move "Review - dialogs" [review] to "Reviewing"');
-  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'cg-a' }, undefined), 'move "Review - dialogs" [review] to "Needs Review"');
+  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'cg-a' }, 'cg-a'), 'move "Review - dialogs" [review] to "Needs Review" [cg-a] (this group\'s chat can then read it)');
+  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'Needs review' }, 'cg-a'), 'move "Review - dialogs" [review] to "Needs Review" [cg-a] (this group\'s chat can then read it)', 'a name reaches the same group as its id');
+  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'cg-d' }, 'cg-a'), 'move "Review - dialogs" [review] to "Reviewing" [cg-d]');
+  assert.equal(card('move_session_to_group', { session_id: 'review', group: 'cg-a' }, undefined), 'move "Review - dialogs" [review] to "Needs Review" [cg-a]');
   assert.doesNotMatch(card('archive_session', { session_id: 'review' }, 'cg-a'), /read it/);
 });
 
@@ -459,8 +459,21 @@ test('a move card and its reply show a group name without its quotes and bracket
   const subs = subsFor();
   const groups = [{ id: 'cg-dep', name: 'Deploy' }, { id: 'cg-n', name: 'Deploy" [cg-dep' }];
   const card = layoutSummary('move_session_to_group', { session_id: 'review', group: 'cg-n' }, subs, groups);
-  assert.match(card, /to "Deploy cg-dep"$/);
+  assert.match(card, /to "Deploy cg-dep" \[cg-n\]$/);
   assert.match(moveSession({ session_id: 'review', group: 'cg-n' }, subs, groups), /to the group "Deploy cg-dep"\./);
+});
+
+test('two groups or projects of one name give cards that read differently, since each card shows the id the call resolved', () => {
+  const subs = subsFor({ projects: [{ id: 'cp-1', name: 'Work' }, { id: 'cp-2', name: 'Work' }] });
+  const groups = [{ id: 'cg-1', name: 'Deploy' }, { id: 'cg-2', name: 'Deploy' }];
+  const move = group => layoutSummary('move_session_to_group', { session_id: 'review', group }, subs, groups);
+  assert.equal(move('cg-1'), 'move "Review - dialogs" [review] to "Deploy" [cg-1]');
+  assert.equal(move('cg-2'), 'move "Review - dialogs" [review] to "Deploy" [cg-2]');
+  assert.equal(move('Deploy'), 'move "Review - dialogs" [review] to "Deploy"', 'an ambiguous name shows as given, with no id');
+  const create = project => layoutSummary('create_group', { name: 'Fresh', project }, subs, groups);
+  assert.equal(create('cp-1'), 'create the group "Fresh" in the project "Work" [cp-1]');
+  assert.equal(create('cp-2'), 'create the group "Fresh" in the project "Work" [cp-2]');
+  assert.equal(create('Work'), 'create the group "Fresh" in the project "Work"', 'an ambiguous name shows as given, with no id');
 });
 
 test('an emoji joined into one picture blocks the same emoji written apart', () => {
@@ -528,8 +541,8 @@ test('the card for a new project or group names it, says where it goes, and cann
   assert.equal(card('create_project', { name: 'Side work' }), 'create the project "Side work"');
   assert.equal(card('create_group', { name: 'Fresh' }), 'create the group "Fresh" on Home');
   assert.equal(card('create_group', { name: 'Fresh', project: '' }), 'create the group "Fresh" on Home');
-  assert.equal(card('create_group', { name: 'Fresh', project: 'cp-w' }), 'create the group "Fresh" in the project "Work"');
-  assert.equal(card('create_group', { name: 'Fresh', project: 'home LAB' }), 'create the group "Fresh" in the project "Home lab"', 'a name reaches the project the call writes into');
+  assert.equal(card('create_group', { name: 'Fresh', project: 'cp-w' }), 'create the group "Fresh" in the project "Work" [cp-w]');
+  assert.equal(card('create_group', { name: 'Fresh', project: 'home LAB' }), 'create the group "Fresh" in the project "Home lab" [cp-h]', 'a name reaches the project the call writes into');
   assert.equal(card('create_group', { name: 'Fresh', project: 'Nowhere' }), 'create the group "Fresh" in the project "Nowhere"', 'a project that does not resolve shows as given');
   assert.equal(card('create_group', { name: 'Fresh', project: 5 }), 'create the group "Fresh" in the project "5"');
   assert.equal(card('create_project', { name: 'a" and "b' }), 'create the project "a and b"');

@@ -40,9 +40,9 @@ const WRITES = [
   ['archive_session', { session_id: 'loose' }, 'archive "Loose" [loose]'],
   ['unarchive_session', { session_id: 'gone' }, 'unarchive "Gone" [gone]'],
   ['set_session_title', { session_id: 'loose', title: 'Renamed' }, 'rename "Loose" [loose] to "Renamed"'],
-  ['move_session_to_group', { session_id: 'loose', group: 'home' }, 'move "Loose" [loose] to "Home"'],
+  ['move_session_to_group', { session_id: 'loose', group: 'home' }, 'move "Loose" [loose] to "Home" [cg-home]'],
   ['create_project', { name: 'Fresh' }, 'create the project "Fresh"'],
-  ['create_group', { name: 'Shiny', project: 'side' }, 'create the group "Shiny" in the project "Side"'],
+  ['create_group', { name: 'Shiny', project: 'side' }, 'create the group "Shiny" in the project "Side" [cp-side]'],
   ['move_group_to_project', { group: 'work', project: 'side' }, 'move the group "Work" [cg-work] to the project "Side" [cp-side]'],
   ['move_project', { project: 'side', after: 'LAB' }, 'move the project "Side" [cp-side] after "Lab" [cp-lab]'],
   ['move_project', { project: 'lab', before: 'nowhere' }, 'move the project "Lab" [cp-lab] before "nowhere"'],
@@ -234,9 +234,9 @@ test('the card for a move into the group of the chat that asks says that chat ca
       viewer.close();
     }
   };
-  assert.equal(await card(WORK, { session_id: 'loose', group: 'Work' }), 'move "Loose" [loose] to "Work" (this group\'s chat can then read it)');
-  assert.equal(await card('top', { session_id: 'loose', group: 'Work' }), 'move "Loose" [loose] to "Work"');
-  assert.equal(await card('kid', { session_id: 'nobody', group: 'cg-work' }), 'move an unknown session [nobody] to "Work"');
+  assert.equal(await card(WORK, { session_id: 'loose', group: 'Work' }), 'move "Loose" [loose] to "Work" [cg-work] (this group\'s chat can then read it)');
+  assert.equal(await card('top', { session_id: 'loose', group: 'Work' }), 'move "Loose" [loose] to "Work" [cg-work]');
+  assert.equal(await card('kid', { session_id: 'nobody', group: 'cg-work' }), 'move an unknown session [nobody] to "Work" [cg-work]');
 });
 
 test('moving a session with sessions under it into the group of the chat that asks names them on the card and in the reply, archived ones included', async () => {
@@ -247,7 +247,7 @@ test('moving a session with sessions under it into the group of the chat that as
     await until(() => viewer.events.length);
     await sendTo(s, token, WORK, `ask to use move_session_to_group ${JSON.stringify({ session_id: 'top', group: 'Work' })}`);
     await until(() => viewer.events.some(e => e.type === 'approval'));
-    assert.equal(viewer.events.find(e => e.type === 'approval').data.summary, 'move "Top" [top] to "Work" (this group\'s chat can then read it and the 2 sessions under it)');
+    assert.equal(viewer.events.find(e => e.type === 'approval').data.summary, 'move "Top" [top] to "Work" [cg-work] (this group\'s chat can then read it and the 2 sessions under it)');
   } finally {
     viewer.close();
   }
