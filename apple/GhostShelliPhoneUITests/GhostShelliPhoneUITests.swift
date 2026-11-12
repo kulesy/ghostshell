@@ -83,10 +83,14 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: focused, object: field)], timeout: 5), .completed, "The edge of the \(name) row focuses the field: \(field.debugDescription)", file: file, line: line)
     }
 
-    private func assertTouchable(_ element: XCUIElement, _ name: String, file: StaticString = #filePath, line: UInt = #line) {
+    /// From iOS 26 a bar button sits inside a 44pt glass capsule and reports the 36pt inside it, so a bar button needs 34pt there.
+    /// `bar` is for the bottom bar, whose own frame iOS 27 reports as the whole screen.
+    private func assertTouchable(_ element: XCUIElement, _ name: String, bar: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
         let frame = element.frame
-        XCTAssertGreaterThanOrEqual(frame.height, 43.5, "\(name) is \(frame.height)pt tall", file: file, line: line)
-        XCTAssertGreaterThanOrEqual(frame.width, 43.5, "\(name) is \(frame.width)pt wide", file: file, line: line)
+        var least: CGFloat = 43.5
+        if #available(iOS 26, *), bar || XCUIApplication().navigationBars.allElementsBoundByIndex.contains(where: { $0.frame.contains(frame) }) { least = 34 }
+        XCTAssertGreaterThanOrEqual(frame.height, least, "\(name) is \(frame.height)pt tall", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(frame.width, least, "\(name) is \(frame.width)pt wide", file: file, line: line)
     }
 
     private func get(_ path: String, stub: String? = nil) async throws -> [[String: Any]] {
@@ -521,9 +525,11 @@ final class GhostShelliPhoneUITests: XCTestCase {
         return all.element(boundBy: max(all.count - 1, 0))
     }
 
-    /// A link is a run inside a line of text, so a tap goes at the end of the line, where every link of the files fixture sits.
+    /// A link is a run inside a line of text. iOS 27 pads the line's frame by 16pt a side, so the end of the line is no longer on the link and the tap goes to the link itself.
     private func tapLink(_ app: XCUIApplication, line: String) {
-        live(app, line).coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        let text = live(app, line)
+        let link = text.links.firstMatch
+        (link.exists ? link : text).coordinate(withNormalizedOffset: link.exists ? CGVector(dx: 0.5, dy: 0.5) : CGVector(dx: 0.93, dy: 0.5)).tap()
     }
 
     private func contains(_ app: XCUIApplication, _ text: String) -> XCUIElement {

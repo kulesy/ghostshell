@@ -18,10 +18,10 @@ on:
       - '.github/workflows/swift.yml'
   workflow_dispatch:
     inputs:
-      iphone:
-        description: Also run the iPhone UI tests, which fail on iOS 27 for now
-        type: boolean
-        default: false
+      tests:
+        description: Run only these iPhone UI tests (comma list of test names), to rerun a failure quickly. Empty runs them all.
+        type: string
+        default: ''
 
 # NOTE: [11 Nov 2026] EK - The repo is public and forks run this, so the token stays read-only and no step reads a secret.
 permissions:
@@ -76,9 +76,8 @@ jobs:
           retention-days: 14
 
   # One job per device and appearance, because the four passes take about two hours in a row.
-  # NOTE: [12 Nov 2026] EK - Runs only by hand until the app passes on iOS 27, the only iOS the image has. See apple/README.md.
   iphone-shots:
-    if: inputs.iphone
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: xcode-27
     timeout-minutes: 60
     strategy:
@@ -94,9 +93,11 @@ jobs:
         with:
           node-version: 20
           package-manager-cache: false
-      - run: npm run apple:ios-shot -- --device ${{ matrix.device }} --only ${{ matrix.appearance }} --out "$RUNNER_TEMP/shots/iphone"
+      # The tests input goes through the environment, never into the script text.
+      - run: npm run apple:ios-shot -- --device ${{ matrix.device }} --only ${{ matrix.appearance }} ${TESTS:+--test "$TESTS"} --out "$RUNNER_TEMP/shots/iphone"
         env:
           GS_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-27-2
+          TESTS: ${{ inputs.tests }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -107,5 +108,7 @@ jobs:
         if: failure()
         with:
           name: iphone-test-logs-${{ matrix.device }}-${{ matrix.appearance }}
-          path: apple/build/ios/last-*.log
+          path: |
+            apple/build/ios/last-*.log
+            apple/build/ios/sample-*.txt
           retention-days: 14

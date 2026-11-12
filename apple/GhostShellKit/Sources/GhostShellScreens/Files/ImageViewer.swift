@@ -96,7 +96,9 @@ private struct ViewerContent: View {
                     }
                 }
                 // The arrow keys step only while the picture is fitted, because a zoomed picture uses them to scroll.
+                #if os(macOS)
                 keys.disabled(!zoom.atFit)
+                #endif
             }
         }
         .padding(14)

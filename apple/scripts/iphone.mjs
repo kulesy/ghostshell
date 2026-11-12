@@ -24,8 +24,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const apple = path.resolve(here, '..');
 const PROJECT = path.join(apple, 'GhostShell.xcodeproj');
 const DERIVED = path.join(apple, 'build', 'ios');
-// The Actions runner has only iOS 27 and can't download 18.6, so a run there names its own.
-const RUNTIME = process.env.GS_IOS_RUNTIME || 'com.apple.CoreSimulator.SimRuntime.iOS-18-6';
+// The app passes its UI tests on iOS 27.2, the runtime the Actions runner has. Set GS_IOS_RUNTIME to try another, such as ...SimRuntime.iOS-18-6.
+const RUNTIME = process.env.GS_IOS_RUNTIME || 'com.apple.CoreSimulator.SimRuntime.iOS-27-2';
 const DEVICES = {
   se: { name: 'iPhone SE (3rd generation)', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation' },
   '16pro': { name: 'iPhone 16 Pro', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro' },
@@ -69,6 +69,9 @@ const simctl = (...args) => spawnSync('xcrun', ['simctl', ...args], { encoding: 
 const WORKTREE = crypto.createHash('sha1').update(path.resolve(apple, '..')).digest('hex').slice(0, 6);
 
 function findOrCreate({ name: base, type }) {
+  if (!JSON.parse(simctl('list', 'runtimes', '-j').stdout).runtimes.some(r => r.identifier === RUNTIME && r.isAvailable)) {
+    throw new Error(`The ${RUNTIME} runtime is not installed. Install it with \`xcodebuild -downloadPlatform iOS\`, or set GS_IOS_RUNTIME to one that is.`);
+  }
   const name = `${base} (${WORKTREE})`;
   const list = JSON.parse(simctl('list', 'devices', '-j', 'available').stdout).devices[RUNTIME] ?? [];
   const found = list.find(d => d.name === name);
@@ -201,9 +204,19 @@ function runTests({ udid, device, appearance, out, address, only, stubs }) {
     const child = spawn('xcodebuild', args, { env });
     testing = child;
     let output = '';
-    child.stdout.on('data', chunk => { output += chunk; });
-    child.stderr.on('data', chunk => { output += chunk; });
+    let lastGrowth = Date.now();
+    child.stdout.on('data', chunk => { output += chunk; lastGrowth = Date.now(); });
+    child.stderr.on('data', chunk => { output += chunk; lastGrowth = Date.now(); });
+    // TEMPORARY for https://github.com/kulesy/ghostshell/issues/148: when the log stalls for 25 seconds the app is probably hung, so sample where its main thread is.
+    let samples = 0;
+    const sampler = setInterval(() => {
+      if (Date.now() - lastGrowth < 25000 || samples >= 8) return;
+      lastGrowth = Date.now();
+      samples += 1;
+      spawnSync('sample', ['GhostShelliPhone', '3', '-file', path.join(DERIVED, `sample-${device}-${appearance}-${samples}.txt`)], { timeout: 30000 });
+    }, 5000);
     child.on('close', status => {
+      clearInterval(sampler);
       fs.writeFileSync(path.join(DERIVED, `last-${device}-${appearance}.log`), output);
       const lines = output.split('\n');
       const failed = lines.filter(l => /error:|Test Case .* failed|XCTAssert/.test(l));
