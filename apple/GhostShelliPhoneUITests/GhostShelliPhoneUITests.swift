@@ -417,12 +417,18 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let app = launch()
         signIn(app)
         open(app, "Fix the flaky upload test", expecting: "Thanks. Can you add a note to the changelog?")
+        // The thread may open above or below a part, depending on how much room the composer leaves.
+        func reveal(_ element: XCUIElement) {
+            for _ in 0..<8 where !element.isHittable {
+                if element.frame.minY > app.frame.height / 2 { app.swipeUp() } else { app.swipeDown() }
+            }
+        }
         let notice = app.staticTexts["Conversation compacted"].firstMatch
-        for _ in 0..<6 where !notice.isHittable { app.swipeDown() }
+        reveal(notice)
         XCTAssertTrue(notice.isHittable, app.debugDescription)
         shot("11-chat-notice-divider")
         let group = app.buttons.matching(NSPredicate(format: "label CONTAINS '+1'")).firstMatch
-        for _ in 0..<6 where !group.isHittable { app.swipeDown() }
+        reveal(group)
         XCTAssertTrue(group.waitForExistence(timeout: 5), "The group that edited a file\n\(app.debugDescription)")
         group.tap()
         shot("12-chat-group-open")
