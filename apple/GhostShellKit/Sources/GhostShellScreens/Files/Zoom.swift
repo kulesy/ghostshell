@@ -134,6 +134,9 @@ struct ZoomCanvas: View {
     let controller: ZoomController
     let onBackdrop: () -> Void
 
+    /// The page's side padding around the picture (`.viewer-stage`).
+    private static let inset: CGFloat = 16
+
     @State private var scale: CGFloat = 1
     @State private var pinchBase: CGFloat = 1
     @State private var offset: CGSize = .zero
@@ -141,11 +144,16 @@ struct ZoomCanvas: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let fit = min(1, proxy.size.width / max(image.size.width, 1), proxy.size.height / max(image.size.height, 1))
+            let fit = min(1, max(proxy.size.width - 2 * Self.inset, 1) / max(image.size.width, 1), proxy.size.height / max(image.size.height, 1))
             let actual = 1 / fit
             let limit = max(4, actual)
+            let frame = RoundedRectangle(cornerRadius: GhostRadius.md, style: .continuous)
             Image(uiImage: image).resizable()
                 .frame(width: image.size.width * fit, height: image.size.height * fit)
+                .clipShape(frame)
+                .background(Color.ghost.card, in: frame)
+                .overlay(frame.strokeBorder(Color.ghost.border, lineWidth: 1 / scale))
+                .shadow(color: .black.opacity(0.1), radius: 3, y: 4)
                 .scaleEffect(scale).offset(offset)
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .contentShape(Rectangle())

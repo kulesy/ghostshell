@@ -233,6 +233,10 @@ const SCREENS = {
 
 async function runSet(browser, name, width, scheme) {
   const height = SIZES[width];
+  if (!SCREENS[name]) {
+    console.error(`  skipping ${name}: no SCREENS entry`);
+    return [];
+  }
   const server = await SETS[name]();
   const dir = path.join(OUT, 'page', String(width), scheme);
   fs.mkdirSync(dir, { recursive: true });
