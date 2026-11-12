@@ -1,12 +1,6 @@
 import GhostShellKit
 import SwiftUI
 
-extension EnvironmentValues {
-    /// The height of the chat's column, set by the chat screen. It is measured from the column and not from the prompt stack, because a stack that measured its own
-    /// surroundings could change what it measured and never settle.
-    @Entry var chatHeight: CGFloat = 560
-}
-
 /// The prompts waiting on this chat, oldest first, above the composer. The stack scrolls once it passes about half the chat's height, so the thread stays visible.
 struct ApprovalPrompts: View {
     let chat: ChatContext

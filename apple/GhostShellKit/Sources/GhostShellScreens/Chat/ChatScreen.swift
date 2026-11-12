@@ -32,9 +32,15 @@ private struct ChatHost: View {
     }
 }
 
+extension EnvironmentValues {
+    /// The height of the chat's column, set by the chat screen. It is measured from the column and not from the prompt stack, because a stack that measured its own
+    /// surroundings could change what it measured and never settle.
+    @Entry var chatHeight: CGFloat = 560
+}
+
 private struct ChatLayout: View {
     let model: ChatModel
-    @State private var height: CGFloat = 560
+    @State private var height = EnvironmentValues().chatHeight
 
     var body: some View {
         @Bindable var chat = model.chat

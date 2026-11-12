@@ -237,9 +237,8 @@ private struct KeyCap: ViewModifier {
     func body(content: Content) -> some View {
         content
             .foregroundStyle(enabled ? Color.primary : Color.secondary.opacity(0.5))
-            .frame(minWidth: 44, minHeight: 44)
+            .phoneIconTouch()
             .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(Rectangle())
     }
 }
 #endif

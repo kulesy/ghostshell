@@ -197,7 +197,6 @@ final class GhostShelliPhoneUITests: XCTestCase {
         open(app, "Rename the export helper", expecting: "I renamed it in 4 files and updated the two tests that imported it.")
     }
 
-    /// The phone's keyboard is not raised when a chat opens, and the thread's drag puts it away.
     private func message(_ app: XCUIApplication) -> XCUIElement { app.textFields["Message"].firstMatch }
 
     func testWriteAndSendAMessageWithAPhotoAndAFile() async throws {
@@ -343,11 +342,19 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Escape"].exists, "Esc is left out of the key row")
         shot("terminal-1-running")
 
+        // Ctrl-D ends the running command's input while the box is empty.
+        app.buttons["Ctrl+D"].firstMatch.tap()
+        try await Task.sleep(for: .seconds(2))
+        let ended = try await terminalRequests()
+        XCTAssertEqual(ended.count, requests + 1, "One request: \(ended)")
+        XCTAssertEqual(ended.last?["route"] as? String, "input")
+        XCTAssertEqual((ended.last?["body"] as? [String: Any])?["eof"] as? Bool, true)
+
         // Ctrl-C stops the running command.
         app.buttons["Ctrl+C"].firstMatch.tap()
         try await Task.sleep(for: .seconds(2))
         let stopped = try await terminalRequests()
-        XCTAssertEqual(stopped.count, requests + 1, "One request: \(stopped)")
+        XCTAssertEqual(stopped.count, requests + 2, "One more request: \(stopped)")
         XCTAssertEqual(stopped.last?["route"] as? String, "stop")
         XCTAssertEqual((stopped.last?["body"] as? [String: Any])?["run"] as? String, "r3")
 
@@ -372,6 +379,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual(again.value as? String ?? "", "Run a command", "The box is empty after a run")
         app.buttons["Previous command"].firstMatch.tap()
         XCTAssertTrue(waitForValue(again, "echo hi"), "Up recalls the last command: \(again.value ?? "")\n\(app.debugDescription)")
+        app.buttons["Tab"].firstMatch.tap()
+        XCTAssertTrue((again.value as? String ?? "").contains("\t"), "Tab puts a tab in the box: \(again.value ?? "")")
 
         // Back closes the terminal and shows the chat.
         let backButton = app.navigationBars.firstMatch.buttons["Back"].firstMatch
