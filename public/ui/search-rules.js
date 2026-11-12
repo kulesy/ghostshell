@@ -85,9 +85,9 @@ const byRank = hits => RANKS.map(rank => {
   return section(rank, TITLES[rank], rank === 'session' || rank === 'sub' ? items.slice(0, SHOWN) : items);
 });
 
-// The sections the spotlight shows for a chip and a query. `scheduled` is what api/scheduled listed, and `links` what api/pull-links listed. With words typed they follow RANKS and Archived comes last, because those
+// The sections the spotlight shows for a chip and a query. `scheduled` is what api/scheduled listed, and `links` what api/pull-links listed. `unrun` is the routines with no run, which a project's count includes. With words typed they follow RANKS and Archived comes last, because those
 // sessions are out of the list. With none it is browsing: All is recents, projects and actions, and Sessions is newest first.
-export function sectionsFor(chip, ix, archived, query, newHint, scheduled = [], links = {}) {
+export function sectionsFor(chip, ix, archived, query, newHint, scheduled = [], links = {}, unrun = []) {
   const words = wordsOf(query);
   const keep = words.length ? sessionMatcher(words, links) : () => true;
   const live = newestFirst(ix);
@@ -108,7 +108,7 @@ export function sectionsFor(chip, ix, archived, query, newHint, scheduled = [], 
     if (!asked) return [section('session', 'Sessions', old(live.filter(r => !r.routine)).slice(0, SHOWN))];
     return byRank(ranked(old(live.filter(r => !r.routine)))).filter(s => s.key === 'session' || s.key === 'sub');
   }
-  const views = viewsNamed(ix, words).map(viewItem);
+  const views = viewsNamed(ix, words, unrun).map(viewItem);
   const groups = orderedGroups(ix).filter(g => hasWords(g.name, words)).map(g => groupItem(ix, g));
   if (chip === 'projects') return [section('project', 'Projects', views)];
   if (chip === 'groups') return [section('group', 'Groups', groups)];

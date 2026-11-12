@@ -68,7 +68,7 @@ export const viewsOf = (ix, unrun = []) => [
 ];
 
 // The views whose name has every one of the lower case words. No words keep every view.
-export const viewsNamed = (ix, words) => viewsOf(ix).filter(v => words.every(w => v.name.toLowerCase().includes(w)));
+export const viewsNamed = (ix, words, unrun = []) => viewsOf(ix, unrun).filter(v => words.every(w => v.name.toLowerCase().includes(w)));
 
 // Whether a view other than the one in use has a chat that needs you.
 export const othersWaiting = (ix, view) => [HOME_VIEW, ...ix.projects.map(p => p.id)].some(v => v !== view && lampOf(ix, v) === 'waiting');
