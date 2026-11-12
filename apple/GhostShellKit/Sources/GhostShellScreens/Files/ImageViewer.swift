@@ -32,7 +32,7 @@ struct ImageViewerOverlay: View {
         #else
         ZStack {
             if let viewer = store.viewer {
-                ViewerContent(store: store, viewer: viewer).transition(.opacity)
+                ViewerContent(store: store, viewer: viewer).environment(\.colorScheme, .dark).transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.15), value: store.viewer != nil)

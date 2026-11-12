@@ -254,13 +254,14 @@ private struct NumberedText: View {
         if lines.isEmpty {
             Text("This file is empty.").font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            let gutter = CGFloat(String(lines.count).count) * glyph
+            let gutter = CGFloat(String(lines.count).count) * glyph + 4
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(lines.indices, id: \.self) { row in
                             HStack(alignment: .firstTextBaseline, spacing: 12) {
                                 Text(verbatim: String(row + 1)).font(.geistMono(13, relativeTo: .body))
+                                    .lineLimit(1).fixedSize()
                                     .foregroundStyle(highlight == row + 1 ? Color.ghost.foreground : Color.ghost.mutedForeground)
                                     .frame(width: gutter, alignment: .trailing).accessibilityHidden(true)
                                 Text(verbatim: lines[row].isEmpty ? " " : lines[row]).font(.geistMono(13, relativeTo: .body))

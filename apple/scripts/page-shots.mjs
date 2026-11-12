@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Screenshots the web page at phone width against the same stubs the iPhone run signs in to, so a screen shows the same data on both.
 // Headless Chromium only. It never opens a browser the owner uses, port 4310 or ~/.config/capcom.
-//   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402] [--scheme light|dark] [--set chat,files,groups,routines,organise,empty] [--only <screen prefix>]
+//   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402] [--scheme light|dark] [--set chat,groups,empty] [--only <screen prefix>]
 // Writes <out>/page/<width>/<scheme>/<screen>.png. Screen names follow the iPhone UI tests' shot names where one exists.
 import fs from 'node:fs';
 import http from 'node:http';
@@ -25,7 +25,7 @@ const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? ''
 const OUT = path.resolve(option('--out') || '/private/tmp/claude-501/parity-survey');
 const sizes = option('--size') ? [Number(option('--size'))] : Object.keys(SIZES).map(Number);
 const schemes = option('--scheme') ? [option('--scheme')] : ['light', 'dark'];
-const sets = (option('--set') || 'chat,files,groups,routines,organise,empty').split(',');
+const sets = (option('--set') || 'chat,groups,empty').split(',');
 const only = option('--only');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
