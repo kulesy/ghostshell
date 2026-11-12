@@ -205,16 +205,36 @@ func serverZoneWords(_ zone: TimeZone?) -> String {
     "in the GhostShell server's time zone" + (zone?.abbreviation().map { " (\($0))" } ?? "")
 }
 
+#if os(macOS)
 extension View {
-    /// A set of radio buttons side by side on the Mac, and a segmented control on a phone, where two short options fit on one line.
-    @ViewBuilder func radioGroup() -> some View {
-        #if os(macOS)
-        pickerStyle(.radioGroup).horizontalRadioGroupLayout()
-        #else
-        pickerStyle(.segmented).controlSize(.large).frame(minHeight: 44)
-        #endif
+    /// A set of radio buttons side by side.
+    func radioGroup() -> some View { pickerStyle(.radioGroup).horizontalRadioGroupLayout() }
+}
+#else
+/// The page's radio pair on a phone, a ring and a label per option side by side, each a 44pt target. UIKit's segmented control stays 31pt tall.
+struct PhoneRadios<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(label: String, value: Value)]
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ForEach(options, id: \.label) { option in
+                let chosen = selection == option.value
+                Button { selection = option.value } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: chosen ? "largecircle.fill.circle" : "circle").foregroundStyle(chosen ? Color.ghost.primary : Color.ghost.input)
+                        Text(option.label).font(.geist(16)).foregroundStyle(Color.ghost.foreground).lineLimit(1).minimumScaleFactor(0.85)
+                    }
+                    .frame(minHeight: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
     }
 }
+#endif
 
 /// A list row's text with its controls beside it, or under it when the pane is too narrow. A phone always puts them under, so no row wraps its buttons.
 struct RowLayout<Info: View, Controls: View>: View {

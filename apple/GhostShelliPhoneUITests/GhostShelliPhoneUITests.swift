@@ -857,10 +857,11 @@ final class GhostShelliPhoneUITests: XCTestCase {
         focusByEdge(folder, "Folder")
         endEditing(app)
         for (name, element) in [("Cancel", app.buttons["Cancel"]), ("Save", app.buttons["Save"])] { assertTouchable(element, name) }
-        let kind = reveal(app, app.segmentedControls.firstMatch)
+        let own = reveal(app, app.buttons["GhostShell's own text"].firstMatch)
         shot("routines-4-form-bottom")
-        XCTAssertTrue(kind.buttons["A prompt file"].exists, "The prompt kind is a segmented control on a phone")
-        assertTouchable(kind, "Prompt kind")
+        XCTAssertTrue(own.isSelected, "A new routine starts on GhostShell's own text")
+        assertTouchable(own, "Prompt kind: GhostShell's own text")
+        assertTouchable(app.buttons["A prompt file"].firstMatch, "Prompt kind: A prompt file")
         for name in ["Model", "Effort", "Permission mode"] { assertTouchable(reveal(app, app.buttons[name].firstMatch), name) }
         let prompt = app.textViews["Prompt"]
         XCTAssertGreaterThanOrEqual(reveal(app, prompt).frame.height, 255, "The prompt box is at least 256pt tall, as the page has it")

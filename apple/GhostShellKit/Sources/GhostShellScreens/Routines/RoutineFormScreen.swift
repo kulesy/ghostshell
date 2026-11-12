@@ -181,11 +181,15 @@ private struct RoutineFields: View {
         let was = baseline?.kind
         VStack(alignment: .leading, spacing: 12) {
             if files {
+                #if os(iOS)
+                PhoneRadios(selection: $draft.promptKind, options: [("GhostShell's own text", .text), ("A prompt file", .file)])
+                #else
                 Picker("Prompt", selection: $draft.promptKind) {
                     Text("GhostShell's own text").tag(PromptKind.text)
                     Text("A prompt file").tag(PromptKind.file)
                 }
                 .labelsHidden().radioGroup().tint(Color.ghost.primary)
+                #endif
             }
             if fileMode {
                 FormField(label: "Prompt file", message: problems["file"] ?? (loadedUnchanged ? loaded.error : nil)) {
