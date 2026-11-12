@@ -25,6 +25,8 @@ public struct GhostButtonStyle: ButtonStyle {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         configuration.label
             .font(.geist(14, weight: .medium))
+            // The label keeps its width, as the page's flex buttons do, so a row shares out the rest and no label wraps or truncates.
+            .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(kind == .primary ? Color.ghost.primaryForeground : Color.ghost.foreground)
             .padding(.horizontal, size == .icon ? 0 : size == .compact ? 12 : 16)
             .frame(width: size == .icon ? 32 : nil, height: size == .regular ? Self.touch : 32)

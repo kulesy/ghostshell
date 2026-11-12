@@ -31,7 +31,6 @@ enum ChatStyle {
     static let chipFont = onPhone(Font.system(size: 12, weight: .medium), mac: caption)
     static let optionDescription = onPhone(body, mac: small)
     static let fieldFont = Font.system(size: 16)
-    static let buttonFont = Font.system(size: 14, weight: .medium)
     /// A narrow space either side of inline code stands in for padding, which an attributed string can't give.
     static let codePad = "\u{202F}"
     static let summary = onPhone(body, mac: small)
@@ -66,9 +65,6 @@ enum ChatStyle {
     static let added = onPhone(Color.ghost.successForeground, mac: .green)
     static let removed = onPhone(Color.ghost.destructive, mac: .red)
     static let approvalEdge = onPhone(AnyShapeStyle(Color.ghost.warning), mac: AnyShapeStyle(HierarchicalShapeStyle.quaternary))
-    static let primaryFill = Color.ghost.primary
-    static let primaryInk = Color.ghost.primaryForeground
-    static func outlineFill(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color.ghost.input.opacity(0.3) : Color.ghost.background }
     static let fieldEdge = onPhone(AnyShapeStyle(Color.ghost.input), mac: AnyShapeStyle(HierarchicalShapeStyle.quaternary))
     static let warningText = onPhone(AnyShapeStyle(Color.ghost.warningForeground), mac: AnyShapeStyle(HierarchicalShapeStyle.primary))
     static let dock = onPhone(AnyShapeStyle(Color.ghost.background), mac: AnyShapeStyle(Material.bar))
@@ -142,9 +138,6 @@ enum ChatStyle {
     static let diffFill: Double = onPhone(0, mac: 0.14)
     static let fieldHeight: CGFloat = onPhone(36, mac: 0)
     static let chipPadding = onPhone(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8), mac: EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
-    static let buttonHeight: CGFloat = 36
-    /// The page's buttons are 36pt, and the touch area around each is the 44pt the phone's tests hold every control to.
-    static let touchHeight: CGFloat = 44
     static let optionPadding = onPhone(EdgeInsets(top: 11, leading: 13, bottom: 11, trailing: 13), mac: EdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10))
     static let optionRadio = !page
     static let questionFont = onPhone(Font.system(size: 14, weight: .semibold), mac: Font.system(size: 14, weight: .medium))

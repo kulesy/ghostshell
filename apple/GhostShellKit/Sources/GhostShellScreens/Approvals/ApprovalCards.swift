@@ -121,43 +121,10 @@ private struct AllInput: View {
     }
 }
 
-/// The page's buttons: the first fills with the primary colour and the others are outlined. Each is 36pt tall and shares the row by the width of its label.
-private struct DecisionButtonStyle: ButtonStyle {
-    let primary: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        Face(configuration: configuration, primary: primary)
-    }
-
-    private struct Face: View {
-        let configuration: ButtonStyleConfiguration
-        let primary: Bool
-        @Environment(\.isEnabled) private var enabled
-        @Environment(\.colorScheme) private var scheme
-
-        var body: some View {
-            let shape = RoundedRectangle(cornerRadius: ChatStyle.radiusButton)
-            configuration.label
-                .font(ChatStyle.buttonFont).lineLimit(1)
-                // The label keeps its own width, so the row shares out the rest and no label truncates.
-                .fixedSize(horizontal: true, vertical: false)
-                .foregroundStyle(primary ? AnyShapeStyle(ChatStyle.primaryInk) : ChatStyle.text)
-                .padding(.horizontal, 16)
-                .frame(minHeight: ChatStyle.buttonHeight)
-                .frame(maxWidth: .infinity)
-                .background(primary ? ChatStyle.primaryFill : ChatStyle.outlineFill(scheme), in: shape)
-                .overlay { if !primary { shape.strokeBorder(scheme == .dark ? ChatStyle.fieldEdge : ChatStyle.border) } }
-                .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.5)
-                .frame(minHeight: ChatStyle.touchHeight)
-                .contentShape(Rectangle())
-        }
-    }
-}
-
 private extension View {
     @ViewBuilder func decisionButton(primary: Bool = false) -> some View {
         if ChatStyle.page {
-            buttonStyle(DecisionButtonStyle(primary: primary))
+            buttonStyle(.ghost(primary ? .primary : .outline, fills: true))
         } else {
             buttonStyle(.bordered).controlSize(.regular)
         }
