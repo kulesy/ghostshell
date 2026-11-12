@@ -58,6 +58,8 @@ private struct AccountMenu: View {
             Image(systemName: "person.crop.circle").font(.system(size: 19)).foregroundStyle(Color.ghost.sidebarMuted).phoneIconTouch()
         }
         .menuStyle(.borderlessButton)
+        // A menu opening upward from the footer is reversed by default, which would put Sign out on top.
+        .menuOrder(.fixed)
         .accessibilityLabel("Account")
     }
 }
