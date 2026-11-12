@@ -48,6 +48,37 @@ To run the app by hand, start `npm run apple:server`, open `apple/GhostShell.xco
 
 The first launch of a new build asks the Keychain for access to its own item. The ad hoc signature changes with every build, so macOS asks again after each rebuild. A stable signature from a paid developer account ends that.
 
+## GitHub Actions
+
+The `Swift app` workflow (`.github/workflows/swift.yml`) runs the Swift builds, the tests and part of the screenshots on GitHub's Xcode 27 runners. The rest still runs on the Mac, as listed below. It runs on every push that touches `apple/`, `test/speakers.mjs`, `package.json` or the workflow, on a pull request from a fork, and by hand. A new push to a branch cancels the run still going on it. Its jobs run side by side:
+
+| Job | What it runs | Artifact |
+| --- | --- | --- |
+| `build-and-test` | `apple:test`, then the Release builds of the Mac, iPhone and watch apps, each searched for the Debug hooks | none |
+| `mac-shots` | `apple:shot -- --no-chat` for the `main`, `widgets`, `approvals` and `routines` flows | `mac-screenshots` |
+| `iphone-shots`, four jobs, one per device and appearance, only when started by hand with `-f iphone=true` | `apple:ios-shot` on iOS 27.2 | `iphone-screenshots-<device>-<appearance>`, plus `iphone-test-logs-<device>-<appearance>` when one fails |
+
+A run differs from one on the Mac in these ways:
+
+1. The runner has macOS 27.0.1, where SwiftUI crashes the app in the `chats`, `files`, `groups`, `terminal` and `composer` flows, and the `marks`, `accounts` and `organise` flows fail checks. The crashes are inside SwiftUI and do not happen on 27.2. A change those flows cover still needs `npm run apple:shot -- --flow <flow>` on the Mac, under the lock below, until the runner image reaches 27.2.
+2. The Mac shots skip the real Haiku chat, because a runner has no signed-in `claude`. A change to that path still needs `npm run apple:shot -- --flow main` on the Mac.
+3. The runner image has only the iOS 27 Simulators, and Xcode 27 can't download iOS 18.6, the runtime `iphone.mjs` uses on the Mac. On iOS 27.2, 11 of the iPhone UI tests fail: toolbar and sheet buttons are 34 to 36pt, under the 44pt touch target, file links in a chat don't open the panel, the approvals and group chat tests time out, and in edit mode the chosen row sits under the bottom bar. So the iPhone jobs run only when started by hand, and a Swift change runs `npm run apple:ios-shot` on the Mac under the lock until the app passes on iOS 27.
+
+A session finds the run for its newest commit, waits for it and fetches the screenshots like this:
+
+```
+run=$(gh run list --workflow swift.yml --commit "$(git rev-parse HEAD)" --json databaseId,event -q '[.[] | select(.event != "pull_request")][0].databaseId')
+gh run watch "$run" --exit-status
+gh run view "$run" --log-failed
+gh run download "$run" --name mac-screenshots --dir <folder>
+```
+
+The filter leaves out the run a same-repo pull request starts, whose jobs all skip. A push that touches none of those paths starts no run, so when the list comes back empty, start one with `gh workflow run swift.yml --ref <branch>` and look again. `gh workflow run swift.yml --ref <branch> -f iphone=true` also runs the iPhone jobs, whose screenshots come down with `gh run download "$run" --pattern 'iphone-screenshots-*' --dir <folder>`. The screenshots then go into the PR body the usual way.
+
+The workflow's token can only read, and no step reads a secret, so a run from a fork cannot write to the repo. Anyone can download the artifacts of a public repo, so the fixtures hold no real names, paths or addresses.
+
+A local run of `xcodebuild`, `apple:test`, `apple:shot` or `iphone.mjs` is only a quick check while working, because several sessions share the Mac. Take turns: make `/tmp/ghostshell-xcode.lock` with `mkdir`, put your session title in a file inside it, and remove it when the run ends, pass or fail. Boot one Simulator at a time and shut it down after the run.
+
 ## The iPhone app
 
 `GhostShelliPhone` is an iPhone-only target for iOS 18.0 and later (bundle id `com.kulesy.ghostshell.iphone`). It shows the same `RootView` as the Mac. The split view collapses to a stack, the navigator drives it and Back clears the navigator. Accounts, Passkeys, Manage routines, Manage scheduled sessions and Sign Out are in the More menu at the end of the sidebar's toolbar. The routine and scheduled screens and their forms are laid out for a phone: 44pt controls, Cancel and Save in the bar, a Delete at the foot of an edit form, and the folder of a new routine set from the server's home, never the phone's. "Select" in a session's menu starts edit mode, where a tap chooses a row and a bottom bar holds Done, the count and the Mac's selection menu for a bulk Move, Nest or Archive. A group heading's long press shows its menu, and the name sheet is a titled phone sheet. Sign-in takes the address and a password, with no passkey step. The Keychain, the client and the sign-in rules are the Mac's. It has no notifications, composer or entitlements yet.

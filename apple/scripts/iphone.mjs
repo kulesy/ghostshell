@@ -22,7 +22,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const apple = path.resolve(here, '..');
 const PROJECT = path.join(apple, 'GhostShell.xcodeproj');
 const DERIVED = path.join(apple, 'build', 'ios');
-const RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-18-6';
+// The Actions runner has only iOS 27 and can't download 18.6, so a run there names its own.
+const RUNTIME = process.env.GS_IOS_RUNTIME || 'com.apple.CoreSimulator.SimRuntime.iOS-18-6';
 const DEVICES = {
   se: { name: 'iPhone SE (3rd generation)', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation' },
   '16pro': { name: 'iPhone 16 Pro', type: 'com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro' },
@@ -78,7 +79,8 @@ function findOrCreate({ name: base, type }) {
 function boot(udid) {
   const state = JSON.parse(simctl('list', 'devices', '-j').stdout).devices[RUNTIME].find(d => d.udid === udid)?.state;
   if (state !== 'Booted') simctl('boot', udid);
-  const r = spawnSync('xcrun', ['simctl', 'bootstatus', udid, '-b'], { encoding: 'utf8', timeout: 240_000 });
+  // A runner's first boot of a fresh device can take over four minutes.
+  const r = spawnSync('xcrun', ['simctl', 'bootstatus', udid, '-b'], { encoding: 'utf8', timeout: 600_000 });
   if (r.status !== 0) throw new Error(`The simulator ${udid} did not boot.`);
   // The keyboard's sliding-to-type card would cover the first screen after each fresh simulator.
   simctl('spawn', udid, 'defaults', 'write', 'com.apple.keyboard.preferences', 'DidShowContinuousPathIntroduction', '-bool', 'true');
