@@ -69,7 +69,7 @@ async function openPage(t, c, hash = '', { phone = false, before = '' } = {}) {
     await page.evaluate(`[...document.querySelectorAll('.offer .btn')].find(b => b.textContent === 'Not now')?.click()`);
   }
   if (hash) {
-    if (before) await page.evaluate('location.reload()');
+    if (before) await page.reload();
     await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
   }
   return page;

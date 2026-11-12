@@ -130,10 +130,16 @@ test('256 KB of alternating colours on one line, fed in 4 KB chunks, is drawn in
   assert.equal(lines[0].reduce((n, p) => n + p.text.length, 0), text.replace(/\x1b\[\d+m/g, '').length);
 });
 
+// The fastest of three draws, so a runner busy with other files does not fail a limit that only a slow algorithm should break.
 function drawnIn(chunks) {
-  const started = performance.now();
-  const { lines } = renderAnsi(chunks);
-  return { took: performance.now() - started, text: lines.map(l => l.map(p => p.text).join('')).join('\n') };
+  let took = Infinity;
+  let lines;
+  for (let run = 0; run < 3; run++) {
+    const started = performance.now();
+    ({ lines } = renderAnsi(chunks));
+    took = Math.min(took, performance.now() - started);
+  }
+  return { took, text: lines.map(l => l.map(p => p.text).join('')).join('\n') };
 }
 
 test('writing over a 400K line 200K times with \\r is drawn in well under half a second, with the rest of the line kept', () => {

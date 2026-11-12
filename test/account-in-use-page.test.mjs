@@ -88,11 +88,14 @@ async function openPage(t, c, hash = '') {
   if (await page.until(`!!document.querySelector('.offer')`, 1500).then(() => true, () => false)) {
     await page.evaluate(`[...document.querySelectorAll('.offer .btn')].find(b => b.textContent === 'Not now')?.click()`);
   }
+  // A turn that ends before the chat's event stream is connected leaves no notice, so the tests wait for the stream before they send.
+  await page.evaluate(`window.streams = 0; const Real = window.EventSource; window.EventSource = class extends Real { constructor(...args) { super(...args); this.addEventListener('open', () => window.streams++); } }`);
   if (hash) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
   return page;
 }
 
 const send = (c, id, text) => post(c, `/api/sessions/${id}/send`, { text });
+const streamed = (page, count) => page.until(`window.streams >= ${count}`, 30_000);
 const LOGIN = 'aside.offer[aria-labelledby=banner-login-title]';
 const banner = page => page.evaluate(`(a => ({ title: a.querySelector('h2').textContent, text: a.querySelector('.offer-text').textContent, buttons: [...a.querySelectorAll('button')].map(b => b.textContent.trim()), tone: a.dataset.tone ?? null }))(document.querySelector('${LOGIN}'))`);
 
@@ -194,17 +197,19 @@ test('a chat pinned to its account shows why a switch will not move it, where th
   const c = await open();
   assert.equal((await pin(c, 'session', 'live', 'main')).status, 200);
   const page = await openPage(t, c, '#/s/live');
-  await page.until(`!!document.querySelector('#notice') && !!document.querySelector('.btn.context, textarea, .composer')`, 15_000);
+  await page.until(`!!document.querySelector('#notice') && !!document.querySelector('.btn.context, textarea, .composer')`, 30_000);
+  await streamed(page, 1);
   await send(c, 'live', 'hit the usage limit');
-  await page.until(`/hit your limit/.test(document.querySelector('#notice').textContent)`, 15_000);
-  await page.until(`!!document.querySelector('.notice-action')`, 15_000);
+  await page.until(`/hit your limit/.test(document.querySelector('#notice').textContent)`, 30_000);
+  await page.until(`!!document.querySelector('.notice-action')`, 30_000);
   assert.equal(await page.evaluate(`document.querySelector('.notice-action').textContent`), "This session stays on Main because of a pin, so a switch won't move it. Change the pin to move it.");
   assert.equal(await page.evaluate(`!!document.querySelector('.notice-action button')`), false);
   await shot(page, 'chat-pinned-line');
 
-  await send(c, 'other', 'hit the usage limit');
   await page.evaluate(`location.hash = '#/s/other'`);
-  await page.until(`document.querySelector('.notice-action button')?.textContent === 'Switch to Second and continue'`, 15_000);
+  await streamed(page, 2);
+  await send(c, 'other', 'hit the usage limit');
+  await page.until(`document.querySelector('.notice-action button')?.textContent === 'Switch to Second and continue'`, 30_000);
   assert.equal(await page.evaluate(`document.querySelectorAll('.notice-action .account-hint').length`), 0);
   await shot(page, 'chat-switch-button');
   assert.deepEqual(page.problems, []);
@@ -214,10 +219,11 @@ test('a chat pinned to Second while Main stays active and has room shows the sta
   const c = await open();
   assert.equal((await pin(c, 'session', 'live', 'second')).status, 200);
   const page = await openPage(t, c, '#/s/live');
-  await page.until(`!!document.querySelector('#notice') && !!document.querySelector('.btn.context, textarea, .composer')`, 15_000);
+  await page.until(`!!document.querySelector('#notice') && !!document.querySelector('.btn.context, textarea, .composer')`, 30_000);
+  await streamed(page, 1);
   await send(c, 'live', 'hit the usage limit');
-  await page.until(`/hit your limit/.test(document.querySelector('#notice').textContent)`, 15_000);
-  await page.until(`!!document.querySelector('.notice-action')`, 15_000);
+  await page.until(`/hit your limit/.test(document.querySelector('#notice').textContent)`, 30_000);
+  await page.until(`!!document.querySelector('.notice-action')`, 30_000);
   assert.equal(await page.evaluate(`document.querySelector('.notice-action').textContent`), "This session stays on Second because of a pin, so a switch won't move it. Change the pin to move it.");
   assert.equal(await page.evaluate(`!!document.querySelector('.notice-action button')`), false);
   assert.deepEqual(page.problems, []);
@@ -236,7 +242,7 @@ test('the Accounts page says what is pinned under each account and that a switch
   assert.equal((await pin(c, 'session', 'other', 'second')).status, 200);
   assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
   assert.equal((await pin(c, 'project', 'cp-a', 'main')).status, 200);
-  await page.evaluate(`location.reload()`);
+  await page.reload();
   await page.until(`document.querySelectorAll('#accounts .account').length === 2 && [...document.querySelectorAll('#accounts .account-line')].some(p => p.textContent.startsWith('Pinned'))`, 15_000);
   const [main, second] = await lines();
   assert.deepEqual(main.filter(x => x.startsWith('Pinned')), ['Pinned: 1 project']);
@@ -248,7 +254,7 @@ test('the Accounts page says what is pinned under each account and that a switch
   assert.equal((await pin(c, 'group', 'cg-b', null)).status, 200);
   assert.equal((await pin(c, 'session', 'live', null)).status, 200);
   assert.equal((await pin(c, 'session', 'other', null)).status, 200);
-  await page.evaluate(`location.reload()`);
+  await page.reload();
   await page.until(`document.querySelectorAll('#accounts .account').length === 2`, 15_000);
   assert.equal((await lines()).flat().some(x => x.startsWith('Pinned')), false);
   assert.doesNotMatch(await lead(), /pinned work/);

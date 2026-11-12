@@ -77,7 +77,7 @@ The filter leaves out the run a same-repo pull request starts, whose jobs all sk
 
 The workflow's token can only read, and no step reads a secret, so a run from a fork cannot write to the repo. Anyone can download the artifacts of a public repo, so the fixtures hold no real names, paths or addresses.
 
-A local run of `xcodebuild`, `apple:test`, `apple:shot` or `iphone.mjs` is only a quick check while working, because several sessions share the Mac. Take turns: make `/tmp/ghostshell-xcode.lock` with `mkdir`, put your session title in a file inside it, and remove it when the run ends, pass or fail. Boot one Simulator at a time and shut it down after the run.
+A local run of `xcodebuild`, `apple:test`, `apple:shot` or `iphone.mjs` is only a quick check while working, because several sessions share the Mac. Take turns: make `/tmp/ghostshell-xcode.lock` with `mkdir`, put your session title in a file inside it, and remove it when the run ends, pass or fail. Boot one Simulator at a time and shut it down after the run. `iphone.mjs` takes `/tmp/ghostshell-simulator.lock` itself from before its first boot until after its shutdown, and a full `npm test` takes `/tmp/ghostshell-node-test.lock` itself, so a second run of either waits and says who holds it.
 
 ## The iPhone app
 

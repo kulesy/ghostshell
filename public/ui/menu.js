@@ -425,7 +425,7 @@ function Panel({ root, box, items: listed, path, open, label, labelledBy, trigge
       ${finding
         ? html`<div class="menu-search">${draw(icons.search)}<input class="menu-search-input" ref=${search} type="text" role="combobox" value=${query} placeholder=${findLabel} aria-label=${findLabel}
               aria-expanded="true" aria-autocomplete="list" aria-controls=${listIdOf(id)} aria-activedescendant=${flat[marked] ? `${id}-item-${marked}` : null}
-              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck=${false} enterkeyhint="go" onInput=${onSearch} onFocus=${() => { root.searched = id; }} /></div>
+              autocomplete="off" autocorrect=${false} autocapitalize="off" spellcheck=${false} enterkeyhint="go" onInput=${onSearch} onFocus=${() => { root.searched = id; }} /></div>
           <div class="menu-list" id=${listIdOf(id)} ...${semantics}>${body}</div>
           <div class="menu-empty" role="status">${found ? 'Nothing matches.' : null}</div>`
         : body}

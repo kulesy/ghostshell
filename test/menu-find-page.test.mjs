@@ -541,6 +541,8 @@ test('the pointer moving off a lit result onto the box leaves it lit, and Enter 
 
 test('a sub-menu opened again while it fades out has an empty box and no lit result, in the element that was fading', { skip, timeout }, async t => {
   const page = await findPage(t);
+  // The fade only plays with no reduced-motion preference, and a runner may have one set.
+  await page.call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await openMoveTo(page);
   await type(page, 'web');
   await shows(page, ['Checkout', 'Release notes', 'Website ideas']);

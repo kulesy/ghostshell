@@ -10,7 +10,7 @@
     "build-app": "node bin/build-app.mjs",
     "install-agent": "node bin/install-agent.mjs",
     "restart": "node bin/restart.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node bin/test.mjs",
     "apple:build": "node apple/scripts/build.mjs",
     "apple:test": "node apple/scripts/test.mjs",
     "apple:shot": "node apple/scripts/shots.mjs",

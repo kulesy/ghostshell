@@ -65,7 +65,7 @@ async function appPage(t, { phone = false } = {}) {
   }
   // Which panel was open and which drafts were kept is remembered by the browser, and the earlier test's would cover the chat or fill the box.
   if (await page.evaluate(`localStorage.getItem('capcom.panels') !== null || !['{}', null].includes(localStorage.getItem('capcom.fileDrafts'))`)) {
-    await page.evaluate(`window.stale = true; localStorage.removeItem('capcom.panels'); localStorage.removeItem('capcom.fileDrafts'); location.reload()`);
+    await page.reload(`localStorage.removeItem('capcom.panels'); localStorage.removeItem('capcom.fileDrafts')`);
     await page.until(`!window.stale && document.readyState === 'complete' && ${LIST}`, 10_000);
   }
   // A reload keeps the hash, and setting the same hash again opens nothing.

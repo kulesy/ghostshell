@@ -92,6 +92,7 @@ const rightClick = (page, selector) => page.evaluate(`(el => { const r = el.getB
 const itemsOf = (page, menu) => page.evaluate(`[...document.querySelectorAll('${menu} [role^=menuitem]')].map(el => el.querySelector('.menu-text').textContent + (el.getAttribute('aria-checked') === 'true' ? ' (checked)' : '') + (el.hasAttribute('data-disabled') ? ' (disabled)' : ''))`);
 const labels = (page, menu = MENU) => page.evaluate(`[...document.querySelectorAll('${menu} [role^=menuitem] .menu-text')].map(el => el.textContent)`);
 const choose = async (page, menu, label) => {
+  await page.until(`[...document.querySelectorAll('${menu} [role^=menuitem] .menu-text')].some(el => el.textContent === ${JSON.stringify(label)})`, 15_000);
   await page.evaluate(`[...document.querySelectorAll('${menu} [role^=menuitem]')].find(el => el.querySelector('.menu-text').textContent === ${JSON.stringify(label)}).setAttribute('data-picked', '')`);
   await page.click(`${menu} [data-picked]`);
 };
@@ -168,7 +169,7 @@ test('with two accounts the model menu, the row menu, the group menu and the pro
 
   await page.until(`!document.querySelector('.menu')`);
   await page.evaluate(`localStorage.setItem('capcom.projectsDocked', 'true')`);
-  await page.evaluate(`location.reload()`);
+  await page.reload();
   await page.until(`!!document.querySelector('button[aria-label="Actions for Proj"]')`, 15_000);
   await page.click('button[aria-label="Actions for Proj"]');
   await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
@@ -463,7 +464,7 @@ test('the group and project menus pick an overflow, and a single account shows n
   await until(async () => (await index(c)).groups.find(g => g.id === 'cg-b').overflow === 'main');
   await page.until(`!document.querySelector('.menu')`);
   await page.evaluate(`localStorage.setItem('capcom.projectsDocked', 'true')`);
-  await page.evaluate(`location.reload()`);
+  await page.reload();
   await page.until(`!!document.querySelector('button[aria-label="Actions for Proj"]')`, 15_000);
   await accountSub(page, async () => {
     await page.until(`!document.querySelector('.menu')`);
@@ -488,8 +489,9 @@ test('a chat that spilled says so, adds the Chrome limit only when the survey pr
   assert.equal(await page.evaluate(`!!document.querySelector('.account-hint')`), false, 'nothing spilled, nothing said');
   assert.equal((await post(c, '/api/sessions/live/send', { text: 'hit the usage limit' })).status, 200);
   await until(async () => (await rowOf(c, 'live')).accountSpill === 'main');
-  await page.until(`!!document.querySelector('.account-hint')`, 15_000);
-  assert.equal(await page.evaluate(`document.querySelector('.account-hint').textContent`), "Main is out of usage, so this session runs on Second until Main resets. Chrome is on Main, so it can't reach Chrome.");
+  const hint = "Main is out of usage, so this session runs on Second until Main resets. Chrome is on Main, so it can't reach Chrome.";
+  await page.until(`document.querySelector('.account-hint')?.textContent === ${JSON.stringify(hint)}`, 15_000);
+  assert.equal(await page.evaluate(`document.querySelector('.account-hint').textContent`), hint);
   await shot(page, 'spill-line-chrome');
   assert.deepEqual(page.problems, []);
 });

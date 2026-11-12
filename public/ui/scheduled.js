@@ -249,7 +249,7 @@ function ScheduledForm({ id, ix, scheduled, error, refresh }) {
       <input class="input scheduled-at" id=${FIELD_IDS.at} type="datetime-local" value=${form.at} onInput=${set('at')} ...${aria(FIELD_IDS.at, true, refused('at'))} />
     <//>
     <${Field} id=${FIELD_IDS.cwd} label="Folder" hint="The full path of the folder the session starts in." error=${refused('cwd')}>
-      <input class="input routine-mono" id=${FIELD_IDS.cwd} type="text" value=${form.cwd} autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck=${false} onInput=${set('cwd')}
+      <input class="input routine-mono" id=${FIELD_IDS.cwd} type="text" value=${form.cwd} autocomplete="off" autocapitalize="off" autocorrect=${false} spellcheck=${false} onInput=${set('cwd')}
         ...${aria(FIELD_IDS.cwd, true, refused('cwd'))} />
     <//>
     <div class="routine-trio">

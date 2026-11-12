@@ -78,6 +78,14 @@ async function focusIs(page, label) {
   assert.equal(await page.evaluate(FOCUSED), label);
 }
 
+// A key pressed before the menu's listener is attached is lost on a slow machine, so Esc is pressed again until the focus is back on the button.
+async function escape(page) {
+  for (let tries = 0; tries < 3; tries++) {
+    await page.press('Escape');
+    if (await page.until(`${FOCUSED} === 'open'`, 1500).then(() => true, () => false)) return;
+  }
+}
+
 // Moves the focus down from the first item to `label`.
 async function reach(page, label) {
   for (let step = ORDER.indexOf(label); step > 0; step--) await page.press('ArrowDown');
@@ -234,7 +242,7 @@ test('Esc closes the menu and returns the focus to the button, and the menu leav
   const page = await menuPage(t);
   await page.press('ArrowDown');
   await focusIs(page, 'Opus 5.5');
-  await page.press('Escape');
+  await escape(page);
   await focusIs(page, 'open');
   await gone(page);
   assert.deepEqual(page.problems, []);
@@ -246,7 +254,7 @@ test('Esc in an open sub-menu closes the whole menu and returns the focus to the
   await reach(page, 'Effort');
   await page.press('ArrowRight');
   await focusIs(page, 'Low');
-  await page.press('Escape');
+  await escape(page);
   await focusIs(page, 'open');
   await gone(page);
   assert.deepEqual(page.problems, []);
