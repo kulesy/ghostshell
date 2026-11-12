@@ -6,21 +6,25 @@ import SwiftUI
 struct PhoneFooter: View {
     @Environment(AppModel.self) private var model
     @Environment(SidebarState.self) private var state
+    @Environment(OrganiseModel.self) private var organise
 
     var body: some View {
         VStack(spacing: 0) {
             if model.connection == .unreachable { UnreachableLine() }
             if state.editing { PhoneSelectBar() }
-            Rectangle().fill(Color.ghost.sidebarBorder).frame(height: 1)
-            HStack(spacing: 0) {
-                footLink("Routines") { model.navigator.show { RoutinesScreen() } }
-                if model.routines.features.scheduled {
-                    footLink("Scheduled") { model.navigator.show { ScheduledScreen() } }
+            // The footer rides up on the keyboard, so it steps aside while a row is being named or it covers that row.
+            if organise.naming?.inline != true {
+                Rectangle().fill(Color.ghost.sidebarBorder).frame(height: 1)
+                HStack(spacing: 0) {
+                    footLink("Routines") { model.navigator.show { RoutinesScreen() } }
+                    if model.routines.features.scheduled {
+                        footLink("Scheduled") { model.navigator.show { ScheduledScreen() } }
+                    }
+                    Spacer(minLength: 0)
+                    AccountMenu()
                 }
-                Spacer(minLength: 0)
-                AccountMenu()
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
         }
         .background(Color.ghost.sidebar)
     }
