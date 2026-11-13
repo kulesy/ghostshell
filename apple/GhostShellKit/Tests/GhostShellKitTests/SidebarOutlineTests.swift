@@ -219,6 +219,63 @@ final class SidebarOutlineTests: XCTestCase {
         XCTAssertNil(SidebarOutline.othersLamp(shown: "p2", in: try index(#"{"projects": [{"id": "p2", "name": "B"}]}"#)))
     }
 
+    // Deploy has two runs and is in project p1, Backup has a run on Home, Gone is homed in a project the list no longer has, and Idle1 and Idle2 never ran.
+    private let homed = """
+    {"projects": [{"id": "p1", "name": "A"}, {"id": "p2", "name": "B"}],
+     "features": {"routineProjects": true},
+     "routineProjects": {"deploy": "p1", "gone": "deleted", "idle1": "p1", "idle2": "p2"},
+     "pinned": [{"id": "pin", "title": "Pinned one"}],
+     "groups": [{"id": "g1", "name": "G", "project": "p1", "sessions": [{"id": "a", "children": [{"id": "b"}]}]}],
+     "routines": [
+       {"name": "deploy", "title": "Deploy", "latest": {"id": "d2", "title": "x", "routine": "deploy", "state": "waiting", "children": [{"id": "dk", "parent": "d2"}]}, "earlier": [{"id": "d1", "routine": "deploy"}]},
+       {"name": "backup", "title": "Backup", "latest": {"id": "b1", "title": "y", "routine": "backup"}, "earlier": []},
+       {"name": "gone", "title": "Gone", "latest": {"id": "g9", "title": "z", "routine": "gone"}, "earlier": []}]}
+    """
+    private let idle = [IdleRoutine(id: "idle1", title: "One"), IdleRoutine(id: "idle2", title: "Two"), IdleRoutine(id: "idle3", title: "Three")]
+
+    func testARoutineAndItsRunsShowInItsProjectAndHomeKeepsTheRest() throws {
+        let ix = try index(homed)
+        let project = SidebarOutline.sections(ix, view: "p1", idleRoutines: idle)
+        XCTAssertEqual(project.map(\.id), ["routines", "pinned", "g1"], "Routines sits first, above Pinned, as on Home")
+        let bucket = try XCTUnwrap(project.first?.buckets.first)
+        XCTAssertEqual(bucket.routines.map(\.id), ["deploy"])
+        XCTAssertEqual(bucket.idle.map(\.id), ["idle1"])
+        XCTAssertEqual(project.first?.count, 2)
+        let home = SidebarOutline.sections(ix, view: nil, idleRoutines: idle)
+        XCTAssertEqual(home.first?.buckets.flatMap(\.routines).map(\.id).sorted(), ["backup", "gone"], "a project the list lost reads as Home")
+        XCTAssertEqual(home.first?.buckets.flatMap(\.idle).map(\.id), ["idle3"])
+        XCTAssertNil(SidebarOutline.sections(ix, view: "p2").first { $0.kind == .routines }, "a project with no routine shows no Routines section")
+        XCTAssertEqual(SidebarOutline.sections(ix, view: "p2", idleRoutines: idle).first?.buckets.first?.idle.map(\.id), ["idle2"])
+    }
+
+    func testAServerWithoutRoutineProjectsKeepsEveryRoutineOnHome() throws {
+        let ix = try index(#"{"projects": [{"id": "p1", "name": "A"}], "routines": [{"name": "deploy", "latest": {"id": "d1", "routine": "deploy"}, "earlier": []}]}"#)
+        XCTAssertTrue(ix.routineProjects.isEmpty)
+        XCTAssertFalse(supportsRoutineProjects(ix))
+        XCTAssertTrue(supportsRoutineProjects(try index(homed)))
+        XCTAssertEqual(SidebarOutline.sections(ix, view: nil).map(\.id), ["routines"])
+        XCTAssertTrue(SidebarOutline.sections(ix, view: "p1").isEmpty)
+        XCTAssertEqual(SidebarOutline.count(of: "p1", in: ix), 0)
+    }
+
+    func testAProjectCountsEachRoutineOnceAndItsIdleOnesToo() throws {
+        let ix = try index(homed)
+        XCTAssertEqual(SidebarOutline.count(of: "p1", in: ix), 3, "two group sessions and one routine with two runs")
+        XCTAssertEqual(SidebarOutline.count(of: "p1", in: ix, idleRoutines: idle), 4)
+        XCTAssertEqual(SidebarOutline.count(of: "p2", in: ix, idleRoutines: idle), 1)
+        XCTAssertEqual(SidebarOutline.count(of: "p2", in: ix), 0)
+    }
+
+    func testARoutineRunIsHeldAndLitInItsRoutinesView() throws {
+        let ix = try index(homed)
+        XCTAssertEqual(SidebarOutline.holder(of: "d1", in: ix), .view("p1"))
+        XCTAssertEqual(SidebarOutline.holder(of: "dk", in: ix), .view("p1"), "a nested session follows its parent's routine")
+        XCTAssertEqual(SidebarOutline.holder(of: "b1", in: ix), .view(nil))
+        XCTAssertEqual(SidebarOutline.holder(of: "g9", in: ix), .view(nil))
+        XCTAssertEqual(SidebarOutline.lamp(of: "p1", in: ix), .waiting)
+        XCTAssertNil(SidebarOutline.lamp(of: nil, in: ix), "the waiting run is in the project, not Home")
+    }
+
     func testTurnStartIsInWholeSecondsSoTwoPollsOfOneTurnAreEqual() {
         let now = Date(timeIntervalSince1970: 1_000_000.2)
         XCTAssertEqual(SessionRow.turnStart(ms: 5000, now: now), SessionRow.turnStart(ms: 5000.4, now: now.addingTimeInterval(0.1)))

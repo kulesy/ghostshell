@@ -230,8 +230,11 @@ public enum OrganiseRules {
     }
 
     public static func deleteDetail(_ project: SessionProject, in index: SessionIndex) -> String {
-        let n = index.groups.filter { $0.project == project.id }.count
-        return n == 0 ? "It has no groups." : "Its \(n == 1 ? "group moves" : "\(n) groups move") to Home. No group or session is deleted."
+        let groups = index.groups.filter { $0.project == project.id }.count
+        let routines = index.routineProjects.values.filter { $0 == project.id }.count
+        let moving = [groups > 0 ? (groups == 1 ? "group" : "\(groups) groups") : nil, routines > 0 ? (routines == 1 ? "routine" : "\(routines) routines") : nil].compactMap { $0 }
+        if moving.isEmpty { return "It has no groups." }
+        return "Its \(moving.joined(separator: " and ")) \(groups + routines == 1 ? "moves" : "move") to Home. No group, routine or session is deleted."
     }
 
     // MARK: Words

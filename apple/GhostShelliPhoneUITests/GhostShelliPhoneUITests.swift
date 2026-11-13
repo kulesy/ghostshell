@@ -1015,6 +1015,28 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual(deleted.count, 1)
     }
 
+    func testARoutineShowsInItsProjectAboveWhatIsPinned() {
+        let app = routinesApp()
+        XCTAssertTrue(row(app, "Routines").exists, "Home has its Routines section")
+        XCTAssertFalse(app.staticTexts["Site deploy"].exists, "the routine in the Website project is not on Home")
+        shot("routine-projects-1-home")
+
+        app.buttons["Projects"].tap()
+        let website = app.buttons["Website (2)"]
+        XCTAssertTrue(website.waitForExistence(timeout: 5), "The Website project counts its group session and its routine once\n\(app.debugDescription)")
+        website.tap()
+        XCTAssertTrue(app.staticTexts["Site deploy"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.staticTexts["Nightly check"].exists, "Home's routine is not in the project")
+        // The footer also has a Routines link, so the heading is the highest element with that name.
+        let top = { (label: String) in app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex.map(\.frame.minY).min() ?? .infinity }
+        XCTAssertLessThan(top("Routines"), top("Pinned"), "Routines sits above Pinned in a project, as on Home")
+        shot("routine-projects-2-project")
+
+        app.buttons["Projects"].tap()
+        app.buttons["Home"].tap()
+        XCTAssertTrue(app.staticTexts["Nightly check"].waitForExistence(timeout: 10), app.debugDescription)
+    }
+
     func testRoutinesAndScheduledEmptyStates() throws {
         let app = launch(stub: "routinesEmpty")
         signIn(app, stub: "routinesEmpty", expecting: "Look at the failing build")

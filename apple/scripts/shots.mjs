@@ -1405,6 +1405,18 @@ async function routinesFlow(bundle, appearance) {
     check(await until('scheduled', () => hasRow('Draft the release notes:') && hasRow('Rotate the keys:') && !hasRow('Archive the old logs:')), 'Scheduled lists the pending and skipped sessions and not the started one');
     await app.both('sidebar-routines');
 
+    // A routine in a project shows in that project's view, above Pinned. The runner can't drive the View menu, so the view is set in the defaults and the app relaunched.
+    await app.quit();
+    spawnSync('defaults', ['write', app.suite, 'sidebar.project', 'web'], { stdio: 'ignore', timeout: 10_000 });
+    await app.launch();
+    check(await until('project routines', () => app.headings() === 3 && !hasRow('Weekly report:')), 'the Website view lists Routines, Pinned and Launch');
+    check(!hasRow('Old backup:') && !hasRow('Weekly report:'), 'the Website view leaves out the routines that have no project');
+    await app.both('project-routines');
+    await app.quit();
+    spawnSync('defaults', ['delete', app.suite, 'sidebar.project'], { stdio: 'ignore', timeout: 10_000 });
+    await app.launch();
+    check(await until('home again', () => hasRow('Weekly report:') && hasRow('Old backup:')), 'Home lists its routines again');
+
     check(app.pick('View', 'Manage routines'), 'Manage routines is in the view menu');
     check(await until('routines', () => sees('Weekdays at 07:30') && sees('Off')), 'the Routines page lists the routines');
     await app.both('routines-list');

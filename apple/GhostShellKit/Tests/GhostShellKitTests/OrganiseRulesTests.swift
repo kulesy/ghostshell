@@ -103,8 +103,13 @@ final class OrganiseRulesTests: XCTestCase {
         XCTAssertEqual(OrganiseRules.deleteDetail(SessionGroup(id: "e", name: "E")), "It has no sessions.")
         let chat = SessionGroup(id: "c", name: "C", session: row("chat", state: .working))
         XCTAssertEqual(OrganiseRules.deleteDetail(chat), "It has no sessions. Its chat is working, so it stops, and is hidden with its transcript kept. No session is deleted.")
-        XCTAssertEqual(OrganiseRules.deleteDetail(index.projects[0], in: index), "Its group moves to Home. No group or session is deleted.")
+        XCTAssertEqual(OrganiseRules.deleteDetail(index.projects[0], in: index), "Its group moves to Home. No group, routine or session is deleted.")
         XCTAssertEqual(OrganiseRules.deleteDetail(SessionProject(id: "x", name: "X"), in: index), "It has no groups.")
+        var routined = index
+        routined.routineProjects = ["a": "x"]
+        XCTAssertEqual(OrganiseRules.deleteDetail(SessionProject(id: "x", name: "X"), in: routined), "Its routine moves to Home. No group, routine or session is deleted.")
+        routined.routineProjects = ["a": "p1", "b": "p1"]
+        XCTAssertEqual(OrganiseRules.deleteDetail(index.projects[0], in: routined), "Its group and 2 routines move to Home. No group, routine or session is deleted.")
     }
 
     func testTheWordsBeforeAnArchive() {

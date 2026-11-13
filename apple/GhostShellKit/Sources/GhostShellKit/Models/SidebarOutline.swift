@@ -108,7 +108,7 @@ public enum SidebarOutline {
     }
 
     /// What the view lists, in order. Home has Routines, Pinned, its groups, Started here, Ungrouped and Terminal and other.
-    /// A project has Pinned and its groups. Only groups show when empty.
+    /// A project has Routines, Pinned and its groups. Only groups show when empty.
     /// `idleRoutines` are routines with no runs, which sit in Routines beside the ones that have run.
     public static func sections(_ index: SessionIndex, view chosen: String?, idleRoutines: [IdleRoutine] = []) -> [OutlineSection] {
         let shown = view(chosen, in: index)
@@ -121,8 +121,9 @@ public enum SidebarOutline {
             return rows.isEmpty ? [] : [OutlineSection(id: id, title: title, kind: kind, rows: rows, count: withKids(rows).count)]
         }
         let pinned = loose("pinned", "Pinned", .pinned, index.pinned)
-        guard shown == nil else { return pinned + groups }
-        return routines(index, idle: idleRoutines) + pinned + groups + loose("started", "Started here", .started, index.started)
+        let routines = routines(index, view: shown, idle: idleRoutines)
+        guard shown == nil else { return routines + pinned + groups }
+        return routines + pinned + groups + loose("started", "Started here", .started, index.started)
             + loose("ungrouped", "Ungrouped", .ungrouped, index.ungrouped) + loose("other", "Terminal and other", .other, index.other)
     }
 
@@ -132,15 +133,27 @@ public enum SidebarOutline {
         return !index.groups.contains { view($0.project, in: index) == shown }
     }
 
-    private static func routines(_ index: SessionIndex, idle: [IdleRoutine]) -> [OutlineSection] {
-        let all = index.routines.compactMap { run -> (title: String, routine: OutlineRoutine, heading: String?)? in
+    /// The view a routine and its runs show in: its project while the index still has it, else Home (nil), as the page's routineView has it.
+    public static func routineView(_ id: String, in index: SessionIndex) -> String? { view(index.routineProjects[id], in: index) }
+
+    // The routines that have run and sit in this view, as the page's routinesIn has them.
+    private static func ranIn(_ shown: String?, _ index: SessionIndex) -> [RoutineRuns] {
+        index.routines.filter { $0.latest != nil && routineView($0.name, in: index) == shown }
+    }
+
+    // A run that is pinned or in a group still counts, as the page's unrunRoutines has it.
+    private static func idleIn(_ shown: String?, _ idle: [IdleRoutine], _ index: SessionIndex) -> [IdleRoutine] {
+        let ran = Set(index.routines.filter { $0.latest != nil }.map(\.name)).union(index.rows.compactMap(\.routine))
+        return idle.filter { !ran.contains($0.id) && routineView($0.id, in: index) == shown }
+    }
+
+    private static func routines(_ index: SessionIndex, view shown: String?, idle: [IdleRoutine]) -> [OutlineSection] {
+        let all = ranIn(shown, index).compactMap { run -> (title: String, routine: OutlineRoutine, heading: String?)? in
             guard var latest = run.latest else { return nil }
             latest.title = run.title ?? latest.title
             return (latest.title, OutlineRoutine(id: run.name, latest: latest, earlier: run.earlier), clean(run.heading))
         }
-        // A run that is pinned or in a group still counts, as the page's unrunRoutines has it.
-        let ran = Set(all.map(\.routine.id)).union(index.rows.compactMap(\.routine))
-        let idle = idle.filter { !ran.contains($0.id) }.sorted { a, b in
+        let idle = idleIn(shown, idle, index).sorted { a, b in
             let order = headingOrder(a.title, b.title)
             return order == .orderedSame ? a.id < b.id : order == .orderedAscending
         }
@@ -162,18 +175,19 @@ public enum SidebarOutline {
 
     private static func withKids(_ rows: [SessionRow]) -> [SessionRow] { rows.flatMap { [$0] + $0.children } }
 
-    /// Which view holds a session. Routine runs and the loose lists are Home's.
+    /// Which view holds a session. A routine run is in its routine's view, and the loose lists are Home's.
     public static func holder(of id: String, in index: SessionIndex) -> ViewHolder {
         func has(_ rows: [SessionRow]) -> Bool { withKids(rows).contains { $0.id == id } }
         if has(index.pinned) { return .everyView }
         if let group = index.groups.first(where: { has($0.sessions) }) { return .view(view(group.project, in: index)) }
+        if let run = index.routines.first(where: { has(runs($0)) }) { return .view(routineView(run.name, in: index)) }
         return has(homeLoose(index)) ? .view(nil) : .none
     }
 
-    /// The rows Home holds outside any group and Pinned: every routine run, Started here, Ungrouped and Terminal and other.
-    private static func homeLoose(_ index: SessionIndex) -> [SessionRow] {
-        index.routines.flatMap { ($0.latest.map { [$0] } ?? []) + $0.earlier } + index.started + index.ungrouped + index.other
-    }
+    private static func runs(_ run: RoutineRuns) -> [SessionRow] { (run.latest.map { [$0] } ?? []) + run.earlier }
+
+    /// The rows Home holds outside any group, routine and Pinned: Started here, Ungrouped and Terminal and other.
+    private static func homeLoose(_ index: SessionIndex) -> [SessionRow] { index.started + index.ungrouped + index.other }
 
     // MARK: Families
 
@@ -217,8 +231,12 @@ public enum SidebarOutline {
         return states.contains(.waiting) ? .waiting : states.contains(.working) ? .working : nil
     }
 
-    /// The sessions in a project, nested ones included, as the page counts them.
-    public static func count(of project: String, in index: SessionIndex) -> Int { viewRows(project, in: index).count }
+    /// A project's total as the page's countOf has it: its groups' sessions with the ones nested under them, then one for each routine that
+    /// has runs in it and one for each routine in it that has none yet, however many runs a routine has. `idleRoutines` are the routines with no runs.
+    public static func count(of project: String, in index: SessionIndex, idleRoutines: [IdleRoutine] = []) -> Int {
+        let groups = index.groups.filter { view($0.project, in: index) == project }.flatMap(\.sessions)
+        return withKids(groups).count + ranIn(project, index).count + idleIn(project, idleRoutines, index).count
+    }
 
     /// The lamp across the views other than `shown`: waiting if one needs you, else working if one runs.
     public static func othersLamp(shown: String?, in index: SessionIndex) -> ViewLamp? {
@@ -227,11 +245,8 @@ public enum SidebarOutline {
     }
 
     private static func viewRows(_ view: String?, in index: SessionIndex) -> [SessionRow] {
-        if view == nil {
-            let homeGroups = index.groups.filter { self.view($0.project, in: index) == nil }.flatMap(\.sessions)
-            return withKids(homeGroups + homeLoose(index))
-        }
-        return withKids(index.groups.filter { self.view($0.project, in: index) == view }.flatMap(\.sessions))
+        let groups = index.groups.filter { self.view($0.project, in: index) == view }.flatMap(\.sessions)
+        return withKids(index.routines.filter { routineView($0.name, in: index) == view }.flatMap(runs) + groups + (view == nil ? homeLoose(index) : []))
     }
 
     // MARK: Words
