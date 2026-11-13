@@ -169,8 +169,9 @@ public struct SessionFeatures: Hashable, Sendable, Decodable {
     public var sectionSessions: Bool
     public var subStatus: Bool
     public var pullStatus: Bool
+    public var routineProjects: Bool
 
-    private enum Key: String, CodingKey { case many, groupEdits, groupRename, accountPins, groupSessions, sectionSessions, subStatus, pullStatus }
+    private enum Key: String, CodingKey { case many, groupEdits, groupRename, accountPins, groupSessions, sectionSessions, subStatus, pullStatus, routineProjects }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         many = (try? c.decode(Bool.self, forKey: .many)) ?? false
@@ -181,11 +182,13 @@ public struct SessionFeatures: Hashable, Sendable, Decodable {
         sectionSessions = (try? c.decode(Bool.self, forKey: .sectionSessions)) ?? false
         subStatus = (try? c.decode(Bool.self, forKey: .subStatus)) ?? false
         pullStatus = (try? c.decode(Bool.self, forKey: .pullStatus)) ?? false
+        routineProjects = (try? c.decode(Bool.self, forKey: .routineProjects)) ?? false
     }
     public init(many: Bool = false, groupEdits: Bool = false, groupRename: Bool = false, accountPins: Bool = false,
-                groupSessions: Bool = false, sectionSessions: Bool = false, subStatus: Bool = false, pullStatus: Bool = false) {
+                groupSessions: Bool = false, sectionSessions: Bool = false, subStatus: Bool = false, pullStatus: Bool = false, routineProjects: Bool = false) {
         (self.many, self.groupEdits, self.groupRename, self.accountPins) = (many, groupEdits, groupRename, accountPins)
         (self.groupSessions, self.sectionSessions, self.subStatus, self.pullStatus) = (groupSessions, sectionSessions, subStatus, pullStatus)
+        self.routineProjects = routineProjects
     }
 }
 
@@ -222,8 +225,10 @@ public struct SessionIndex: Hashable, Sendable, Decodable {
     public var other: [SessionRow]
     public var sections: [SectionEntry]
     public var features: SessionFeatures?
+    /// The project each routine belongs to, by routine id. A server without routine projects sends none, which reads as an empty map.
+    public var routineProjects: [String: String]
 
-    private enum Key: String, CodingKey { case station, problem, projects, pinned, groups, routines, started, ungrouped, other, sections, features }
+    private enum Key: String, CodingKey { case station, problem, projects, pinned, groups, routines, started, ungrouped, other, sections, features, routineProjects }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         station = (try? c.decode(String.self, forKey: .station)) ?? ""
@@ -237,12 +242,14 @@ public struct SessionIndex: Hashable, Sendable, Decodable {
         other = lossy(c, .other)
         sections = lossy(c, .sections)
         features = try? c.decode(SessionFeatures.self, forKey: .features)
+        routineProjects = (try? c.decode([String: String].self, forKey: .routineProjects)) ?? [:]
     }
 
     public init(station: String = "", problem: String? = nil, projects: [SessionProject] = [], pinned: [SessionRow] = [], groups: [SessionGroup] = [], routines: [RoutineRuns] = [],
-                started: [SessionRow] = [], ungrouped: [SessionRow] = [], other: [SessionRow] = [], sections: [SectionEntry] = [], features: SessionFeatures? = nil) {
+                started: [SessionRow] = [], ungrouped: [SessionRow] = [], other: [SessionRow] = [], sections: [SectionEntry] = [], features: SessionFeatures? = nil, routineProjects: [String: String] = [:]) {
         (self.station, self.problem, self.projects, self.pinned, self.groups, self.routines) = (station, problem, projects, pinned, groups, routines)
         (self.started, self.ungrouped, self.other, self.sections, self.features) = (started, ungrouped, other, sections, features)
+        self.routineProjects = routineProjects
     }
 
     /// Every session once, children included, newest first. The plain list reads this. Groups, pins and routines read the lists above.

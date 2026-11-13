@@ -1405,6 +1405,14 @@ async function routinesFlow(bundle, appearance) {
     check(await until('scheduled', () => hasRow('Draft the release notes:') && hasRow('Rotate the keys:') && !hasRow('Archive the old logs:')), 'Scheduled lists the pending and skipped sessions and not the started one');
     await app.both('sidebar-routines');
 
+    // A routine in a project shows in that project's view, above Pinned, and counts once: the Launch session and Deploy check make 2.
+    check(app.pickView('Website (2)'), 'the View menu counts the Website project at 2');
+    check(await until('project routines', () => app.headings() === 3), 'the Website view lists Routines, Pinned and Launch');
+    check(!hasRow('Weekly report:') && !hasRow('Old backup:'), 'the Website view leaves out the routines that have no project');
+    await app.both('project-routines');
+    check(app.pickView('Home'), 'Home is in the View menu');
+    check(await until('home again', () => hasRow('Weekly report:')), 'Home lists its routines again');
+
     check(app.pick('View', 'Manage routines'), 'Manage routines is in the view menu');
     check(await until('routines', () => sees('Weekdays at 07:30') && sees('Off')), 'the Routines page lists the routines');
     await app.both('routines-list');

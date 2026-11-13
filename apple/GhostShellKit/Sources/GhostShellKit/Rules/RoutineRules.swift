@@ -184,6 +184,9 @@ public func headingNames(_ routines: [RoutineSummary]) -> [String] {
     Set(routines.compactMap(\.heading).filter { !$0.isEmpty }).sorted { titleCompare($0, $1) == .orderedAscending }
 }
 
+/// Without it a routine cannot be given a project, and Home shows every routine.
+public func supportsRoutineProjects(_ index: SessionIndex?) -> Bool { index?.features?.routineProjects ?? false }
+
 /// The routines that have no row anywhere in the list, in title order. A run that is pinned, in a group or nested is still a run, so it counts.
 /// Nothing is computed until both the index and the routines have arrived.
 public func unrunRoutines(_ index: SessionIndex?, _ routines: [RoutineSummary]?) -> [RoutineSummary] {

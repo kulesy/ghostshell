@@ -72,7 +72,7 @@ struct ViewMenuContent: View {
 
     // A menu item draws text and an image only, so the lamp is a coloured image and the count is in the text. Like the page's rail, every view shows its own lamp.
     @ViewBuilder private func item(_ name: String, _ id: String?, in index: SessionIndex) -> some View {
-        let text = id.map { "\(name) (\(SidebarOutline.count(of: $0, in: index)))" } ?? name
+        let text = id.map { "\(name) (\(SidebarOutline.count(of: $0, in: index, idleRoutines: state.idleRoutines)))" } ?? name
         if let lamp = SidebarOutline.lamp(of: id, in: index) { Label { Text(text) } icon: { dot(lamp) } } else { Text(text) }
     }
 

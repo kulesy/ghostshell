@@ -1,5 +1,5 @@
 // The routine and scheduled screens' stub, with fixed data: a heading with only idle routines, a loose idle routine, a routine with a run,
-// a pending and a skipped scheduled session. Every write is recorded. By default each is refused; with `accept` it is applied to this stub's own lists
+// a pending and a skipped scheduled session, and a Website project that holds a group, a routine with a run and a pinned row on every view. Every write is recorded. By default each is refused; with `accept` it is applied to this stub's own lists
 // and nothing else, so no real routine is made, changed, started or deleted. Never point the app at a real server for this: a Run now there starts a real session.
 import http from 'node:http';
 
@@ -18,20 +18,28 @@ export function routinesStub({ accept = false, empty = false } = {}) {
   const monday = (8 - new Date(now).getDay()) % 7 || 7;
   const row = (id, title, extra = {}) => ({ id, title, state: 'idle', cwd: '/Users/me/Projects/site', branch: 'main', lastActivityAt: now - 600_000, sortAt: now - 600_000, ...extra });
   const index = {
-    station: 'stub', projects: [],
-    features: { routineEdits: true, routineFiles: true, routineHeadings: true, scheduled: true, accountPins: true },
-    pinned: [],
-    groups: [{ id: 'g1', name: 'Release', project: null, sessions: [row('rel-1', 'Write the changelog')] }],
-    routines: [{ name: 'nightly', title: 'Nightly check', latest: row('run-3', 'Run', { routine: 'nightly' }), earlier: [row('run-2', 'Run', { lastActivityAt: now - day })] }],
+    station: 'stub', projects: [{ id: 'web', name: 'Website' }],
+    features: { routineEdits: true, routineFiles: true, routineHeadings: true, scheduled: true, accountPins: true, routineProjects: true },
+    pinned: [row('pin-1', 'Check the dashboard', { pinned: true })],
+    groups: [
+      { id: 'g1', name: 'Release', project: null, sessions: [row('rel-1', 'Write the changelog')] },
+      { id: 'g2', name: 'Launch', project: 'web', sessions: [row('web-1', 'Redo the landing page')] },
+    ],
+    routines: [
+      { name: 'nightly', title: 'Nightly check', latest: row('run-3', 'Run', { routine: 'nightly' }), earlier: [row('run-2', 'Run', { lastActivityAt: now - day })] },
+      { name: 'deploy', title: 'Deploy check', latest: row('run-5', 'Run', { routine: 'deploy' }), earlier: [row('run-4', 'Run', { routine: 'deploy', lastActivityAt: now - day })] },
+    ],
+    routineProjects: { deploy: 'web' },
     ungrouped: [row('u-1', 'Look at the failing build')],
   };
   const routine = (id, title, extra = {}) => ({
     id, title, cron: '0 9 * * 1', jitterSeconds: 0, file: `/Users/me/.ghostshell/routines/${id}.md`, cwd: '/Users/me/Projects/site', enabled: true,
     lastRunAt: null, lastSessionId: null, lastError: null, running: false, next: iso(at(1, 9)), ...extra,
   });
-  // Reports has only idle routines, Old backup is idle and loose, and nightly is the one with runs.
+  // Reports has only idle routines, Old backup is idle and loose, nightly has runs on Home and deploy has runs in the Website project.
   const routineList = { routines: [
     routine('nightly', 'Nightly check', { cron: '30 7 * * 1-5', lastRunAt: iso(now - 600_000), lastSessionId: 'run-3', next: iso(at(1, 7, 30)) }),
+    routine('deploy', 'Deploy check', { cron: '0 16 * * 1-5', lastRunAt: iso(now - 600_000), lastSessionId: 'run-5', next: iso(at(1, 16)) }),
     routine('weekly', 'Weekly report', { heading: 'Reports', next: iso(at(monday, 9)) }),
     routine('sync', 'Sync the docs', { heading: 'Reports', cron: '15 */4 * * *', next: iso(now + 3_600_000) }),
     routine('backup', 'Old backup', { cron: '0 2 * * *', enabled: false, next: null }),
