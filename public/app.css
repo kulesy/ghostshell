@@ -4497,6 +4497,18 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .offer .notice { margin: 0.5rem 0 0; }
 
+.reload-bar { flex: none; padding-top: env(safe-area-inset-top); }
+
+.reload-bar ~ .session > .chat-head { padding-top: 0.65rem; }
+
+.reload-bar .offer { display: flex; align-items: center; gap: 0.5rem 0.75rem; margin: 0; padding: 0.5rem 1rem; border-width: 0 0 1px; border-radius: 0; }
+
+.reload-bar .offer h2 { flex: 1 1 auto; }
+
+.reload-bar .offer :is(.offer-text, .notice, .offer-progress):empty { display: none; }
+
+.reload-bar .offer-actions { margin-top: 0; }
+
 .offer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.65rem; }
 
 .offer-actions .btn { max-width: 100%; height: auto; min-height: 2.25rem; padding-block: 0.4rem; white-space: normal; }

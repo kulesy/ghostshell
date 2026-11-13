@@ -402,7 +402,7 @@ function furnishBanners(home) {
 }
 
 async function launch(home, state, made) {
-  const port = await freePort();
+  const port = made.env?.PORT ? Number(made.env.PORT) : await freePort();
   const banners = furnishBanners(home);
   const env = {
     ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, CAPCOM_AUTO_TITLE: made.autoTitle ? '1' : '0', CAPCOM_CLAUDE: made.cli ?? banners.auth,
