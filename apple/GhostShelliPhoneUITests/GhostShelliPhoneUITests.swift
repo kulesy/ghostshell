@@ -217,6 +217,44 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertEqual(decisions.last?["requestId"] as? String, "req-bash")
     }
 
+    /// The thread keeps its margin on both sides. Text starts one inset in from the left, and the user's bubble ends one inset in from the right,
+    /// whose 13pt padding sits between the bubble's edge and its text. 16 and 13 are `ChatStyle.threadInset` and `bubblePadding` on the phone.
+    private func assertThreadMargin(_ app: XCUIApplication, reply: String, user: String? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        let width = app.windows.firstMatch.frame.width
+        let words = app.staticTexts[reply].firstMatch
+        XCTAssertTrue(words.waitForExistence(timeout: 20), "The reply \(reply) is drawn\n\(app.debugDescription)", file: file, line: line)
+        XCTAssertEqual(words.frame.minX, 16, accuracy: 1, "The thread's text starts one inset from the left edge: \(words.frame)", file: file, line: line)
+        guard let user else { return }
+        let sent = app.staticTexts[user].firstMatch
+        XCTAssertTrue(sent.waitForExistence(timeout: 5), "The message \(user) is drawn", file: file, line: line)
+        XCTAssertEqual(width - sent.frame.maxX, 16 + 13, accuracy: 1, "The user's bubble ends one inset from the right edge: \(sent.frame) in \(width)pt", file: file, line: line)
+    }
+
+    /// The first chat opened after sign-in looks right and a later one sat a whole inset to the left, so the chats are opened one after another.
+    func testTheThreadKeepsItsMarginInEveryChatItOpens() throws {
+        let app = launch()
+        signIn(app)
+        open(app, "Fix the flaky upload test", expecting: "Thanks. Can you add a note to the changelog?")
+        back(app)
+        open(app, "Push the upload fix", expecting: "Bash wants to run a command")
+        assertThreadMargin(app, reply: "I need your go-ahead before I go on.", user: "Go ahead and fix it.")
+        shot("margin-1-approval-bash")
+        back(app)
+        open(app, "Choose the test setup", expecting: "Claude is asking")
+        assertThreadMargin(app, reply: "I need your go-ahead before I go on.", user: "Go ahead and fix it.")
+        shot("margin-2-question")
+        back(app)
+        open(app, "Approve the retry plan", expecting: "Claude has a plan")
+        assertThreadMargin(app, reply: "I need your go-ahead before I go on.", user: "Go ahead and fix it.")
+        back(app)
+        open(app, "Revenue by region", expecting: "Say the word and I will go further on any region.")
+        assertThreadMargin(app, reply: "Say the word and I will go further on any region.")
+        shot("margin-3-widgets")
+        back(app)
+        open(app, "Edit the upload helper", expecting: "I need your go-ahead before I go on.")
+        assertThreadMargin(app, reply: "I need your go-ahead before I go on.", user: "Go ahead and fix it.")
+    }
+
     // MARK: Composer
 
     private func openComposerChat(_ app: XCUIApplication) {
