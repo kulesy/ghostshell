@@ -83,9 +83,9 @@ struct ChipActions: View {
             default:
                 HStack(spacing: 8) {
                     Button("Start") { Task { await store.press(start: true, call, folder: folder) } }
-                        .buttonStyle(.borderedProminent).compactOnMac()
+                        .buttonStyle(.ghost(.primary, size: .compact))
                     Button("Dismiss") { Task { await store.press(start: false, call, folder: folder) } }
-                        .phoneTouch(boxed: true).compactOnMac()
+                        .buttonStyle(.ghost(.outline, size: .compact))
                     if busy { ProgressView().controlSize(.small) }
                 }
                 .disabled(busy)

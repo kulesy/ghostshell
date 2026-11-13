@@ -13,7 +13,10 @@ private struct ScrollMetrics: Equatable, Sendable {
 struct ChatThreadView: View {
     @Environment(ChatModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var position = ScrollPosition(edge: .bottom)
+    // NOTE: [13 Nov 2026] EK - Do not start at ScrollPosition(edge: .bottom) or scroll to the edge while the rows fit. SwiftUI then leaves the content offset by the thread's inset, 16pt in x and y on iOS 18.6.
+    // See https://github.com/kulesy/ghostshell/issues/160
+    @State private var position = ScrollPosition()
+    @State private var overflows = false
     @State private var pinned = true
     @State private var away = false
     @State private var visible: [String] = []
@@ -93,12 +96,14 @@ struct ChatThreadView: View {
             .chatText()
         }
         .scrollPosition($position)
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)
         .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.1) { visible = $0 }
         .onScrollGeometryChange(for: ScrollMetrics.self) { geometry in
             ScrollMetrics(top: geometry.visibleRect.minY, gap: geometry.contentSize.height - geometry.visibleRect.maxY,
                           content: geometry.contentSize.height, container: geometry.containerSize.height)
         } action: { old, new in
+            overflows = new.content > new.container
             let resized = new.content != old.content || new.container != old.container
             if resized {
                 // A jump made while already at the end re-measures the lazy rows, which can resize the content again and never settle.
@@ -111,7 +116,7 @@ struct ChatThreadView: View {
         }
         .onChange(of: model.chat.scrollRequests) {
             pinned = true
-            position.scrollTo(edge: .bottom)
+            if overflows { position.scrollTo(edge: .bottom) }
         }
         .onChange(of: model.earlierCount) { restore() }
         .accessibilityLabel("Messages")

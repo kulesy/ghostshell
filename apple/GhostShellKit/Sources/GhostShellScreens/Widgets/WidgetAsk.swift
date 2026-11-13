@@ -34,14 +34,12 @@ struct WidgetAsk: View {
             }
             HStack(spacing: 10) {
                 Button(isLink ? "Open link" : "Send") { if armed && !request.working { confirm() } }
-                    .buttonStyle(.borderedProminent)
-                    .largeOnPhone()
+                    .buttonStyle(.ghost(.primary, size: .compact))
                     .opacity(armed && !request.working ? 1 : 0.5)
                     .accessibilityLabel(isLink ? "Open link" : "Send")
                     .accessibilityHint(armed ? "" : "Not ready yet")
                 Button("Cancel", action: cancel)
-                    .buttonStyle(.bordered)
-                    .phoneTouch(boxed: true)
+                    .buttonStyle(.ghost(.outline, size: .compact))
                     .accessibilityLabel("Cancel")
             }
         }
