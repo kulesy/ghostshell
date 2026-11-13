@@ -27,7 +27,7 @@ export function routinesStub({ accept = false, empty = false } = {}) {
     ],
     routines: [
       { name: 'nightly', title: 'Nightly check', latest: row('run-3', 'Run', { routine: 'nightly' }), earlier: [row('run-2', 'Run', { lastActivityAt: now - day })] },
-      { name: 'deploy', title: 'Deploy check', latest: row('run-5', 'Run', { routine: 'deploy' }), earlier: [row('run-4', 'Run', { routine: 'deploy', lastActivityAt: now - day })] },
+      { name: 'deploy', title: 'Site deploy', latest: row('run-5', 'Run', { routine: 'deploy' }), earlier: [row('run-4', 'Run', { routine: 'deploy', lastActivityAt: now - day })] },
     ],
     routineProjects: { deploy: 'web' },
     ungrouped: [row('u-1', 'Look at the failing build')],
@@ -39,7 +39,7 @@ export function routinesStub({ accept = false, empty = false } = {}) {
   // Reports has only idle routines, Old backup is idle and loose, nightly has runs on Home and deploy has runs in the Website project.
   const routineList = { routines: [
     routine('nightly', 'Nightly check', { cron: '30 7 * * 1-5', lastRunAt: iso(now - 600_000), lastSessionId: 'run-3', next: iso(at(1, 7, 30)) }),
-    routine('deploy', 'Deploy check', { cron: '0 16 * * 1-5', lastRunAt: iso(now - 600_000), lastSessionId: 'run-5', next: iso(at(1, 16)) }),
+    routine('deploy', 'Site deploy', { cron: '0 16 * * 1-5', lastRunAt: iso(now - 600_000), lastSessionId: 'run-5', next: iso(at(1, 16)) }),
     routine('weekly', 'Weekly report', { heading: 'Reports', next: iso(at(monday, 9)) }),
     routine('sync', 'Sync the docs', { heading: 'Reports', cron: '15 */4 * * *', next: iso(now + 3_600_000) }),
     routine('backup', 'Old backup', { cron: '0 2 * * *', enabled: false, next: null }),
