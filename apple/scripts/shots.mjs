@@ -325,7 +325,7 @@ class App {
     if (!popup || !this.act(popup)) return false;
     for (let attempt = 0; attempt < 10; attempt++) {
       const item = this.find(node => node.role === 'AXMenuItem' && node.title?.startsWith(name));
-      if (item) return this.act(item);
+      if (item) { this.pickedView = item.title; return this.act(item); }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
     }
     return false;
@@ -1406,7 +1406,8 @@ async function routinesFlow(bundle, appearance) {
     await app.both('sidebar-routines');
 
     // A routine in a project shows in that project's view, above Pinned, and counts once: the Launch session and Deploy check make 2.
-    check(app.pickView('Website (2)'), 'the View menu counts the Website project at 2');
+    check(app.pickView('Website'), 'the View menu lists the Website project');
+    check(app.pickedView === 'Website (2)', `the Website project counts 2: the Launch session and Deploy check (the menu said "${app.pickedView}")`);
     check(await until('project routines', () => app.headings() === 3), 'the Website view lists Routines, Pinned and Launch');
     check(!hasRow('Weekly report:') && !hasRow('Old backup:'), 'the Website view leaves out the routines that have no project');
     await app.both('project-routines');
