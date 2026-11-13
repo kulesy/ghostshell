@@ -47,10 +47,17 @@ export const clearAttached = key => attachments.set({ [key]: undefined });
 // The quotes waiting to be sent, from whichever sessions they were taken in. One store for every chat.
 export const quoted = createStore({ quotes: [] });
 
+// Messages whose send has not answered yet. The box is cleared before the send, so a reload then would lose the message.
+let sending = 0;
+export async function whileSending(work) {
+  sending++;
+  try { return await work(); } finally { sending--; }
+}
+
 // Whether a reload would lose something unsent. Typed text counts only for the box on screen (`open`), since every draft's text is kept in localStorage
 // and comes back; images, files and quotes live for the page's life, so they count wherever they are.
 export const hasUnsent = open => (
-  !!draftText(open).trim() || quoted.get().quotes.length > 0
+  sending > 0 || !!draftText(open).trim() || quoted.get().quotes.length > 0
   || Object.values(attachments.get()).some(a => a && (a.images.length || a.files.length || a.preparing))
 );
 

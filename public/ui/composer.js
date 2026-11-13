@@ -4,7 +4,7 @@ import { accountLabel, accountMenu, chatAccount } from './account-rules.js';
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
-import { attach, attachedTo, attachments, clearAttached, detach, detachFile, draftText, NEW, pastedFiles, quoted, removeQuote, setAttached, setDraftText, uploads } from './draft.js';
+import { attach, attachedTo, attachments, clearAttached, detach, detachFile, draftText, NEW, pastedFiles, quoted, removeQuote, setAttached, setDraftText, uploads, whileSending } from './draft.js';
 import { HOME } from './env.js';
 import { tilde } from './format.js';
 import { FileFace } from './file-card.js';
@@ -257,7 +257,7 @@ export function Composer({ ctrl }) {
     const clear = () => { setText(''); clearAttached(key); quoted.set({ quotes: kept }); };
     if (draft) { ctrl.startNew(message, sent, clear, sentFiles); return; }
     clear();
-    if (!(await ctrl.send(message, sent, s.mode, sentFiles))) { setText(t); setAttached(key, { images: sent, files: sentFiles }); quoted.set({ quotes: sentQuotes }); }
+    if (!(await whileSending(() => ctrl.send(message, sent, s.mode, sentFiles)))) { setText(t); setAttached(key, { images: sent, files: sentFiles }); quoted.set({ quotes: sentQuotes }); }
   };
 
   const pickFiles = e => {

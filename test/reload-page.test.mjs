@@ -106,7 +106,9 @@ test('a page opened after the restart shows no bar', { skip, timeout }, async t 
   const { origin, toB } = await onCommits();
   await toB();
   const page = await open(t, origin);
+  const before = await stamp(page);
   await comeBack(page);
   await new Promise(resolve => setTimeout(resolve, 1000));
+  assert.equal(await stamp(page), before, 'the page did not reload itself');
   assert.equal(await page.evaluate(`!!document.querySelector('.reload-bar')`), false);
 });

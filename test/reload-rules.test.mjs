@@ -2,7 +2,7 @@
 // would be lost and behind a bar when words are unsent or an approval is open.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attachments, clearAttached, hasUnsent, NEW, quoted, setAttached, setDraftText } from '../public/ui/draft.js';
+import { attachments, clearAttached, hasUnsent, NEW, quoted, setAttached, setDraftText, whileSending } from '../public/ui/draft.js';
 import { noticeCommit, reloadStep } from '../public/ui/reload-rules.js';
 
 test('the first commit a page sees is remembered and never counts as a change', () => {
@@ -53,4 +53,13 @@ test('typed text counts only for the box on screen, and images, files and quotes
   quoted.set({ quotes: [] });
   assert.equal(hasUnsent('a'), false);
   assert.equal(Object.values(attachments.get()).filter(Boolean).length, 0);
+});
+
+test('a message whose send has not answered yet holds a reload, since its box is already cleared', async () => {
+  let answer;
+  const sent = whileSending(() => new Promise(resolve => { answer = resolve; }));
+  assert.equal(hasUnsent(null), true);
+  answer(true);
+  assert.equal(await sent, true);
+  assert.equal(hasUnsent(null), false);
 });
