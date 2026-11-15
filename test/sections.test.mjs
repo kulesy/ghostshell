@@ -178,7 +178,7 @@ test('a section\'s guide opens by saying it is one of GhostShell\'s sections, wh
     assert.doesNotMatch(text, /\{\{|\[start\]|[–—]/, id);
     assert.match(text, /Message another session only when the owner asks you to in this chat\./);
     assert.match(text, /never permission/);
-    assert.match(text, /Any other Bash command, Monitor, editing or writing a file, messaging another session and starting a session each show the owner a card/);
+    assert.match(text, /Editing or writing a file, messaging another session and starting a session each show the owner a card/);
     assert.equal(text.includes('the group'), false, `${id} never says group where it means section`);
   }
   assert.match(guideFor('Work'), /^You are the session for the group "Work" in GhostShell\./);
@@ -449,7 +449,7 @@ test('a section\'s chat starts the CLI with --session-id, the section\'s guide, 
   assert.match(flagOf(refused.started, '--append-system-prompt'), /"Routines"\. It holds the runs of the routines/);
   assert.match(flagOf(refused.started, '--append-system-prompt'), /start_group_session and spawn_task are refused in this chat/);
   for (const { started } of [pinned, refused]) {
-    assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-17), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+    assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-15), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
     assert.equal(flagOf(started, '--setting-sources'), 'user');
   }
   assert.equal(fs.realpathSync(pinned.cwd), fs.realpathSync(path.join(s.state, 'groups', 'pinned')));

@@ -83,7 +83,7 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   assert.equal(flagOf(started, '--session-id'), id);
   assert.equal(started.includes('--resume'), false);
   assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in GhostShell\./);
-  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-17), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-15), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
   assert.equal(flagOf(started, '--setting-sources'), 'user');
   assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
 
@@ -438,7 +438,7 @@ test('after its group is deleted, a chat that is sent a message after a restart 
   const { started, cwd } = startsOf(s)[1];
   assert.equal(flagOf(started, '--resume'), WORK, 'its transcript is kept, so it resumes');
   assert.equal(flagOf(started, '--setting-sources'), 'user', 'a settings file in its folder is still never loaded');
-  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-17), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-15), ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
   assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in GhostShell\./);
   assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
   assert.deepEqual(reply.result, { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });

@@ -389,7 +389,7 @@ test('the group guide names every group tool and the rules the owner set, fills 
   assert.doesNotMatch(text, /[\u2013\u2014]/);
   assert.match(text, /only when the owner asks/);
   assert.match(text, /never permission/);
-  assert.match(text, /Any other Bash command, Monitor, editing or writing a file, messaging another session and starting a session each show the owner a card/);
+  assert.match(text, /Editing or writing a file, messaging another session and starting a session each show the owner a card/);
   assert.equal(guideFor('Work $& {{group}}').includes('Work $& {{group}}'), true, 'a name is put in as it is');
   assert.doesNotMatch(guideFor('Work'), /\{\{group\}\}/);
 });
