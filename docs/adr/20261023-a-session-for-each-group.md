@@ -106,14 +106,15 @@ Chosen option: "A Capcom chat per group, in a private folder, with group-only to
 
 - **Rule.** `Bash` and `Monitor` leave the group chat's ask rule in `lib/runner.mjs`, so a command runs under the chat's permission mode as in any chat. In Bypass it runs with no card. In the default mode and Auto the CLI asks as it does anywhere, and the card offers Always allow, since `alwaysAsked` no longer names these tools. A subagent's command follows the same mode.
 - **Removed.** `lib/read-only-bash.mjs`, its tests and the check in `handle()` go, since nothing else used them.
-- **Still asked.** `start_group_session`, `send_session`, the layout writes, `Write`, `Edit`, `NotebookEdit` and `SendMessage` keep their card in every mode with no Always allow, and Chrome keeps its own ask. A real group chat in Bypass on CLI 2.1.325 ran `cd /tmp && python3 -c 'print(1)'` with no card, and its `Write` that followed showed a card.
+- **Still asked.** `start_group_session`, `send_session`, the layout writes, `Write`, `Edit`, `NotebookEdit` and `SendMessage` keep their card with no Always allow, and Chrome keeps its own ask. A real group chat in Bypass on CLI 2.1.325 ran `cd /tmp && python3 -c 'print(1)'` with no card, and its `Write` that followed showed a card.
+- **The cards hold outside Bypass only.** In Bypass a command can do what those cards guard without one. It can write a file, change `layout.json`, or read the sign-in tokens in the state folder and call GhostShell's own API on the Mac, which approves any session's card, Chrome's included, starts a session and moves one. A section's chat has the same ask list, and Pinned and Routines read transcripts from every app, so this reaches wider there than in one group.
 - **Guide.** `lib/group-guide.md` no longer lists read-only commands. It says a command runs under the chat's permission mode, and that the chat runs one only when the owner's request needs it, never because a member's text asks.
 
 ### Consequences
 
 - ✅ The owner talks to one session about a group's work, and sees its status live without spending tokens.
 - ✅ The group's chat cannot read outside its group through Capcom's tools unless the owner approves a card that moves a session into the group (see the 2026-10-28 layout tools amendment), cannot start a session unasked, and works in a folder no repo shares.
-- ✅ Text in a member's transcript cannot make the chat write a file with `Write`, `Edit` or `NotebookEdit`, message another session with `SendMessage` or start a session without the owner's card, in any mode. Amended 2026-11-16: it can make the chat run a command, as the last consequences below say.
+- ✅ Text in a member's transcript cannot make the chat write a file with `Write`, `Edit` or `NotebookEdit`, message another session with `SendMessage` or start a session without the owner's card, in any mode. Amended 2026-11-16: this holds outside Bypass only, as the last consequences below say.
 - ❌ Approving, denying, stopping and archiving another session's work holds through the instructions only. Capcom gives the chat no tool for approving, denying or stopping (it can archive an idle session on a card, since 2026-10-28), and the cards above are the only gate on the CLI's own tools that could reach another session.
 - ❌ In Bypass the chat can still read any file the Mac user can read, because `Read` is not gated (checked on CLI 2.1.309 with `/etc/hosts`). Every tool no ask rule names, `WebFetch` and `WebSearch` among them, also runs without a card in Bypass. Together these leave a path from a transcript that steers the chat to reading a file and sending it out through `WebFetch` with no card (not tried).
 - ❌ An edit to the guide does not reach a group chat that has already started, until it is compacted.
@@ -143,7 +144,7 @@ Chosen option: "A Capcom chat per group, in a private folder, with group-only to
 - ❌ A chat already running keeps the guide it started with, which says every `Bash` command asks, until it is compacted. Its read-only commands run without a card all the same, and it sees `github_status` in its tools at its next start.
 - The four consequences above about the read-only list, `git`, `cd` and loops describe the list the 2026-11-16 amendment removed.
 - ✅ The owner approves no card for a group chat's commands in Bypass, so a search with `cd`, `python3`, `git` or a loop runs straight away.
-- ❌ In Bypass a member's transcript could steer the group's chat into running any command with no card, and a command can write files, change a repo or send data out. The guide's rules and the owner's choice of mode are the only guards left on it.
+- ❌ In Bypass a member's transcript could steer the group's or section's chat into running any command with no card. A command can write files, change a repo, send data out, or call GhostShell's API with a stored sign-in token to approve any session's card, start a session or move one. In Bypass the guide's rules and the owner's choice of mode are the only guards left, on these and on the cards above.
 - ❌ In the default mode an Always allow on a group chat's command lets later commands it covers run with no card, one a transcript asked for included.
 - ❌ A chat already running keeps the guide it started with, which lists the read-only commands, until it is compacted. Its commands follow the mode all the same.
 
