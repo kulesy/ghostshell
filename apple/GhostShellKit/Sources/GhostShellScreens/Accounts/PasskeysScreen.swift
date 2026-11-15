@@ -6,6 +6,8 @@ public struct PasskeysScreen: View {
     @State private var list: PasskeyList?
     @State private var problem = ""
     @State private var asking: String?
+    @State private var adding = false
+    @State private var added = false
 
     public init() {}
 
@@ -25,8 +27,15 @@ public struct PasskeysScreen: View {
                         }
                     }
                 }
-                // A passkey is made by the browser, which this app is not, so the page does the adding.
-                if let url = pageURL {
+                if canAdd(list) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button { Task { await add() } } label: { Text(adding ? "Adding a passkey" : "Add a passkey") }
+                            .buttonStyle(.ghost(.outline))
+                            .disabled(adding)
+                        if added { Text("Passkey added.").ghostMuted(14) }
+                    }
+                // Without the Associated Domains entitlement for this address the app cannot make one, so the page does the adding.
+                } else if let url = pageURL {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Add a passkey from the page in a browser.").font(.geist(14)).foregroundStyle(Color.ghost.foreground)
                         Link(url.absoluteString, destination: url).font(.geist(14)).frame(minHeight: 44, alignment: .leading)
@@ -46,6 +55,11 @@ public struct PasskeysScreen: View {
     private var pageURL: URL? {
         guard let base = model.address?.baseURL.absoluteString else { return nil }
         return URL(string: (base.hasSuffix("/") ? String(base.dropLast()) : base) + "/#/passkeys")
+    }
+
+    private func canAdd(_ list: PasskeyList) -> Bool {
+        guard list.available, let support = model.passkeySupport, let address = model.address else { return false }
+        return support.allows(address)
     }
 
     private func row(_ passkey: Passkey) -> some View {
@@ -84,5 +98,19 @@ public struct PasskeysScreen: View {
         defer { asking = nil }
         guard let client = model.client else { return }
         do { list?.passkeys = try await client.removePasskey(id: id) } catch { problem = error.localizedDescription }
+    }
+
+    private func add() async {
+        guard let client = model.client, let support = model.passkeySupport else { return }
+        problem = ""
+        added = false
+        adding = true
+        defer { adding = false }
+        do {
+            list?.passkeys = try await client.addPasskey(using: support)
+            added = true
+        } catch is CancellationError {
+            // Backing out of the system sheet is a choice, so nothing shows.
+        } catch { problem = error.localizedDescription }
     }
 }

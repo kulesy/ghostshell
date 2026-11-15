@@ -2364,10 +2364,15 @@ async function api(req, res, u) {
   return send(res, 404, { error: 'Not found' });
 }
 
+// Lets the iPhone app use passkeys for this host (webcredentials). See apple/README.md.
+const associationFile = /^[A-Z0-9]{10}$/.test(cfg.appleTeamId) ? JSON.stringify({ webcredentials: { apps: [`${cfg.appleTeamId}.com.kulesy.ghostshell.iphone`] } }) : null;
+
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://localhost');
   try {
     if (u.pathname === '/healthz') return send(res, 200, 'ok', 'text/plain');
+    // Before the sign-in check, because Apple's servers fetch it. With no valid team ID the path falls through to the answer any unknown path gets.
+    if (associationFile && u.pathname === '/.well-known/apple-app-site-association' && (req.method === 'GET' || req.method === 'HEAD')) return send(res, 200, associationFile, 'application/json');
     const file = asset(u.pathname);
     if (file) {
       const headers = { 'cache-control': 'no-cache', etag: file.etag };

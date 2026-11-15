@@ -19,12 +19,14 @@ final class GhostShelliPhoneUITests: XCTestCase {
     /// A new Keychain service and defaults suite for every launch, so no test sees another's token or address.
     /// `stub` names one of the other stubs the script starts (files or groups). Nil is the chat stub.
     /// `attachDir` turns on the Debug hook that attaches the file named in `attach.txt` there, standing in for the Files sheet, which is empty in a Simulator.
-    private func launch(prefillAddress: Bool = true, stub: String? = nil, attachDir: String? = nil) -> XCUIApplication {
+    /// `passkeys` turns on the Debug hook that swaps the system passkey sheet for a fake one with fixed answers and lets any address through the domain check.
+    private func launch(prefillAddress: Bool = true, stub: String? = nil, attachDir: String? = nil, passkeys: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         let tag = UUID().uuidString
         app.launchArguments = ["-GSKeychainService", "gs.iphone.test.\(tag)", "-GSDefaultsSuite", "gs.iphone.test.\(tag)", "-GSAppearance", appearance]
         if prefillAddress { app.launchArguments += ["-GSAddress", stub.flatMap { env["GS_ADDRESS_\($0.uppercased())"] } ?? address] }
         if let attachDir { app.launchArguments += ["-GSAttachDir", attachDir] }
+        if passkeys { app.launchArguments += ["-GSPasskeyStub"] }
         app.launch()
         return app
     }
@@ -54,10 +56,19 @@ final class GhostShelliPhoneUITests: XCTestCase {
         dismissKeyboardIntro(app)
         password.typeText(stub == "organise" ? env["GS_PASSWORD_ORGANISE"] ?? "" : "any-password")
         app.buttons["Sign in"].tap()
+        awaitList(app, expecting: expecting)
+    }
+
+    private func awaitList(_ app: XCUIApplication, expecting: String = "Fix the flaky upload test") {
         // The list only draws the rows on screen, and a small phone shows few of them.
         let label = app.staticTexts[expecting]
         for _ in 0..<4 where !label.waitForExistence(timeout: 6) { app.swipeUp() }
         XCTAssertTrue(label.waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    /// The passkey calls a fixtures server recorded, each `{ route, body }`. Nil is the chat stub's fixtures. Sign-in screens also ask for options on their own, so tests look at the routes they care about.
+    private func passkeyCalls(stub: String? = nil, excluding skipped: [String] = []) async throws -> [[String: Any]] {
+        try await get("/__passkeys", stub: stub).filter { !skipped.contains($0["route"] as? String ?? "") }
     }
 
     private func row(_ app: XCUIApplication, _ title: String) -> XCUIElement {
@@ -582,6 +593,92 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertTrue(none.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertLessThan(none.frame.minX, 40, "The empty line is flat on the left, not centred")
         shot("10b-passkeys-empty")
+    }
+
+    // MARK: Passkeys
+
+    func testSignInWithAPasskey() async throws {
+        // A build with no passkey support never draws the button.
+        let plain = launch()
+        XCTAssertTrue(plain.secureTextFields.firstMatch.waitForExistence(timeout: 15), plain.debugDescription)
+        sleep(2)
+        XCTAssertFalse(plain.buttons["Sign in with a passkey"].exists, "A build with no passkey support offers none\n\(plain.debugDescription)")
+        shot("17-signin-no-passkey")
+        plain.terminate()
+
+        let app = launch(passkeys: true)
+        let button = app.buttons["Sign in with a passkey"]
+        XCTAssertTrue(button.waitForExistence(timeout: 15), app.debugDescription)
+        assertTouchable(button, "Sign in with a passkey")
+        shot("17b-signin-passkey")
+        let before = try await passkeyCalls().count
+        button.tap()
+        awaitList(app)
+        let made = Array(try await passkeyCalls().dropFirst(before))
+        XCTAssertEqual(made.compactMap { $0["route"] as? String }.last(where: { $0 != "passkey-options" }), "passkey-login", "\(made)")
+        let options = made.last(where: { $0["route"] as? String == "passkey-options" })
+        XCTAssertEqual((options?["body"] as? [String: Any])?["origin"] as? String, address, "The options request names the address it was made at: \(made)")
+        let login = made.first(where: { $0["route"] as? String == "passkey-login" })?["body"] as? [String: Any]
+        XCTAssertEqual(login?["id"] as? String, "c3R1Yi1jcmVkZW50aWFs")
+        let response = login?["response"] as? [String: Any]
+        XCTAssertEqual(response?["clientDataJSON"] as? String, "c3R1Yi1jbGllbnQtZGF0YQ")
+        XCTAssertEqual(response?["authenticatorData"] as? String, "c3R1Yi1hdXRoZW50aWNhdG9y")
+        XCTAssertEqual(response?["signature"] as? String, "c3R1Yi1zaWduYXR1cmU")
+        XCTAssertEqual(response?["userHandle"] as? String, "c3R1Yi11c2Vy")
+    }
+
+    func testNoPasskeyButtonWhenTheServerHasNone() async throws {
+        let before = try await passkeyCalls(stub: "accountsEmpty").count
+        let app = launch(stub: "accountsEmpty", passkeys: true)
+        XCTAssertTrue(app.secureTextFields.firstMatch.waitForExistence(timeout: 15), app.debugDescription)
+        // The button would appear only after the screen has asked the server, so wait for that question.
+        var asked = before
+        for _ in 0..<15 {
+            asked = try await passkeyCalls(stub: "accountsEmpty").count
+            if asked > before { break }
+            sleep(1)
+        }
+        XCTAssertGreaterThan(asked, before, "The sign-in screen asks the server for passkey options")
+        sleep(1)
+        XCTAssertFalse(app.buttons["Sign in with a passkey"].exists, "The server has no passkey, so none is offered\n\(app.debugDescription)")
+        shot("17c-signin-server-has-none")
+    }
+
+    func testAddAPasskey() async throws {
+        let app = launch(passkeys: true)
+        signIn(app)
+        app.buttons["Account"].tap()
+        app.buttons["Passkeys"].tap()
+        XCTAssertTrue(app.staticTexts["MacBook Pro, Safari"].waitForExistence(timeout: 15), app.debugDescription)
+        let add = app.buttons["Add a passkey"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.links.matching(NSPredicate(format: "label CONTAINS '#/passkeys'")).firstMatch.exists, "The page link gives way to the button")
+        assertTouchable(add, "Add a passkey")
+        shot("10c-passkeys-add")
+        let before = try await passkeyCalls(excluding: ["passkey-options"]).count
+        add.tap()
+        // The reply's list replaces the one on screen, so the new row is the proof that the list was refreshed from it.
+        XCTAssertTrue(app.staticTexts["iPhone, GhostShell"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Passkey added."].exists, app.debugDescription)
+        shot("10d-passkeys-added")
+        let made = Array(try await passkeyCalls(excluding: ["passkey-options"]).dropFirst(before))
+        XCTAssertEqual(made.compactMap { $0["route"] as? String }, ["api/passkeys/options", "api/passkeys"], "\(made)")
+        XCTAssertEqual((made.first?["body"] as? [String: Any])?["origin"] as? String, address, "The options request names the address it was made at")
+        let credential = made.last?["body"] as? [String: Any]
+        XCTAssertEqual(credential?["id"] as? String, "c3R1Yi1uZXctY3JlZGVudGlhbA")
+        let response = credential?["response"] as? [String: Any]
+        XCTAssertEqual(response?["clientDataJSON"] as? String, "c3R1Yi1uZXctY2xpZW50LWRhdGE")
+        XCTAssertEqual(response?["attestationObject"] as? String, "c3R1Yi1hdHRlc3RhdGlvbg")
+    }
+
+    func testPasskeyPageLinkStaysWithoutPasskeySupport() throws {
+        let app = launch()
+        signIn(app)
+        app.buttons["Account"].tap()
+        app.buttons["Passkeys"].tap()
+        XCTAssertTrue(app.staticTexts["MacBook Pro, Safari"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertFalse(app.buttons["Add a passkey"].exists, "A build with no passkey support cannot add one")
+        XCTAssertTrue(app.staticTexts["Add a passkey from the page in a browser."].exists, app.debugDescription)
     }
 
     // MARK: Files

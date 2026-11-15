@@ -54,15 +54,38 @@ public actor GhostShellClient {
         switch response.statusCode {
         case 303:
             guard let fresh = Self.cookieToken(response) else { throw GhostShellError.server(status: 303) }
-            token = fresh
-            loaded = true
-            await store.save(fresh, for: address)
-            changes.yield(.signedIn)
+            await accept(fresh)
         case 401, 429:
             throw String(decoding: data.prefix(20_000), as: UTF8.self).contains("Too many tries") || response.statusCode == 429 ? GhostShellError.locked : GhostShellError.wrongPassword
         default:
             throw GhostShellError.server(status: response.statusCode)
         }
+    }
+
+    // NOTE: [15 Nov 2026] EK - `passkey-login` answers 200 `{ok}` with the same Set-Cookie as the password login, and 401 or 429 with the server's own words (see passkeySignIn in server.mjs).
+    func signIn(passkey body: some Encodable & Sendable) async throws {
+        let (data, response) = try await openPost("passkey-login", json: body)
+        switch response.statusCode {
+        case 200:
+            guard let fresh = Self.cookieToken(response) else { throw GhostShellError.server(status: 200) }
+            await accept(fresh)
+        // `refusal` reads the words of a 400 and leaves a 401 or 429 as a bare status, so these two borrow the 400 reading.
+        case 401, 429: throw Self.refusal(400, data)
+        default: throw Self.refusal(response.statusCode, data)
+        }
+    }
+
+    /// A POST with no token, for the routes a signed-out app uses.
+    func openPost(_ path: String, json body: some Encodable & Sendable) async throws -> (Data, HTTPURLResponse) {
+        let request = try build("POST", path, body: try JSONEncoder().encode(body), contentType: "application/json", token: nil)
+        return try await transport(request)
+    }
+
+    private func accept(_ fresh: String) async {
+        token = fresh
+        loaded = true
+        await store.save(fresh, for: address)
+        changes.yield(.signedIn)
     }
 
     /// Forgets the token here first, so the app is signed out at once, then asks the server to revoke it. An unreachable server changes nothing locally.

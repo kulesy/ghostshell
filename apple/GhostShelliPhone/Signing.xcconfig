@@ -1,0 +1,2 @@
+// The iPhone app's signing and passkey settings come from apple/Local.xcconfig, which git ignores. Without it the build has no team, no entitlements and no passkey domain.
+#include? "../Local.xcconfig"

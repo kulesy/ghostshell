@@ -18,6 +18,9 @@ public final class AppModel {
     public let navigator = Navigator()
     public let routines = RoutinesStore()
 
+    /// Set by an app that may use passkeys (the iPhone's, with its Associated Domains entitlement). Nil hides every passkey control.
+    public var passkeySupport: PasskeySupport?
+
     /// The text in the sign-in address field, kept between launches. It is an address, not a secret.
     public var addressText: String
 
@@ -70,6 +73,23 @@ public final class AppModel {
         guard let typed = ServerAddress(text) else { throw GhostShellError.badAddress }
         let candidate = GhostShellClient(address: typed, store: store)
         try await candidate.signIn(password: password)
+        addressText = text
+        defaults.set(text, forKey: Self.addressKey)
+        enter(candidate)
+    }
+
+    /// Whether the sign-in screen offers a passkey for the typed address: this build may use one there and the server has one.
+    public func offersPasskey(address text: String) async -> Bool {
+        guard let support = passkeySupport, let typed = ServerAddress(text) else { return false }
+        return await GhostShellClient(address: typed, store: store).offersPasskey(using: support)
+    }
+
+    /// Throws what the sign-in screen shows under its fields. A person backing out of the system sheet throws `CancellationError`.
+    public func signInWithPasskey(address text: String) async throws {
+        guard let support = passkeySupport else { throw GhostShellError.refused(status: 0, message: "This build cannot use passkeys.") }
+        guard let typed = ServerAddress(text) else { throw GhostShellError.badAddress }
+        let candidate = GhostShellClient(address: typed, store: store)
+        try await candidate.signIn(passkeyUsing: support)
         addressText = text
         defaults.set(text, forKey: Self.addressKey)
         enter(candidate)

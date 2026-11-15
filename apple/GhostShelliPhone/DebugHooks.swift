@@ -21,7 +21,22 @@ enum DebugHooks {
         let store: TokenStore = args.string(forKey: "GSKeychainService").map { KeychainTokenStore(service: $0) } ?? KeychainTokenStore()
         let defaults = args.string(forKey: "GSDefaultsSuite").flatMap { UserDefaults(suiteName: $0) } ?? .standard
         if let folder = args.string(forKey: "GSAttachDir") { AttachWatcher.start(folder: URL(fileURLWithPath: folder)) }
-        return AppModel(store: store, defaults: defaults, address: args.string(forKey: "GSAddress"))
+        let model = AppModel(store: store, defaults: defaults, address: args.string(forKey: "GSAddress"))
+        // Stands in for the system sheet, which a Simulator without an entitled team cannot show, and lets any address through the domain check.
+        if ProcessInfo.processInfo.arguments.contains("-GSPasskeyStub") { model.passkeySupport = PasskeySupport(ceremony: StubPasskeyCeremony(), domain: nil) }
+        return model
+    }
+}
+
+/// Fixed answers for `-GSPasskeyStub`. The UI tests look for these bytes in what the app sends the stub server (base64url of the text).
+struct StubPasskeyCeremony: PasskeyCeremony {
+    func assert(challenge: Data, rpId: String) async throws -> PasskeyAssertion {
+        PasskeyAssertion(credentialID: Data("stub-credential".utf8), clientDataJSON: Data("stub-client-data".utf8), authenticatorData: Data("stub-authenticator".utf8),
+                         signature: Data("stub-signature".utf8), userHandle: Data("stub-user".utf8))
+    }
+
+    func register(challenge: Data, rpId: String, name: String, userID: Data) async throws -> PasskeyRegistration {
+        PasskeyRegistration(credentialID: Data("stub-new-credential".utf8), clientDataJSON: Data("stub-new-client-data".utf8), attestationObject: Data("stub-attestation".utf8))
     }
 }
 
