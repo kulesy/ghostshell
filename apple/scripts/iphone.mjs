@@ -127,16 +127,43 @@ function startFixtures(stub, { empty = false } = {}) {
   ] };
   if (empty) { accounts.accounts = []; passkeys.passkeys = []; }
   const decisions = [];
+  // The passkey calls the app made, each `{ route, body }`. A native passkey is never really made, so adding one answers with the list plus a new row and keeps nothing.
+  const passkeyCalls = [];
   const json = (res, body, status = 200) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+  const base64url = text => Buffer.from(text).toString('base64url');
+  const hostOf = req => (req.headers.host ?? '').replace(/:\d+$/, '');
   const server = http.createServer((req, res) => {
     const { pathname } = new URL(req.url, 'http://fixtures');
     if (pathname === '/__sends') return json(res, stub.sends);
     if (pathname === '/__calls') return json(res, stub.calls);
     if (pathname === '/__terminal') return json(res, stub.requests);
     if (pathname === '/__decisions') return json(res, decisions);
+    if (pathname === '/__passkeys') return json(res, passkeyCalls);
     if (pathname === '/api/accounts' || pathname === '/api/accounts/plan') return req.resume(), json(res, accounts);
     if (pathname === '/api/banners') return req.resume(), json(res, {});
-    if (pathname === '/api/passkeys') return req.resume(), json(res, passkeys);
+    if (pathname === '/api/passkeys' && req.method === 'GET') return req.resume(), json(res, passkeys);
+    if (req.method === 'POST' && ['/passkey-options', '/passkey-login', '/api/passkeys/options', '/api/passkeys'].includes(pathname)) {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        let sent;
+        try { sent = JSON.parse(body); } catch { sent = { bad: body }; }
+        passkeyCalls.push({ route: pathname.slice(1), body: sent });
+        // The app refuses an rpId other than the address host, so every answer names the host it was asked at.
+        if (pathname === '/passkey-options') {
+          return json(res, passkeys.passkeys.length
+            ? { options: { challenge: base64url('stub-challenge'), rpId: hostOf(req), timeout: 60_000, userVerification: 'required' }, why: '' }
+            : { options: null, why: 'No passkeys are added yet.' });
+        }
+        if (pathname === '/passkey-login') return res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': 'capcom=stub; HttpOnly; Path=/' }).end('{"ok":true}');
+        if (pathname === '/api/passkeys/options') {
+          return json(res, { challenge: base64url('stub-new-challenge'), rp: { id: hostOf(req), name: 'GhostShell' }, user: { id: base64url('stub-user-id'), name: 'owner', displayName: 'owner' },
+            pubKeyCredParams: [{ type: 'public-key', alg: -7 }], excludeCredentials: [] });
+        }
+        json(res, { passkeys: [...passkeys.passkeys, { id: 'pk-new', device: 'iPhone, GhostShell', rpId: hostOf(req), created: new Date().toISOString(), used: null }] });
+      });
+      return;
+    }
     const approve = /^\/api\/sessions\/([^/]+)\/approve$/.exec(pathname);
     if (approve && req.method === 'POST') {
       let body = '';
@@ -159,6 +186,7 @@ function startFixtures(stub, { empty = false } = {}) {
   return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({
     address: `http://localhost:${server.address().port}`,
     decisions,
+    passkeyCalls,
     stop: () => { server.closeAllConnections(); server.close(); },
   })));
 }

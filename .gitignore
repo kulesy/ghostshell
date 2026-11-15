@@ -9,3 +9,6 @@ apple/**/DerivedData/
 apple/**/xcuserdata/
 apple/**/.swiftpm/
 apple/screenshots/
+
+# Apple signing and passkey domain for the iPhone app (apple/Local.xcconfig.example)
+apple/Local.xcconfig

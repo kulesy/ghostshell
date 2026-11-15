@@ -1,0 +1,4 @@
+// Copy to apple/Local.xcconfig (git ignores that copy) and fill in the three values. Setup is in apple/README.md.
+DEVELOPMENT_TEAM = YOUR_TEN_CHARACTER_TEAM_ID
+GHOSTSHELL_PASSKEY_DOMAIN = your-mac.your-tailnet.ts.net
+GHOSTSHELL_IPHONE_ENTITLEMENTS = GhostShelliPhone/Passkeys.entitlements

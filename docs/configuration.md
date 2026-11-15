@@ -1,6 +1,6 @@
 # Configuration
 
-The settings in `config.json` and `config.local.json`, and the ten environment variables that override them.
+The settings in `config.json` and `config.local.json`, and the eleven environment variables that override them.
 
 ## Files
 
@@ -50,9 +50,13 @@ The settings in `config.json` and `config.local.json`, and the ten environment v
 
 `http://localhost:<port>` needs no entry and works for a browser that opens it directly. GhostShell ignores an entry that is not https or that is an IP address, and says so on stderr. Keep your real addresses in `config.local.json`. [Remote access](remote-access.md#passkeys-over-https) has an example.
 
+### `appleTeamId`
+
+`appleTeamId` is the Apple team ID of the iPhone app, unset by default. Write it as 10 uppercase letters or digits. GhostShell then answers `GET /.well-known/apple-app-site-association` for the app, so the phone can sign in with a passkey. With the key unset or malformed, that path answers as any unknown path does. Keep your real team ID in `config.local.json`. [Passkeys on the iPhone](../apple/README.md#passkeys-on-the-iphone) has the rest of the setup.
+
 ## Environment variables
 
-Ten environment variables win over both files:
+Eleven environment variables win over both files:
 
 - `PORT` sets the port.
 - `CAPCOM_CLAUDE` sets the CLI.
@@ -61,5 +65,6 @@ Ten environment variables win over both files:
 - `CAPCOM_AUTO_TITLE` set to `0` turns off [`autoTitle`](#autotitle), and any other value turns it on.
 - `CAPCOM_SECURITY`, `CAPCOM_OPEN`, `CAPCOM_UPDATE_ROOT` and `CAPCOM_UPDATE_DELAY_MS` point a test instance at stubs for the macOS `security` and `open` tools and at a scratch folder for the checkout it would update, and set the wait in milliseconds before its first check for updates (60000 by default). Leave them unset in real use.
 - `CAPCOM_GROUP_UPDATE_SCALE` divides the waits of the [group updates](#groupupdates) by that number, so a test instance can see one in seconds. Leave it unset in real use.
+- `CAPCOM_APPLE_TEAM_ID` sets [`appleTeamId`](#appleteamid), and a test instance uses it to turn the association file on or off.
 
 Two instances that share a state folder both fire its routines, so always give a test instance its own.

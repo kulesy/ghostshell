@@ -13,6 +13,10 @@ struct GhostShelliPhoneApp: App {
         #else
         let model = AppModel(store: KeychainTokenStore())
         #endif
+        // A build made without Local.xcconfig has no domain and no entitlement, so it offers no passkey. The Debug stub may already have set one.
+        if model.passkeySupport == nil, let domain = Bundle.main.object(forInfoDictionaryKey: "GSPasskeyDomain") as? String, !domain.isEmpty {
+            model.passkeySupport = PasskeySupport(ceremony: SystemPasskeyCeremony(), domain: domain)
+        }
         _model = State(initialValue: model)
         watchLink = WatchLink(model: model)
     }

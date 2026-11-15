@@ -7,6 +7,8 @@ public struct SignInScreen: View {
     @State private var password = ""
     @State private var failure: GhostShellError?
     @State private var working = false
+    @State private var passkeyOffered = false
+    @State private var passkeyWorking = false
     @FocusState private var focus: Field?
 
     private enum Field { case address, password }
@@ -24,7 +26,7 @@ public struct SignInScreen: View {
         switch failure { case .badAddress?, .unreachable?: failure?.errorDescription; default: nil }
     }
     private var passwordProblem: String? {
-        switch failure { case .wrongPassword?, .locked?, .server?: failure?.errorDescription; default: nil }
+        switch failure { case .wrongPassword?, .locked?, .server?, .refused?: failure?.errorDescription; default: nil }
     }
 
     public var body: some View {
@@ -47,6 +49,14 @@ public struct SignInScreen: View {
         .onAppear {
             address = model.addressText
             focus = address.isEmpty ? .address : .password
+        }
+        // Waits for the typing to settle before asking the typed address whether it has a passkey.
+        .task(id: address) {
+            passkeyOffered = false
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            let offered = await model.offersPasskey(address: address)
+            if !Task.isCancelled { passkeyOffered = offered }
         }
     }
 
@@ -90,6 +100,15 @@ public struct SignInScreen: View {
                         .submitLabel(.go)
                         .onSubmit(signIn)
                 }
+                #if os(iOS)
+                if passkeyOffered {
+                    Button(action: signInWithPasskey) {
+                        Text(passkeyWorking ? "Signing in" : "Sign in with a passkey")
+                    }
+                    .buttonStyle(.ghost(.outline, radius: Self.fieldRadius, fills: true))
+                    .disabled(working || passkeyWorking)
+                }
+                #endif
             }
             Button(action: signIn) {
                 HStack(spacing: 8) {
@@ -99,7 +118,7 @@ public struct SignInScreen: View {
             }
             .buttonStyle(.ghost(.primary, radius: Self.fieldRadius, fills: true))
             .keyboardShortcut(.defaultAction)
-            .disabled(working || password.isEmpty)
+            .disabled(working || passkeyWorking || password.isEmpty)
         }
         .textFieldStyle(.plain)
         .padding(24)
@@ -157,6 +176,23 @@ public struct SignInScreen: View {
                 focus = addressProblem == nil ? .password : .address
             }
             working = false
+        }
+    }
+
+    private func signInWithPasskey() {
+        guard !working, !passkeyWorking else { return }
+        passkeyWorking = true
+        failure = nil
+        focus = nil
+        Task {
+            do {
+                try await model.signInWithPasskey(address: address)
+            } catch is CancellationError {
+                // Backing out of the system sheet is a choice, so nothing shows.
+            } catch {
+                failure = error as? GhostShellError ?? .unreachable
+            }
+            passkeyWorking = false
         }
     }
 }
