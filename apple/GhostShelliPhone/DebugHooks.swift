@@ -35,7 +35,7 @@ struct StubPasskeyCeremony: PasskeyCeremony {
                          signature: Data("stub-signature".utf8), userHandle: Data("stub-user".utf8))
     }
 
-    func register(challenge: Data, rpId: String, name: String, userID: Data) async throws -> PasskeyRegistration {
+    func register(challenge: Data, rpId: String, name: String, userID: Data, excluding: [Data]) async throws -> PasskeyRegistration {
         PasskeyRegistration(credentialID: Data("stub-new-credential".utf8), clientDataJSON: Data("stub-new-client-data".utf8), attestationObject: Data("stub-attestation".utf8))
     }
 }

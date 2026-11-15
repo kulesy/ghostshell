@@ -42,6 +42,7 @@ private final class FixedCeremony: PasskeyCeremony, @unchecked Sendable {
     var failure: Error?
     private(set) var asked: [String] = []
     private(set) var challenges: [Data] = []
+    private(set) var excluded: [Data] = []
 
     func assert(challenge: Data, rpId: String) async throws -> PasskeyAssertion {
         asked.append("assert \(rpId)"); challenges.append(challenge)
@@ -49,7 +50,8 @@ private final class FixedCeremony: PasskeyCeremony, @unchecked Sendable {
         return PasskeyAssertion(credentialID: Data("id".utf8), clientDataJSON: Data("client".utf8), authenticatorData: Data("auth".utf8), signature: Data("sig".utf8), userHandle: Data("user".utf8))
     }
 
-    func register(challenge: Data, rpId: String, name: String, userID: Data) async throws -> PasskeyRegistration {
+    func register(challenge: Data, rpId: String, name: String, userID: Data, excluding: [Data]) async throws -> PasskeyRegistration {
+        excluded = excluding
         asked.append("register \(rpId) \(name) \(String(decoding: userID, as: UTF8.self))"); challenges.append(challenge)
         if let failure { throw failure }
         return PasskeyRegistration(credentialID: Data("new-id".utf8), clientDataJSON: Data("new-client".utf8), attestationObject: Data("attest".utf8))
@@ -252,6 +254,16 @@ final class PasskeyTests: XCTestCase {
         let sent = try json(seen[1].body)
         XCTAssertEqual(sent["id"] as? String, Base64URL.encode(Data("new-id".utf8)))
         XCTAssertEqual((sent["response"] as? [String: Any?])?["attestationObject"] as? String, Base64URL.encode(Data("attest".utf8)))
+    }
+
+    func testAddingPassesTheServersExistingCredentialsToTheSheet() async throws {
+        let registration = #"{"challenge":"c3R1Yi1jaGFsbGVuZ2U","rp":{"id":"ghost.example.com","name":"GhostShell"},"user":{"id":"dXNlci0x","name":"owner"},"excludeCredentials":[{"type":"public-key","id":"a25vd24tMQ"},{"type":"public-key","id":"a25vd24tMg"}]}"#
+        Routes.reset(["/api/passkeys/options": (200, [:], registration), "/api/passkeys": (200, [:], #"{"passkeys":[]}"#)])
+        let ceremony = FixedCeremony()
+        let (client, store) = client()
+        await store.save(token, for: address)
+        _ = try await client.addPasskey(using: PasskeySupport(ceremony: ceremony, domain: "ghost.example.com"))
+        XCTAssertEqual(ceremony.excluded, [Data("known-1".utf8), Data("known-2".utf8)])
     }
 
     func testAddingStopsBeforeTheSheetWhenTheServerNamesAnotherHost() async throws {

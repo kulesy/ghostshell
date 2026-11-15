@@ -100,6 +100,15 @@ public struct SignInScreen: View {
                         .submitLabel(.go)
                         .onSubmit(signIn)
                 }
+                #if os(iOS)
+                if passkeyOffered {
+                    Button(action: signInWithPasskey) {
+                        Text(passkeyWorking ? "Signing in" : "Sign in with a passkey")
+                    }
+                    .buttonStyle(.ghost(.outline, radius: Self.fieldRadius, fills: true))
+                    .disabled(working || passkeyWorking)
+                }
+                #endif
             }
             Button(action: signIn) {
                 HStack(spacing: 8) {
@@ -110,15 +119,6 @@ public struct SignInScreen: View {
             .buttonStyle(.ghost(.primary, radius: Self.fieldRadius, fills: true))
             .keyboardShortcut(.defaultAction)
             .disabled(working || passkeyWorking || password.isEmpty)
-            #if os(iOS)
-            if passkeyOffered {
-                Button(action: signInWithPasskey) {
-                    Text(passkeyWorking ? "Signing in" : "Sign in with a passkey")
-                }
-                .buttonStyle(.ghost(.outline, radius: Self.fieldRadius, fills: true))
-                .disabled(working || passkeyWorking)
-            }
-            #endif
         }
         .textFieldStyle(.plain)
         .padding(24)

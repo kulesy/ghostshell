@@ -12,6 +12,8 @@ private struct AddOptions: Decodable, Sendable {
     var challenge: String
     var rp: Relying
     var user: Handle
+    var excludeCredentials: [Excluded]?
+    struct Excluded: Decodable, Sendable { var id: String }
     struct Relying: Decodable, Sendable { var id: String }
     struct Handle: Decodable, Sendable { var id: String; var name: String }
 }
@@ -38,7 +40,8 @@ extension GhostShellClient {
         let options: AddOptions = try await post("api/passkeys/options", json: OriginBody(origin: address.origin))
         try support.check(rpId: options.rp.id, address: address)
         guard let challenge = Base64URL.decode(options.challenge), let userID = Base64URL.decode(options.user.id) else { throw GhostShellError.server(status: 0) }
-        let made = try await support.ceremony.register(challenge: challenge, rpId: options.rp.id, name: options.user.name, userID: userID)
+        let made = try await support.ceremony.register(challenge: challenge, rpId: options.rp.id, name: options.user.name, userID: userID,
+                                                excluding: (options.excludeCredentials ?? []).compactMap { Base64URL.decode($0.id) })
         let reply: PasskeyList = try await post("api/passkeys", json: made)
         return reply.passkeys
     }

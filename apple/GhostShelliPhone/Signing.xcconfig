@@ -1,2 +1,2 @@
-// The iPhone app's signing and passkey settings come from apple/Local.xcconfig, which git ignores. Without it the build has no team, no entitlements and no passkey domain.
+// The iPhone and watch apps take their team from apple/Local.xcconfig, which git ignores. Only the iPhone target maps GHOSTSHELL_IPHONE_ENTITLEMENTS into CODE_SIGN_ENTITLEMENTS, so the watch never gets the iPhone's entitlements. Without the file, neither target has a team or entitlements.
 #include? "../Local.xcconfig"

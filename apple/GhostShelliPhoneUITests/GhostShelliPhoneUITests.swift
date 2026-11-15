@@ -610,6 +610,10 @@ final class GhostShelliPhoneUITests: XCTestCase {
         let button = app.buttons["Sign in with a passkey"]
         XCTAssertTrue(button.waitForExistence(timeout: 15), app.debugDescription)
         assertTouchable(button, "Sign in with a passkey")
+        let password = app.secureTextFields.firstMatch
+        XCTAssertGreaterThanOrEqual(button.frame.minY, password.frame.maxY, "The passkey button sits under the password field")
+        XCTAssertLessThan(button.frame.minY - password.frame.maxY, 32, "The passkey button follows the password field directly")
+        XCTAssertLessThan(button.frame.maxY, app.buttons["Sign in"].frame.minY, "The passkey button comes before Sign in")
         shot("17b-signin-passkey")
         let before = try await passkeyCalls().count
         button.tap()

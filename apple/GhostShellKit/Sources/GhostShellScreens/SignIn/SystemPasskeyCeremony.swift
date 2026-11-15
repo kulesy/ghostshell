@@ -19,14 +19,17 @@ public final class SystemPasskeyCeremony: NSObject, PasskeyCeremony, ASAuthoriza
                                 signature: made.signature, userHandle: made.userID)
     }
 
-    public func register(challenge: Data, rpId: String, name: String, userID: Data) async throws -> PasskeyRegistration {
+    public func register(challenge: Data, rpId: String, name: String, userID: Data, excluding: [Data]) async throws -> PasskeyRegistration {
         let request = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpId).createCredentialRegistrationRequest(challenge: challenge, name: name, userID: userID)
         request.userVerificationPreference = .required
+        request.excludedCredentials = excluding.map(ASAuthorizationPlatformPublicKeyCredentialDescriptor.init(credentialID:))
         guard let made = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration, let attestation = made.rawAttestationObject else { throw Self.failed }
         return PasskeyRegistration(credentialID: made.credentialID, clientDataJSON: made.rawClientDataJSON, attestationObject: attestation)
     }
 
     private static let failed = GhostShellError.refused(status: 0, message: "The passkey did not work.")
+    // The words public/ui/webauthn.js shows for the browser's InvalidStateError.
+    private static let alreadyAdded = GhostShellError.refused(status: 0, message: "This device already has a passkey for GhostShell.")
 
     private func perform(_ request: ASAuthorizationRequest) async throws -> ASAuthorization {
         try await withCheckedThrowingContinuation { continuation in
@@ -51,7 +54,11 @@ public final class SystemPasskeyCeremony: NSObject, PasskeyCeremony, ASAuthoriza
 
     // Backing out of the sheet is the person's choice, so it is a quiet cancel and not a failure to show.
     public func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        finish(.failure((error as? ASAuthorizationError)?.code == .canceled ? CancellationError() : Self.failed))
+        switch (error as? ASAuthorizationError)?.code {
+        case .canceled: finish(.failure(CancellationError()))
+        case .matchedExcludedCredential: finish(.failure(Self.alreadyAdded))
+        default: finish(.failure(Self.failed))
+        }
     }
 
     public func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {

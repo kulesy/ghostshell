@@ -59,7 +59,8 @@ public struct PasskeyRegistration: Sendable, Equatable, Encodable {
 /// The two passkey ceremonies. The real one is the system sheet (GhostShellScreens, iOS only). A person backing out throws `CancellationError`.
 public protocol PasskeyCeremony: Sendable {
     func assert(challenge: Data, rpId: String) async throws -> PasskeyAssertion
-    func register(challenge: Data, rpId: String, name: String, userID: Data) async throws -> PasskeyRegistration
+    /// `excluding` holds the credential IDs this server already has, so the system refuses a second passkey on the same device.
+    func register(challenge: Data, rpId: String, name: String, userID: Data, excluding: [Data]) async throws -> PasskeyRegistration
 }
 
 /// A ceremony and the host this build may use it for. Only a build with the Associated Domains entitlement for `domain` has one, so a build without it offers no passkey.
