@@ -156,6 +156,8 @@ private struct DetailsView: View {
                     MarkdownView(blocks: ChatMarkdown.parse(held.summary.reply ?? ""), font: ChatStyle.small)
                         .environment(model)
                         .selectableMarkdown()
+                        // The container takes the label, because a label on selectable text loops on macOS 27. See https://github.com/kulesy/ghostshell/issues/133.
+                        .accessibilityElement(children: .contain)
                         .accessibilityLabel("Latest reply of \(row.title.isEmpty ? SidebarOutline.untitled : row.title)")
                 }
             } else if let problem = cards.replyProblems[row.id] {
