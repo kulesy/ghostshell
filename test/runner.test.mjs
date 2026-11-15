@@ -1034,7 +1034,7 @@ const groupCli = dir => {
 const GROUP_ID = '11111111-2222-4333-8444-555555555555';
 // What a group's chat is made to ask about, whatever the mode. Spelled out here so a change to the list is a change to a test.
 const LAYOUT_WRITES = ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].map(n => `mcp__capcom__${n}`);
-const GROUP_ASKS = ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage'];
+const GROUP_ASKS = ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Write', 'Edit', 'NotebookEdit', 'SendMessage'];
 const groupChat = (t, { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-')), id = GROUP_ID, ...options } = {}) => {
   const recorded = groupCli(dir);
   const cwd = path.join(dir, 'groups', 'cg-1');
@@ -1176,7 +1176,7 @@ test('in a group chat the read tools are allowed with no card, in any mode, and 
   }
 });
 
-test('in a group chat Bash, Monitor, file edits and messages to other sessions always show a card, in any mode, with no Always allow, even when the CLI offers one', async t => {
+test('in a group chat file edits and messages to other sessions always show a card, in any mode, with no Always allow, even when the CLI offers one', async t => {
   const modes = ['manual', 'bypassPermissions', 'auto'];
   for (const mode of modes) {
     const { chat, recorded } = groupChat(t, { group: {}, mode, id: `11111111-2222-4333-8444-00000000003${modes.indexOf(mode)}` });
@@ -1187,32 +1187,29 @@ test('in a group chat Bash, Monitor, file edits and messages to other sessions a
     }
     assert.deepEqual(chat.status().pending.map(p => [p.tool, p.always]), builtin.map(name => [name, false]), mode);
     assert.equal(recorded.answers().some(a => a.request_id.startsWith('builtin-')), false, `${mode}: nothing was allowed without the owner`);
-    chat.answer('builtin-Bash', 'always');
-    await slow(() => recorded.answers().some(a => a.request_id === 'builtin-Bash'));
-    assert.equal(recorded.answers().find(a => a.request_id === 'builtin-Bash').response.updatedPermissions, undefined, 'Always allow keeps no rule for it');
+    chat.answer('builtin-Write', 'always');
+    await slow(() => recorded.answers().some(a => a.request_id === 'builtin-Write'));
+    assert.equal(recorded.answers().find(a => a.request_id === 'builtin-Write').response.updatedPermissions, undefined, 'Always allow keeps no rule for it');
   }
 });
 
-test('in a group chat a Bash call that only reads is allowed with no card, in any mode, and one that changes anything still shows a card with no Always allow', async t => {
-  const modes = ['manual', 'bypassPermissions', 'auto'];
-  for (const mode of modes) {
-    const { chat, recorded } = groupChat(t, { group: {}, mode, id: `11111111-2222-4333-8444-0000000000a${modes.indexOf(mode)}` });
-    chat.send('builtin Bash {"command":"ls -la lib 2>&1 | head -5"}', []);
-    await slow(() => recorded.answers().some(a => a.request_id === 'builtin-Bash'));
-    assert.deepEqual(recorded.answers().find(a => a.request_id === 'builtin-Bash').response, { behavior: 'allow', updatedInput: { command: 'ls -la lib 2>&1 | head -5' } }, mode);
-    assert.equal(chat.status().pending.length, 0, mode);
-    chat.send('builtin Bash {"command":"ls && rm x"}', []);
-    await slow(() => chat.status().pending.length === 1);
-    assert.deepEqual(chat.status().pending.map(p => [p.tool, p.input.command, p.always]), [['Bash', 'ls && rm x', false]], mode);
-    assert.equal(recorded.answers().filter(a => a.request_id === 'builtin-Bash').length, 1, `${mode}: the write was not answered for the owner`);
-  }
-});
-
-test('an ordinary chat still gets a card for a Bash call that only reads, as it did before', async t => {
-  const { chat, recorded } = groupChat(t, { mode: 'manual', id: '11111111-2222-4333-8444-000000000070' });
-  chat.send('builtin Bash {"command":"ls"}', []);
-  await slow(() => chat.status().pending.length === 1);
-  assert.equal(recorded.answers().some(a => a.request_id === 'builtin-Bash'), false);
+test('a group chat is given no ask rule for Bash or Monitor, so Bypass runs a command unasked, and in a mode that asks the runner answers nothing itself and the card offers Always allow as in any chat', async t => {
+  const { chat, recorded } = groupChat(t, { group: {}, mode: 'bypassPermissions', id: '11111111-2222-4333-8444-0000000000a0' });
+  chat.send('hi', []);
+  await slow(() => recorded.starts().length === 1);
+  const asked = JSON.parse(flagOf(recorded.starts()[0].started, '--settings')).permissions.ask;
+  assert.deepEqual(asked.filter(name => ['Bash', 'Monitor'].includes(name)), []);
+  chat.stop();
+  const manual = groupChat(t, { group: {}, mode: 'manual', id: '11111111-2222-4333-8444-0000000000a1' });
+  const command = "cd /tmp && python3 -c 'print(1)'";
+  manual.chat.send(`builtin Bash ${JSON.stringify({ command })}`, []);
+  manual.chat.send('builtin Monitor', []);
+  await slow(() => manual.chat.status().pending.length === 2);
+  assert.deepEqual(manual.chat.status().pending.map(p => [p.tool, p.always]), [['Bash', true], ['Monitor', true]]);
+  assert.equal(manual.recorded.answers().some(a => a.request_id.startsWith('builtin-')), false, 'the runner allows neither on its own');
+  manual.chat.answer('builtin-Bash', 'always');
+  await slow(() => manual.recorded.answers().some(a => a.request_id === 'builtin-Bash'));
+  assert.ok(manual.recorded.answers().find(a => a.request_id === 'builtin-Bash').response.updatedPermissions, 'Always allow keeps the rule');
 });
 
 test('outside a group chat the CLI\'s own tools keep Always allow, and a group chat still offers it for a tool it does not ask about', async t => {
