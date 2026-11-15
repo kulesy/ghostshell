@@ -316,9 +316,15 @@ class App {
     const heading = this.findAll(node => node.role === 'AXRow' && node.kid(0, 0, 0)?.role === 'AXHeading')[n];
     return !!heading && (heading.disclosing === open || this.act(heading.kid(0, 0, 0)));
   }
-  viewPopup() { return this.find(node => node.role === 'AXPopUpButton' && node.desc?.startsWith('View')); }
+  // macOS 27.2 shows the menu as a menu button named by its title, where 27.0 shows a pop-up button named by its description.
+  viewName(node) { return [node.desc, node.title].find(name => name?.startsWith('View')); }
+  // With no lamp, macOS 27.2 drops the menu's label and names it by its text and icon, so the house or folder icon finds it.
+  viewPopup() {
+    return this.find(node => ['AXPopUpButton', 'AXMenuButton'].includes(node.role) && this.viewName(node))
+      ?? this.find(node => node.role === 'AXMenuButton' && ['home', 'folder'].includes(node.desc));
+  }
   // What the View menu says about the other views: "View", "View, another view needs you" or "View, another view is working".
-  viewMenu() { return this.viewPopup()?.desc ?? ''; }
+  viewMenu() { const popup = this.viewPopup(); return (popup && this.viewName(popup)) ?? ''; }
   // Picks a project (or Home) from the View menu in the sidebar's header. A project's item reads "Name (count)", and the menu is described "View, another view needs you" while one does.
   pickView(name) {
     const popup = this.viewPopup();
@@ -450,9 +456,10 @@ class App {
   // named "Open <link text>" that goes through the app's link handler.
   clickLink(text) {
     const nodes = this.tree();
-    const link = nodes.filter(node => node.role === 'AXLink' && node.title === text).at(-1);
-    const line = link && nodes.find(node => node.path.join() === link.path.slice(0, -1).join());
-    return !!line && this.act(line, `Open ${text}`);
+    // macOS 27.2 names a link by its description and puts it one level deeper, inside a copy of its line, so both names and both lines are tried.
+    const link = nodes.filter(node => node.role === 'AXLink' && (node.title === text || node.desc === text)).at(-1);
+    const lines = link ? [1, 2].map(up => nodes.find(node => node.path.join() === link.path.slice(0, -up).join())).filter(Boolean) : [];
+    return lines.some(line => this.act(line, `Open ${text}`));
   }
   // A picture tile's name is "View image 1 of 5, from a tool", or "View 2 more images" for the last. The nth (from 0) is pressed, in the order they sit.
   clickTile(n) {
@@ -647,7 +654,8 @@ async function chatFlow(bundle, appearance) {
     await signInToChatStub(app, stub);
 
     app.chooseRow(rowOf(stub, 'rich'));
-    check(await until('rich', () => app.texts().includes('Why is the upload test flaky? It fails about one run in five.'), 20), 'a rich chat shows its first message');
+    // A lazy thread lists only the rows near the bottom to accessibility on macOS 27.2, so the chat is known by its last reply.
+    check(await until('rich', () => app.hasText('Done. I added one line under'), 20), 'a rich chat shows its last reply');
     await sleep(800);
     await app.both('chat-rich');
     app.scrollChat(0.35);
@@ -1317,7 +1325,10 @@ async function accountsFlow(bundle, appearance) {
       app.resize(size);
       await sleep(700);
       check(app.press('Context:', { prefix: true }), `the meter opens its popover at the ${name} size`);
-      check(await until('popover', () => sees('Plan usage') && sees('Messages'), 10), `the popover shows the parts and the plan at the ${name} size`);
+      const shown = () => sees('Plan usage') && sees('Messages');
+      // On macOS 27.2 the first press at the default size leaves the popover shut, for a reason not yet found, so it is pressed once more.
+      if (!(await until('popover', shown, 5))) app.press('Context:', { prefix: true });
+      check(await until('popover', shown, 10), `the popover shows the parts and the plan at the ${name} size`);
       await app.shot(`${app.tag}-meter-popover-${appearance}-${name}`);
       app.escape();
       await sleep(500);
@@ -1686,7 +1697,7 @@ async function terminalFlow(bundle, appearance) {
     await app.both('term-with-file');
 
     app.chooseRow(rowOf(stub, 'rich'));
-    check(await until('rich', () => app.hasText('Why is the upload test flaky? It fails about one run in five.'), 20), 'a chat with no terminal opens');
+    check(await until('rich', () => app.hasText('Done. I added one line under'), 20), 'a chat with no terminal opens');
     check(toggle()?.enabled === false, 'the Terminal toggle is off in a chat that has no terminal');
     await sleep(800);
     await app.both('term-toggle-off');

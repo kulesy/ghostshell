@@ -12,6 +12,9 @@ struct LiveArea: View {
             if !model.live.isEmpty {
                 MarkdownView(blocks: ChatMarkdown.parse(model.live, fileLinks: model.chat.fileLinks))
                     .selectableMarkdown()
+                    // NOTE: [15 Nov 2026] EK - A label put straight on selectable text loops forever when an accessibility client reads it on macOS 27.
+                    // The container takes the label instead. See https://github.com/kulesy/ghostshell/issues/133.
+                    .accessibilityElement(children: .contain)
                     .accessibilityLabel("Claude is writing")
             }
             if model.turn != .none { WorkingLine() }

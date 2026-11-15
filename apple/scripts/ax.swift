@@ -44,8 +44,10 @@ func plain(_ v: AnyObject?) -> Any? {
     return nil
 }
 
+// AXWindows lists only the windows on the current Space, so a window on another Space is found as the main window.
 func window(_ app: AXUIElement) -> AXUIElement? {
-    ((attr(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []).first { (attr($0, kAXSubroleAttribute) as? String) == "AXStandardWindow" }
+    let main = attr(app, kAXMainWindowAttribute).map { [$0 as! AXUIElement] } ?? []
+    return (((attr(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []) + main).first { (attr($0, kAXSubroleAttribute) as? String) == "AXStandardWindow" }
 }
 
 func target(_ app: AXUIElement, _ spec: String) -> AXUIElement {
@@ -92,6 +94,8 @@ case "act":
     var names: CFArray?
     AXUIElementCopyActionNames(element, &names)
     let named = (names as? [String])?.first { $0.hasPrefix("Name:\(wanted)\n") } ?? wanted
+    // SwiftUI reports success for an action the element does not have, so an unlisted name of the app's own fails here.
+    if !named.hasPrefix("AX"), !named.hasPrefix("Name:") { out(result(.actionUnsupported)); exit(0) }
     out(result(AXUIElementPerformAction(element, named as CFString)))
 case "set":
     guard args.count >= 5 else { fail("usage: ax set <pid> <target> <attr> <json>") }
