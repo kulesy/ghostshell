@@ -38,16 +38,8 @@ struct ScheduledSection: View {
     var body: some View {
         let shown = ordered(inSidebar(model.routines.scheduled ?? []))
         if model.routines.features.scheduled, !shown.isEmpty {
-            #if os(iOS)
-            PhoneHeadingRow(heading: SidebarHeading(id: id, title: "Scheduled", kind: .other), count: shown.count, first: true)
+            HeadingRow(heading: SidebarHeading(id: id, title: "Scheduled", kind: .other), count: shown.count, first: true)
             if state.isOpen(id) { ForEach(shown) { ScheduledSidebarRow(entry: $0) } }
-            #else
-            Section(isExpanded: Binding(get: { state.isOpen(id) }, set: { state.setOpen(id, $0) })) {
-                ForEach(shown) { ScheduledSidebarRow(entry: $0) }
-            } header: {
-                HeadingRow(heading: SidebarHeading(id: id, title: "Scheduled", kind: .other), count: shown.count)
-            }
-            #endif
         }
     }
 }
@@ -68,7 +60,7 @@ private struct ScheduledSidebarRow: View {
         .accessibilityLabel("\(entry.title), \(note.text)")
         .help("\(entry.title): \(note.text)")
         .contextMenu { ScheduledMenu(entry: entry) }
-        .modifier(PhoneRowStyle())
+        .sidebarListRow().selectionDisabled()
     }
 }
 
@@ -101,19 +93,8 @@ struct IdleRoutineRow: View {
             .accessibilityLabel("\(full.title), \(words)")
             .help("\(full.title): \(words)")
             .contextMenu { RoutineMenu(routine: full, withRun: true, askDelete: nil) }
-            .modifier(PhoneRowStyle())
+            .sidebarListRow().selectionDisabled()
         }
-    }
-}
-
-/// Draws a quiet row as a plain row of the phone's list. The Mac keeps the list's own.
-private struct PhoneRowStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        #if os(iOS)
-        content.phoneListRow().selectionDisabled()
-        #else
-        content
-        #endif
     }
 }
 
@@ -124,26 +105,26 @@ private struct QuietRow: View {
     let tint: Color?
 
     var body: some View {
-        #if os(iOS)
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.geist(14, relativeTo: .body)).foregroundStyle(Color.ghost.sidebarForeground).lineLimit(1)
-            Text(line).font(.geist(12, relativeTo: .caption)).foregroundStyle(tint ?? Color.ghost.sidebarMuted).lineLimit(1)
+        let metrics = SidebarMetrics.current
+        let note = Text(line).font(.geist(metrics.touch ? 12 : 11, relativeTo: .caption)).foregroundStyle(tint ?? Color.ghost.sidebarMuted).lineLimit(1)
+        // The page puts a pointer's line on the title's row, at the right.
+        Group {
+            if metrics.touch {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.geist(metrics.rowFont, relativeTo: .body)).foregroundStyle(Color.ghost.sidebarForeground).lineLimit(1)
+                    note
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Text(title).font(.geist(metrics.rowFont, relativeTo: .body)).foregroundStyle(Color.ghost.sidebarForeground).lineLimit(1)
+                    Spacer(minLength: 4)
+                    note
+                }
+            }
         }
         .padding(.leading, 6)
-        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: metrics.touch ? 48 : metrics.row, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        #else
-        HStack(spacing: 10) {
-            StateMark(dot: nil)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).lineLimit(1)
-                Text(line).font(.caption).foregroundStyle(tint ?? .secondary).lineLimit(1)
-            }
-            Spacer(minLength: 4)
-        }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        #endif
     }
 }

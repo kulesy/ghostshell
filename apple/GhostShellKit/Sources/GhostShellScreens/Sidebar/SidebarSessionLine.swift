@@ -3,10 +3,8 @@ import SwiftUI
 
 /// One session in the list, with its tooltip and the slots every row carries. `title` overrides the row's own, as a routine's runs do.
 struct SessionLine: View {
-    #if os(iOS)
     @Environment(OrganiseModel.self) private var organise
     @Environment(SidebarState.self) private var state
-    #endif
     let row: SessionRow
     var title: String?
     var dot: SessionDot?
@@ -16,24 +14,16 @@ struct SessionLine: View {
 
     var body: some View {
         let shown = title ?? row.title
-        #if os(iOS)
         if let naming = organise.naming, naming.target == .session(row.id) {
-            PhoneNameField(naming: naming).id(naming.id).padding(.leading, nested ? 19 : 0).phoneListRow()
+            SidebarNameField(naming: naming).id(naming.id).padding(.leading, nested ? 19 : 0).sidebarListRow()
         } else {
-            PhoneSessionRow(row: row, title: shown, dot: dot ?? row.dot, fold: fold, nested: nested, last: last)
+            SidebarSessionRow(row: row, title: shown, dot: dot ?? row.dot, fold: fold, nested: nested, last: last)
                 .tag(row.id)
+                .help(SidebarOutline.tooltip(row, title: shown))
                 .contextMenu { SessionRowMenuSlot(row: row) }
                 .modifier(SessionRowSlot(row: row))
-                .phoneListRow(picked: state.editing && state.selection.contains(row.id))
+                .sidebarListRow(picked: state.isPicked(row.id))
         }
-        #else
-        SessionRowView(title: shown, dot: dot ?? row.dot, turnStart: row.turnStart, fold: fold)
-            .padding(.leading, nested ? 14 : 0)
-            .tag(row.id)
-            .help(SidebarOutline.tooltip(row, title: shown))
-            .contextMenu { SessionRowMenuSlot(row: row) }
-            .modifier(SessionRowSlot(row: row))
-        #endif
     }
 }
 

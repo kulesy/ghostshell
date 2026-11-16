@@ -27,17 +27,11 @@ final class OrganiseModel {
         var target: Target = .sheet
         var run: @MainActor (String) async -> String?
 
-        /// Where the name is typed. A phone types a session's or group's name on its own row and a new group's at the top of the list. The rest use the sheet.
+        /// Where the name is typed. A session's or group's name goes on its own row and a new group's at the top of the list, as on the page. The rest use the sheet.
         enum Target: Equatable { case sheet, session(String), group(String), newGroup }
 
         /// True where the list draws the field itself, so no sheet opens.
-        var inline: Bool {
-            #if os(iOS)
-            target != .sheet
-            #else
-            false
-            #endif
-        }
+        var inline: Bool { target != .sheet }
     }
 
     var problem: String?
