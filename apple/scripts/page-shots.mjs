@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Screenshots the web page at phone width against the same stubs the iPhone run signs in to, so a screen shows the same data on both.
+// Screenshots the web page at phone width, and at the Mac window's default and minimum size, against the same stubs the iPhone run signs in to, so a screen shows the same data on both.
 // Headless Chromium only. Set PLAYWRIGHT_CORE to the playwright-core folder of a checkout that has it. It never opens a browser the owner uses, port 4310 or ~/.config/capcom.
-//   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402] [--scheme light|dark] [--set chat,groups,empty] [--only <screen prefix>]
+//   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402|960|640] [--scheme light|dark] [--set chat,groups,empty,organise,routines] [--only <screen prefix>]
 // Writes <out>/page/<width>/<scheme>/<screen>.png. Screen names follow the iPhone UI tests' shot names where one exists.
 import fs from 'node:fs';
 import http from 'node:http';
@@ -19,11 +19,12 @@ import { startScratch } from './test-server.mjs';
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
-const SIZES = { 375: 667, 402: 874 };
+const SIZES = { 375: 667, 402: 874, 960: 640, 640: 420 };
+const PHONES = [375, 402];
 const argv = process.argv.slice(2);
 const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? '' : undefined);
 const OUT = path.resolve(option('--out') || '/private/tmp/claude-501/parity-survey');
-const sizes = option('--size') ? [Number(option('--size'))] : Object.keys(SIZES).map(Number);
+const sizes = option('--size') ? [Number(option('--size'))] : PHONES;
 const schemes = option('--scheme') ? [option('--scheme')] : ['light', 'dark'];
 const sets = (option('--set') || 'chat,groups,empty').split(',');
 const only = option('--only');
@@ -142,10 +143,11 @@ const SETS = {
     return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
   },
   async routines(extra = {}) {
-    const stub = routinesStub({ accept: true });
+    const stub = routinesStub();
     await new Promise(resolve => stub.server.listen(0, '127.0.0.1', resolve));
     const proxy = await startProxy(`http://localhost:${stub.server.address().port}`, {
       answer: p => (p === '/api/banners' ? {} : extra.answer?.(p)),
+      patch: forList(FEATURES),
     });
     return { address: proxy.address, stop: () => { proxy.stop(); stub.server.closeAllConnections(); stub.server.close(); } };
   },
@@ -228,6 +230,18 @@ const SCREENS = {
   empty: [
     ['list-empty', (page, ctx) => ctx.go('#/')],
   ],
+  // Named after the Mac run's shots (`main` and `organise`), which sign in to the same seeded scratch server.
+  organise: [
+    ['list-rows', (page, ctx) => ctx.go('#/')],
+    ['session-chosen', async (page, ctx) => { await ctx.go('#/'); await page.locator('a.row').first().click(); await sleep(1000); }],
+    ['new-group-menu', async (page, ctx) => { await ctx.go('#/'); await page.locator('button.add').click(); await page.locator('[role=menu]').waitFor(); }],
+  ],
+  routines: [
+    ['sidebar-routines', (page, ctx) => ctx.go('#/')],
+    ['routines-list', (page, ctx) => ctx.go('#/routines')],
+    ['routine-form', async (page, ctx) => { await ctx.go('#/routines'); await page.getByText('Weekly report').locator('visible=true').first().click(); await sleep(1000); }],
+    ['scheduled-list', (page, ctx) => ctx.go('#/scheduled')],
+  ],
 };
 
 // MARK: Run
@@ -241,7 +255,7 @@ async function runSet(browser, name, width, scheme) {
   const server = await SETS[name]();
   const dir = path.join(OUT, 'page', String(width), scheme);
   fs.mkdirSync(dir, { recursive: true });
-  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: scheme });
+  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: PHONES.includes(width), hasTouch: PHONES.includes(width), colorScheme: scheme });
   const failed = [];
   try {
     const page = await context.newPage();
