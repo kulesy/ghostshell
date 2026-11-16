@@ -30,7 +30,7 @@ struct SidebarSessionRow: View {
             if nested { NestLine(last: last).stroke(Color.ghost.sidebarBorder, lineWidth: 1).frame(width: 19) }
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(name).font(.geist(metrics.rowFont, relativeTo: .body)).foregroundStyle(Color.ghost.sidebarForeground).lineLimit(1)
+                    Text(name).font(.geist(metrics.rowFont, relativeTo: .body)).foregroundStyle(metrics.touch || hovered || picked ? Color.ghost.sidebarForeground : Color.ghost.sidebarMuted).lineLimit(1)
                     if metrics.touch, !line.isEmpty { Text(line).font(.geist(12, relativeTo: .caption)).foregroundStyle(Color.ghost.sidebarMuted).lineLimit(1) }
                 }
                 .padding(.leading, 6)

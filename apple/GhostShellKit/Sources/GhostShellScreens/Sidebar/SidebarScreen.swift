@@ -20,6 +20,7 @@ private struct SidebarHost: View {
     var body: some View {
         // The page's own top bar and footer replace the navigation bar, the search field and the toolbar. The title stays for the Back button of a chat.
         SidebarList()
+            .flatScrollEdges()
             .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader() }
             .safeAreaInset(edge: .bottom, spacing: 0) { SidebarFooter() }
             .background(Color.ghost.sidebar.ignoresSafeArea())

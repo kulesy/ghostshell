@@ -39,9 +39,15 @@ public struct RootView: View {
             SidebarScreen()
                 .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
                 .navigationSplitViewColumnWidth(sidebarWidth)
+                #if os(macOS)
+                .toolbar(removing: .sidebarToggle)
+                #endif
         } detail: {
             if let detail = model.navigator.detail { detail } else { EmptyDetail() }
         }
+        #if os(macOS)
+        .toolbar(removing: .sidebarToggle)
+        #endif
         .toolbar {
             if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
         }

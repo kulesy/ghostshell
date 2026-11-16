@@ -103,6 +103,15 @@ extension View {
         frame(minWidth: SidebarMetrics.current.target, minHeight: SidebarMetrics.current.target).contentShape(Rectangle())
     }
 
+    /// The page's list meets its header and footer with no blur. macOS 26 blurs and tints a scroll view's edge under a bar, which the iPhone keeps.
+    @ViewBuilder func flatScrollEdges() -> some View {
+        #if os(macOS)
+        if #available(macOS 26, *) { scrollEdgeEffectHidden(true, for: .all) } else { self }
+        #else
+        self
+        #endif
+    }
+
     /// Escape on a Mac. A phone has no such key.
     func onEscape(_ action: @escaping () -> Void) -> some View {
         #if os(macOS)

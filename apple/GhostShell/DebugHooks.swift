@@ -2,6 +2,7 @@
 import AppKit
 import GhostShellKit
 import GhostShellScreens
+import SwiftUI
 import WebKit
 
 /// Hooks for the scripted test run, compiled into Debug builds only. A Release build has none of this, and `apple/scripts/build` checks that.
@@ -140,12 +141,41 @@ enum ShotWatcher {
             config.rect = visible
             if let image = try? await web.takeSnapshot(configuration: config) { pieces.append((image, web.convert(visible, to: view))) }
         }
+        var rowPictures: [(NSImage, NSRect)] = []
+        for row in rows(in: view) where row.window != nil {
+            guard let rowRep = row.bitmapImageRepForCachingDisplay(in: row.bounds) else { continue }
+            row.cacheDisplay(in: row.bounds, to: rowRep)
+            let image = NSImage(size: row.bounds.size)
+            image.addRepresentation(rowRep)
+            rowPictures.append((image, view.convert(row.bounds, from: row)))
+        }
         let picture = NSImage(size: view.bounds.size)
         picture.lockFocus()
         rep.draw(in: NSRect(origin: .zero, size: view.bounds.size))
+        // The list's background is clear, so the picture shows the window's white behind a short list. The sidebar's colour goes between its header and footer.
+        for scroll in lists(in: view) where scroll.window != nil {
+            var colour = NSColor.clear
+            scroll.window?.effectiveAppearance.performAsCurrentDrawingAppearance { colour = NSColor(Color.ghost.sidebar).usingColorSpace(.sRGB) ?? .clear }
+            let inset = scroll.contentInsets
+            let area = NSRect(x: 0, y: scroll.isFlipped ? inset.top : inset.bottom, width: scroll.bounds.width, height: scroll.bounds.height - inset.top - inset.bottom)
+            colour.setFill()
+            view.convert(area, from: scroll).fill()
+        }
+        for (image, rect) in rowPictures { image.draw(in: rect) }
         for (image, rect) in pieces { image.draw(in: rect) }
         picture.unlockFocus()
         return picture
+    }
+
+    private static func lists(in view: NSView) -> [NSScrollView] {
+        if let scroll = view as? NSScrollView, String(describing: type(of: scroll)).contains("ListCoreScrollView") { return [scroll] }
+        return view.subviews.flatMap { lists(in: $0) }
+    }
+
+    // NOTE: [17 Nov 2026] EK - cacheDisplay leaves out a List's rows, which are table rows hosting their own SwiftUI views, so each is drawn on its own and laid over.
+    private static func rows(in view: NSView) -> [NSView] {
+        if String(describing: type(of: view)).contains("ListTableRowView") { return view.isHiddenOrHasHiddenAncestor ? [] : [view] }
+        return view.subviews.flatMap { rows(in: $0) }
     }
 
     private static func webViews(in view: NSView) -> [WKWebView] {
