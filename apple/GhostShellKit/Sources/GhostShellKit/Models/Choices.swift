@@ -12,7 +12,7 @@ public struct Choice: Hashable, Sendable, Identifiable {
 
 // NOTE: [8 Nov 2026] EK - These lists copy public/ui/model-rules.js (MAIN, LONG, EFFORTS) and public/ui/composer.js (MODES). A new model or mode there
 // needs the same line here. A value the lists lack is still kept by the choice functions, so an edit never drops it.
-private let models = [Choice("claude-opus-5-5", "Opus 5.5"), Choice("claude-fable-5-1", "Fable 5.1"), Choice("claude-sonnet-5-5", "Sonnet 5.5"),
+private let models = [Choice("claude-opus-5-5", "Opus 5.5"), Choice("claude-fable-5-2", "Fable 5.2"), Choice("claude-sonnet-5-5", "Sonnet 5.5"),
                       Choice("claude-haiku-5-5", "Haiku 5.5"), Choice("claude-opus-5-5[1m]", "Opus 5.5 (1M)")]
 private let efforts = [Choice("low", "Low"), Choice("medium", "Medium"), Choice("high", "High"), Choice("xhigh", "Extra"), Choice("max", "Max")]
 private let modes = [Choice("manual", "Manual"), Choice("acceptEdits", "Accept edits"), Choice("plan", "Plan"), Choice("auto", "Auto"),

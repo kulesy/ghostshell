@@ -118,6 +118,7 @@ final class ComposerOptionsTests: XCTestCase {
     }
 
     func testNames() {
+        XCTAssertEqual(ComposerOptions.modelName("claude-fable-5-2"), "Fable 5.2")
         XCTAssertEqual(ComposerOptions.modelName("claude-fable-5-1"), "Fable 5.1")
         XCTAssertEqual(ComposerOptions.modelName("claude-opus-4-1-20250805"), "Opus 4.1")
         XCTAssertEqual(ComposerOptions.modelName("sonnet[1m]"), "Sonnet (1M)")

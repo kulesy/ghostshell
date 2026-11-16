@@ -27,7 +27,7 @@ test('the four main models come first in a group named Model with no visible hea
   const items = menu();
   assert.equal(items[0].group, 'Model');
   assert.equal(items[0].heading, false);
-  assert.deepEqual(labels(items[0].items), ['Opus 5.5', 'Fable 5.1', 'Sonnet 5.5', 'Haiku 5.5']);
+  assert.deepEqual(labels(items[0].items), ['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5']);
   assert.deepEqual(items[0].items.map(i => i.key), ['1', '2', '3', '4']);
   assert.deepEqual(items[0].items.map(i => i.hint), ['1', '2', '3', '4']);
   assert.deepEqual(items[1], { separator: true });
@@ -42,7 +42,7 @@ test('the model in use is the one checked, and a main model picks its own id unl
   assert.deepEqual(checked(main()), ['Opus 5.5']);
   assert.deepEqual(checked(main({ model: 'claude-sonnet-5-5' })), ['Sonnet 5.5']);
   assert.deepEqual(main().map(press), [
-    [], [['model', 'claude-fable-5-1']], [['model', 'claude-sonnet-5-5']], [['model', 'claude-haiku-5-5']],
+    [], [['model', 'claude-fable-5-2']], [['model', 'claude-sonnet-5-5']], [['model', 'claude-haiku-5-5']],
   ]);
 });
 
@@ -120,7 +120,7 @@ test('the row for a model the lists do not hold comes before the Loading or erro
 
 test('a row\'s id is its kind and value, and stays the same when the CLI\'s list arrives, so the menu keeps the focus on that row', () => {
   const ids = items => items.map(i => i.id);
-  assert.deepEqual(ids(main()), ['model:claude-opus-5-5', 'model:claude-fable-5-1', 'model:claude-sonnet-5-5', 'model:claude-haiku-5-5']);
+  assert.deepEqual(ids(main()), ['model:claude-opus-5-5', 'model:claude-fable-5-2', 'model:claude-sonnet-5-5', 'model:claude-haiku-5-5']);
   assert.deepEqual(ids(efforts()), ['effort:low', 'effort:medium', 'effort:high', 'effort:xhigh', 'effort:max']);
   for (const model of ['opus[1m]', 'claude-opus-4-8']) {
     const before = more({ model, listed: null }).find(i => i.checked);
@@ -166,10 +166,10 @@ test('the fast mode switch shows for a model that takes it, off or on, and a pre
 });
 
 test('the fast mode section is left out for a model that cannot take it', () => {
-  assert.equal(group(menu({ model: 'claude-fable-5-1' }), 'Fast mode'), undefined);
+  assert.equal(group(menu({ model: 'claude-fable-5-2' }), 'Fast mode'), undefined);
   assert.equal(group(menu({ model: 'claude-haiku-4-5-20251001' }), 'Fast mode'), undefined);
   assert.equal(group(menu({ model: null }), 'Fast mode'), undefined);
-  assert.deepEqual(menu({ model: 'claude-fable-5-1' }).at(-1).label, 'More models', 'no separator is left hanging at the end');
+  assert.deepEqual(menu({ model: 'claude-fable-5-2' }).at(-1).label, 'More models', 'no separator is left hanging at the end');
 });
 
 test('the fast mode section shows for a listed model whose flag is set', () => {
@@ -205,7 +205,8 @@ test('takesFast strips a trailing [1m] before it asks the list, and a model the 
 
 test('modelName gives Desktop\'s name for the main models, the CLI\'s for a listed one and modelLabel\'s for any other', () => {
   assert.equal(modelName('claude-opus-5-5'), 'Opus 5.5');
-  assert.equal(modelName('claude-fable-5-1'), 'Fable 5.1');
+  assert.equal(modelName('claude-fable-5-2'), 'Fable 5.2');
+  assert.equal(modelName('claude-fable-5-1'), 'Fable 5.1', 'a chat started on the old Fable keeps its name');
   assert.equal(modelName('claude-opus-5-5[1m]'), 'Opus 5.5 (1M)');
   assert.equal(modelName('claude-opus-4-8', LISTED), 'Opus 4.8');
   assert.equal(modelName('claude-opus-4-8'), 'Opus 4.8');
@@ -229,7 +230,7 @@ test('the button shows the model, Fast when it is on and the model takes it, the
 });
 
 test('the button leaves Fast out when the model cannot take it, so a recorded fast mode never shows against it', () => {
-  assert.equal(buttonOf({ model: 'claude-fable-5-1', effort: 'high', fast: true, listed: LISTED }).fast, false);
+  assert.equal(buttonOf({ model: 'claude-fable-5-2', effort: 'high', fast: true, listed: LISTED }).fast, false);
   assert.equal(buttonOf({ model: 'claude-opus-4-8', effort: 'high', fast: true, listed: null }).fast, false);
   assert.equal(buttonOf({ model: 'claude-opus-4-8', effort: 'high', fast: true, listed: LISTED }).fast, true);
   assert.equal(buttonOf({ model: 'claude-opus-5-5[1m]', effort: 'high', fast: true, listed: null }).fast, true);

@@ -10,7 +10,7 @@ public enum ComposerOptions {
     public static let modes: [Choice] = [("manual", "Manual"), ("acceptEdits", "Accept edits"), ("plan", "Plan"), ("auto", "Auto"), ("bypassPermissions", "Bypass permissions")]
         .map(Choice.init)
     public static let efforts: [Choice] = [("low", "Low"), ("medium", "Medium"), ("high", "High"), ("xhigh", "Extra"), ("max", "Max")].map(Choice.init)
-    public static let mainModels: [Choice] = [("claude-opus-5-5", "Opus 5.5"), ("claude-fable-5-1", "Fable 5.1"), ("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 5.5")]
+    public static let mainModels: [Choice] = [("claude-opus-5-5", "Opus 5.5"), ("claude-fable-5-2", "Fable 5.2"), ("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-haiku-5-5", "Haiku 5.5")]
         .map(Choice.init)
     public static let longModel = Choice(id: "claude-opus-5-5[1m]", label: "Opus 5.5 (1M)")
 
