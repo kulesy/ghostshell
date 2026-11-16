@@ -45,6 +45,7 @@ struct SidebarSessionRow: View {
         .frame(minHeight: metrics.row)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
+        .help(line)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(name)
     }
