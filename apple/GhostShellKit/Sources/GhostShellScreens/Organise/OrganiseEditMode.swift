@@ -2,7 +2,7 @@ import GhostShellKit
 import SwiftUI
 
 /// A phone's way to choose several sessions. Edit mode puts checkmarks on the list and a tap chooses a row instead of opening it. The select bar is
-/// in PhoneFooter. It also brings a row being renamed clear of the keyboard. The Mac has no edit mode and gets nothing here.
+/// in SidebarFooter. It also brings a row being renamed clear of the keyboard. The Mac has no edit mode and gets nothing here.
 struct OrganiseEditMode: ViewModifier {
     @Environment(SidebarState.self) private var state
     @Environment(OrganiseModel.self) private var organise
