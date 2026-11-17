@@ -302,7 +302,8 @@ function App() {
       const asked = shortcut(e);
       if (asked !== 'new' && asked !== 'new-home' && asked !== 'find' && asked !== 'projects') return;
       e.preventDefault();
-      if (asked === 'new' || asked === 'new-home') { setFinding(false); (asked === 'new' ? newHere : newHome)(); }
+      if (asked === 'new') { setFinding(false); newHere(); }
+      else if (asked === 'new-home') { setFinding(false); newHome(); }
       else if (asked === 'projects') flipKey.current();
       else setFinding(open => !open);
     };

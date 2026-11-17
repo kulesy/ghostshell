@@ -16,13 +16,17 @@ public struct NewSessionScreen: View {
 
 private struct NewSessionBody: View {
     let client: GhostShellClient
-    let groupName: String?
+    let app: AppModel
+    let group: String?
     @State private var model: ComposerModel
     @State private var folders: [String] = []
 
+    private var groupName: String? { group.flatMap { id in app.index?.groups.first { $0.id == id }?.name } }
+
     init(client: GhostShellClient, app: AppModel, group: String?) {
         self.client = client
-        groupName = group.flatMap { id in app.index?.groups.first { $0.id == id }?.name }
+        self.app = app
+        self.group = group
         _model = State(initialValue: ComposerModel.newSession(client: client, group: group, refreshIndex: { [app] in await app.refreshIndex() }) { app.navigator.openSession($0) })
     }
 
@@ -70,6 +74,8 @@ private struct NewSessionBody: View {
             folders = (try? await client.folders()) ?? []
             if model.folder.isEmpty, let first = folders.first { model.folder = first }
         }
+        // The screen is reused when it is shown again, so the state above keeps the folder and picks, and the group follows the new request.
+        .onChange(of: group) { model.group = group }
         .task(id: model.folder) {
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }

@@ -129,6 +129,7 @@ public enum SidebarOutline {
 
     /// The group a new session starts in for the view on show: the first group of the open project, as the page's Cmd+N takes it.
     /// Nil for Home, and for a project with no groups, where the session starts in Home.
+    /// NOTE: [18 Nov 2026] EK - The page's `newKeyRoute` in public/ui/group-rules.js takes the same first group, so change the two together.
     public static func newSessionGroup(_ index: SessionIndex, view chosen: String?) -> String? {
         guard let shown = view(chosen, in: index) else { return nil }
         return index.groups.first { view($0.project, in: index) == shown }?.id

@@ -1,5 +1,5 @@
-// Run with `npm test`. Capcom's own keys: Alt with the down or up arrow anywhere, Ctrl+N anywhere and Cmd+N only in the installed app, Ctrl+K or Cmd+K, Ctrl+B or
-// Cmd+B and Ctrl+' or Cmd+' anywhere, Cmd+A on a Mac outside a text field, and the modifier the hints name. The page is a stand-in with just the
+// Run with `npm test`. Capcom's own keys: Alt with the down or up arrow anywhere, Ctrl+N and Ctrl+Shift+N anywhere and Cmd+N and Cmd+Shift+N only in the installed app, Ctrl+K or Cmd+K, Ctrl+B or
+// Cmd+B and Ctrl+' or Cmd+' anywhere, Cmd+A on a Mac outside a text field, and the modifier the hints name, with Shift's place in a hint. The page is a stand-in with just the
 // display-mode media feature, set to what Chrome reports, the platform navigator reports, and an event target that says whether it
 // is inside a text field.
 import test, { beforeEach } from 'node:test';
@@ -227,9 +227,9 @@ test('a Mac writes a hint with the symbol of its modifier, and any other system 
   }
 });
 
-test('a hint with Shift puts the Shift symbol first on a Mac, and Shift between Ctrl and the key on another system', () => {
+test('a hint with Shift orders the symbols as Apple does on a Mac, Control, Shift, Command, and puts Shift between Ctrl and the key on another system', () => {
   assert.equal(keyHint('Cmd', 'N', true), '⇧⌘N');
-  assert.equal(keyHint('Ctrl', 'N', true), '⇧⌃N');
+  assert.equal(keyHint('Ctrl', 'N', true), '⌃⇧N');
   assert.equal(keyHint('Cmd', 'N', false), '⌘N');
   platform = 'Win32';
   assert.equal(keyHint('Ctrl', 'N', true), 'Ctrl+Shift+N');

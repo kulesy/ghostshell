@@ -19,8 +19,8 @@ export const modifier = () => (inApp() && onMac() ? 'Cmd' : 'Ctrl');
 const startsSession = e => (e.ctrlKey ? !e.metaKey : e.metaKey && inApp());
 
 // What a key press asks for: 'new' to start a session, 'new-home' (the same keys with Shift) to start one in Home, 'find' to open the search,
-// 'projects' to show or hide the projects sidebar, 'terminal' to show or hide the chat's terminal, 'archive' to archive one, 'quote' to quote the selected text, 'next' or 'previous' (Alt with
-// the down or up arrow) to open the session below or above in the list, or null. Chrome
+// 'projects' to show or hide the projects sidebar, 'terminal' to show or hide the chat's terminal, 'archive' to archive one, 'quote' to quote
+// the selected text, 'next' or 'previous' (Alt with the down or up arrow) to open the session below or above in the list, or null. Chrome
 // reserves neither Cmd+K nor Cmd+B, so each works in a tab as well as in the app, as Desktop's Cmd+K and Cmd+B do. A text field keeps
 // Cmd+A for Select All, and Ctrl+A is left to the browser everywhere.
 export function shortcut(e) {
@@ -43,9 +43,12 @@ export function shortcut(e) {
 const SYMBOLS = { Cmd: '⌘', Ctrl: '⌃' };
 
 // How every hint writes a key, so a menu and the page agree. A Mac writes the modifier as its symbol, as in ⌘K and ⌃N, and any
-// other system writes Ctrl+K. `mod` is the modifier the hint names, Cmd or Ctrl. A Mac puts Shift's symbol first, as in ⇧⌘N, and any other
-// system writes Ctrl+Shift+N.
-export const keyHint = (mod, key, shift = false) => (onMac() ? `${shift ? '⇧' : ''}${SYMBOLS[mod]}${key}` : `${mod}+${shift ? 'Shift+' : ''}${key}`);
+// other system writes Ctrl+K. `mod` is the modifier the hint names, Cmd or Ctrl. A Mac orders the symbols as Apple does, Control, Shift, then
+// Command, so Shift reads ⌃⇧N and ⇧⌘N, and any other system writes Ctrl+Shift+N.
+export const keyHint = (mod, key, shift = false) => {
+  if (!onMac()) return `${mod}+${shift ? 'Shift+' : ''}${key}`;
+  return mod === 'Ctrl' ? `⌃${shift ? '⇧' : ''}${key}` : `${shift ? '⇧' : ''}⌘${key}`;
+};
 
 // The hint a menu shows beside its archive item, or null where the key does nothing.
 export const archiveHint = () => (onMac() ? keyHint('Cmd', 'A') : null);

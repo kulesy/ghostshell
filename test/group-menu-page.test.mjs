@@ -353,13 +353,13 @@ test('New session opens the new session page with the group chosen, shown in a c
   assert.deepEqual(page.problems, []);
 });
 
-test('the + menu and its New session start outside any group, and an address naming no group the owner made shows no chip, and Pinned shows its own', { skip, timeout }, async t => {
+test('the + menu item New session in Home starts outside any group, and an address naming no group the owner made shows no chip, and Pinned shows its own', { skip, timeout }, async t => {
   const page = await appPage(t, app.origin, { hash: '#/new/cg-a' });
   await page.until(`!!document.querySelector('${CHIP}')`);
   await page.evaluate(`document.querySelector('.add').setAttribute('data-picked', '')`);
   await page.click('.add[data-picked]');
   await page.until(`!!document.querySelector('${MENU}')`);
-  await choose(page, 'New session');
+  await choose(page, 'New session in Home');
   await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}')`);
   for (const hash of ['#/new/ungrouped', '#/new/cg-gone']) {
     await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);

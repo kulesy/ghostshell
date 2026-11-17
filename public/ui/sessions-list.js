@@ -343,8 +343,7 @@ const openDraft = to => {
 const newSession = group => openDraft(newRoute(group));
 export const newUnder = parent => openDraft(newUnderRoute(parent));
 // What Ctrl+N and the New session items do: start in the project the list shows, beside what is on screen.
-const hereRoute = () => newKeyRoute(sessionIndex.get().ix, location.hash, local.get('scope', null));
-export const newHere = () => openDraft(hereRoute());
+export const newHere = () => openDraft(newKeyRoute(sessionIndex.get().ix, location.hash, local.get('scope', null)));
 // What Ctrl+Shift+N and New session in Home do: start in the home folder, whatever is open.
 export const newHome = () => openDraft(newRoute());
 
@@ -1117,7 +1116,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
   const addMenu = {
     label: 'New session or group',
     items: [
-      { label: 'New session', icon: icons.messageSquarePlus, hint: keyHint(mod, 'N'), run: () => (hereRoute() === location.hash ? newSession() : newHere()) },
+      { label: 'New session', icon: icons.messageSquarePlus, hint: keyHint(mod, 'N'), run: newHere },
       { label: 'New session in Home', icon: icons.messageSquarePlus, hint: keyHint(mod, 'N', true), run: newHome },
       ...(ix ? [{ label: 'New group', icon: icons.folderPlus, run: () => setForm({ kind: 'group', project: view, back: ['.add'] }) }] : []),
     ],

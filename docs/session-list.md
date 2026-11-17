@@ -62,7 +62,7 @@ Each opens an empty chat, and the first message starts the session in the home f
 - From a session in a project group, the chat opens at `#/new-beside/<id>` and starts in that session's folder and group, so it lists under the project. The same holds when its parent's group is in a project.
 - From a group's own chat in a project, the chat starts in that group, in the home folder.
 - From any other page, including a pinned session, one in Home and a group in Home, while the list shows a project, the chat starts in the project's first group, in the home folder.
-- On a new session page already in a project, or under a parent, the keys and the search keep the draft and put the cursor in its box. On one that would start in Home, they move it to the project's first group and keep the draft. New session in the + menu does the same, and opens a fresh plain page where the keys would leave the page as it is.
+- On a new session page already in a project, or under a parent, the keys and the search keep the draft and put the cursor in its box. On one that would start in Home, they move it to the project's first group and keep the draft. New session in the + menu does the same.
 - Where the list shows Home, or a project with no group, and before the list has loaded, it starts in the home folder with no group, beside a session's folder when the chat is a session's.
 
 New session in Home, Ctrl+Shift+N and Cmd+Shift+N always open the plain page at `#/new`, in the home folder with no group, whatever is on screen and whichever view the list shows. On a new session page they keep the draft and move the cursor to its box.
@@ -73,11 +73,11 @@ A chat started under a parent has a chip that names the parent, and its x starts
 
 In a browser tab Chrome runs Cmd+N as New Window, and Cmd+Shift+N as New Incognito Window, before the page sees the key, so they still open a window there. In the app's window Chrome gives the page the key first, so there Cmd+N and Cmd+Shift+N start a session instead. GhostShell tells a tab from the app's window with the `(display-mode: standalone)` and `(display-mode: window-controls-overlay)` media queries, and treats a full-screen app window as a tab, because Chrome reports it as full screen.
 
-In the app Cmd+N still opens a second GhostShell window on the sign-in page and while a widget has focus, because GhostShell's page never sees the key there. File > New Window in the menu bar opens one too.
+In the app Cmd+N and Cmd+Shift+N still do not start a session on the sign-in page or while a widget has focus, because GhostShell's page never sees either key there. Cmd+N opens a second GhostShell window there. File > New Window in the menu bar opens one too.
 
 ### Which key the page names
 
-New session and New session in Home in the + menu and in the search (the Home one with Shift added, written ⇧⌘N on a Mac and Ctrl+Shift+N elsewhere), the Find and Projects buttons' tooltips and the line on the empty page name the modifier that works where GhostShell is running: Cmd in the app on a Mac, and Ctrl otherwise. A touch screen shows no key beside New session.
+New session and New session in Home in the + menu and in the search (the Home one with Shift added, written ⇧⌘N in the app on a Mac, ⌃⇧N in a Mac tab and Ctrl+Shift+N elsewhere), the Find and Projects buttons' tooltips and the line on the empty page name the modifier that works where GhostShell is running: Cmd in the app on a Mac, and Ctrl otherwise. A touch screen shows no key beside New session.
 
 ## Groups and pins
 

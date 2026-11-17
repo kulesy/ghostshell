@@ -28,8 +28,8 @@ final class ComposerModel {
     let chat: ChatContext?
     private let store = ComposerStore.shared
     @ObservationIgnored private let started: (String) -> Void
-    /// The group a new session starts in, or nil for Home.
-    @ObservationIgnored private let group: String?
+    /// The group a new session starts in, or nil for Home. The New Session screen updates it when it is shown again for another one.
+    @ObservationIgnored var group: String?
     /// Reads the session list again after a write, so the sidebar does not wait for the next poll.
     @ObservationIgnored private let refreshIndex: @MainActor () async -> Void
 

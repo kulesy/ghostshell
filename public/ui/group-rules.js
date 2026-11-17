@@ -110,6 +110,7 @@ export function besideDraft(ix, id) {
 // Where Ctrl+N goes. A session in a project group starts beside it, a group's chat in a project starts in that group, and a new session page
 // in a project or under a parent stays. Any other page, and a new session page in Home, starts in the first group of the project the list
 // shows, `view`. With none, a session with a folder starts beside it and the rest open the plain page in Home.
+// NOTE: [18 Nov 2026] EK - The Mac app's `SidebarOutline.newSessionGroup` takes the same first group, so change the two together.
 export function newKeyRoute(ix, hash, view = HOME_VIEW) {
   const open = ix ? viewIn(ix, view) : HOME_VIEW;
   const first = open !== HOME_VIEW ? groupsIn(ix, open)[0] : null;
