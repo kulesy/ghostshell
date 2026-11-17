@@ -107,18 +107,26 @@ export function besideDraft(ix, id) {
   return { cwd: row.cwd, group: group && viewIn(ix, group.project) !== HOME_VIEW ? group.id : null };
 }
 
-// Where Ctrl+N goes. An open new session page stays as it is, a session opens one beside it, and a group's own chat opens one in that group, both
-// only when it is in a project. Any other page opens one in the first group of the project the list shows, `view`. Anything else, and any page
-// before the list has loaded, opens the plain one in the home folder.
+// Where Ctrl+N goes. A session in a project group starts beside it, a group's chat in a project starts in that group, and a new session page
+// in a project or under a parent stays. Any other page, and a new session page in Home, starts in the first group of the project the list
+// shows, `view`. With none, a session with a folder starts beside it and the rest open the plain page in Home.
 export function newKeyRoute(ix, hash, view = HOME_VIEW) {
-  if (parseNewRoute(hash)) return hash;
+  const open = ix ? viewIn(ix, view) : HOME_VIEW;
+  const first = open !== HOME_VIEW ? groupsIn(ix, open)[0] : null;
+  const inProject = group => !!group && viewIn(ix, group.project) !== HOME_VIEW;
+  const fresh = parseNewRoute(hash);
+  if (fresh) {
+    if ('parent' in fresh) return hash;
+    const placed = 'beside' in fresh ? !!besideDraft(ix, fresh.beside)?.group : inProject(ix?.groups.find(g => g.id === fresh.group));
+    return placed || !first ? hash : newRoute(first.id);
+  }
   let id = null;
   try { id = decodeURIComponent(hash.slice(4)); } catch {}
-  if (hash.startsWith('#/s/') && besideDraft(ix, id)) return newBesideRoute(id);
+  const beside = hash.startsWith('#/s/') ? besideDraft(ix, id) : null;
+  if (beside?.group) return newBesideRoute(id);
   const group = hash.startsWith('#/g/') ? ix?.groups.find(g => g.id === id) : null;
-  if (group) return viewIn(ix, group.project) !== HOME_VIEW ? newRoute(group.id) : newRoute();
-  const shown = ix && !hash.startsWith('#/s/') ? viewIn(ix, view) : HOME_VIEW;
-  return shown !== HOME_VIEW && groupsIn(ix, shown)[0] ? newRoute(groupsIn(ix, shown)[0].id) : newRoute();
+  if (inProject(group)) return newRoute(group.id);
+  return first ? newRoute(first.id) : beside ? newBesideRoute(id) : newRoute();
 }
 
 // The group a new session starts in: the one the address names while it is a group the owner made, or Pinned, which pins it. Before the list

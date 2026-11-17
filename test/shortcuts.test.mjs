@@ -108,11 +108,39 @@ test("Ctrl+' and Cmd+' quote the selected text in a tab, in the app and in full 
   }
 });
 
-test('Alt, Shift or a composition under way turns Ctrl or Cmd with N, K, B, A or an apostrophe into nothing', () => {
+test('Ctrl+Shift+N starts a session in Home in a tab, in the app and in full screen, on any system', () => {
+  for (platform of ['MacIntel', 'Win32']) {
+    for (mode of ['browser', 'standalone', 'fullscreen']) {
+      assert.equal(shortcut(press('n', { ...CTRL, shiftKey: true })), 'new-home', `${mode}, ${platform}`);
+      assert.equal(shortcut(press('N', { ...CTRL, shiftKey: true })), 'new-home', `${mode}, ${platform}, the key Shift gives`);
+    }
+  }
+});
+
+test('Cmd+Shift+N starts a session in Home only in the app, so a tab keeps its incognito window', () => {
+  mode = 'standalone';
+  assert.equal(shortcut(press('N', { ...CMD, shiftKey: true })), 'new-home');
+  for (mode of ['browser', 'fullscreen', 'minimal-ui']) assert.equal(shortcut(press('N', { ...CMD, shiftKey: true })), null, mode);
+});
+
+test('Shift with N alone, with Ctrl and Cmd together, with Alt or during a composition, and Shift with any other key asks for nothing', () => {
+  mode = 'standalone';
+  assert.equal(shortcut(press('N', { shiftKey: true })), null, 'a capital N typed');
+  assert.equal(shortcut(press('N', { ctrlKey: true, metaKey: true, shiftKey: true })), null);
+  assert.equal(shortcut(press('N', { ...CTRL, shiftKey: true, altKey: true })), null);
+  assert.equal(shortcut(press('N', { ...CTRL, shiftKey: true, isComposing: true })), null);
+  assert.equal(shortcut(press(undefined, { ...CTRL, shiftKey: true })), null);
+  for (const key of ['k', 'b', 'a', "'", '`', 'j']) {
+    for (const held of [CTRL, CMD]) assert.equal(shortcut(press(key, { ...held, shiftKey: true })), null, `${held.ctrlKey ? 'Ctrl' : 'Cmd'}+Shift+${key}`);
+  }
+});
+
+test('Alt, Shift or a composition under way turns Ctrl or Cmd with K, B, A or an apostrophe into nothing, and N too unless it is Shift alone', () => {
   for (mode of ['browser', 'standalone']) {
     for (const key of ['n', 'k', 'b', 'a', "'"]) {
       for (const [name, held] of [['Ctrl', CTRL], ['Cmd', CMD]]) {
         for (const extra of ['altKey', 'shiftKey', 'isComposing']) {
+          if (key === 'n' && extra === 'shiftKey') continue;
           assert.equal(shortcut(press(key, { ...held, [extra]: true })), null, `${mode}, ${name}+${key} with ${extra}`);
         }
       }
@@ -197,6 +225,15 @@ test('a Mac writes a hint with the symbol of its modifier, and any other system 
     assert.equal(keyHint('Ctrl', 'K'), 'Ctrl+K', platform);
     assert.equal(keyHint('Ctrl', 'B'), 'Ctrl+B', platform);
   }
+});
+
+test('a hint with Shift puts the Shift symbol first on a Mac, and Shift between Ctrl and the key on another system', () => {
+  assert.equal(keyHint('Cmd', 'N', true), '⇧⌘N');
+  assert.equal(keyHint('Ctrl', 'N', true), '⇧⌃N');
+  assert.equal(keyHint('Cmd', 'N', false), '⌘N');
+  platform = 'Win32';
+  assert.equal(keyHint('Ctrl', 'N', true), 'Ctrl+Shift+N');
+  assert.equal(keyHint('Ctrl', 'N'), 'Ctrl+N');
 });
 
 test('the hints in a menu, the search and the empty state come from the modifier, so they agree', () => {

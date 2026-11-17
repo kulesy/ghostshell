@@ -237,3 +237,52 @@ test('Ctrl+N from the list opens the plain page in Home and the project\'s first
   assert.equal(await page.evaluate(`document.querySelector('${CHIP} .name').textContent`), 'Team');
   assert.deepEqual(page.problems, []);
 });
+
+const SHIFT = 8;
+
+test('Ctrl+Shift+N opens the plain page in Home from a session in the open project, and from a new session page in a group, keeping the draft', { skip, timeout }, async t => {
+  const s = await start({ sessions: PLACED, claude: true, ...TEAM });
+  const page = await appPage(t, s, { hash: '#/s/mine', scope: 'cp-x', rows: 1 });
+  await page.press('n', CTRL | SHIFT);
+  await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}') && ${AT_HOME}`);
+  await page.evaluate(`location.hash = '#/new/cg-team'`);
+  await page.until(`document.querySelector('${CHIP} .name')?.textContent === 'Team'`);
+  await typeInto(page, 'half a thought');
+  await page.evaluate(`document.activeElement?.blur()`);
+  await page.press('n', CTRL | SHIFT);
+  await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}') && document.activeElement?.id === 'text'`);
+  assert.equal(await page.evaluate(`document.querySelector('#text').value`), 'half a thought');
+  assert.deepEqual(page.problems, []);
+});
+
+test('Ctrl+N on a new session page in Home moves it to the open project\'s first group and keeps the draft, and from a pinned session starts in that group too', { skip, timeout }, async t => {
+  const s = await start({ sessions: [...PLACED, { id: 'pinned-one', title: 'Pinned one', folder: 'pins', pinned: true, ago: 4 }], claude: true, ...TEAM });
+  const page = await appPage(t, s, { hash: '#/new', scope: 'cp-x', rows: 1 });
+  await typeInto(page, 'half a thought');
+  await page.evaluate(`document.activeElement?.blur()`);
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new/cg-team' && document.querySelector('${CHIP} .name')?.textContent === 'Team' && document.activeElement?.id === 'text'`);
+  assert.equal(await page.evaluate(`document.querySelector('#text').value`), 'half a thought');
+  await page.evaluate(`location.hash = '#/s/pinned-one'`);
+  await page.until(`location.hash === '#/s/pinned-one'`);
+  await page.press('n', CTRL);
+  await page.until(`location.hash === '#/new/cg-team' && ${AT_HOME}`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('the + menu offers New session and New session in Home, the second with Shift in its hint', { skip, timeout }, async t => {
+  const s = await start({ sessions: PLACED, claude: true, ...TEAM });
+  const page = await appPage(t, s, { scope: 'cp-x', rows: 1 });
+  await page.click('.btn.add');
+  const items = `[...document.querySelectorAll('.menu:not([data-sub]) > [role=menuitem]')].map(el => [el.querySelector('.menu-text').textContent, el.querySelector('.menu-shortcut')?.textContent])`;
+  await page.until(`${items}.length >= 2`);
+  const [plain, home] = (await page.evaluate(items)).slice(0, 2);
+  assert.equal(plain[0], 'New session');
+  assert.equal(home[0], 'New session in Home');
+  assert.match(home[1], /N$/);
+  assert.match(home[1], /Shift|\u21e7/);
+  assert.doesNotMatch(plain[1], /Shift|\u21e7/);
+  await page.evaluate(`[...document.querySelectorAll('.menu:not([data-sub]) > [role=menuitem]')][1].click()`);
+  await page.until(`location.hash === '#/new' && !document.querySelector('${CHIP}')`);
+  assert.deepEqual(page.problems, []);
+});

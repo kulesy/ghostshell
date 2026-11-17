@@ -87,7 +87,7 @@ const byRank = hits => RANKS.map(rank => {
 
 // The sections the spotlight shows for a chip and a query. `scheduled` is what api/scheduled listed, and `links` what api/pull-links listed. `unrun` is the routines with no run, which a project's count includes. With words typed they follow RANKS and Archived comes last, because those
 // sessions are out of the list. With none it is browsing: All is recents, projects and actions, and Sessions is newest first.
-export function sectionsFor(chip, ix, archived, query, newHint, scheduled = [], links = {}, unrun = []) {
+export function sectionsFor(chip, ix, archived, query, newHint, scheduled = [], links = {}, unrun = [], newHomeHint = '') {
   const words = wordsOf(query);
   const keep = words.length ? sessionMatcher(words, links) : () => true;
   const live = newestFirst(ix);
@@ -118,7 +118,7 @@ export function sectionsFor(chip, ix, archived, query, newHint, scheduled = [], 
     return [
       section('recents', 'Recents', live.slice(0, RECENT).map(sessionItem)),
       ...(projects.length ? [section('project', 'Projects', projects)] : []),
-      section('actions', 'Actions', [{ key: 'new', action: 'New session', hint: newHint, hash: '#/new' }]),
+      section('actions', 'Actions', [{ key: 'new', action: 'New session', hint: newHint, hash: '#/new' }, { key: 'new-home', action: 'New session in Home', hint: newHomeHint, hash: '#/new' }]),
     ];
   }
   return [

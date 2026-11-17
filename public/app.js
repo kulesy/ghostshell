@@ -21,7 +21,7 @@ import { routineRoute } from './ui/routine-rules.js';
 import { RoutinesPane } from './ui/routines.js';
 import { ScheduledPane } from './ui/scheduled.js';
 import { scheduledRoute, supportsScheduled } from './ui/scheduled-rules.js';
-import { newHere, SessionList } from './ui/sessions-list.js';
+import { newHere, newHome, SessionList } from './ui/sessions-list.js';
 import { Shell } from './ui/shell.js';
 import { keyHint, shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
@@ -300,9 +300,9 @@ function App() {
   useEffect(() => {
     const onKey = e => {
       const asked = shortcut(e);
-      if (asked !== 'new' && asked !== 'find' && asked !== 'projects') return;
+      if (asked !== 'new' && asked !== 'new-home' && asked !== 'find' && asked !== 'projects') return;
       e.preventDefault();
-      if (asked === 'new') { setFinding(false); newHere(); }
+      if (asked === 'new' || asked === 'new-home') { setFinding(false); (asked === 'new' ? newHere : newHome)(); }
       else if (asked === 'projects') flipKey.current();
       else setFinding(open => !open);
     };
@@ -368,7 +368,7 @@ function App() {
       ${reloadBar ? html`<${ReloadBar} />` : null}
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <div class="emblem" aria-hidden="true"><${Shell} class="emblem-shell" /><span class="emblem-shadow"></span></div>
-        <p>Pick a session, press <kbd>${keyHint(mod, 'K')}</kbd> to find one, or <kbd>${keyHint(mod, 'N')}</kbd> to start a new one.</p>
+        <p>Pick a session, press <kbd>${keyHint(mod, 'K')}</kbd> to find one, <kbd>${keyHint(mod, 'N')}</kbd> to start a new one, or <kbd>${keyHint(mod, 'N', true)}</kbd> to start one in Home.</p>
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name === 'accounts' && supportsAccounts(ix) ? html`<${AccountsPane} />` : null}
