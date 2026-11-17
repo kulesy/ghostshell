@@ -24,7 +24,8 @@ final class SidebarState {
     var idleRoutines: [IdleRoutine] = []
 
     private let defaults: UserDefaults
-    private static let projectKey = "sidebar.project", collapsedKey = "sidebar.collapsed", foldedKey = "sidebar.folded"
+    static let projectKey = "sidebar.project"
+    private static let collapsedKey = "sidebar.collapsed", foldedKey = "sidebar.folded"
 
     init(defaults: UserDefaults) {
         self.defaults = defaults

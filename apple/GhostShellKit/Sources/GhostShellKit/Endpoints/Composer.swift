@@ -116,23 +116,25 @@ public struct SessionDefaults: Hashable, Sendable, Decodable {
 }
 
 /// The first message of a new session, in the shape of `POST api/new`. Model, effort and fast go only when the person changed them.
+/// `group` is a group the server starts the session in, and nil starts it in Home.
 public struct NewSessionRequest: Sendable, Equatable {
     public var cwd: String
     public var message: OutgoingMessage
     public var model: String?
     public var effort: String?
     public var fast: Bool?
+    public var group: String?
 
-    public init(cwd: String, message: OutgoingMessage, model: String? = nil, effort: String? = nil, fast: Bool? = nil) {
-        (self.cwd, self.message, self.model, self.effort, self.fast) = (cwd, message, model, effort, fast)
+    public init(cwd: String, message: OutgoingMessage, model: String? = nil, effort: String? = nil, fast: Bool? = nil, group: String? = nil) {
+        (self.cwd, self.message, self.model, self.effort, self.fast, self.group) = (cwd, message, model, effort, fast, group)
     }
 
     fileprivate var body: Body {
-        Body(cwd: cwd, text: message.text, mode: message.mode, model: model, effort: effort, fast: fast,
+        Body(cwd: cwd, text: message.text, mode: message.mode, model: model, effort: effort, fast: fast, group: group,
              images: message.images.isEmpty ? nil : message.images, files: message.files.isEmpty ? nil : message.files)
     }
     fileprivate struct Body: Encodable, Sendable {
-        var cwd: String; var text: String; var mode: String?; var model: String?; var effort: String?; var fast: Bool?
+        var cwd: String; var text: String; var mode: String?; var model: String?; var effort: String?; var fast: Bool?; var group: String?
         var images: [OutgoingImage]?; var files: [String]?
     }
 }

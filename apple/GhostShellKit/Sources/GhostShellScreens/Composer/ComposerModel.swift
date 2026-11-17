@@ -28,6 +28,8 @@ final class ComposerModel {
     let chat: ChatContext?
     private let store = ComposerStore.shared
     @ObservationIgnored private let started: (String) -> Void
+    /// The group a new session starts in, or nil for Home. The New Session screen updates it when it is shown again for another one.
+    @ObservationIgnored var group: String?
     /// Reads the session list again after a write, so the sidebar does not wait for the next poll.
     @ObservationIgnored private let refreshIndex: @MainActor () async -> Void
 
@@ -49,9 +51,10 @@ final class ComposerModel {
     private var dismissed: String?
     private var chosen: (query: String?, at: Int) = (nil, 0)
 
-    private init(client: GhostShellClient, chat: ChatContext?, refreshIndex: @escaping @MainActor () async -> Void, started: @escaping (String) -> Void) {
+    private init(client: GhostShellClient, chat: ChatContext?, group: String? = nil, refreshIndex: @escaping @MainActor () async -> Void, started: @escaping (String) -> Void) {
         self.client = client
         self.chat = chat
+        self.group = group
         self.refreshIndex = refreshIndex
         self.started = started
         text = ComposerStore.shared.text(for: chat?.sessionID ?? DraftTexts.new)
@@ -62,9 +65,9 @@ final class ComposerModel {
         chat.store(ComposerModel.self) { ComposerModel(client: chat.client, chat: chat, refreshIndex: refreshIndex, started: { _ in }) }
     }
 
-    /// The composer of the New Session screen. `started` hears the id of the session the server made.
-    static func newSession(client: GhostShellClient, refreshIndex: @escaping @MainActor () async -> Void, started: @escaping (String) -> Void) -> ComposerModel {
-        ComposerModel(client: client, chat: nil, refreshIndex: refreshIndex, started: started)
+    /// The composer of the New Session screen. `started` hears the id of the session the server made, and `group` is where it starts.
+    static func newSession(client: GhostShellClient, group: String?, refreshIndex: @escaping @MainActor () async -> Void, started: @escaping (String) -> Void) -> ComposerModel {
+        ComposerModel(client: client, chat: nil, group: group, refreshIndex: refreshIndex, started: started)
     }
 
     var draftID: String { chat?.sessionID ?? DraftTexts.new }
@@ -206,7 +209,7 @@ final class ComposerModel {
         let request = NewSessionRequest(cwd: place, message: message,
                                         model: fresh.touched.contains("model") ? fresh.model : nil,
                                         effort: fresh.touched.contains("effort") ? fresh.effort : nil,
-                                        fast: fresh.touched.contains("fast") ? fresh.fast : nil)
+                                        fast: fresh.touched.contains("fast") ? fresh.fast : nil, group: group)
         do {
             let id = try await client.startSession(request)
             await refreshIndex()

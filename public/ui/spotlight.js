@@ -15,7 +15,7 @@ import { unrunRoutines } from './routine-rules.js';
 import { HOME_VIEW } from './scopes.js';
 import { emptyText, sectionsFor } from './search-rules.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
-import { newHere } from './sessions-list.js';
+import { newHere, newHome } from './sessions-list.js';
 import { keyHint } from './shortcuts.js';
 import { swipeRows } from './swipe.js';
 import { say } from './toast.js';
@@ -114,7 +114,7 @@ function Palette({ ix, routines, scheduled, archive, onShow, onClose }) {
   const sections = useMemo(() => {
     if (!ix) return [];
     const kept = archived.filter(r => !gone.includes(r.id));
-    return sectionsFor(chip, ix, kept, query, keyHint(mod, 'N'), scheduled?.scheduled, pulls.links, unrunRoutines(ix, routines)).filter(s => s.items.length);
+    return sectionsFor(chip, ix, kept, query, keyHint(mod, 'N'), scheduled?.scheduled, pulls.links, unrunRoutines(ix, routines), keyHint(mod, 'N', true)).filter(s => s.items.length);
   }, [ix, routines, scheduled, archived, gone, pulls, chip, query, mod]);
   const flat = sections.flatMap(s => s.items);
   const keys = flat.map(it => it.key);
@@ -143,6 +143,7 @@ function Palette({ ix, routines, scheduled, archive, onShow, onClose }) {
     }
     onClose();
     if (it.key === 'new') newHere();
+    else if (it.key === 'new-home') newHome();
     else if (it.action) location.hash = it.hash;
     else {
       focusNextComposer();

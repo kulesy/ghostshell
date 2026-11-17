@@ -265,35 +265,69 @@ test('a session the list lacks or one with no folder gives no start, and neither
   assert.equal(besideDraft(null, 'in'), null);
 });
 
+const empty = { ...placed, projects: [...placed.projects, { id: 'cp-empty', name: 'Empty' }] };
+
 test('Ctrl+N beside a session in a project group opens the page for that session, and its folder and group come from the list', () => {
-  assert.equal(newKeyRoute(placed, '#/s/in'), '#/new-beside/in');
-  assert.equal(newKeyRoute(placed, '#/s/kid'), '#/new-beside/kid');
-  assert.equal(newKeyRoute(placed, '#/s/loose'), '#/new-beside/loose');
+  for (const view of [undefined, 'cp-x']) {
+    assert.equal(newKeyRoute(placed, '#/s/in', view), '#/new-beside/in', String(view));
+    assert.equal(newKeyRoute(placed, '#/s/kid', view), '#/new-beside/kid', String(view));
+  }
+  assert.equal(newKeyRoute(placed, '#/s/loose'), '#/new-beside/loose', 'with no project open a session in Home starts beside its folder');
+  assert.equal(newKeyRoute(placed, '#/s/pin'), '#/new-beside/pin');
 });
 
-test('Ctrl+N in a group\'s own chat opens a new session in that group only when the group is in a project', () => {
+test('Ctrl+N in a group\'s own chat opens a new session in that group when it is in a project, and else in the open project, or Home with none', () => {
   assert.equal(newKeyRoute(placed, '#/g/cg-in'), '#/new/cg-in');
-  assert.equal(newKeyRoute(placed, '#/g/cg-home'), '#/new');
-  assert.equal(newKeyRoute(placed, '#/g/cg-gone'), '#/new');
-  assert.equal(newKeyRoute(placed, '#/g/nobody'), '#/new');
+  assert.equal(newKeyRoute(placed, '#/g/cg-in', 'cp-x'), '#/new/cg-in');
+  for (const hash of ['#/g/cg-home', '#/g/cg-gone', '#/g/nobody']) {
+    assert.equal(newKeyRoute(placed, hash), '#/new', `${hash}, no project open`);
+    assert.equal(newKeyRoute(placed, hash, 'cp-x'), '#/new/cg-in', `${hash}, a project open`);
+  }
 });
 
-test('Ctrl+N on a page that names no project opens a new session in the first group of the project the list shows, and in home when that has none', () => {
-  for (const hash of ['', '#/', '#/routines']) assert.equal(newKeyRoute(placed, hash, 'cp-x'), '#/new/cg-in', hash);
-  const empty = { ...placed, projects: [...placed.projects, { id: 'cp-empty', name: 'Empty' }] };
+test('Ctrl+N from a pinned session, one in Home or a Home group, or one with no folder starts in the open project\'s first group, and beside it only when no project is open', () => {
+  for (const id of ['pin', 'pin-in', 'hg', 'gone', 'loose', 'bare', 'nobody']) {
+    assert.equal(newKeyRoute(placed, `#/s/${id}`, 'cp-x'), '#/new/cg-in', id);
+  }
+  assert.equal(newKeyRoute(placed, '#/s/hg'), '#/new-beside/hg');
+  assert.equal(newKeyRoute(placed, '#/s/loose', 'cp-none'), '#/new-beside/loose', 'a project no longer in the list shows Home');
+  assert.equal(newKeyRoute(empty, '#/s/loose', 'cp-empty'), '#/new-beside/loose', 'a project with no group has nowhere to start');
+  assert.equal(newKeyRoute(empty, '#/s/nobody', 'cp-empty'), '#/new');
+});
+
+test('Ctrl+N on any other page opens a new session in the first group of the project the list shows, and in home when that has none', () => {
+  for (const hash of ['', '#/', '#/passkeys', '#/accounts', '#/routines']) {
+    assert.equal(newKeyRoute(placed, hash, 'cp-x'), '#/new/cg-in', hash);
+    assert.equal(newKeyRoute(placed, hash), '#/new', `${hash}, no project open`);
+  }
   assert.equal(newKeyRoute(empty, '#/', 'cp-empty'), '#/new');
   assert.equal(newKeyRoute(placed, '#/', 'cp-none'), '#/new', 'a project no longer in the list shows Home');
-  assert.equal(newKeyRoute(placed, '#/s/nobody', 'cp-x'), '#/new', 'a session page leaves the view out');
-  assert.equal(newKeyRoute(placed, '#/g/cg-home', 'cp-x'), '#/new', 'a group page leaves the view out');
-  assert.equal(newKeyRoute(placed, '#/s/loose', 'cp-x'), '#/new-beside/loose');
-  assert.equal(newKeyRoute(null, '#/', 'cp-x'), '#/new');
+  assert.equal(newKeyRoute(placed, '#/s/%E0%A4%A', 'cp-x'), '#/new/cg-in');
+  assert.equal(newKeyRoute(placed, '#/s/%E0%A4%A'), '#/new');
 });
 
-test('Ctrl+N anywhere else, before the list loads, or on a session the list lacks opens the plain page, and an open new session page stays as it is', () => {
-  for (const hash of ['', '#/', '#/passkeys', '#/accounts', '#/routines', '#/s/nobody', '#/s/bare', '#/s/%E0%A4%A']) assert.equal(newKeyRoute(placed, hash), '#/new', hash);
+test('Ctrl+N before the list has loaded opens the plain page', () => {
+  for (const hash of ['#/', '#/s/in', '#/g/cg-in']) assert.equal(newKeyRoute(null, hash, 'cp-x'), '#/new', hash);
   assert.equal(newKeyRoute(null, '#/s/in'), '#/new');
   assert.equal(newKeyRoute(null, '#/g/cg-in'), '#/new');
-  for (const hash of ['#/new', '#/new/cg-home', '#/new-under/in', '#/new-beside/in']) assert.equal(newKeyRoute(placed, hash), hash, hash);
+  for (const hash of ['#/new', '#/new/cg-home', '#/new-under/in', '#/new-beside/in']) assert.equal(newKeyRoute(null, hash, 'cp-x'), hash, hash);
+});
+
+test('Ctrl+N on a new session page that would start in Home moves it to the open project\'s first group', () => {
+  for (const hash of ['#/new', '#/new/cg-home', '#/new/cg-gone', '#/new/pinned', '#/new/nobody', '#/new-beside/pin', '#/new-beside/pin-in', '#/new-beside/hg', '#/new-beside/loose', '#/new-beside/nobody']) {
+    assert.equal(newKeyRoute(placed, hash, 'cp-x'), '#/new/cg-in', hash);
+  }
+});
+
+test('Ctrl+N on a new session page already in a project, or under a parent, or with no project open, stays as it is', () => {
+  for (const hash of ['#/new/cg-in', '#/new-beside/in', '#/new-beside/kid', '#/new-under/in', '#/new-under/pin']) {
+    assert.equal(newKeyRoute(placed, hash, 'cp-x'), hash, hash);
+  }
+  for (const hash of ['#/new', '#/new/cg-home', '#/new/cg-in', '#/new-under/in', '#/new-beside/in', '#/new-beside/pin']) {
+    assert.equal(newKeyRoute(placed, hash), hash, `${hash}, no project open`);
+    assert.equal(newKeyRoute(placed, hash, 'cp-none'), hash, `${hash}, a project no longer in the list`);
+  }
+  for (const hash of ['#/new', '#/new/cg-home', '#/new-beside/loose']) assert.equal(newKeyRoute(empty, hash, 'cp-empty'), hash, `${hash}, a project with no group`);
 });
 
 test('a new session starts in the group of the address only while it is a group the owner made or Pinned, and any other section or an unknown id means none', () => {

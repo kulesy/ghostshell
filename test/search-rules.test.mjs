@@ -175,11 +175,11 @@ test('the Sessions chip shows no more than 50 of each rank', () => {
 
 test('with nothing typed All is Recents, Projects and Actions, with no groups and no sub session section', () => {
   const ix = list();
-  const all = sectionsFor('all', ix, [{ ...row('old'), archived: true }], '', NEW);
+  const all = sectionsFor('all', ix, [{ ...row('old'), archived: true }], '', NEW, [], {}, [], 'NEW-HOME');
   assert.deepEqual(all.map(s => s.title), ['Recents', 'Projects', 'Actions']);
   assert.deepEqual(ids(all[0]), ['web-1-kid', 'started-1', 'run-3', 'run-2', 'web-1', 'web-2', 'app-1', 'home-1']);
   assert.deepEqual(ids(all[1]), ['view:home', 'view:cp-web', 'view:cp-app']);
-  assert.deepEqual(all[2].items, [{ key: 'new', action: 'New session', hint: NEW, hash: '#/new' }]);
+  assert.deepEqual(all[2].items, [{ key: 'new', action: 'New session', hint: NEW, hash: '#/new' }, { key: 'new-home', action: 'New session in Home', hint: 'NEW-HOME', hash: '#/new' }]);
 });
 
 test('with no project All leaves the Projects section out, with words typed or not, and the Projects chip lists Home alone', () => {

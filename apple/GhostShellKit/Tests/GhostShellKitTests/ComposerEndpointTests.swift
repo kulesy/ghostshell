@@ -194,6 +194,14 @@ final class ComposerEndpointTests: XCTestCase {
         XCTAssertNil(body["parent"])
     }
 
+    func testNewSessionSendsItsGroupOnlyWhenThereIsOne() async throws {
+        ComposerStub.reset { _ in (200, #"{"id":"new-1"}"#) }
+        _ = try await client().startSession(NewSessionRequest(cwd: "/work", message: OutgoingMessage(text: "go"), group: "cg-1"))
+        let body = try json(ComposerStub.last()?.body)
+        XCTAssertEqual(body["group"] as? String, "cg-1")
+        XCTAssertEqual(body.keys.sorted(), ["cwd", "group", "text"])
+    }
+
     func testFoldersAndDefaults() async throws {
         ComposerStub.reset { _ in (200, #"{"folders":["/home","/work"]}"#) }
         let folders = try await client().folders()
