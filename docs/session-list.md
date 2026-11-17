@@ -57,7 +57,7 @@ New sessions start from any of these:
 - Ctrl+N, and Ctrl+Shift+N for Home.
 - Cmd+N in the installed app, and Cmd+Shift+N for Home.
 
-Each opens an empty chat, and the first message starts the session in the home folder, or in the parent's folder when the chat names a parent. New session in the + menu, the search's action, Ctrl+N and Cmd+N start in the project the list shows instead, whatever is on screen:
+Each opens an empty chat, and the first message starts the session in the home folder, or in the parent's folder when the chat names a parent. New session in the + menu, the search's action, Ctrl+N and Cmd+N start in a project instead, picked from what is on screen and the project the list shows:
 
 - From a session in a project group, the chat opens at `#/new-beside/<id>` and starts in that session's folder and group, so it lists under the project. The same holds when its parent's group is in a project.
 - From a group's own chat in a project, the chat starts in that group, in the home folder.
@@ -66,6 +66,8 @@ Each opens an empty chat, and the first message starts the session in the home f
 - Where the list shows Home, or a project with no group, and before the list has loaded, it starts in the home folder with no group, beside a session's folder when the chat is a session's.
 
 New session in Home, Ctrl+Shift+N and Cmd+Shift+N always open the plain page at `#/new`, in the home folder with no group, whatever is on screen and whichever view the list shows. On a new session page they keep the draft and move the cursor to its box.
+
+The Mac app's File menu has New Session (Cmd+N), which starts in the first group of the project its sidebar shows, or in Home when it shows Home, and New Session in Home (Cmd+Shift+N).
 
 A chat started under a parent has a chip that names the parent, and its x starts the session outside it. A session started from a group's header joins that group when it starts, so the group's account pin applies to its first turn, and one started under a parent runs on the parent's account from its first turn. The + and the keys work while the list is still loading. The search shows its action once the list has arrived.
 
