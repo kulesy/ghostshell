@@ -244,7 +244,7 @@ test('a refusal gives each field its sentence, in the form\'s order, and ignores
 });
 
 test('each select offers Default first and keeps a value the lists do not hold', () => {
-  assert.deepEqual(modelChoices('').map(([id]) => id), ['', 'claude-opus-5-5', 'claude-fable-5-1', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5[1m]']);
+  assert.deepEqual(modelChoices('').map(([id]) => id), ['', 'claude-opus-5-5', 'claude-fable-5-2', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5[1m]']);
   assert.equal(modelChoices('')[0][1], 'Default');
   assert.deepEqual(modelChoices('claude-opus-5-5[1m]').length, 6);
   const odd = modelChoices('claude-opus-4-8');

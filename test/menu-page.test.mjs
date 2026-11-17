@@ -8,7 +8,7 @@ import { findChromium, launch, notFound, serve } from './browser.mjs';
 
 // The CLI's model list has not arrived, so More models ends in the disabled Loading models row.
 const LISTED = null;
-const ORDER = ['Opus 5.5', 'Fable 5.1', 'Sonnet 5.5', 'Haiku 5.5', 'Effort', 'More models', 'Enable fast mode'];
+const ORDER = ['Opus 5.5', 'Fable 5.2', 'Sonnet 5.5', 'Haiku 5.5', 'Effort', 'More models', 'Enable fast mode'];
 const MAIN = '.menu:not([data-sub])';
 const SUB = '.menu[data-sub]';
 const FOCUSED = `(el => (el.matches('[role^=menuitem]') ? el.querySelector('.menu-text').textContent : el.getAttribute('role') || el.id || el.tagName))(document.activeElement)`;
@@ -178,7 +178,7 @@ test('the models are radio items with only Opus 5.5 checked, Enable fast mode is
   await page.press('ArrowDown');
   await focusIs(page, 'Opus 5.5');
   assert.deepEqual(await rows(page, MAIN), [
-    radio('Opus 5.5', 'true'), radio('Fable 5.1', 'false'), radio('Sonnet 5.5', 'false'), radio('Haiku 5.5', 'false'),
+    radio('Opus 5.5', 'true'), radio('Fable 5.2', 'false'), radio('Sonnet 5.5', 'false'), radio('Haiku 5.5', 'false'),
     { label: 'Effort', role: 'menuitem', checked: null, popup: 'menu' },
     { label: 'More models', role: 'menuitem', checked: null, popup: 'menu' },
     { label: 'Enable fast mode', role: 'menuitemcheckbox', checked: 'false', popup: null },
@@ -203,7 +203,7 @@ test('the 4 key picks Haiku 5.5 and closes the menu, the next opening shows it c
   await page.press('ArrowDown');
   await focusIs(page, 'Opus 5.5');
   const models = (await rows(page, MAIN)).slice(0, 4);
-  assert.deepEqual(models.map(r => [r.label, r.checked]), [['Opus 5.5', 'false'], ['Fable 5.1', 'false'], ['Sonnet 5.5', 'false'], ['Haiku 5.5', 'true']]);
+  assert.deepEqual(models.map(r => [r.label, r.checked]), [['Opus 5.5', 'false'], ['Fable 5.2', 'false'], ['Sonnet 5.5', 'false'], ['Haiku 5.5', 'true']]);
   await page.press('4');
   await gone(page);
   await focusIs(page, 'open');

@@ -101,7 +101,7 @@ final class RoutineRulesTests: XCTestCase {
     }
 
     func testSelectsOfferDefaultFirstAndKeepAValueTheListsDoNotHold() {
-        XCTAssertEqual(modelChoices(current: "").map(\.value), ["", "claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5[1m]"])
+        XCTAssertEqual(modelChoices(current: "").map(\.value), ["", "claude-opus-5-5", "claude-fable-5-2", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5[1m]"])
         XCTAssertEqual(modelChoices(current: "").first?.label, "Default")
         XCTAssertEqual(modelChoices(current: "claude-opus-5-5[1m]").count, 6)
         XCTAssertEqual(modelChoices(current: "claude-opus-4-8").last, Choice("claude-opus-4-8", "Opus 4.8"))
