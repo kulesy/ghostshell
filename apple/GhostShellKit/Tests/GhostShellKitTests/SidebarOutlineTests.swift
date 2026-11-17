@@ -33,6 +33,20 @@ final class SidebarOutlineTests: XCTestCase {
     }
     """
 
+    func testNewSessionStartsInTheOpenProjectsFirstGroup() throws {
+        let ix = try index(sample)
+        XCTAssertEqual(SidebarOutline.newSessionGroup(ix, view: "p1"), "g-a")
+        XCTAssertEqual(SidebarOutline.newSessionGroup(ix, view: "p2"), "g-empty")
+    }
+
+    func testNewSessionStartsInHomeWithNoProjectOrNoGroupToStartIn() throws {
+        let ix = try index(sample)
+        XCTAssertNil(SidebarOutline.newSessionGroup(ix, view: nil), "Home has groups, but Home is where it starts")
+        XCTAssertNil(SidebarOutline.newSessionGroup(ix, view: "deleted"), "a project the index no longer has shows Home")
+        let none = try index(#"{"projects": [{"id": "p", "name": "Empty"}], "groups": []}"#)
+        XCTAssertNil(SidebarOutline.newSessionGroup(none, view: "p"))
+    }
+
     func testOrdersAToZWithUntitledLastAndTiesByIdAndKeepsServerOrderOfGroups() throws {
         let home = SidebarOutline.sections(try index(sample), view: nil)
         let zed = try XCTUnwrap(home.first { $0.id == "g-z" })

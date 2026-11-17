@@ -34,8 +34,11 @@ struct GhostShellApp: App {
         .defaultSize(width: 960, height: 640)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Session") { model.navigator.show { NewSessionScreen() } }
+                Button("New Session") { model.navigator.show { NewSessionScreen(group: model.newSessionGroup()) } }
                     .keyboardShortcut("n")
+                    .disabled(model.phase != .signedIn)
+                Button("New Session in Home") { model.navigator.show { NewSessionScreen() } }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(model.phase != .signedIn)
                 Button("Sign Out") { Task { await model.signOut() } }
                     .disabled(model.phase != .signedIn)
