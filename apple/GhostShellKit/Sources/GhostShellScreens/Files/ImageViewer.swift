@@ -34,10 +34,9 @@ struct ImageViewerOverlay: View {
         // The Mac hands the viewer to the root view, which draws it over the detail pane and dims the sidebar to match.
         Color.clear.allowsHitTesting(false)
             .onChange(of: store.viewer != nil, initial: true) { _, open in
-                if open { app.navigator.overlayDim = 0.92 }
-                app.navigator.overlay = open ? AnyView(WindowViewer(store: store)) : nil
+                if open { app.navigator.raise("viewer", dim: 0.92, AnyView(WindowViewer(store: store))) } else { app.navigator.lower("viewer") }
             }
-            .onDisappear { app.navigator.overlay = nil }
+            .onDisappear { app.navigator.lower("viewer") }
         #endif
     }
 }
@@ -67,7 +66,7 @@ private struct ViewerContent: View {
     var body: some View {
         let total = viewer.pictures.count
         ZStack {
-            Color.black.opacity(0.92).ignoresSafeArea().onTapGesture { store.closeViewer() }
+            Color.black.opacity(macOr(0.92, 0.9)).ignoresSafeArea().onTapGesture { store.closeViewer() }
             if let loaded {
                 ZoomCanvas(image: loaded, alt: viewer.current.alt, controller: zoom) { store.closeViewer() }
                     #if os(macOS)
@@ -109,7 +108,7 @@ private struct ViewerContent: View {
                     HStack(spacing: 8) {
                         outline("Previous image", "chevron.left") { store.step(-1) }.disabled(viewer.index == 0)
                         Text(verbatim: "\(viewer.index + 1) of \(total)")
-                            .font(.geist(14, relativeTo: .subheadline).monospacedDigit()).foregroundStyle(.white.opacity(0.85))
+                            .font(.geist(14, relativeTo: .subheadline).monospacedDigit()).foregroundStyle(macOr(Color.white.opacity(0.85), Color.ghost.mutedForeground))
                             .frame(minWidth: 72)
                         outline("Next image", "chevron.right") { store.step(1) }.disabled(viewer.index == total - 1)
                     }

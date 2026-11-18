@@ -33,18 +33,19 @@ public struct BannerStack: View {
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height = $0 }
                 }
                 .scrollBounceBehavior(.basedOnSize)
-                .scrollIndicators(.hidden)
                 #if os(macOS)
+                .scrollIndicators(.hidden)
                 // The page lets the stack take about half the column, so the cap follows the window.
                 .containerRelativeFrame(.vertical, alignment: .top) { length, _ in min(height, length * 0.5) }
-                #else
-                .frame(height: min(height, cap))
-                #endif
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { shown = $0 }
                 // The page fades the end of a long stack out and does not cut it with a rule.
                 .overlay(alignment: .bottom) {
                     if height > shown + 1 { LinearGradient(colors: [.clear, Color.ghost.sidebar], startPoint: .top, endPoint: .bottom).frame(height: 24).allowsHitTesting(false) }
                 }
+                #else
+                .frame(height: min(height, cap))
+                .overlay(alignment: .bottom) { if height > cap { Divider() } }
+                #endif
             }
         }
         .task(id: model.visible) {
@@ -57,8 +58,11 @@ public struct BannerStack: View {
         #if os(macOS)
         // The page asks in its own dialog over the window. A system alert dims only this pane and sits in a narrow card.
         .onChange(of: state.asking != nil) { _, open in
-            if open { model.navigator.overlayDim = 0.5 }
-            model.navigator.overlay = open ? AnyView(ForceDialog(question: state.asking?.question ?? "", cancel: { state.asking = nil }, confirm: confirmForce)) : nil
+            if open { model.navigator.raise("force", AnyView(ForceDialog(question: state.asking?.question ?? "", cancel: { state.asking = nil }, confirm: confirmForce))) } else { model.navigator.lower("force") }
+        }
+        .onDisappear {
+            state.asking = nil
+            model.navigator.lower("force")
         }
         #else
         .alert("Force restart \u{201C}GhostShell\u{201D}?", isPresented: Binding(get: { state.asking != nil }, set: { if !$0 { state.asking = nil } }), presenting: state.asking) { _ in
