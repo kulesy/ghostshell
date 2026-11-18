@@ -638,7 +638,8 @@ function withOpensIn(chip, row, rowOf = findRow) {
     if (chip.group) return nameOf(chip.group) ? `Opens in ${nameOf(chip.group)}` : 'Its group has been deleted';
     if (chip.parent) {
       const target = rowOf(chip.parent);
-      const root = chip.status === 'started' && chip.nestUnder ? rowOf(chip.nestUnder) : target?.parent ? rowOf(target.parent) : target;
+      // Start nests under the live head, so a root that has been archived since never names the place.
+      const root = chip.status === 'started' && chip.nestUnder ? rowOf(chip.nestUnder) : target && (liveHeadOf(target, rowOf) ? rowOf(liveHeadOf(target, rowOf)) : target);
       if (!root) return 'The session it opens under is gone';
       return nameOf(root.group) ? `Opens under “${root.title}”, in ${nameOf(root.group)}` : `Opens under “${root.title}”`;
     }

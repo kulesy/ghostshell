@@ -843,6 +843,7 @@ const UNDER = [
   { id: 'inner', title: 'Inner', parent: 'main', ago: 7 },
   { id: 'old', title: 'Old', archived: true, ago: 8 },
   { id: 'run', title: 'Nightly', routine: 'nightly', ago: 9 },
+  { id: 'kid', title: 'Kid', parent: 'old', ago: 10 },
 ];
 const PARENTED = [
   { sessionId: 'maker', toolUseId: 'toolu_main', status: 'open', prompt: 'begin a session', parent: 'main' },
@@ -850,6 +851,7 @@ const PARENTED = [
   { sessionId: 'maker', toolUseId: 'toolu_old', status: 'open', prompt: 'begin a session', parent: 'old' },
   { sessionId: 'maker', toolUseId: 'toolu_run', status: 'open', prompt: 'begin a session', parent: 'run' },
   { sessionId: 'maker', toolUseId: 'toolu_lost', status: 'open', prompt: 'begin a session', parent: 'nobody' },
+  { sessionId: 'maker', toolUseId: 'toolu_kid', status: 'open', prompt: 'begin a session', parent: 'kid' },
   { sessionId: 'maker', toolUseId: 'toolu_plain', status: 'open', prompt: 'begin a session' },
 ];
 
@@ -864,6 +866,7 @@ test('a chip that names a parent starts its session under that session\'s family
     toolu_run: 'Opens under “Nightly”',
     toolu_lost: 'The session it opens under is gone',
     toolu_plain: 'Opens under this session, in Home',
+    toolu_kid: 'Opens under “Kid”',
   });
   const res = await startChip(s, token, 'toolu_inner');
   assert.equal(res.status, 200, res.text);
@@ -891,6 +894,15 @@ test('a chip with a parent that is archived, a routine run or missing at Start r
   const plain = await startChip(s, token, 'toolu_plain');
   assert.equal(plain.status, 200, plain.text);
   assert.deepEqual([rowOf(await index(s, token), plain.body().id).parent, Object.hasOwn(plain.body().chip, 'nestUnder')], ['maker', false]);
+});
+
+test('a chip under a live session whose root is archived names that session, and Start opens under it', async () => {
+  const s = await start({ sessions: UNDER, groups: GROUPS, claude: true, chips: PARENTED });
+  const { token } = await signIn(s);
+  const res = await startChip(s, token, 'toolu_kid');
+  assert.equal(res.status, 200, res.text);
+  assert.deepEqual([res.body().chip.nestUnder, res.body().chip.opensIn], ['kid', 'Opens under “Kid”']);
+  assert.equal(rowOf(await index(s, token), res.body().id).parent, 'kid');
 });
 
 test('a parent posted with the card places nothing: only the chip the server stored names one', async () => {
