@@ -4,7 +4,7 @@ import SwiftUI
 /// The plan usage rows: a label, the words, and an 8pt bar with square ends. Amber and red are only for the rows the server marks.
 struct PlanBars: View {
     let rows: [PlanRow]
-    /// The Accounts page sets the words at 16pt like the page, and the context popover keeps its smaller ones.
+    /// The Accounts page sets the label, percent and reset line like the page, and the context popover keeps its smaller ones.
     var page = false
 
     var body: some View {
@@ -12,11 +12,12 @@ struct PlanBars: View {
             ForEach(rows) { row in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(row.label).font(page ? .geist(16) : .callout).foregroundStyle(page ? Color.ghost.foreground : .primary)
+                        Text(row.label).font(page ? .geist(ghostBodySize) : .callout).foregroundStyle(page ? Color.ghost.foreground : .primary)
                         Spacer(minLength: 8)
-                        Text(row.text).font(page ? .geist(16) : .caption).foregroundStyle(page ? Color.ghost.foreground : .secondary).multilineTextAlignment(.trailing)
+                        Text(page ? macOr("\(row.percent)%", row.text) : row.text).font(page ? .geist(ghostBodySize) : .caption).foregroundStyle(page ? Color.ghost.foreground : .secondary).multilineTextAlignment(.trailing)
                     }
                     bar(Double(min(max(row.percent, 0), 100)), tint(row.severity))
+                    if macOr(page, false), let reset = row.reset { Text(reset).ghostMuted(12) }
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(row.label), \(row.text)")
@@ -31,7 +32,7 @@ struct PlanBars: View {
                 Rectangle().fill(Color.ghost.muted)
                 Rectangle().fill(color).frame(width: box.size.width * percent / 100)
             }
-            .clipShape(RoundedRectangle(cornerRadius: GhostRadius.sm, style: .continuous))
+            .clipShape(GhostShape(GhostRadius.sm))
         }
         .frame(height: 8)
     }

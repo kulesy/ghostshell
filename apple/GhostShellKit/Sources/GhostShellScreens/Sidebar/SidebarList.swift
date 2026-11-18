@@ -57,6 +57,10 @@ struct SidebarList: View {
                 }
             }
         }
+        #if os(macOS)
+        // The AppKit list draws above any overlay, so it fades with the dim instead of being covered by it.
+        .opacity(model.navigator.overlay == nil ? 1 : 1 - model.navigator.overlayDim)
+        #endif
         // The archive is read when the search opens and not again while it stays open, as on the page.
         .task(id: searching) { if searching { archived = (try? await model.client?.archivedSessions()) ?? [] } }
         .onChange(of: state.selection) { _, chosen in

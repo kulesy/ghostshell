@@ -22,7 +22,11 @@ struct RoutineFormScreen: View {
                 if let draft { RoutineFields(draft: draft, baseline: baseline, id: id, loaded: loaded) }
             }
         }
+        #if os(iOS)
         .navigationTitle(id == nil ? "New routine" : "Edit routine")
+        #else
+        .pageHeader(id.flatMap { model.routines.routine($0)?.title } ?? (id == nil ? "New routine" : "Routine"), back: "Routines", goBack: { model.navigator.show(page: "routines") { RoutinesScreen() } })
+        #endif
         .ghostScreen()
         .task(id: id) { await open() }
     }
@@ -134,14 +138,16 @@ private struct RoutineFields: View {
             FormField(label: "Folder", hint: "The full path of the folder each run starts in.", message: problems["cwd"]) {
                 SuggestField(label: "Folder", text: $draft.cwd, options: folders, mono: true, invalid: problems["cwd"] != nil, focus: $focus, tag: .cwd)
             }
-            FormField(label: "Model", message: problems["model"]) {
-                ChoicePicker(label: "Model", value: $draft.model, choices: modelChoices(current: baseline?.routine.model)).focused($focus, equals: .model)
-            }
-            FormField(label: "Effort", message: problems["effort"]) {
-                ChoicePicker(label: "Effort", value: $draft.effort, choices: effortChoices(current: baseline?.routine.effort)).focused($focus, equals: .effort)
-            }
-            FormField(label: "Permission mode", hint: defaultFollowsNote, message: problems["mode"]) {
-                ChoicePicker(label: "Permission mode", value: $draft.mode, choices: modeChoices(current: baseline?.routine.mode)).focused($focus, equals: .mode)
+            SideBySide(alignment: .top, spacing: 20) {
+                FormField(label: "Model", message: problems["model"]) {
+                    ChoicePicker(label: "Model", value: $draft.model, choices: modelChoices(current: baseline?.routine.model)).focused($focus, equals: .model)
+                }
+                FormField(label: "Effort", message: problems["effort"]) {
+                    ChoicePicker(label: "Effort", value: $draft.effort, choices: effortChoices(current: baseline?.routine.effort)).focused($focus, equals: .effort)
+                }
+                FormField(label: "Permission mode", hint: defaultFollowsNote, message: problems["mode"]) {
+                    ChoicePicker(label: "Permission mode", value: $draft.mode, choices: modeChoices(current: baseline?.routine.mode)).focused($focus, equals: .mode)
+                }
             }
             if offersAccount {
                 FormField(label: "Account", hint: "\(accountPickNote) \(chromeNote(accounts))", message: problems["account"]) {
@@ -158,11 +164,16 @@ private struct RoutineFields: View {
                     .ghostMuted(13).fixedSize(horizontal: false, vertical: true)
             }
             PhoneDeleteSection(show: !adding) { deleting = true }
+            #if os(macOS)
+            FormButtons(canDelete: !adding, saving: saving, canSave: store.featuresLoaded, delete: { deleting = true }, cancel: leave, save: { Task { await save() } })
+            #endif
         }
         .disabled(saving)
+        #if os(iOS)
         .toolbar {
             FormToolbar(canDelete: !adding, saving: saving, canSave: store.featuresLoaded, delete: { deleting = true }, cancel: leave, save: { Task { await save() } })
         }
+        #endif
         .noteBar()
         .task(id: PreviewKey(cron: draft.cron, jitter: draft.jitterSeconds)) { await refreshPreview() }
         .task { await loadPickers() }
@@ -181,15 +192,7 @@ private struct RoutineFields: View {
         let was = baseline?.kind
         VStack(alignment: .leading, spacing: 12) {
             if files {
-                #if os(iOS)
                 PhoneRadios(selection: $draft.promptKind, options: [("GhostShell's own text", .text), ("A prompt file", .file)])
-                #else
-                Picker("Prompt", selection: $draft.promptKind) {
-                    Text("GhostShell's own text").tag(PromptKind.text)
-                    Text("A prompt file").tag(PromptKind.file)
-                }
-                .labelsHidden().radioGroup().tint(Color.ghost.primary)
-                #endif
             }
             if fileMode {
                 FormField(label: "Prompt file", message: problems["file"] ?? (loadedUnchanged ? loaded.error : nil)) {
@@ -232,7 +235,11 @@ private struct RoutineFields: View {
                 switch preview {
                 case .fires(let times):
                     // Non-breaking spaces, so a narrow form wraps only between times.
+                    #if os(macOS)
+                    Text("Next   \(times.map { fireTime($0).replacingOccurrences(of: " ", with: "\u{00A0}") }.joined(separator: "   "))").font(.geistMono(12)).foregroundStyle(Color.ghost.mutedForeground)
+                    #else
                     Text("Next \(times.map { fireTime($0).replacingOccurrences(of: " ", with: "\u{00A0}") }.joined(separator: " · "))").ghostMuted(13)
+                    #endif
                 case .never where jitter != nil:
                     Text("This schedule never fires.").ghostMuted(13)
                 default: EmptyView()
@@ -315,5 +322,5 @@ private struct RoutineFields: View {
         if await store.delete(routine) { leave() }
     }
 
-    private func leave() { model.navigator.show { RoutinesScreen() } }
+    private func leave() { model.navigator.show(page: "routines") { RoutinesScreen() } }
 }

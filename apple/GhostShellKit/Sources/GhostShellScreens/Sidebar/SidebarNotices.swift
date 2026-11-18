@@ -20,19 +20,46 @@ struct EmptyNotice: View {
     }
 }
 
+/// The shortcut in "Press ⌘N to start one." sits in a muted chip on the Mac, as the page's kbd does.
+private extension EmptyList {
+    @ViewBuilder static func line(_ text: String) -> some View {
+        #if os(macOS)
+        if let keys = text.range(of: "\u{2318}N"), text.hasPrefix("Press ") {
+            HStack(spacing: 4) {
+                Text("Press")
+                Text("\u{2318}N").font(.geist(11, weight: .medium)).padding(.horizontal, 4).frame(minHeight: 18)
+                    .background(Color.ghost.muted, in: GhostShape(GhostRadius.sm))
+                Text(String(text[keys.upperBound...]).trimmingCharacters(in: .whitespaces))
+            }
+        } else { Text(text) }
+        #else
+        Text(text)
+        #endif
+    }
+}
+
 /// The page's empty list: a dashed box that fills the list, a muted square holding the new-chat icon, a title and a line under it.
 struct EmptyList: View {
     let title: String
     let text: String
 
+    // The page draws message-square-plus. The phone keeps the compose icon its shots were made with.
+    #if os(macOS)
+    private static let icon = "plus.bubble"
+    private static let titleWeight = Font.Weight.regular
+    #else
+    private static let icon = "square.and.pencil"
+    private static let titleWeight = Font.Weight.medium
+    #endif
+
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "square.and.pencil").font(.system(size: 16)).foregroundStyle(Color.ghost.mutedForeground)
+            Image(systemName: Self.icon).font(.system(size: 16)).foregroundStyle(Color.ghost.mutedForeground)
                 .frame(width: 40, height: 40)
                 .background(Color.ghost.muted, in: RoundedRectangle(cornerRadius: GhostRadius.lg))
                 .accessibilityHidden(true)
-            Text(title).font(.geist(14, weight: .medium, relativeTo: .body)).foregroundStyle(Color.ghost.sidebarForeground)
-            Text(text).font(.geist(12, relativeTo: .caption)).foregroundStyle(Color.ghost.sidebarMuted).multilineTextAlignment(.center)
+            Text(title).font(.geist(14, weight: Self.titleWeight, relativeTo: .body)).foregroundStyle(Color.ghost.sidebarForeground)
+            Self.line(text).font(.geist(12, relativeTo: .caption)).foregroundStyle(Color.ghost.sidebarMuted).multilineTextAlignment(.center)
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

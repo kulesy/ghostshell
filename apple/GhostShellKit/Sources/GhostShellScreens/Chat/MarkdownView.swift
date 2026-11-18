@@ -61,7 +61,7 @@ enum ChatStyle {
     static let bashRun = onPhone(AnyShapeStyle(Color.ghost.card), mac: AnyShapeStyle(Color.secondary.opacity(0.07)))
     static let inlineCode = onPhone(Color.ghost.secondary, mac: Color.secondary.opacity(0.16))
     static let chip = onPhone(AnyShapeStyle(Color.ghost.secondary), mac: AnyShapeStyle(Color.secondary.opacity(0.16)))
-    static let link: Color? = onPhone(Color.ghost.primary, mac: nil)
+    static let link: Color? = Color.ghost.primary
     static let added = onPhone(Color.ghost.successForeground, mac: .green)
     static let removed = onPhone(Color.ghost.destructive, mac: .red)
     static let approvalEdge = onPhone(AnyShapeStyle(Color.ghost.warning), mac: AnyShapeStyle(HierarchicalShapeStyle.quaternary))
@@ -244,7 +244,7 @@ enum MarkdownText {
         }
     }
 
-    /// The app's tint is a neutral grey, so on a phone, where nothing hovers to show a link, a link gets the page's link colour and an underline.
+    /// The app's tint is a neutral grey, so a link gets the page's link colour and an underline.
     private static func styleLink(_ text: inout AttributedString) {
         guard let color = ChatStyle.link else { return }
         text.foregroundColor = color

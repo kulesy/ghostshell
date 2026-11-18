@@ -62,6 +62,13 @@ private struct PictureTile: View {
     @State private var image: PlatformImage?
     @State private var failed = false
 
+    // The page's tile has the small bevelled corner, and the phone keeps its round one.
+    #if os(macOS)
+    private static let shape = GhostShape(GhostRadius.md)
+    #else
+    private static let shape = RoundedRectangle(cornerRadius: 8)
+    #endif
+
     var body: some View {
         Button(action: open) {
             ZStack {
@@ -77,9 +84,9 @@ private struct PictureTile: View {
                 }
             }
             .frame(width: size.width, height: size.height)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(Self.shape)
+            .overlay(Self.shape.strokeBorder(.separator))
+            .contentShape(Self.shape)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Screenshots the web page at phone width, and at the Mac window's default and minimum size, against the same stubs the iPhone run signs in to, so a screen shows the same data on both.
 // Headless Chromium only. Set PLAYWRIGHT_CORE to the playwright-core folder of a checkout that has it. It never opens a browser the owner uses, port 4310 or ~/.config/capcom.
-//   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402|960|640] [--scheme light|dark] [--set chat,groups,empty,organise,routines] [--only <screen prefix>]
+//   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402|960|640] [--scheme light|dark] [--set chat,groups,empty,organise,routines,files,banners,signin] [--only <screen prefix>]
 // Writes <out>/page/<width>/<scheme>/<screen>.png. Screen names follow the iPhone UI tests' shot names where one exists.
 import fs from 'node:fs';
 import http from 'node:http';
@@ -62,6 +62,20 @@ function accountsFixture() {
     passkeys: { available: true, passkeys: [
       { id: 'pk-1', device: 'MacBook Pro, Safari', rpId: 'example.ts.net', created: new Date(now - 40 * day).toISOString(), used: new Date(now - 2 * day).toISOString() },
     ] },
+  };
+}
+
+// What the Mac's accounts flow serves at first: the login, update, out-of-usage, auto-switch and Chrome banners together.
+function bannersFixture() {
+  const now = Date.now();
+  const work = { id: 'work', name: 'Work' };
+  const personal = { id: 'personal', name: 'Personal' };
+  const changes = [['Add a context meter', 1], ['Fix the sidebar jump', 2], ['Show the plan bars', 3]].map(([title, n]) => ({ title, url: `https://github.com/kulesy/ghostshell/pull/${n}` }));
+  return {
+    login: { visible: true, signedOut: false, endsAt: now + 3 * 86_400_000, stage: 'idle', account: 'Personal', accountId: 'personal' },
+    update: { show: true, kind: 'update', stage: 'idle', count: 7, restart: true, busy: 2, force: true, blocked: '', changes },
+    accounts: { out: { name: 'Work', text: 'Resets at 3:00 pm', at: now, to: personal }, auto: { at: now, from: work, to: personal } },
+    chrome: { state: 'elsewhere', to: personal, on: work, email: 'me@example.com' },
   };
 }
 
@@ -132,6 +146,15 @@ const SETS = {
     });
     return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
   },
+  async banners() {
+    const stub = await startChatStub();
+    const fixtures = accountsFixture();
+    const proxy = await startProxy(stub.address, {
+      answer: p => (p === '/api/accounts' || p === '/api/accounts/plan' ? fixtures.accounts : p === '/api/banners' ? bannersFixture() : p === '/api/passkeys' ? fixtures.passkeys : undefined),
+      patch: forList(FEATURES),
+    });
+    return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
+  },
   async files() {
     const stub = await startFilesStub();
     const proxy = await startProxy(stub.address, { answer: p => (p === '/api/banners' ? {} : undefined), patch: forList() });
@@ -156,12 +179,18 @@ const SETS = {
     const scratch = await startScratch();
     return { address: scratch.address, password: fs.readFileSync(scratch.passwordFile, 'utf8').trim(), stop: () => scratch.stop() };
   },
-  // Empty states: a list with no sessions, no routines and no scheduled sessions.
+  // The scratch server renders the real sign-in page and its errors. The screens sign in themselves.
+  async signin() {
+    const scratch = await startScratch();
+    return { address: scratch.address, stop: () => scratch.stop() };
+  },
+  // Empty states: a list with no sessions, no routines, no scheduled sessions, no accounts and no passkeys.
   async empty() {
     const stub = await startChatStub();
     const proxy = await startProxy(stub.address, {
       answer: p => (p === '/api/sessions' ? { ...LIST, features: FEATURES, ungrouped: [] }
-        : p === '/api/routines' ? { routines: [] } : p === '/api/scheduled' ? { scheduled: [] } : p === '/api/banners' ? {} : undefined),
+        : p === '/api/routines' ? { routines: [] } : p === '/api/scheduled' ? { scheduled: [] } : p === '/api/banners' ? {}
+        : p === '/api/accounts' || p === '/api/accounts/plan' ? { autoSwitch: false, waiting: false, accounts: [] } : p === '/api/passkeys' ? { available: true, passkeys: [] } : undefined),
     });
     return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
   },
@@ -176,6 +205,15 @@ const chatScreen = (id, text, after = async () => {}) => async (page, ctx) => {
   await ctx.go(`#/s/${id}`);
   await page.getByText(text).first().waitFor({ timeout: 15_000 });
   await after(page, ctx);
+};
+
+// Opens a link in the files chat and waits for `shown` in the panel, or `wait` ms when the file has no text to wait for.
+const fileScreen = (link, shown, wait = 600) => async (page, ctx) => {
+  await ctx.go('#/s/files');
+  await page.getByText('All five match the notes.').first().waitFor({ timeout: 15_000 });
+  await page.getByText(link, { exact: true }).first().click();
+  if (shown) await page.getByText(shown).first().waitFor({ timeout: 15_000 });
+  await sleep(wait);
 };
 
 const SCREENS = {
@@ -229,6 +267,56 @@ const SCREENS = {
   ],
   empty: [
     ['list-empty', (page, ctx) => ctx.go('#/')],
+    ['routines-empty', (page, ctx) => ctx.go('#/routines')],
+    ['scheduled-empty', (page, ctx) => ctx.go('#/scheduled')],
+    ['accounts-empty', (page, ctx) => ctx.go('#/accounts')],
+    ['passkeys-empty', (page, ctx) => ctx.go('#/passkeys')],
+  ],
+  // Named after the Mac accounts flow's shots.
+  banners: [
+    ['6-banners', async (page, ctx) => { await ctx.go('#/'); await page.getByText('7 merged changes are waiting').first().waitFor({ timeout: 15_000 }); }],
+    ['6-force-question', async (page, ctx) => {
+      await ctx.go('#/');
+      await page.getByRole('button', { name: /Force restart/ }).first().click();
+      await page.getByText('2 running chats will be cut.').first().waitFor();
+    }],
+    ['6-accounts', async (page, ctx) => { await ctx.go('#/accounts'); await page.locator('.accounts-body').waitFor(); }],
+    ['6-passkeys', async (page, ctx) => { await ctx.go('#/passkeys'); await page.getByText('MacBook Pro, Safari').first().waitFor(); }],
+  ],
+  // Named after the Mac files flow's shots, which open the same chat's links in turn.
+  files: [
+    ['10-tool-tiles', async (page, ctx) => { await ctx.go('#/s/files'); await page.getByText('All five match the notes.').first().waitFor({ timeout: 15_000 }); await sleep(1200); }],
+    ['10-viewer-tool', async (page, ctx) => {
+      await ctx.go('#/s/files');
+      await page.getByText('All five match the notes.').first().waitFor({ timeout: 15_000 });
+      await sleep(1200);
+      await page.locator('.tool-images img, .result-images img, .thumb').last().click();
+      await page.getByText(/\d of 7/).first().waitFor();
+    }],
+    ['10-file-markdown', fileScreen('NOTES.md:14', 'Upload notes')],
+    ['10-file-text-line', fileScreen('server.js:42', 'const RETRIES = 5;')],
+    ['10-file-pdf', fileScreen('report.pdf', null, 2500)],
+    ['10-file-audio', fileScreen('intro.wav', null, 1000)],
+    ['10-file-binary', fileScreen('archive.zip', 'ZIP file')],
+    ['10-file-missing', fileScreen('gone.txt', null)],
+    ['10-viewer-picture', fileScreen('diagram.png', null, 1500)],
+  ],
+  // Named after the Mac's sign-in shots.
+  signin: [
+    ['1-signin-idle', async (page, ctx) => { await page.goto(`${ctx.address}/login`); await sleep(800); }],
+    ['1-wrong-password', async (page, ctx) => {
+      await page.goto(`${ctx.address}/login`);
+      await page.fill('#password', 'wrong');
+      await page.click('button[type=submit]');
+      await sleep(1000);
+    }],
+    ['2-locked', async (page, ctx) => {
+      for (let i = 0; i < 10; i++) await fetch(`${ctx.address}/login`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'password=wrong' });
+      await page.goto(`${ctx.address}/login`);
+      await page.fill('#password', 'wrong');
+      await page.click('button[type=submit]');
+      await page.getByText('Too many tries').first().waitFor();
+    }],
   ],
   // Named after the Mac run's shots (`main` and `organise`), which sign in to the same seeded scratch server.
   organise: [

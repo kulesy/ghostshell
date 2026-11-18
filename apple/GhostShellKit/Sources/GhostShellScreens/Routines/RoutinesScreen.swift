@@ -29,8 +29,9 @@ struct RoutinesScreen: View {
                 ProgressView("Loading routines").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle("Routines")
+        .pageHeader("Routines", button: store.features.routineEdits ? "New routine" : nil, perform: { model.navigator.show { RoutineFormScreen(id: nil) } })
         .ghostScreen()
+        #if os(iOS)
         .toolbar {
             if store.features.routineEdits {
                 ToolbarItem {
@@ -41,6 +42,7 @@ struct RoutinesScreen: View {
                 }
             }
         }
+        #endif
         .noteBar()
         .safeAreaInset(edge: .top, spacing: 0) {
             if let problem = store.problem { ProblemBanner(text: problem) }
@@ -81,7 +83,7 @@ struct ProblemBanner: View {
     let text: String
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: GhostRadius.base, style: .continuous)
+        let shape = GhostShape(GhostRadius.base)
         Text(text)
             .font(.geist(14))
             .foregroundStyle(Color.ghost.warningForeground)
@@ -137,7 +139,7 @@ private struct RoutineRow: View {
             Text(routine.enabled ? (routine.next.map { "Next \(fireTime($0))" } ?? "No upcoming run") : "Off")
             if let id = routine.lastSessionId, !id.isEmpty, routine.lastRunAt != nil {
                 Button { model.navigator.openSession(id) } label: { Text("Last run \(fireTime(routine.lastRunAt))").underline() }
-                    .buttonStyle(.plain).frame(minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                    .buttonStyle(.plain).phoneField()
             } else {
                 Text(routine.lastRunAt == nil ? "Never run" : "Last run \(fireTime(routine.lastRunAt))")
             }
@@ -175,7 +177,7 @@ private struct RoutineRow: View {
                 } label: {
                     Label("Actions for \(routine.title)", systemImage: "ellipsis").labelStyle(.iconOnly).foregroundStyle(Color.ghost.foreground).phoneIconTouch()
                 }
-                .menuStyle(.borderlessButton).fixedSize()
+                .menuStyle(.borderlessButton).menuIndicator(macOr(.hidden, .automatic)).fixedSize()
             }
         }
     }

@@ -81,11 +81,11 @@ struct AudioPane: View {
                     let current = clip == path
                     Button { store.open(path: clip, line: nil, autoplay: true) } label: {
                         Text(verbatim: (clip as NSString).lastPathComponent)
-                            .font(.geist(16, weight: current ? .semibold : .regular, relativeTo: .body)).foregroundStyle(Color.ghost.foreground)
+                            .font(.geist(ghostBodySize, weight: current ? .semibold : .regular, relativeTo: .body)).foregroundStyle(Color.ghost.foreground)
                             .lineLimit(1).truncationMode(.middle)
                             .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .background(current ? Color.ghost.foreground.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: GhostRadius.sm, style: .continuous))
+                            .frame(maxWidth: .infinity, minHeight: ghostBodySize > 14 ? 44 : 32, alignment: .leading)
+                            .background(current ? Color.ghost.foreground.opacity(0.08) : Color.clear, in: GhostShape(GhostRadius.sm))
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).help(clip)

@@ -31,8 +31,9 @@ struct ScheduledScreen: View {
                 ProgressView("Loading scheduled sessions").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle("Scheduled sessions")
+        .pageHeader("Scheduled sessions", button: store.features.scheduled ? "Schedule a session" : nil, perform: { model.navigator.show { ScheduledFormScreen(id: nil) } })
         .ghostScreen()
+        #if os(iOS)
         .toolbar {
             if store.features.scheduled {
                 ToolbarItem {
@@ -43,6 +44,7 @@ struct ScheduledScreen: View {
                 }
             }
         }
+        #endif
         .noteBar()
         .safeAreaInset(edge: .top, spacing: 0) {
             if let problem = store.scheduledProblem { ProblemBanner(text: problem) }
@@ -99,7 +101,7 @@ private struct ScheduledRow: View {
             if let retry = s.retry, s.status == "pending" {
                 alert("\(retryWords(retry)). The last try said: \(s.lastError ?? "no reason given")", Color.ghost.warningForeground)
             } else if let error = s.lastError, !error.isEmpty, s.status == "skipped" || s.status == "started" {
-                alert(error, Color.ghost.warningForeground)
+                alert(error, macOr(Color.ghost.destructive, Color.ghost.warningForeground))
             }
         }
     }
@@ -114,21 +116,21 @@ private struct ScheduledRow: View {
             } label: {
                 Label("Actions for \(entry.title)", systemImage: "ellipsis").labelStyle(.iconOnly).foregroundStyle(Color.ghost.foreground).phoneIconTouch()
             }
-            .menuStyle(.borderlessButton).fixedSize()
+            .menuStyle(.borderlessButton).menuIndicator(macOr(.hidden, .automatic)).fixedSize()
         }
     }
 
     @ViewBuilder private var status: some View {
         if entry.status == "started", let id = entry.sessionId, !id.isEmpty {
-            Button { model.navigator.openSession(id) } label: { Text("Started \(fireTime(entry.startedAt))").underline() }
-                .buttonStyle(.plain).font(.geist(16)).foregroundStyle(Color.ghost.foreground).frame(minHeight: 44, alignment: .leading).contentShape(Rectangle())
+            Button { model.navigator.openSession(id) } label: { macOr(Text("Started ") + Text(fireTime(entry.startedAt)).underline(), Text("Started \(fireTime(entry.startedAt))").underline()) }
+                .buttonStyle(.plain).font(.geist(ghostBodySize)).foregroundStyle(Color.ghost.foreground).phoneField()
         } else {
             let when = ["pending", "cancelled", "skipped"].contains(entry.status) ? fireTime(entry.at) : ""
             HStack(spacing: 24) {
                 Text(statusWords(entry))
                 if !when.isEmpty { Text(when) }
             }
-            .font(.geist(16)).foregroundStyle(Color.ghost.foreground)
+            .font(.geist(ghostBodySize)).foregroundStyle(Color.ghost.foreground)
         }
     }
 
@@ -142,7 +144,7 @@ private struct ScheduledRow: View {
     }
 
     private func alert(_ text: String, _ tint: Color) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle.fill").font(.geist(14)).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
+        Label(text, systemImage: macOr("exclamationmark.triangle", "exclamationmark.triangle.fill")).font(.geist(14)).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
     }
 }
 

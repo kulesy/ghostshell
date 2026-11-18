@@ -4,13 +4,17 @@ import SwiftUI
 import AppKit
 #endif
 
-/// The inspector beside the thread: one file, no history.
+/// The file over the chat: one file, no history.
 struct FilePanel: View {
     let chat: ChatContext
     @Bindable var store: FilesStore
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
+            PanelTabs(store: store)
+            Rule()
+            #endif
             if let file = store.file {
                 FileHeader(store: store, file: file)
                 Rule()
@@ -25,7 +29,6 @@ struct FilePanel: View {
             }
         }
         .background(Color.ghost.background.ignoresSafeArea())
-        .inspectorColumnWidth(min: 320, ideal: 460, max: 900)
         // The chat sets this on the layout, and the inspector is part of it. Set again so a link in a rendered file can only reach the chat's own path.
         .environment(\.openURL, OpenURLAction { url in
             guard let link = ChatLink(url: url) else { return .discarded }
@@ -59,6 +62,25 @@ struct FilePanel: View {
 struct Rule: View {
     var body: some View { Rectangle().fill(Color.ghost.border).frame(height: 1) }
 }
+
+#if os(macOS)
+/// The page's bar above the file: the File tab and a close button. The phone's sheet has its own title bar.
+private struct PanelTabs: View {
+    let store: FilesStore
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Label("File", systemImage: "doc").font(.geist(14, weight: .medium, relativeTo: .subheadline)).foregroundStyle(Color.ghost.foreground)
+                .padding(.horizontal, 10).frame(height: 32).background(Color.ghost.muted, in: GhostShape(GhostRadius.md))
+            Spacer(minLength: 4)
+            Button { store.close() } label: { Label("Close", systemImage: "xmark").labelStyle(.iconOnly).font(.system(size: 14, weight: .medium)) }
+                .buttonStyle(.ghost(.ghost, size: .icon)).help("Close")
+        }
+        .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 4)
+        .frame(minHeight: 52)
+    }
+}
+#endif
 
 private struct FileHeader: View {
     let store: FilesStore
@@ -127,7 +149,7 @@ private struct FileNotes: View {
         if shown {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 6) {
-                    if store.edit == nil, let why = file.preview?.readOnly { note(why, "lock") }
+                    if store.edit == nil, let why = file.preview?.readOnly { note(why, readOnlyIcon) }
                     if let edit = store.edit {
                         if edit.conflict {
                             note("This file changed on disk after you opened it, so nothing was saved. Your text is still here.", "exclamationmark.triangle")
@@ -144,9 +166,19 @@ private struct FileNotes: View {
         }
     }
 
-    private func note(_ words: String, _ symbol: String) -> some View {
-        Label { Text(verbatim: words) } icon: { Image(systemName: symbol) }
-            .font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground)
+    // The page's read-only band is plain words, 13px, with no lock.
+    private var readOnlyIcon: String? {
+        #if os(macOS)
+        nil
+        #else
+        "lock"
+        #endif
+    }
+
+    @ViewBuilder private func note(_ words: String, _ symbol: String?) -> some View {
+        let size: CGFloat = readOnlyIcon == nil ? 13 : 14
+        Label { Text(verbatim: words) } icon: { if let symbol { Image(systemName: symbol) } }
+            .font(.geist(size, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -222,8 +254,8 @@ private struct FileCard: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Text(verbatim: ChatFiles.kindName(preview.name)).font(.geist(16, relativeTo: .body)).foregroundStyle(Color.ghost.foreground)
-            Text(verbatim: ChatFiles.fileSize(preview.size)).font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground)
+            Text(verbatim: ChatFiles.kindName(preview.name)).font(.geist(ghostBodySize, relativeTo: .body)).foregroundStyle(Color.ghost.foreground)
+            Text(verbatim: ChatFiles.fileSize(preview.size)).font(.geist(ghostBodySize - 2, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground)
             if preview.tooLarge {
                 Text("This file is too large to open here.").font(.geist(14, relativeTo: .subheadline)).foregroundStyle(Color.ghost.mutedForeground)
             }
@@ -249,6 +281,14 @@ private struct NumberedText: View {
     let lines: [String]
     let highlight: Int?
     @ScaledMetric(relativeTo: .body) private var glyph: CGFloat = 7.8
+    // The page lands a linked line about a quarter of the way down.
+    private static let landing: UnitPoint = {
+        #if os(macOS)
+        UnitPoint(x: 0.5, y: 0.25)
+        #else
+        .center
+        #endif
+    }()
 
     var body: some View {
         if lines.isEmpty {
@@ -280,7 +320,7 @@ private struct NumberedText: View {
                     guard let highlight, (1...lines.count).contains(highlight) else { return }
                     // Lazy rows need a pass to lay out before the scroll can find the line.
                     try? await Task.sleep(for: .milliseconds(60))
-                    proxy.scrollTo(highlight, anchor: .center)
+                    proxy.scrollTo(highlight, anchor: Self.landing)
                 }
             }
         }

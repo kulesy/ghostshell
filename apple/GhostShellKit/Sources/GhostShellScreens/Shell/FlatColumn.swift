@@ -28,6 +28,22 @@ extension View {
     }
 }
 
+/// The page's body size: 16pt on a phone, where Safari zooms a smaller input, and the 14px the page draws at desktop width on the Mac.
+#if os(iOS)
+let ghostBodySize: CGFloat = 16
+#else
+let ghostBodySize: CGFloat = 14
+#endif
+
+/// A look the Mac takes from the page while the phone keeps the one it shipped with.
+func macOr<T>(_ mac: @autoclosure () -> T, _ phone: @autoclosure () -> T) -> T {
+    #if os(macOS)
+    mac()
+    #else
+    phone()
+    #endif
+}
+
 /// The page's empty state: a title, a muted paragraph and an action, left aligned between two 1px rules.
 struct FlatEmpty<Action: View>: View {
     let title: String
@@ -38,8 +54,8 @@ struct FlatEmpty<Action: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             Rule()
             VStack(alignment: .leading, spacing: 8) {
-                Text(title).font(.geist(16)).foregroundStyle(Color.ghost.foreground)
-                Text(text).ghostMuted(16).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.geist(ghostBodySize)).foregroundStyle(Color.ghost.foreground)
+                Text(text).ghostMuted(ghostBodySize).fixedSize(horizontal: false, vertical: true)
                 action
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -52,7 +68,7 @@ struct FlatEmpty<Action: View>: View {
     }
 }
 
-private let inputShape = RoundedRectangle(cornerRadius: GhostRadius.sm, style: .continuous)
+private let inputShape = GhostShape(GhostRadius.sm)
 
 #if os(iOS)
 private let inputHeight: CGFloat = 44
@@ -67,9 +83,9 @@ extension View {
             .overlay { inputShape.strokeBorder(invalid ? Color.ghost.destructive : Color.ghost.input, lineWidth: 1) }
     }
 
-    /// A one-line input as the page draws it: 16pt text, 12pt at the sides, boxed. Geist Mono for a folder or a schedule.
+    /// A one-line input as the page draws it: 16pt text (14pt on the Mac), 12pt at the sides, boxed. Geist Mono for a folder or a schedule.
     func ghostInput(mono: Bool = false, invalid: Bool = false) -> some View {
-        font(mono ? .geistMono(16) : .geist(16))
+        font(mono ? .geistMono(ghostBodySize) : .geist(ghostBodySize))
             .foregroundStyle(Color.ghost.foreground)
             .textFieldStyle(.plain)
             .padding(.horizontal, 12)
@@ -81,7 +97,7 @@ extension View {
 extension View {
     /// The page's prompt box, for a TextEditor: Geist 16pt, at least 256pt tall, boxed like an input.
     func ghostEditor(invalid: Bool = false) -> some View {
-        font(.geist(16))
+        font(.geist(ghostBodySize))
             .foregroundStyle(Color.ghost.foreground)
             .frame(minHeight: 256)
             .scrollContentBackground(.hidden)

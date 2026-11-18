@@ -7,6 +7,7 @@ public struct BannerStack: View {
     @Environment(AppModel.self) private var model
     @State private var state = BannersState()
     @State private var height: CGFloat = 0
+    @State private var shown: CGFloat = 0
     private let cap: CGFloat = 220
     private var presence = AccountsPresence.shared
 
@@ -32,8 +33,19 @@ public struct BannerStack: View {
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height = $0 }
                 }
                 .scrollBounceBehavior(.basedOnSize)
+                #if os(macOS)
+                .scrollIndicators(.hidden)
+                // The page lets the stack take about half the column, so the cap follows the window.
+                .containerRelativeFrame(.vertical, alignment: .top) { length, _ in min(height, length * 0.5) }
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { shown = $0 }
+                // The page fades the end of a long stack out and does not cut it with a rule.
+                .overlay(alignment: .bottom) {
+                    if height > shown + 1 { LinearGradient(colors: [.clear, Color.ghost.sidebar], startPoint: .top, endPoint: .bottom).frame(height: 24).allowsHitTesting(false) }
+                }
+                #else
                 .frame(height: min(height, cap))
                 .overlay(alignment: .bottom) { if height > cap { Divider() } }
+                #endif
             }
         }
         .task(id: model.visible) {
@@ -43,14 +55,27 @@ public struct BannerStack: View {
                 guard await pause(state.absent ? bannerAbsentPoll : state.polling) else { return }
             }
         }
+        #if os(macOS)
+        // The page asks in its own dialog over the window. A system alert dims only this pane and sits in a narrow card.
+        .onChange(of: state.asking != nil) { _, open in
+            if open { model.navigator.raise("force", AnyView(ForceDialog(question: state.asking?.question ?? "", cancel: { state.asking = nil }, confirm: confirmForce))) } else { model.navigator.lower("force") }
+        }
+        .onDisappear {
+            state.asking = nil
+            model.navigator.lower("force")
+        }
+        #else
         .alert("Force restart \u{201C}GhostShell\u{201D}?", isPresented: Binding(get: { state.asking != nil }, set: { if !$0 { state.asking = nil } }), presenting: state.asking) { _ in
             Button("Cancel", role: .cancel) {}
-            Button("Force restart", role: .destructive) {
-                if let card = cards.first(where: { $0.kind == .update }), let client = model.client { Task { await state.forceRestart(card, client) } }
-            }
+            Button("Force restart", role: .destructive, action: confirmForce)
         } message: { ask in
             Text(ask.question)
         }
+        #endif
+    }
+
+    private func confirmForce() {
+        if let card = cards.first(where: { $0.kind == .update }), let client = model.client { Task { await state.forceRestart(card, client) } }
     }
 
     private func act(_ card: BannerCard) {
@@ -85,3 +110,36 @@ public struct BannerStack: View {
         Task { await state.askToForce(client) }
     }
 }
+
+#if os(macOS)
+/// The page's question dialog: a wide card, left aligned, with Cancel and the red action at the right.
+private struct ForceDialog: View {
+    let question: String
+    let cancel: () -> Void
+    let confirm: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5).ignoresSafeArea().onTapGesture(perform: cancel)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Force restart \u{201C}GhostShell\u{201D}?").font(.geist(18, weight: .semibold)).foregroundStyle(Color.ghost.foreground)
+                Text(question).font(.geist(14)).foregroundStyle(Color.ghost.mutedForeground).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button("Cancel", action: cancel).buttonStyle(.ghost(.outline)).keyboardShortcut(.cancelAction)
+                    Button("Force restart") { cancel(); confirm() }.buttonStyle(.ghost(.destructive))
+                }
+                .padding(.top, 8)
+            }
+            .padding(24)
+            .frame(maxWidth: 480, alignment: .leading)
+            .background(Color.ghost.popover, in: GhostShape(GhostRadius.xl))
+            .overlay(GhostShape(GhostRadius.xl).strokeBorder(Color.ghost.border, lineWidth: 1))
+            .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
+            .padding(24)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+    }
+}
+#endif
