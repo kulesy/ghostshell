@@ -41,7 +41,12 @@ public struct GhostButtonStyle: ButtonStyle {
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        // The page's button is `--radius-md` whatever a phone screen rounds it to, so the Mac's bevel does not follow `radius`.
+        #if os(macOS)
+        let shape = GhostShape(GhostRadius.md)
+        #else
+        let shape = GhostShape(radius)
+        #endif
         configuration.label
             .font(.geist(14, weight: .medium))
             // The label keeps its width, as the page's flex buttons do, so a row shares out the rest and no label wraps or truncates.
