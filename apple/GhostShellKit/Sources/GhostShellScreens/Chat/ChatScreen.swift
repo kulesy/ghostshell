@@ -22,7 +22,7 @@ private struct ChatHost: View {
     var body: some View {
         let title = named ?? app.rows.first { $0.id == sessionID }?.title ?? ""
         Group {
-            if let model { ChatLayout(model: model).environment(model) } else { Color.clear }
+            if let model { ChatLayout(model: model, title: title, archivable: groupKind == nil && named == nil).environment(model) } else { Color.clear }
         }
         .navigationTitle(title.isEmpty ? "Untitled" : title)
         #if os(iOS)
@@ -69,16 +69,20 @@ private struct GroupTitle: View {
 
 private struct ChatLayout: View {
     let model: ChatModel
+    let title: String
+    let archivable: Bool
     @State private var height = EnvironmentValues().chatHeight
 
     var body: some View {
         @Bindable var chat = model.chat
         VStack(spacing: 0) {
+            #if os(macOS)
+            ChatHeader(title: title, archivable: archivable)
+            #endif
             ChatThreadView()
             NoticeBar()
+            #if os(iOS)
             AgentStrip()
-            #if os(macOS)
-            if chat.terminalOpen { ChatSlots.terminal(chat) }
             #endif
             ChatSlots.prompts(chat)
             ChatSlots.composer(chat)
@@ -88,7 +92,9 @@ private struct ChatLayout: View {
         .toolbar {
             ToolbarItemGroup {
                 ChatSlots.fileToolbar(chat)
+                #if os(iOS)
                 ChatSlots.terminalToolbar(chat)
+                #endif
             }
         }
         #if os(macOS)
@@ -114,6 +120,7 @@ private struct ChatLayout: View {
         // The composer under the terminal would keep the keyboard.
         .onChange(of: chat.terminalOpen) { _, open in if open { dismissKeyboard() } }
         #else
+        .overlay { if chat.terminalOpen { ChatSlots.terminal(chat).background(Color.ghost.background) } }
         // The page's file panel takes the whole main pane. An inspector squeezed the chat to a sliver and ran past the window's edge.
         .overlay { if chat.filePanelOpen { ChatSlots.filePanel(chat).background(.background).accessibilityAddTraits(.isModal) } }
         #endif

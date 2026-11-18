@@ -1,7 +1,7 @@
 import GhostShellKit
 import SwiftUI
 
-/// The toolbar button that opens and closes the terminal panel. It is always in the toolbar and is off for a chat whose server has no terminal,
+/// The button that opens and closes the terminal panel, in the Mac chat's head and a phone's toolbar. It is always there and is off for a chat whose server has no terminal,
 /// because AppKit raises an exception when a toolbar item is added to a window that is already showing.
 struct TerminalToggle: View {
     let chat: ChatContext

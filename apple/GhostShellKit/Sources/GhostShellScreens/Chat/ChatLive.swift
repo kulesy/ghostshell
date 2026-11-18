@@ -80,7 +80,8 @@ private struct WorkingLine: View {
     }
 }
 
-/// The subagents the session has started: a line that counts them, and a list when it is opened.
+#if os(iOS)
+/// The subagents the session has started: a line that counts them, and a list when it is opened. The Mac keeps them behind a button in the chat's head.
 struct AgentStrip: View {
     @Environment(ChatModel.self) private var model
     @State private var open = false
@@ -88,7 +89,6 @@ struct AgentStrip: View {
     var body: some View {
         let agents = model.agents
         if !agents.isEmpty {
-            let (running, finished) = ChatAgents.parts(agents)
             VStack(alignment: .leading, spacing: 0) {
                 Button { open.toggle() } label: {
                     HStack(spacing: 8) {
@@ -103,17 +103,25 @@ struct AgentStrip: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityValue(open ? "expanded" : "collapsed")
-                if open {
-                    EverySecond { now in
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(running + finished) { heard in AgentLine(heard: heard, now: now) }
-                        }
-                        .padding(.horizontal, 34).padding(.bottom, 8)
-                    }
-                }
+                if open { AgentList(agents: agents).padding(.horizontal, 34).padding(.bottom, 8) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.bar)
+        }
+    }
+}
+#endif
+
+/// Running subagents first, then the finished ones, each with its state and how long it has run.
+struct AgentList: View {
+    let agents: [HeardAgent]
+
+    var body: some View {
+        let (running, finished) = ChatAgents.parts(agents)
+        EverySecond { now in
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(running + finished) { heard in AgentLine(heard: heard, now: now) }
+            }
         }
     }
 }

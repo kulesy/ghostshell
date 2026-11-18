@@ -4,161 +4,139 @@ import SwiftUI
 import UIKit
 #endif
 
-/// The value the iPhone shows, which follows the page as iOS Safari draws it (public/ghost.css, with no `corner-shape`), or the Mac's own.
-/// https://github.com/kulesy/ghostshell/issues/136
-private func onPhone<T>(_ page: @autoclosure () -> T, mac: @autoclosure () -> T) -> T {
-    #if os(iOS)
-    return page()
-    #else
-    return mac()
-    #endif
-}
-
-/// Every size, colour and corner the thread is set in. The iPhone takes the page's values and the Mac keeps its own, so a view reads this and branches on `page` only where the iPhone's structure differs.
+/// Every size, colour and corner the thread is set in, the page's on both platforms.
 enum ChatStyle {
-    static let page = onPhone(true, mac: false)
+    /// The iPhone's values were read at the page's 16pt `rem`, so a pointer's 15pt scales them.
+    private static let k = GhostMetrics.current.scale
 
     // MARK: Text
-    static let body = onPhone(Font.geist(14), mac: Font.system(size: 14))
-    static let small = onPhone(Font.geist(12, relativeTo: .caption), mac: Font.system(size: 12))
-    static let caption = onPhone(Font.geist(11, relativeTo: .caption2), mac: Font.system(size: 11))
-    static let mono = onPhone(Font.geistMono(13), mac: Font.system(size: 12.5, design: .monospaced))
-    static let monoSmall = onPhone(Font.geistMono(12, relativeTo: .caption), mac: Font.system(size: 12, design: .monospaced))
-    static let commandMono = onPhone(Font.geistMono(13), mac: monoSmall)
-    static let commandLineSpacing: CGFloat = onPhone(4, mac: 2)
-    static let labelWeight = onPhone(Font.Weight.medium, mac: .regular)
-    static let chipInk = onPhone(AnyShapeStyle(Color.ghost.foreground), mac: AnyShapeStyle(HierarchicalShapeStyle.secondary))
-    static let chipFont = onPhone(Font.geist(12, weight: .medium, relativeTo: .caption), mac: caption)
-    static let optionDescription = onPhone(body, mac: small)
-    static let fieldFont = onPhone(Font.geist(16), mac: Font.system(size: 16))
+    static let body = Font.geist(14 * k)
+    static let small = Font.geist(12 * k, relativeTo: .caption)
+    static let caption = Font.geist(11 * k, relativeTo: .caption2)
+    static let mono = Font.geistMono(13 * k)
+    static let monoSmall = Font.geistMono(12 * k, relativeTo: .caption)
+    static let commandMono = Font.geistMono(13 * k)
+    static let commandLineSpacing: CGFloat = 4 * k
+    static let labelWeight = Font.Weight.medium
+    static let chipInk = AnyShapeStyle(Color.ghost.foreground)
+    static let chipFont = Font.geist(12 * k, weight: .medium, relativeTo: .caption)
+    static let optionDescription = body
+    static let fieldFont = Font.geist(16 * k)
     /// A narrow space either side of inline code stands in for padding, which an attributed string can't give.
     static let codePad = "\u{202F}"
-    static let summary = onPhone(body, mac: small)
-    static let toolSummary = onPhone(monoSmall, mac: small)
-    static let detailValue = onPhone(monoSmall, mac: small)
-    static let groupMeta = onPhone(monoSmall, mac: small)
-    static let thinkText = onPhone(body, mac: small)
-    static let codeAction = onPhone(Font.geist(12, weight: .medium, relativeTo: .caption), mac: caption)
-    static let linkWeight: Font.Weight? = onPhone(.medium, mac: nil)
+    static let summary = body
+    static let toolSummary = monoSmall
+    static let detailValue = monoSmall
+    static let groupMeta = monoSmall
+    static let thinkText = body
+    static let codeAction = Font.geist(12 * k, weight: .medium, relativeTo: .caption)
+    static let linkWeight = Font.Weight.medium
     /// The page sets replies at 22.75 over 14, and code at 20.8 over 13.
-    static let lineSpacing: CGFloat = onPhone(6, mac: 4)
-    static let codeLineSpacing: CGFloat = onPhone(5, mac: 3)
-    static let noticeLineSpacing: CGFloat = onPhone(3, mac: 0)
-    static let noticeTracking: CGFloat = onPhone(-0.35, mac: 0)
+    static let lineSpacing: CGFloat = 6 * k
+    static let codeLineSpacing: CGFloat = 5 * k
+    static let noticeLineSpacing: CGFloat = 3 * k
+    static let noticeTracking: CGFloat = -0.35 * k
     /// The widest the thread's text runs, as on the page (46rem).
-    static let column: CGFloat = 736
+    static let column: CGFloat = 736 * k
 
     // MARK: Colours
-    static let text = onPhone(AnyShapeStyle(Color.ghost.foreground), mac: AnyShapeStyle(HierarchicalShapeStyle.primary))
-    static let muted = onPhone(AnyShapeStyle(Color.ghost.mutedForeground), mac: AnyShapeStyle(HierarchicalShapeStyle.secondary))
-    static let marker = onPhone(AnyShapeStyle(Color.ghost.foreground), mac: AnyShapeStyle(HierarchicalShapeStyle.secondary))
-    static let border = onPhone(AnyShapeStyle(Color.ghost.border), mac: AnyShapeStyle(HierarchicalShapeStyle.quaternary))
-    static let card = onPhone(AnyShapeStyle(Color.ghost.card), mac: AnyShapeStyle(BackgroundStyle()))
-    static let bubble = onPhone(AnyShapeStyle(Color.ghost.secondary), mac: AnyShapeStyle(Color.secondary.opacity(0.14)))
-    static let codeBlock = onPhone(AnyShapeStyle(Color.ghost.secondary), mac: AnyShapeStyle(Color.secondary.opacity(0.12)))
-    static let well = onPhone(AnyShapeStyle(Color.ghost.secondary), mac: AnyShapeStyle(Color.secondary.opacity(0.1)))
-    static let planWell = onPhone(AnyShapeStyle(Color.ghost.secondary), mac: AnyShapeStyle(Color.secondary.opacity(0.07)))
-    static let bashRun = onPhone(AnyShapeStyle(Color.ghost.card), mac: AnyShapeStyle(Color.secondary.opacity(0.07)))
-    static let inlineCode = onPhone(Color.ghost.secondary, mac: Color.secondary.opacity(0.16))
-    static let chip = onPhone(AnyShapeStyle(Color.ghost.secondary), mac: AnyShapeStyle(Color.secondary.opacity(0.16)))
-    static let link: Color? = Color.ghost.primary
-    static let added = onPhone(Color.ghost.successForeground, mac: .green)
-    static let removed = onPhone(Color.ghost.destructive, mac: .red)
-    static let approvalEdge = onPhone(AnyShapeStyle(Color.ghost.warning), mac: AnyShapeStyle(HierarchicalShapeStyle.quaternary))
-    static let fieldEdge = onPhone(AnyShapeStyle(Color.ghost.input), mac: AnyShapeStyle(HierarchicalShapeStyle.quaternary))
-    static let warningText = onPhone(AnyShapeStyle(Color.ghost.warningForeground), mac: AnyShapeStyle(HierarchicalShapeStyle.primary))
-    static let dock = onPhone(AnyShapeStyle(Color.ghost.background), mac: AnyShapeStyle(Material.bar))
-    static let rail = onPhone(AnyShapeStyle(Color.ghost.border), mac: AnyShapeStyle(Color.clear))
-    static let quoteBar = onPhone(AnyShapeStyle(Color.ghost.border), mac: AnyShapeStyle(HierarchicalShapeStyle.tertiary))
-    static let selectedBorder = onPhone(Color.ghost.primary, mac: Color.accentColor.opacity(0.6))
+    static let text = AnyShapeStyle(Color.ghost.foreground)
+    static let muted = AnyShapeStyle(Color.ghost.mutedForeground)
+    static let marker = AnyShapeStyle(Color.ghost.foreground)
+    static let border = AnyShapeStyle(Color.ghost.border)
+    static let card = AnyShapeStyle(Color.ghost.card)
+    static let bubble = AnyShapeStyle(Color.ghost.secondary)
+    static let codeBlock = AnyShapeStyle(Color.ghost.secondary)
+    static let well = AnyShapeStyle(Color.ghost.secondary)
+    static let planWell = AnyShapeStyle(Color.ghost.secondary)
+    static let bashRun = AnyShapeStyle(Color.ghost.card)
+    static let inlineCode = Color.ghost.secondary
+    static let chip = AnyShapeStyle(Color.ghost.secondary)
+    static let link = Color.ghost.primary
+    static let added = Color.ghost.successForeground
+    static let removed = Color.ghost.destructive
+    static let approvalEdge = AnyShapeStyle(Color.ghost.warning)
+    static let fieldEdge = AnyShapeStyle(Color.ghost.input)
+    static let warningText = AnyShapeStyle(Color.ghost.warningForeground)
+    static let dock = AnyShapeStyle(Color.ghost.background)
+    static let rail = AnyShapeStyle(Color.ghost.border)
+    static let quoteBar = AnyShapeStyle(Color.ghost.border)
+    static let selectedBorder = Color.ghost.primary
     /// The page tints a picked option 5% in light and 10% in dark.
-    static func selectedFill(_ scheme: ColorScheme) -> Color { onPhone(Color.ghost.primary.opacity(scheme == .dark ? 0.1 : 0.05), mac: Color.accentColor.opacity(0.14)) }
-    static let optionFill = onPhone(Color.clear, mac: Color.secondary.opacity(0.07))
-    static let optionEdge = onPhone(Color.ghost.border, mac: Color.clear)
+    static func selectedFill(_ scheme: ColorScheme) -> Color { Color.ghost.primary.opacity(scheme == .dark ? 0.1 : 0.05) }
+    static let optionFill = Color.clear
+    static let optionEdge = Color.ghost.border
 
     // MARK: Corners
-    static let radiusBubble = onPhone(GhostRadius.xl, mac: 16)
-    static let radiusCard = onPhone(GhostRadius.xl, mac: 14)
-    static let radiusNotice = onPhone(GhostRadius.lg, mac: 12)
-    static let radiusBlock = onPhone(GhostRadius.lg, mac: 10)
-    static let radiusQuoted = onPhone(GhostRadius.xl, mac: 10)
-    static let radiusInner = onPhone(GhostRadius.lg, mac: 8)
-    static let radiusSummary = onPhone(GhostRadius.md, mac: 8)
-    static let radiusButton = GhostRadius.md
+    /// The page's bubble: 0.25rem corners and a 0.875rem top right where corners are bevelled.
+    static let bubbleShape = GhostCorner(topLeading: 0.25 * GhostMetrics.current.rem, topTrailing: (GhostMetrics.current.touch ? 0.25 : 0.875) * GhostMetrics.current.rem,
+                                         bottomTrailing: 0.25 * GhostMetrics.current.rem, bottomLeading: 0.25 * GhostMetrics.current.rem)
+    static let radiusCard = GhostMetrics.current.xl
+    static let radiusNotice = GhostMetrics.current.lg
+    static let radiusBlock = GhostMetrics.current.lg
+    static let radiusQuoted = GhostMetrics.current.xl
+    static let radiusInner = GhostMetrics.current.lg
+    static let radiusSummary = GhostMetrics.current.md
+    static let radiusButton = GhostMetrics.current.md
 
     // MARK: Layout
-    static let threadInset: CGFloat = onPhone(16, mac: 20)
-    static let bubbleFraction: CGFloat = onPhone(0.8, mac: 1)
+    static let threadInset: CGFloat = 16 * k
+    static let bubbleFraction: CGFloat = 0.8
     /// The page's bubble has a transparent 1pt border, so its padding starts one point further in.
-    static let bubblePadding = onPhone(EdgeInsets(top: 9, leading: 13, bottom: 9, trailing: 13), mac: EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-    static let listMarkerWidth: CGFloat = onPhone(16, mac: 18)
-    static let headingTop: CGFloat = onPhone(8, mac: 6)
-    static let headingBottom: CGFloat = onPhone(-4, mac: 0)
-    static let ruleGap: CGFloat = onPhone(8, mac: 4)
-    static let quoteGap: CGFloat = onPhone(16, mac: 12)
-    static let tablePadding = onPhone(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8), mac: EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
-    static let tableColumnGap: CGFloat = onPhone(16, mac: 18)
-    static let tableHeadWeight = onPhone(Font.Weight.medium, mac: .semibold)
-    static let tableLineSpacing: CGFloat = onPhone(3, mac: 0)
-    static let tableRowHeight: CGFloat = onPhone(20, mac: 0)
-    static let tableHeadHeight: CGFloat = onPhone(24, mac: 0)
-    static let codeHead = onPhone(EdgeInsets(top: 4, leading: 16, bottom: 0, trailing: 8), mac: EdgeInsets(top: 6, leading: 14, bottom: 0, trailing: 10))
-    static let codeHeadHeight: CGFloat = onPhone(28, mac: 0)
-    static let codeActionPadding: CGFloat = onPhone(8, mac: 0)
-    static let codeBody = onPhone(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 16), mac: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
-    static let summaryPadding = onPhone(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8), mac: EdgeInsets(top: 5, leading: 8, bottom: 5, trailing: 8))
-    static let summaryHeight: CGFloat = onPhone(20, mac: 0)
-    static let groupHeight: CGFloat = onPhone(36, mac: 0)
-    static let chevron = onPhone(Font.system(size: 14, weight: .semibold), mac: Font.system(size: 9, weight: .semibold))
-    static let chevronWidth: CGFloat = onPhone(14, mac: 10)
-    /// The page marks only a group's line with a chevron.
-    static let rowChevrons = !page
-    static let groupIndent: CGFloat = onPhone(14, mac: 12)
-    static let railPadding: CGFloat = onPhone(10, mac: 0)
-    static let thinkIndent: CGFloat = onPhone(8, mac: 26)
-    static let thinkBottom: CGFloat = onPhone(8, mac: 6)
-    static let nestedIndent: CGFloat = onPhone(8, mac: 26)
-    static let ioGap: CGFloat = onPhone(4, mac: 6)
-    static let ioBottom: CGFloat = onPhone(8, mac: 4)
-    static let ioPadding = onPhone(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12), mac: EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
-    static let ioLineSpacing: CGFloat = onPhone(3, mac: 2)
+    static let bubblePadding = EdgeInsets(top: 9 * k, leading: 13 * k, bottom: 9 * k, trailing: 13 * k)
+    static let listMarkerWidth: CGFloat = 16 * k
+    static let headingTop: CGFloat = 8 * k
+    static let headingBottom: CGFloat = -4 * k
+    static let ruleGap: CGFloat = 8 * k
+    static let quoteGap: CGFloat = 16 * k
+    static let tablePadding = EdgeInsets(top: 8 * k, leading: 8 * k, bottom: 8 * k, trailing: 8 * k)
+    static let tableColumnGap: CGFloat = 16 * k
+    static let tableHeadWeight = Font.Weight.medium
+    static let tableLineSpacing: CGFloat = 3 * k
+    static let tableRowHeight: CGFloat = 20 * k
+    static let tableHeadHeight: CGFloat = 24 * k
+    static let codeHead = EdgeInsets(top: 4 * k, leading: 16 * k, bottom: 0 * k, trailing: 8 * k)
+    static let codeHeadHeight: CGFloat = 28 * k
+    static let codeActionPadding: CGFloat = 8 * k
+    static let codeBody = EdgeInsets(top: 4 * k, leading: 16 * k, bottom: 12 * k, trailing: 16 * k)
+    static let summaryPadding = EdgeInsets(top: 4 * k, leading: 8 * k, bottom: 4 * k, trailing: 8 * k)
+    static let summaryHeight: CGFloat = 20 * k
+    static let groupHeight: CGFloat = 36 * k
+    static let chevron = Font.system(size: 14 * k, weight: .semibold)
+    static let chevronWidth: CGFloat = 14 * k
+    static let groupIndent: CGFloat = 14 * k
+    static let railPadding: CGFloat = 10 * k
+    static let thinkIndent: CGFloat = 8 * k
+    static let thinkBottom: CGFloat = 8 * k
+    static let nestedIndent: CGFloat = 8 * k
+    static let ioGap: CGFloat = 4 * k
+    static let ioBottom: CGFloat = 8 * k
+    static let ioPadding = EdgeInsets(top: 8 * k, leading: 12 * k, bottom: 8 * k, trailing: 12 * k)
+    static let ioLineSpacing: CGFloat = 3 * k
     /// Includes the page's 1pt border, which this app draws inside the box.
-    static let noticePadding = onPhone(EdgeInsets(top: 13, leading: 17, bottom: 13, trailing: 17), mac: EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-    static let noticeLamp: CGFloat = onPhone(4, mac: 6)
-    static let cardPadding: CGFloat = onPhone(17, mac: 14)
+    static let noticePadding = EdgeInsets(top: 13 * k, leading: 17 * k, bottom: 13 * k, trailing: 17 * k)
+    static let noticeLamp: CGFloat = 4 * k
+    static let cardPadding: CGFloat = 17 * k
     /// The height of an approval card around its body: padding, title, gaps and buttons.
-    static let cardChrome: CGFloat = onPhone(140, mac: 125)
-    static let questionGap: CGFloat = onPhone(8, mac: 6)
-    static let cardLamp: CGFloat = onPhone(4, mac: 0)
-    static let titleAlignment = onPhone(VerticalAlignment.top, mac: .firstTextBaseline)
-    static let titleHeight: CGFloat = onPhone(20, mac: 0)
-    static let diffInset: CGFloat = onPhone(8, mac: 0)
-    static let diffRowPadding: CGFloat = onPhone(12, mac: 10)
-    static let diffFill: Double = onPhone(0, mac: 0.14)
-    static let fieldHeight: CGFloat = onPhone(36, mac: 0)
-    static let chipPadding = onPhone(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8), mac: EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
-    static let optionPadding = onPhone(EdgeInsets(top: 11, leading: 13, bottom: 11, trailing: 13), mac: EdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10))
-    static let optionRadio = !page
-    static let questionFont = onPhone(Font.geist(14, weight: .semibold), mac: Font.system(size: 14, weight: .medium))
+    static let cardChrome: CGFloat = 140 * k
+    static let questionGap: CGFloat = 8 * k
+    static let cardLamp: CGFloat = 4 * k
+    static let titleAlignment = VerticalAlignment.top
+    static let titleHeight: CGFloat = 20 * k
+    static let diffInset: CGFloat = 8 * k
+    static let diffRowPadding: CGFloat = 12 * k
+    static let fieldHeight: CGFloat = 36
+    static let chipPadding = EdgeInsets(top: 2 * k, leading: 8 * k, bottom: 2 * k, trailing: 8 * k)
+    static let optionPadding = EdgeInsets(top: 11 * k, leading: 13 * k, bottom: 11 * k, trailing: 13 * k)
+    static let questionFont = Font.geist(14 * k, weight: .semibold)
 }
 
-/// The page's lamp: a core in a dark socket with a thin ring, and a glow while something waits or works. The Mac draws a plain dot.
+/// The page's lamp: a core in a dark socket with a thin ring, and a glow while something waits or works.
 struct ChatLamp: View {
     let state: String?
     @Environment(\.colorScheme) private var scheme
 
-    var body: some View {
-        if ChatStyle.page { ghostLamp.frame(width: 8, height: 8) } else { Circle().fill(plain).frame(width: 8, height: 8) }
-    }
-
-    private var plain: Color {
-        switch state {
-        case "failed": .red
-        case "waiting": .orange
-        case "working", "active", "done": .green
-        default: .secondary
-        }
-    }
+    var body: some View { ghostLamp.frame(width: 8, height: 8) }
 
     @ViewBuilder private var ghostLamp: some View {
         let lit = ["working", "active", "done", "waiting", "failed"].contains(state ?? "")
@@ -178,19 +156,13 @@ struct ChatLamp: View {
 }
 
 extension View {
-    /// The page's 1pt rule down the left of a group's rows and a thought's text. The Mac draws none.
-    @ViewBuilder func railed(padding: CGFloat) -> some View {
-        if ChatStyle.page {
-            self.padding(.leading, padding).overlay(alignment: .leading) { Rectangle().fill(ChatStyle.rail).frame(width: 1).allowsHitTesting(false) }
-        } else {
-            self
-        }
+    /// The page's 1pt rule down the left of a group's rows and a thought's text.
+    func railed(padding: CGFloat) -> some View {
+        self.padding(.leading, padding).overlay(alignment: .leading) { Rectangle().fill(ChatStyle.rail).frame(width: 1).allowsHitTesting(false) }
     }
 
-    /// The page's text colour on the iPhone. The Mac keeps the system's.
-    @ViewBuilder func chatText() -> some View {
-        if ChatStyle.page { foregroundStyle(ChatStyle.text) } else { self }
-    }
+    /// The page's text colour.
+    func chatText() -> some View { foregroundStyle(ChatStyle.text) }
 }
 
 /// Turns the Markdown tree's inline runs into one styled string. A link carries a URL that `ChatLink` reads when it is tapped.
@@ -246,8 +218,7 @@ enum MarkdownText {
 
     /// The app's tint is a neutral grey, so a link gets the page's link colour and an underline.
     private static func styleLink(_ text: inout AttributedString) {
-        guard let color = ChatStyle.link else { return }
-        text.foregroundColor = color
+        text.foregroundColor = ChatStyle.link
         text.underlineStyle = .single
     }
 
@@ -256,7 +227,7 @@ enum MarkdownText {
         var font = style.font
         if style.bold { font = font.bold() }
         if style.italic { font = font.italic() }
-        if style.link, !style.bold, let weight = ChatStyle.linkWeight { font = font.weight(weight) }
+        if style.link, !style.bold { font = font.weight(ChatStyle.linkWeight) }
         piece.font = font
         if style.struck { piece.strikethroughStyle = .single }
         return piece
@@ -341,7 +312,7 @@ private struct MarkdownBlockView: View {
 
     private static func headingFont(_ level: Int) -> Font {
         let size: CGFloat = switch level { case 1: 20; case 2: 18; case 3: 16; default: 14 }
-        return onPhone(Font.geist(size, relativeTo: .headline), mac: Font.system(size: size))
+        return Font.geist(size, relativeTo: .headline)
     }
 }
 
@@ -351,18 +322,12 @@ private struct TableView: View {
     let font: Font
 
     var body: some View {
-        Group {
-            // On the iPhone a table wider than the thread scrolls sideways, as on the page. Left to size itself it widens the whole thread past the screen.
-            if ChatStyle.page {
-                ViewThatFits(in: .horizontal) {
-                    grid.frame(maxWidth: .infinity, alignment: .leading)
-                    ScrollView(.horizontal) { grid }
-                }
-            } else {
-                grid.frame(maxWidth: .infinity, alignment: .leading)
-            }
+        // A table wider than the thread scrolls sideways, as on the page. Left to size itself it widens the whole thread past the screen.
+        ViewThatFits(in: .horizontal) {
+            grid.frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView(.horizontal) { grid }
         }
-        .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusInner).strokeBorder(ChatStyle.border))
+        .overlay(GhostCorner(ChatStyle.radiusInner).strokeBorder(ChatStyle.border))
     }
 
     private var grid: some View {
@@ -388,11 +353,9 @@ private struct TableView: View {
     }
 }
 
-/// A rule one point thick in the page's border colour. The Mac keeps the system's divider.
+/// A rule one point thick in the page's border colour.
 struct Hairline: View {
-    var body: some View {
-        if ChatStyle.page { Rectangle().fill(ChatStyle.border).frame(height: 1) } else { Divider() }
-    }
+    var body: some View { Rectangle().fill(ChatStyle.border).frame(height: 1) }
 }
 
 /// A fenced block: its language, Copy, and the feature slot for Run, above the code, which scrolls sideways rather than wrapping. A block with a Run
@@ -436,7 +399,7 @@ struct CodeBlockView: View {
                 .scrollIndicators(.automatic)
             }
         }
-        .background(ChatStyle.codeBlock, in: RoundedRectangle(cornerRadius: ChatStyle.radiusBlock))
+        .background(ChatStyle.codeBlock, in: GhostCorner(ChatStyle.radiusBlock))
     }
 
     /// Puts each command line, with the lines a backslash joins to it, on a darker ground so the owner sees all of what Run would run.
