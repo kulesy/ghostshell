@@ -1550,7 +1550,8 @@ async function filesFlow(bundle, appearance) {
   let panel = false;
   const follow = async link => {
     if (panel) { app.press('Close'); await sleep(600); panel = false; }
-    const found = app.clickLink(link);
+    // The thread can still be settling after the viewer closes, so the link is tried for a few seconds.
+    const found = await until(link, () => app.clickLink(link), 8);
     panel = found;
     return found;
   };
