@@ -85,13 +85,17 @@ private struct ChatLayout: View {
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .environment(\.chatHeight, height)
-        // NOTE: [8 Nov 2026] EK - Keep .toolbar before .inspector: AppKit throws when the toolbar item is inserted into the inspector's toolbar section.
         .toolbar {
             ToolbarItemGroup {
                 ChatSlots.fileToolbar(chat)
                 ChatSlots.terminalToolbar(chat)
             }
         }
+        #if os(macOS)
+        // The page's header is solid. A clear one lets scrolled messages run under the title.
+        .toolbarBackground(Color.ghost.background, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        #endif
         #if os(iOS)
         // NOTE: [9 Nov 2026] EK - A phone has no room beside the thread, so the file panel and the terminal fill the screen and Back returns to the chat. They are not
         // navigationDestinations, because the split's compact column has no stack of its own, and a stack added there made Back pop the whole chat to the list.
@@ -110,7 +114,8 @@ private struct ChatLayout: View {
         // The composer under the terminal would keep the keyboard.
         .onChange(of: chat.terminalOpen) { _, open in if open { dismissKeyboard() } }
         #else
-        .inspector(isPresented: $chat.filePanelOpen) { ChatSlots.filePanel(chat) }
+        // The page's file panel takes the whole main pane. An inspector squeezed the chat to a sliver and ran past the window's edge.
+        .overlay { if chat.filePanelOpen { ChatSlots.filePanel(chat).background(.background).accessibilityAddTraits(.isModal) } }
         #endif
         .overlay { ChatSlots.viewer(chat) }
         .environment(\.openURL, OpenURLAction { url in

@@ -20,6 +20,7 @@ final class ZoomController {
 
 /// Drawn over the whole chat while the store holds a viewer. The picture sits on a dark backdrop, and a click outside it, Esc or Close puts it away.
 struct ImageViewerOverlay: View {
+    @Environment(AppModel.self) private var app
     let store: FilesStore
 
     var body: some View {
@@ -30,15 +31,26 @@ struct ImageViewerOverlay: View {
                 if let viewer = store.viewer { ViewerContent(store: store, viewer: viewer).presentationBackground(.clear).preferredColorScheme(.dark) }
             }
         #else
-        ZStack {
-            if let viewer = store.viewer {
-                ViewerContent(store: store, viewer: viewer).environment(\.colorScheme, .dark).transition(.opacity)
-            }
-        }
-        .animation(.easeOut(duration: 0.15), value: store.viewer != nil)
+        // The page dims the whole window, so the Mac hands the viewer to the root view and not to the chat pane.
+        Color.clear.allowsHitTesting(false)
+            .onChange(of: store.viewer != nil, initial: true) { _, open in app.navigator.overlay = open ? AnyView(WindowViewer(store: store)) : nil }
+            .onDisappear { app.navigator.overlay = nil }
         #endif
     }
 }
+
+#if os(macOS)
+/// The Mac's viewer layer, read from the store so a step redraws it.
+struct WindowViewer: View {
+    let store: FilesStore
+
+    var body: some View {
+        if let viewer = store.viewer {
+            ViewerContent(store: store, viewer: viewer).environment(\.colorScheme, .dark).transition(.opacity)
+        }
+    }
+}
+#endif
 
 private struct ViewerContent: View {
     let store: FilesStore
@@ -52,9 +64,13 @@ private struct ViewerContent: View {
     var body: some View {
         let total = viewer.pictures.count
         ZStack {
-            Color.black.opacity(0.9).ignoresSafeArea().onTapGesture { store.closeViewer() }
+            Color.black.opacity(0.92).ignoresSafeArea().onTapGesture { store.closeViewer() }
             if let loaded {
                 ZoomCanvas(image: loaded, alt: viewer.current.alt, controller: zoom) { store.closeViewer() }
+                    #if os(macOS)
+                    .clipShape(GhostShape(GhostRadius.md))
+                    .padding(24)
+                    #endif
                     .id(viewer.current.id)
                     .accessibilityLabel(viewer.current.alt)
             } else if failed {
@@ -90,7 +106,7 @@ private struct ViewerContent: View {
                     HStack(spacing: 8) {
                         outline("Previous image", "chevron.left") { store.step(-1) }.disabled(viewer.index == 0)
                         Text(verbatim: "\(viewer.index + 1) of \(total)")
-                            .font(.geist(14, relativeTo: .subheadline).monospacedDigit()).foregroundStyle(Color.ghost.mutedForeground)
+                            .font(.geist(14, relativeTo: .subheadline).monospacedDigit()).foregroundStyle(.white.opacity(0.85))
                             .frame(minWidth: 72)
                         outline("Next image", "chevron.right") { store.step(1) }.disabled(viewer.index == total - 1)
                     }
@@ -114,7 +130,14 @@ private struct ViewerContent: View {
 
     private func outline(_ name: String, _ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: symbol).font(.system(size: 14, weight: .medium)) }
+            #if os(macOS)
+            // The page's viewer buttons are dark and filled, with a light icon.
+            .buttonStyle(.plain).foregroundStyle(.white).frame(width: 32, height: 32)
+            .background(Color.black.opacity(0.6), in: GhostShape(GhostRadius.md)).contentShape(Rectangle())
+            .help(name).accessibilityLabel(name)
+            #else
             .buttonStyle(.ghost(.outline, size: .icon)).help(name).accessibilityLabel(name)
+            #endif
     }
 
     private func load() async {
