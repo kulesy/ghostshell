@@ -1,10 +1,9 @@
-#if os(iOS)
 import GhostShellKit
 import SwiftUI
 
 /// The page's inline name form: the row becomes a field with its text selected. Return saves, and so does leaving the field with a changed name.
 /// An unchanged or empty name cancels, which `OrganiseModel.submitName` decides.
-struct PhoneNameField: View {
+struct SidebarNameField: View {
     @Environment(OrganiseModel.self) private var organise
     let naming: OrganiseModel.Naming
     var heading = false
@@ -12,6 +11,7 @@ struct PhoneNameField: View {
     @State private var selection: TextSelection?
     @FocusState private var focused: Bool
     @State private var hadFocus = false
+    private let metrics = SidebarMetrics.current
 
     init(naming: OrganiseModel.Naming, heading: Bool = false) {
         self.naming = naming
@@ -28,16 +28,18 @@ struct PhoneNameField: View {
         VStack(alignment: .leading, spacing: 2) {
             TextField(naming.prompt, text: $text, selection: $selection)
                 .focused($focused)
-                .font(heading ? .geist(12, weight: .semibold, relativeTo: .caption) : .geist(14, relativeTo: .body))
+                .font(heading ? .geist(metrics.headingFont, weight: .semibold, relativeTo: .caption) : .geist(metrics.rowFont, relativeTo: .body))
                 .foregroundStyle(Color.ghost.sidebarForeground)
                 .submitLabel(.done)
+                .textFieldStyle(.plain)
                 .onSubmit { commit() }
+                .onEscape { organise.cancelName() }
                 .onChange(of: text) { _, new in if new.count > naming.limit { text = String(new.prefix(naming.limit)) } }
                 .onChange(of: focused) { _, now in
                     if now { hadFocus = true } else if hadFocus { commit() }
                 }
                 .padding(.horizontal, 8)
-                .frame(minHeight: 36)
+                .frame(minHeight: metrics.input)
                 .background(Color.ghost.background, in: RoundedRectangle(cornerRadius: GhostRadius.md))
                 .overlay(RoundedRectangle(cornerRadius: GhostRadius.md).strokeBorder(Color.ghost.ring, lineWidth: 1))
                 .accessibilityLabel(naming.prompt)
@@ -47,7 +49,7 @@ struct PhoneNameField: View {
         }
         .padding(.vertical, 4)
         .padding(.trailing, 8)
-        .frame(minHeight: 48)
+        .frame(minHeight: metrics.field)
         .onAppear {
             focused = true
         }
@@ -60,4 +62,3 @@ struct PhoneNameField: View {
         }
     }
 }
-#endif

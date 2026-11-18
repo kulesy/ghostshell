@@ -1,3 +1,4 @@
+import GhostShellKit
 import SwiftUI
 
 /// What the list says when the view has nothing to show.
@@ -5,23 +6,22 @@ struct EmptyNotice: View {
     let noGroups: Bool
     var searching = false
 
+    #if os(macOS)
+    private static let newKey = "\u{2318}"
+    #else
+    private static let newKey = "^"
+    #endif
+
     var body: some View {
-        #if os(iOS)
-        PhoneEmptyList(title: noGroups ? "No groups yet" : "No sessions found",
-                       text: noGroups ? "Tap + to make one, or move one here from a group's menu in Home." : searching ? "Nothing matches that search." : "Tap + to start one.")
-        #else
-        if noGroups {
-            ContentUnavailableView("No groups yet", systemImage: "folder.badge.plus", description: Text("Make one with New group, or move one here from a group's menu in Home."))
-        } else {
-            ContentUnavailableView("No sessions found", systemImage: "bubble.left")
-        }
-        #endif
+        let touch = SidebarMetrics.current.touch
+        EmptyList(title: noGroups ? "No groups yet" : "No sessions found",
+                  text: noGroups ? (touch ? "Tap + to make one, or move one here from a group's menu in Home." : "Make one from the + menu, or move one here from a group's menu in Home.")
+                      : searching ? "Nothing matches that search." : (touch ? "Tap + to start one." : "Press \(Self.newKey)N to start one."))
     }
 }
 
-#if os(iOS)
 /// The page's empty list: a dashed box that fills the list, a muted square holding the new-chat icon, a title and a line under it.
-struct PhoneEmptyList: View {
+struct EmptyList: View {
     let title: String
     let text: String
 
@@ -42,4 +42,3 @@ struct PhoneEmptyList: View {
         .accessibilityElement(children: .combine)
     }
 }
-#endif

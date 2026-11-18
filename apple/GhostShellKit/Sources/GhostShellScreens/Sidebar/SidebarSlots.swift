@@ -16,16 +16,6 @@ struct SidebarHeading: Hashable, Sendable, Identifiable {
     var group: SessionGroup?
 }
 
-/// Buttons at the end of the Mac sidebar's toolbar, beside Sign Out. The iPhone draws its own top bar and footer instead.
-struct SidebarToolbarSlot: View {
-    var body: some View {
-        NotificationToggle()
-        NewGroupButton()
-        // NOTE: [9 Nov 2026] EK - Last, so a narrow sidebar folds this one away first. New Group has no other way in, and New Session has the File menu and Command-N.
-        NewSessionButton()
-    }
-}
-
 /// Items at the end of the view picker's menu, under Home and the projects.
 struct ViewMenuSlot: View {
     let project: String?

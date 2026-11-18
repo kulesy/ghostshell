@@ -90,13 +90,3 @@ extension AppModel {
         index.flatMap { SidebarOutline.newSessionGroup($0, view: defaults.string(forKey: SidebarState.projectKey)) }
     }
 }
-
-/// The sidebar toolbar's button for the New Session screen.
-struct NewSessionButton: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        Button("New Session", systemImage: "square.and.pencil") { model.navigator.show { NewSessionScreen(group: model.newSessionGroup()) } }
-            .help("New Session (Command-N)")
-    }
-}

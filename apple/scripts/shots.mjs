@@ -225,11 +225,13 @@ class App {
     return !!close && this.act(close);
   }
   // Session rows only. With sections, the nth AXRow is often a heading, and the search field is a row too.
+  // A heading is a group named for the section whose second text is its count, "8 sessions". A row's group holds only its title, dot and buttons.
+  isHeading(node) { return node?.role === 'AXGroup' && node.kid(1)?.role === 'AXStaticText' && /^\d+ sessions?$/.test(node.kid(1).value ?? ''); }
   sessionRowNodes() {
     return this.findAll(node => {
       if (node.role !== 'AXRow') return false;
       const inner = node.kid(0, 0);
-      return !!inner && inner.role !== 'AXGroup' && inner.role !== 'AXTextField';
+      return !!inner && inner.role !== 'AXTextField' && !this.isHeading(inner);
     });
   }
   rows() { return this.sessionRowNodes().length; }
@@ -294,38 +296,32 @@ class App {
     const nodes = this.tree();
     const list = nodes.find(node => node.role === 'AXOutline');
     if (!list) return [];
-    // A row's content sits under its cell, so a session row is the node three levels below the outline's row, and a heading is deeper.
-    return nodes.filter(node => node.path.length > list.path.length && node.path.slice(0, list.path.length).join() === list.path.join())
-      .flatMap(node => {
-        if (node.role === 'AXHeading') return [['H']];
-        const isRow = node.path.length === list.path.length + 3 && (node.role === 'AXUnknown' || node.role === 'AXButton');
-        return isRow ? [['R', node.help ?? '', typeof node.value === 'string' ? node.value : '']] : [];
-      });
+    // A row's content sits under its cell, so a session row or a heading is the group three levels below the outline.
+    return nodes.filter(node => ['AXGroup', 'AXUnknown', 'AXButton'].includes(node.role) && node.path.length === list.path.length + 3 && node.path.slice(0, list.path.length).join() === list.path.join())
+      .map(node => this.isHeading(node) ? ['H'] : ['R', node.help ?? '', typeof node.value === 'string' ? node.value : '']);
   }
   headings() { return this.outline().filter(([kind]) => kind === 'H').length; }
-  // A heading's own button is not a separate element: the list merges it into the heading, which carries the button's hover text. AXPress on the heading folds
-  // the section, and the button is the heading's named action, which the system words as "Name:<name>\nTarget:0x0\nSelector:(null)".
-  headingButton(help) { return this.find(node => node.role === 'AXHeading' && node.help === help); }
+  // The heading that holds a button with this hover text. AXPress on the heading folds the section.
+  headingButton(help) {
+    return this.find(node => this.isHeading(node) && this.tree().some(kid => kid.role === 'AXButton' && kid.help === help && kid.path.length > node.path.length && kid.path.slice(0, node.path.length).join() === node.path.join()));
+  }
   pressHeadingButton(help) {
     const heading = this.headingButton(help);
-    return !!heading && this.act(heading, `Name:${help}\nTarget:0x0\nSelector:(null)`);
+    const button = heading && this.find(kid => kid.role === 'AXButton' && kid.help === help && kid.path.slice(0, heading.path.length).join() === heading.path.join());
+    return !!button && this.act(button);
   }
   sessionRows() { return this.outline().filter(([kind]) => kind === 'R'); }
-  // Opens or folds the nth section heading (from 0). Pressing the heading goes through the outline, so the app keeps the fold. Setting AXDisclosing on the row does not.
+  // Opens or folds the nth section heading (from 0) with its fold button, which says Expanded or Collapsed.
   setSection(n, open) {
-    const heading = this.findAll(node => node.role === 'AXRow' && node.kid(0, 0, 0)?.role === 'AXHeading')[n];
-    return !!heading && (heading.disclosing === open || this.act(heading.kid(0, 0, 0)));
+    const heading = this.findAll(node => this.isHeading(node))[n];
+    const fold = heading && this.find(node => node.role === 'AXButton' && node.help?.match(/^(Fold|Unfold) /) && node.path.slice(0, heading.path.length).join() === heading.path.join());
+    return !!fold && ((fold.value === 'Expanded') === open || this.act(fold));
   }
-  // macOS 27.2 shows the menu as a menu button named by its title, where 27.0 shows a pop-up button named by its description.
-  viewName(node) { return [node.desc, node.title].find(name => name?.startsWith('View')); }
-  // With no lamp, macOS 27.2 drops the menu's label and names it by its text and icon, so the house or folder icon finds it.
-  viewPopup() {
-    return this.find(node => ['AXPopUpButton', 'AXMenuButton'].includes(node.role) && this.viewName(node))
-      ?? this.find(node => node.role === 'AXMenuButton' && ['home', 'folder'].includes(node.desc));
-  }
-  // What the View menu says about the other views: "View", "View, another view needs you" or "View, another view is working".
-  viewMenu() { const popup = this.viewPopup(); return (popup && this.viewName(popup)) ?? ''; }
-  // Picks a project (or Home) from the View menu in the sidebar's header. A project's item reads "Name (count)", and the menu is described "View, another view needs you" while one does.
+  // The sidebar header's projects button. Its value says when another view needs you or is working.
+  viewPopup() { return this.find(node => node.role === 'AXMenuButton' && ['Projects', 'split view horizontally left'].some(name => [node.title, node.desc].includes(name))); }
+  // What the projects button says about the other views: "View", "View, another view needs you" or "View, another view is working".
+  viewMenu() { const popup = this.viewPopup(); return popup ? `View${popup.value ? `, ${String(popup.value).toLowerCase()}` : ''}` : ''; }
+  // Picks a project (or Home) from the Projects menu in the sidebar's header. A project's item reads "Name (count)".
   pickView(name) {
     const popup = this.viewPopup();
     if (!popup || !this.act(popup)) return false;
@@ -336,11 +332,23 @@ class App {
     }
     return false;
   }
-  // Focuses the sidebar's search field and sets its text.
+  // Opens the sidebar's search field from its icon, then sets its text.
   search(text) {
-    const field = this.find(node => node.subrole === 'AXSearchField');
-    return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
+    const field = () => this.find(node => node.role === 'AXTextField' && node.path.length > 4 && this.find(near => near.role === 'AXButton' && near.desc === 'Search' && near.path.slice(0, 4).join() === node.path.slice(0, 4).join()));
+    if (!field() && !this.press('Search')) return false;
+    const box = this.waitFor(field);
+    return !!box && this.set(box, 'AXFocused', true) && this.set(box, 'AXValue', text);
   }
+  // The account button in the sidebar footer opens a menu with Accounts, Passkeys, the notification switch and Sign out.
+  notifications() {
+    const button = this.find(node => node.role === 'AXMenuButton' && [node.title, node.desc].some(name => ['Account', 'account'].includes(name)));
+    if (!button || !this.act(button)) return '';
+    const item = this.waitFor(node => node.role === 'AXMenuItem' && node.title?.startsWith('Notifications'));
+    this.closeMenu();
+    // The item's hover text names what a press does.
+    return item?.help === 'Turn notifications off' ? 'On' : item?.help === 'Turn notifications on' ? 'Off' : '';
+  }
+  toggleNotifications() { return this.pick(['Account', 'account'], 'Notifications'); }
   // SwiftUI gives its bordered buttons no name, so a button is pressed by its place in the window.
   pressNth(n) {
     const button = this.findAll(node => node.role === 'AXButton')[n - 1];
@@ -371,7 +379,7 @@ class App {
   // The nth session row, counted from 0, or the section heading whose title starts with a name.
   rowNode(kind, nth) {
     if (kind !== 'heading') return this.sessionRowNodes()[nth];
-    return this.findAll(node => node.role === 'AXRow' && node.kid(0, 0, 0)?.role === 'AXHeading' && node.kid(0, 0, 0).desc?.startsWith(nth))[0];
+    return this.findAll(node => node.role === 'AXRow' && this.isHeading(node.kid(0, 0)) && node.kid(0, 0).desc?.startsWith(nth))[0];
   }
   // Opens the right-click menu of the nth row or heading, then lists its items (no path) or presses down the path, opening each submenu on the way.
   // The app answers AXShowMenu late and with an error while the menu is open, so the answer is ignored and the tree is watched for the menu instead.
@@ -422,8 +430,9 @@ class App {
     return items;
   }
   // Selects several session rows at once through each row's Select item, because accessibility can only select one row.
-  selectRows(...indexes) {
-    return indexes.every(index => this.rowMenu('row', index, 'Select'));
+  async selectRows(...indexes) {
+    for (const index of indexes) if (!await until('select row', () => this.rowMenu('row', index, 'Select'), 10)) return false;
+    return true;
   }
   selectedCount() { return this.sessionRowNodes().filter(node => node.selected === true).length; }
   // The sheet on show, and the text field in it.
@@ -481,8 +490,9 @@ class App {
   }
   menu(bar, item) { return this.run('menu', bar, item).ok === true; }
   // Opens a menu or pop-up button by its name, then presses one of its items.
+  // `name` can be a list, because an icon-only menu button is named by its label or by its icon's name, whichever the system reports.
   pick(name, item) {
-    const button = this.find(node => ['AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.title, node.help].includes(name));
+    const button = this.find(node => ['AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.title, node.help].some(text => [].concat(name).includes(text)));
     if (!button || !this.act(button)) return false;
     const entry = this.waitFor(node => node.role === 'AXMenuItem' && node.title === item);
     return !!entry && this.act(entry);
@@ -947,14 +957,14 @@ async function mainFlow(bundle, appearance, withChat) {
     await app.both('list-rows');
 
     // The bell starts on (-GSNotify), turns notifications off and on again, and the pane agrees with it.
-    check(app.hasButton('Notifications', 'On'), 'the toolbar bell starts on');
+    check(app.notifications() === 'On', 'the account menu\'s notification switch starts on');
     await app.both('toolbar-notifications-on');
-    app.press('Notifications');
-    check(await until('bell off', () => app.hasButton('Notifications', 'Off')), 'clicking the bell turns notifications off');
+    app.toggleNotifications();
+    check(await until('bell off', () => app.notifications() === 'Off'), 'choosing the notification switch turns notifications off');
     await app.both('toolbar-notifications-off');
     await settingsShot(app, 'settings-off');
-    app.press('Notifications');
-    check(await until('bell on', () => app.hasButton('Notifications', 'On')), 'clicking the bell again turns them on');
+    app.toggleNotifications();
+    check(await until('bell on', () => app.notifications() === 'On'), 'choosing it again turns them on');
     await settingsShot(app, 'settings-on');
 
     app.chooseFirstRow();
@@ -1056,6 +1066,8 @@ async function mainFlow(bundle, appearance, withChat) {
 
 // Opens the Settings window from the app menu, saves it and closes it with its close button.
 async function settingsShot(app, name) {
+  // The account menu is still closing after the notification switch.
+  await sleep(700);
   let open = false;
   for (let attempt = 0; attempt < 3 && !open; attempt++) {
     app.openSettings();
@@ -1354,22 +1366,25 @@ async function organiseFlow(bundle, appearance) {
     check(await until('rows', () => app.sessionRows().length === 8), 'signing in shows the 8 seeded sessions');
     const before = app.headings();
 
-    check(app.press('New group'), 'the toolbar has a New group button');
-    check(await until('sheet', () => !!app.sheet()), 'New group asks for a name in a sheet');
-    check(app.fillSheet('Release work'), 'the sheet takes the name');
+    check(app.pick(['New', 'add'], 'New group'), 'the + menu in the sidebar header has New group');
+    // The inline name field is a text field in the list. The search field sits above it.
+    const nameField = () => app.find(node => node.role === 'AXTextField' && node.path.slice(0, 4).join() === '0,0,0,5');
+    const naming = () => nameField();
+    check(await until('field', () => !!naming()), 'New group asks for a name in a field at the top of the list');
+    check(app.set(naming(), 'AXValue', 'Release work'), 'the field takes the name');
     await app.both('new-group-sheet');
-    check(app.press('Save'), 'Save is pressed in the sheet');
-    check(await until('made', () => app.headings() === before + 1 && !app.sheet()), 'the new group shows as a heading straight away');
+    check(app.enter(), 'Return saves the name');
+    check(await until('made', () => app.headings() === before + 1 && !naming()), 'the new group shows as a heading straight away');
 
     const items = app.menuItems('row', 0);
     console.log('row menu:', items.join(' | '));
     check(['Rename', 'Move to', 'Pin', 'Archive'].every(name => items.some(item => item.startsWith(name))), 'a session row menu offers rename, move, pin and archive');
-    check(app.rowMenu('row', 0, 'Rename\u2026'), 'Rename is pressed in the row menu');
-    check(await until('rename', () => app.texts().includes('Rename session')), 'Rename opens a field holding the title');
+    check(await until('rename menu', () => app.rowMenu('row', 0, 'Rename\u2026'), 10), 'Rename is pressed in the row menu');
+    check(await until('rename', () => !!nameField()?.value), 'Rename turns the row into a field holding the title');
     await app.both('rename-field');
-    check(app.press('Cancel') && await until('closed', () => !app.sheet()), 'Cancel closes the rename field');
+    check(app.enter() && await until('closed', () => !nameField()), 'Return with the title unchanged closes the rename field');
 
-    check(app.selectRows(0, 1, 2) && await until('selected', () => app.selectedCount() === 3), 'three rows can be selected together');
+    check(await app.selectRows(0, 1, 2) && await until('selected', () => app.selectedCount() === 3), 'three rows can be selected together');
     await app.both('multi-selection');
     const bulk = app.menuItems('row', 1);
     console.log('selection menu:', bulk.join(' | '));
@@ -1428,7 +1443,7 @@ async function routinesFlow(bundle, appearance) {
     await app.launch();
     check(await until('home again', () => hasRow('Weekly report:') && hasRow('Old backup:')), 'Home lists its routines again');
 
-    check(app.pick('View', 'Manage routines'), 'Manage routines is in the view menu');
+    check(app.press('Routines'), 'Routines is a link in the sidebar footer');
     check(await until('routines', () => sees('Weekdays at 07:30') && sees('Off')), 'the Routines page lists the routines');
     await app.both('routines-list');
 
@@ -1452,7 +1467,7 @@ async function routinesFlow(bundle, appearance) {
     await app.both('routine-refused');
     check(app.press('Cancel'), 'Cancel is in the toolbar');
 
-    check(app.pick('View', 'Manage scheduled sessions'), 'Manage scheduled sessions is in the view menu');
+    check(app.press('Scheduled'), 'Scheduled is a link in the sidebar footer');
     check(await until('scheduled', () => sees('Archive the old logs')), 'the Scheduled page lists the sessions');
     await app.both('scheduled-list');
 
