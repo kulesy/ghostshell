@@ -1734,11 +1734,8 @@ async function terminalFlow(bundle, appearance) {
     await app.shot(`${app.tag}-term-panel-min-settled-${appearance}`);
     app.resize(DEFAULT_SIZE);
     await sleep(1200);
-    app.scrollThread(0);
-    await sleep(1200);
-    await app.shot(`${app.tag}-term-panel-thread-top-${appearance}`);
-
-    check(app.press('Run in terminal'), 'a block can be run');
+    // The panel covers the thread, so the Run buttons are scrolled back into the tree behind it and waited for.
+    check(await until('run button', () => { app.scrollThread(0); return app.hasButton('Run in terminal'); }, 10) && app.press('Run in terminal'), 'a block can be run');
     check(await until('ran', () => called('run', body => body.source === 'block' && body.command === 'npm test -- upload'), 10), 'the Run button sends the block as a block run');
     await sleep(1200);
     await app.both('term-after-run');
@@ -1760,7 +1757,7 @@ async function terminalFlow(bundle, appearance) {
     await sleep(1200);
     await app.both('term-after-stop');
 
-    // The file panel is the inspector beside the thread and the terminal sits under the thread, so both can be open and each keeps its controls.
+    // The file panel is the inspector beside the chat pane and the terminal covers that pane, so both can be open and each keeps its controls.
     check(app.clickLink('NOTES.md'), 'the reply has a file link');
     check(await until('file', () => app.hasText('Run the upload test, then the build.'), 15), 'the file opens in its panel');
     await sleep(1200);
