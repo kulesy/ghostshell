@@ -18,7 +18,11 @@ struct ScheduledFormScreen: View {
             case .ready(let was): ScheduledFields(was: was, zone: model.routines.serverZone ?? .current)
             }
         }
+        #if os(iOS)
         .navigationTitle(id == nil ? "Schedule a session" : "Edit scheduled session")
+        #else
+        .pageHeader(id == nil ? "Schedule a session" : "Edit scheduled session", back: "Scheduled", goBack: { model.navigator.show { ScheduledScreen() } })
+        #endif
         .ghostScreen()
         .task(id: id) { await open() }
     }
@@ -79,14 +83,16 @@ private struct ScheduledFields: View {
             FormField(label: "Folder", hint: "The full path of the folder the session starts in.", message: problems["cwd"]) {
                 SuggestField(label: "Folder", text: $draft.cwd, options: folders, mono: true, invalid: problems["cwd"] != nil, focus: $focus, tag: .cwd)
             }
-            FormField(label: "Model", message: problems["model"]) {
-                ChoicePicker(label: "Model", value: $draft.model, choices: modelChoices(current: was?.model)).focused($focus, equals: .model)
-            }
-            FormField(label: "Effort", message: problems["effort"]) {
-                ChoicePicker(label: "Effort", value: $draft.effort, choices: effortChoices(current: was?.effort)).focused($focus, equals: .effort)
-            }
-            FormField(label: "Permission mode", hint: defaultFollowsNote, message: problems["mode"]) {
-                ChoicePicker(label: "Permission mode", value: $draft.mode, choices: modeChoices(current: was?.mode)).focused($focus, equals: .mode)
+            SideBySide(alignment: .top, spacing: 20) {
+                FormField(label: "Model", message: problems["model"]) {
+                    ChoicePicker(label: "Model", value: $draft.model, choices: modelChoices(current: was?.model)).focused($focus, equals: .model)
+                }
+                FormField(label: "Effort", message: problems["effort"]) {
+                    ChoicePicker(label: "Effort", value: $draft.effort, choices: effortChoices(current: was?.effort)).focused($focus, equals: .effort)
+                }
+                FormField(label: "Permission mode", hint: defaultFollowsNote, message: problems["mode"]) {
+                    ChoicePicker(label: "Permission mode", value: $draft.mode, choices: modeChoices(current: was?.mode)).focused($focus, equals: .mode)
+                }
             }
             FormField(label: "Group", hint: "The session goes into this group when it starts. With none it starts on Home.", message: problems["group"]) {
                 ChoicePicker(label: "Group", value: $draft.group, choices: groupChoices(model.index?.groups ?? [], current: was?.group)).focused($focus, equals: .group)
@@ -98,11 +104,16 @@ private struct ScheduledFields: View {
                     .accessibilityLabel("Prompt")
             }
             PhoneDeleteSection(show: was != nil) { deleting = true }
+            #if os(macOS)
+            FormButtons(canDelete: was != nil, saving: saving, delete: { deleting = true }, cancel: leave, save: { Task { await save() } })
+            #endif
         }
         .disabled(saving)
+        #if os(iOS)
         .toolbar {
             FormToolbar(canDelete: was != nil, saving: saving, delete: { deleting = true }, cancel: leave, save: { Task { await save() } })
         }
+        #endif
         .noteBar()
         .task {
             folders = (try? await model.client?.folders()) ?? []

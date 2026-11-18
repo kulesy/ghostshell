@@ -83,6 +83,7 @@ struct SuggestField<Tag: Hashable>: View {
                     Image(systemName: "chevron.down").font(.footnote).foregroundStyle(Color.ghost.mutedForeground).phoneIconTouch()
                 }
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Choose one you have used")
                 .accessibilityLabel("\(label) choices")
@@ -99,8 +100,7 @@ struct ChoicePicker: View {
     let choices: [Choice]
 
     var body: some View {
-        #if os(iOS)
-        // A menu whose label is a full-width 44pt row, because a Picker's own menu button is only as tall as its text.
+        // A menu whose label is a full-width row drawn as an input, because a Picker's own menu button is only as tall as its text.
         Menu {
             Picker(label, selection: $value) {
                 ForEach(choices) { Text($0.label).tag($0.value).disabled($0.disabled) }
@@ -115,22 +115,20 @@ struct ChoicePicker: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .accessibilityLabel(label)
-        #else
-        Picker(label, selection: $value) {
-            ForEach(choices) { Text($0.label).tag($0.value).disabled($0.disabled) }
-        }
-        .labelsHidden()
-        .fixedSize()
+        #if os(macOS)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         #endif
+        .accessibilityLabel(label)
     }
 }
 
 /// The page's note under the three selects.
 let defaultFollowsNote = "Default follows Claude Desktop's settings for the folder."
 
-/// Cancel and Save for a form. The Mac keeps all three in the toolbar; a phone keeps Delete out of the nav bar, where it sits beside Save, in a section
-/// at the foot of the form (`PhoneDeleteSection`).
+#if os(iOS)
+/// Cancel and Save for a form. A phone keeps Delete out of the nav bar, where it sits beside Save, in a section at the foot of the form
+/// (`PhoneDeleteSection`).
 struct FormToolbar: ToolbarContent {
     var canDelete: Bool
     var saving: Bool
@@ -140,21 +138,32 @@ struct FormToolbar: ToolbarContent {
     let save: () -> Void
 
     var body: some ToolbarContent {
-        #if os(iOS)
         ToolbarItemGroup(placement: .topBarTrailing) {
             // The bar sizes a bare text button to its words; a framed label is the only way to make it 44pt wide.
             Button(role: .cancel, action: cancel) { Text("Cancel").phoneIconTouch() }
             Button(action: save) { Text(saving ? "Saving" : "Save").fontWeight(.semibold).phoneIconTouch() }.disabled(!canSave)
         }
-        #else
-        ToolbarItemGroup {
-            if canDelete { Button("Delete", role: .destructive, action: delete) }
-            Button("Cancel", role: .cancel, action: cancel)
-            Button(saving ? "Saving" : "Save", action: save).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!canSave)
-        }
-        #endif
     }
 }
+#else
+/// The page's buttons at the foot of a form: Save in ink, Cancel in outline and Delete in red, where a phone keeps them in its navigation bar.
+struct FormButtons: View {
+    var canDelete: Bool
+    var saving: Bool
+    var canSave = true
+    let delete: () -> Void
+    let cancel: () -> Void
+    let save: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(saving ? "Saving" : "Save", action: save).buttonStyle(.ghost(.primary)).keyboardShortcut(.defaultAction).disabled(!canSave)
+            Button("Cancel", role: .cancel, action: cancel).buttonStyle(.ghost(.outline))
+            if canDelete { Button("Delete", role: .destructive, action: delete).buttonStyle(.ghost(.destructive)) }
+        }
+    }
+}
+#endif
 
 /// The phone's Delete, at the foot of an edit form. It is nothing on the Mac, whose toolbar has the button.
 struct PhoneDeleteSection: View {
@@ -205,13 +214,7 @@ func serverZoneWords(_ zone: TimeZone?) -> String {
     "in the GhostShell server's time zone" + (zone?.abbreviation().map { " (\($0))" } ?? "")
 }
 
-#if os(macOS)
-extension View {
-    /// A set of radio buttons side by side.
-    func radioGroup() -> some View { pickerStyle(.radioGroup).horizontalRadioGroupLayout() }
-}
-#else
-/// The page's radio pair on a phone, a ring and a label per option side by side, each a 44pt target. UIKit's segmented control stays 31pt tall.
+/// The page's radio pair, a ring and a label per option side by side. A phone makes each a 44pt target, because UIKit's segmented control stays 31pt tall.
 struct PhoneRadios<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(label: String, value: Value)]
@@ -223,9 +226,9 @@ struct PhoneRadios<Value: Hashable>: View {
                 Button { selection = option.value } label: {
                     HStack(spacing: 8) {
                         Image(systemName: chosen ? "largecircle.fill.circle" : "circle").foregroundStyle(chosen ? Color.ghost.primary : Color.ghost.input)
-                        Text(option.label).font(.geist(16)).foregroundStyle(Color.ghost.foreground).lineLimit(1).minimumScaleFactor(0.85)
+                        Text(option.label).font(.geist(ghostBodySize)).foregroundStyle(Color.ghost.foreground).lineLimit(1).minimumScaleFactor(0.85)
                     }
-                    .frame(minHeight: 44).contentShape(Rectangle())
+                    .frame(minHeight: SidebarMetrics.current.target).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.label)
@@ -234,7 +237,6 @@ struct PhoneRadios<Value: Hashable>: View {
         }
     }
 }
-#endif
 
 /// A list row's text with its controls beside it, or under it when the pane is too narrow. A phone always puts them under, so no row wraps its buttons.
 struct RowLayout<Info: View, Controls: View>: View {
