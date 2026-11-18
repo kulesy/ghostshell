@@ -73,7 +73,7 @@ jobs:
           node-version: 20
           package-manager-cache: false
       # --no-chat: the real Haiku chat needs a signed-in claude, which a runner never has.
-      # NOTE: [18 Nov 2026] EK - The runner's macOS 27.0.1 crashes SwiftUI in the chats, groups, terminal and composer flows,
+      # NOTE: [18 Nov 2026] EK - The runner's macOS 27.0.1 crashes SwiftUI in the groups flow,
       # and marks and organise fail checks there, so those run on a Mac until the image reaches 27.2. See apple/README.md.
       - run: npm run apple:shot -- --no-chat --flow main,widgets,approvals,routines,files,accounts --out "$RUNNER_TEMP/shots/mac"
       - if: always() && inputs.flows != ''
@@ -81,7 +81,7 @@ jobs:
         env:
           FLOWS: ${{ inputs.flows }}
         run: npm run apple:shot -- --no-chat --flow "$FLOWS" --out "$RUNNER_TEMP/shots/mac"
-      # The chat screens, the composer and the terminal, which the page parity work in #176 changes.
+      # The chat screens, the composer and the terminal, in their own step so a failure above does not skip them.
       - if: success() || failure()
         run: npm run apple:shot -- --no-chat --flow chats,composer,terminal --out "$RUNNER_TEMP/shots/mac"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
