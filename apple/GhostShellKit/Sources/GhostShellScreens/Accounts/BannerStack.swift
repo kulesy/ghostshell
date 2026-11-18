@@ -55,8 +55,9 @@ public struct BannerStack: View {
             }
         }
         #if os(macOS)
-        // The page asks in its own dialog over the whole window. A system alert dims only this pane and sits in a narrow card.
+        // The page asks in its own dialog over the window. A system alert dims only this pane and sits in a narrow card.
         .onChange(of: state.asking != nil) { _, open in
+            if open { model.navigator.overlayDim = 0.5 }
             model.navigator.overlay = open ? AnyView(ForceDialog(question: state.asking?.question ?? "", cancel: { state.asking = nil }, confirm: confirmForce)) : nil
         }
         #else

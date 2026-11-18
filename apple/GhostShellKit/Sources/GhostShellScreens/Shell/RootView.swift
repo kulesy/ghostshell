@@ -38,6 +38,7 @@ public struct RootView: View {
         NavigationSplitView(preferredCompactColumn: $compactColumn) {
             SidebarScreen()
                 #if os(macOS)
+                .overlay { if model.navigator.overlay != nil { Color.black.opacity(model.navigator.overlayDim).ignoresSafeArea() } }
                 .toolbar(removing: .sidebarToggle)
                 #endif
                 #if os(iOS)
@@ -54,9 +55,6 @@ public struct RootView: View {
         .toolbar {
             if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
         }
-        #if os(macOS)
-        .overlay { if let layer = model.navigator.overlay { layer } }
-        #endif
         .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
     }
@@ -66,6 +64,7 @@ public struct RootView: View {
         #if os(macOS)
         // NOTE: [18 Nov 2026] EK - A chat pane asks for more than 640pt less the sidebar, and the split then runs wider than the window and off both its edges.
         NoMinimumWidth { pane }
+            .overlay { if let layer = model.navigator.overlay { layer } }
         #else
         pane
         #endif

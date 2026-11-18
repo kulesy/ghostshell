@@ -8,8 +8,10 @@ public final class Navigator {
     public private(set) var selectedSessionID: String?
     /// Which sidebar entry the screen belongs to ("routines", "scheduled" or "routine:<id>"), so the sidebar marks it as the page does. Nil for the rest.
     public private(set) var page: String?
-    /// A layer over the whole window, sidebar included, which the image viewer uses. Set by whoever draws it.
+    /// A layer over the detail pane that the image viewer and the force-restart question use. Set by whoever draws it.
     public var overlay: AnyView?
+    /// How dark the sidebar goes while a layer is up, because the sidebar's list is drawn above anything in the window's own layer.
+    public var overlayDim: Double = 0.5
 
     public init() {}
 

@@ -31,9 +31,12 @@ struct ImageViewerOverlay: View {
                 if let viewer = store.viewer { ViewerContent(store: store, viewer: viewer).presentationBackground(.clear).preferredColorScheme(.dark) }
             }
         #else
-        // The page dims the whole window, so the Mac hands the viewer to the root view and not to the chat pane.
+        // The Mac hands the viewer to the root view, which draws it over the detail pane and dims the sidebar to match.
         Color.clear.allowsHitTesting(false)
-            .onChange(of: store.viewer != nil, initial: true) { _, open in app.navigator.overlay = open ? AnyView(WindowViewer(store: store)) : nil }
+            .onChange(of: store.viewer != nil, initial: true) { _, open in
+                if open { app.navigator.overlayDim = 0.92 }
+                app.navigator.overlay = open ? AnyView(WindowViewer(store: store)) : nil
+            }
             .onDisappear { app.navigator.overlay = nil }
         #endif
     }
