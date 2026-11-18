@@ -7,6 +7,7 @@ public struct BannerStack: View {
     @Environment(AppModel.self) private var model
     @State private var state = BannersState()
     @State private var height: CGFloat = 0
+    @State private var shown: CGFloat = 0
     private let cap: CGFloat = 220
     private var presence = AccountsPresence.shared
 
@@ -33,10 +34,16 @@ public struct BannerStack: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollIndicators(.hidden)
+                #if os(macOS)
+                // The page lets the stack take about half the column, so the cap follows the window.
+                .containerRelativeFrame(.vertical, alignment: .top) { length, _ in min(height, length * 0.5) }
+                #else
                 .frame(height: min(height, cap))
+                #endif
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { shown = $0 }
                 // The page fades the end of a long stack out and does not cut it with a rule.
                 .overlay(alignment: .bottom) {
-                    if height > cap { LinearGradient(colors: [.clear, Color.ghost.sidebar], startPoint: .top, endPoint: .bottom).frame(height: 24).allowsHitTesting(false) }
+                    if height > shown + 1 { LinearGradient(colors: [.clear, Color.ghost.sidebar], startPoint: .top, endPoint: .bottom).frame(height: 24).allowsHitTesting(false) }
                 }
             }
         }

@@ -259,11 +259,13 @@ class App {
     return !!bar && this.set(bar, 'AXValue', to);
   }
   // Presses the first button whose description or title is `name`, or starts with it. An alert's buttons are in the window's contents too.
-  press(name, { prefix = false } = {}) {
+  press(name, { prefix = false, last = false } = {}) {
     const matches = text => (prefix ? text?.startsWith(name) : text === name);
     const tree = this.tree();
     const sheet = tree.find(node => node.role === 'AXSheet')?.path.join();
     const buttons = tree.filter(node => node.role === 'AXButton' && (matches(this.label(node)) || matches(node.title)));
+    // The Mac's window dialog is drawn last, over a banner button of the same name.
+    if (last) buttons.reverse();
     // An open alert is in front of the window, so its buttons win over a same-named button behind it. Otherwise a same-named button that is off, such as the composer's Send, loses to one that is on.
     const button = buttons.find(node => sheet && node.path.join().startsWith(`${sheet},`)) ?? buttons.find(node => node.enabled !== false) ?? buttons[0];
     if (!button) return false;
@@ -1318,14 +1320,14 @@ async function accountsFlow(bundle, appearance) {
     // The banners are read every 15 seconds, so the four others are taken off and the update one is left to press.
     banners = { update };
     check(await until('only update', () => !sees('Work is out of usage') && sees('7 merged changes are waiting'), 30), 'the banners that are gone leave the sidebar');
-    check(app.pressNth(2), 'the update banner has a Force restart button');
+    check(app.press('Force restart'), 'the update banner has a Force restart button');
     check(await until('question', () => sees('2 running chats will be cut.'), 10), 'Force restart asks what it will cut');
     await app.both('force-question');
     check(app.press('Cancel'), 'Cancel is on the question');
     await sleep(1500);
     check(!calls.includes('/api/banners/force-restart'), 'Cancel sends no restart');
-    check(app.pressNth(2) && await until('question again', () => sees('2 running chats will be cut.'), 10), 'Force restart asks again');
-    check(app.press('Force restart'), 'the question has a Force restart button');
+    check(app.press('Force restart') && await until('question again', () => sees('2 running chats will be cut.'), 10), 'Force restart asks again');
+    check(app.press('Force restart', { last: true }), 'the question has a Force restart button');
     check(await until('posted', () => calls.filter(call => call === '/api/banners/force-restart').length === 1, 10), 'confirming sends one restart');
     await sleep(1500);
     check(calls.filter(call => call === '/api/banners/force-restart').length === 1, 'the restart is sent once');
