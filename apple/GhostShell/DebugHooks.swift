@@ -141,27 +141,37 @@ enum ShotWatcher {
             config.rect = visible
             if let image = try? await web.takeSnapshot(configuration: config) { pieces.append((image, web.convert(visible, to: view))) }
         }
-        var rowPictures: [(NSImage, NSRect)] = []
-        for row in rows(in: view) where row.window != nil {
-            guard let rowRep = row.bitmapImageRepForCachingDisplay(in: row.bounds) else { continue }
-            row.cacheDisplay(in: row.bounds, to: rowRep)
-            let image = NSImage(size: row.bounds.size)
-            image.addRepresentation(rowRep)
-            rowPictures.append((image, view.convert(row.bounds, from: row)))
+        // The list's background is clear, so the picture shows the window's white behind a short list. The sidebar's colour goes between its header and footer, and the rows are clipped to it.
+        // A list with no rows is left alone, because its empty notice is an overlay the plain picture already has.
+        var listPictures: [(area: NSRect, colour: NSColor, rows: [(NSImage, NSRect)])] = []
+        for scroll in lists(in: view) where scroll.window != nil {
+            let shown = rows(in: scroll).filter { $0.window != nil && $0.bounds.height > 1 }
+            if shown.isEmpty { continue }
+            var colour = NSColor.clear
+            scroll.window?.effectiveAppearance.performAsCurrentDrawingAppearance { colour = NSColor(Color.ghost.sidebar).usingColorSpace(.sRGB) ?? .clear }
+            let inset = scroll.contentInsets
+            let area = view.convert(NSRect(x: 0, y: scroll.isFlipped ? inset.top : inset.bottom, width: scroll.bounds.width, height: scroll.bounds.height - inset.top - inset.bottom), from: scroll)
+            var pictures: [(NSImage, NSRect)] = []
+            for row in shown {
+                guard let rowRep = row.bitmapImageRepForCachingDisplay(in: row.bounds) else { continue }
+                row.cacheDisplay(in: row.bounds, to: rowRep)
+                let image = NSImage(size: row.bounds.size)
+                image.addRepresentation(rowRep)
+                pictures.append((image, view.convert(row.bounds, from: row)))
+            }
+            listPictures.append((area, colour, pictures))
         }
         let picture = NSImage(size: view.bounds.size)
         picture.lockFocus()
         rep.draw(in: NSRect(origin: .zero, size: view.bounds.size))
-        // The list's background is clear, so the picture shows the window's white behind a short list. The sidebar's colour goes between its header and footer.
-        for scroll in lists(in: view) where scroll.window != nil {
-            var colour = NSColor.clear
-            scroll.window?.effectiveAppearance.performAsCurrentDrawingAppearance { colour = NSColor(Color.ghost.sidebar).usingColorSpace(.sRGB) ?? .clear }
-            let inset = scroll.contentInsets
-            let area = NSRect(x: 0, y: scroll.isFlipped ? inset.top : inset.bottom, width: scroll.bounds.width, height: scroll.bounds.height - inset.top - inset.bottom)
-            colour.setFill()
-            view.convert(area, from: scroll).fill()
+        for list in listPictures {
+            list.colour.setFill()
+            list.area.fill()
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(rect: list.area).addClip()
+            for (image, rect) in list.rows { image.draw(in: rect) }
+            NSGraphicsContext.restoreGraphicsState()
         }
-        for (image, rect) in rowPictures { image.draw(in: rect) }
         for (image, rect) in pieces { image.draw(in: rect) }
         picture.unlockFocus()
         return picture
