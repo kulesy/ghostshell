@@ -107,12 +107,11 @@ struct EmptyDetail: View {
             ShellMark().frame(width: 82, height: 82).foregroundStyle(Color.ghost.foreground)
             Ellipse().fill(RadialGradient(colors: [Color.ghost.foreground.opacity(0.15), .clear], center: .center, startRadius: 0, endRadius: 26))
                 .frame(width: 52, height: 8).padding(.top, 6)
+            // The sentence breaks between clauses, so a narrow pane stacks whole clauses and no key cap is squeezed.
             ViewThatFits {
-                HStack(spacing: 4) { words("Pick a session, press"); key("\u{2318}F"); words("to find one,"); key("\u{2318}N"); words("to start a new one, or"); key("\u{21E7}\u{2318}N"); words("to start one in Home.") }
-                VStack(spacing: 4) {
-                    HStack(spacing: 4) { words("Pick a session, press"); key("\u{2318}F"); words("to find one,") }
-                    HStack(spacing: 4) { key("\u{2318}N"); words("to start a new one, or"); key("\u{21E7}\u{2318}N"); words("to start one in Home.") }
-                }
+                HStack(spacing: 4) { find; start; home }
+                VStack(spacing: 4) { find; HStack(spacing: 4) { start; home } }
+                VStack(spacing: 4) { find; start; home }
             }
             .padding(.top, 24)
             .accessibilityElement(children: .ignore)
@@ -123,6 +122,10 @@ struct EmptyDetail: View {
         .background(Color.ghost.background)
     }
 
+    private var find: some View { HStack(spacing: 4) { words("Pick a session, press"); key("\u{2318}F"); words("to find one,") } }
+    private var start: some View { HStack(spacing: 4) { key("\u{2318}N"); words("to start a new one,") } }
+    private var home: some View { HStack(spacing: 4) { words("or"); key("\u{21E7}\u{2318}N"); words("to start one in Home.") } }
+
     private func words(_ text: String) -> some View {
         Text(text).font(.geist(14, relativeTo: .body)).foregroundStyle(Color.ghost.mutedForeground).fixedSize()
     }
@@ -130,7 +133,7 @@ struct EmptyDetail: View {
     /// The page's `kbd`: a muted chip, 20pt tall, in 12pt medium.
     private func key(_ text: String) -> some View {
         Text(text).font(.geist(12, weight: .medium, relativeTo: .caption)).foregroundStyle(Color.ghost.mutedForeground)
-            .padding(.horizontal, 4).frame(minWidth: 20, minHeight: 20)
+            .padding(.horizontal, 4).frame(minWidth: 20, minHeight: 20).fixedSize()
             .background(Color.ghost.muted, in: GhostShape(GhostRadius.sm))
     }
 }
