@@ -5,19 +5,23 @@ import SwiftUI
 struct ComposerChips: View {
     let model: ComposerModel
 
+    @Environment(\.chatHeight) private var chatHeight
+
     var body: some View {
         #if os(macOS)
-        // As the page's two lists: the quotes in a column and the attachments in a row, each scrolling past 14rem.
-        VStack(spacing: 0) {
-            if !model.quotes.isEmpty {
-                ChipScroll(maxHeight: Self.maxHeight) {
-                    VStack(spacing: Self.gap) { ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } } }
-                        .padding([.horizontal, .top], Self.inset)
-                }
-            }
-            if !model.attachments.isEmpty {
-                ChipScroll(maxHeight: Self.maxHeight) {
-                    ChipFlow(spacing: Self.gap) { attachmentChips }.padding([.horizontal, .top], Self.inset)
+        if !model.quotes.isEmpty || !model.attachments.isEmpty {
+            // As the page's two lists, the quotes in a column and the attachments in a row. Together they scroll past a share of the chat's height, so a short window keeps its thread.
+            // The page caps each list at 14rem and has no rule for a short window. Prompts waiting on an answer already take half the chat, so the chips leave them more room.
+            let share = model.chat?.status?.pending.isEmpty == false ? 0.2 : 0.4
+            ChipScroll(maxHeight: min(max(chatHeight * share, Self.minHeight), 2 * Self.maxHeight)) {
+                VStack(spacing: 0) {
+                    if !model.quotes.isEmpty {
+                        VStack(spacing: Self.gap) { ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } } }
+                            .padding([.horizontal, .top], Self.inset)
+                    }
+                    if !model.attachments.isEmpty {
+                        ChipFlow(spacing: Self.gap) { attachmentChips }.padding([.horizontal, .top], Self.inset)
+                    }
                 }
             }
         }
@@ -43,6 +47,8 @@ struct ComposerChips: View {
 
     #if os(macOS)
     private static let maxHeight = 14 * GhostMetrics.current.rem
+    /// One row of chips and its inset, so even a short chat shows a chip.
+    private static let minHeight = 4 * GhostMetrics.current.rem
     private static let inset = 0.75 * GhostMetrics.current.rem
     private static let gap = 0.5 * GhostMetrics.current.rem
     #else
