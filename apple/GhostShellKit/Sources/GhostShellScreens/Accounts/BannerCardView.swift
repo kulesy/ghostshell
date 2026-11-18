@@ -14,7 +14,7 @@ struct BannerCardView: View {
     private var quiet: Color { card.warning ? Color.ghost.warningForeground : Color.ghost.mutedForeground }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: GhostRadius.base, style: .continuous)
+        let shape = GhostShape(GhostRadius.base)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 if card.warning { Image(systemName: "exclamationmark.triangle").accessibilityHidden(true) }
@@ -27,6 +27,7 @@ struct BannerCardView: View {
                         Text(verbatim: "\(n + 1). \(step)").font(.geist(13)).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .padding(.leading, 16)
                 Text(card.caution).font(.geist(13)).foregroundStyle(quiet).fixedSize(horizontal: false, vertical: true)
             }
             if !card.changes.isEmpty { changes }
@@ -38,8 +39,9 @@ struct BannerCardView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(card.warning ? Color.ghost.warningMuted : Color.ghost.muted, in: shape)
+        .background(card.warning ? Color.ghost.warningMuted : Color.ghost.card, in: shape)
         .overlay { shape.strokeBorder(card.warning ? Color.ghost.warning : Color.ghost.border, lineWidth: 1) }
+        .shadow(color: .black.opacity(card.warning ? 0 : 0.06), radius: 2, y: 1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(card.title)
     }
@@ -47,10 +49,14 @@ struct BannerCardView: View {
     private var changes: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(card.changes.enumerated()), id: \.offset) { _, change in
-                Group {
-                    if let url = change.url { Link(change.title, destination: url) } else { Text(change.title) }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(verbatim: "\u{2022}").accessibilityHidden(true)
+                    Group {
+                        if let url = change.url { Link(change.title, destination: url).foregroundStyle(ink).underline() } else { Text(change.title) }
+                    }
+                    .lineLimit(2)
                 }
-                .font(.geist(13)).lineLimit(2)
+                .font(.geist(13))
             }
             if card.more > 0 { Text("and \(card.more) more").font(.geist(13)).foregroundStyle(quiet) }
         }

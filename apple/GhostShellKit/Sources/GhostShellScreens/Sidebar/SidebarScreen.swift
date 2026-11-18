@@ -21,7 +21,15 @@ private struct SidebarHost: View {
         // The page's own top bar and footer replace the navigation bar, the search field and the toolbar. The title stays for the Back button of a chat.
         SidebarList()
             .flatScrollEdges()
-            .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader() }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    SidebarHeader()
+                    #if os(macOS)
+                    // The page draws the banners under the logo row. The phone keeps them above it, from RootView.
+                    BannerStack()
+                    #endif
+                }
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) { SidebarFooter() }
             .background(Color.ghost.sidebar.ignoresSafeArea())
             #if os(iOS)
