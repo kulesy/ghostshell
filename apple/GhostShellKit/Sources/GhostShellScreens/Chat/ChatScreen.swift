@@ -25,7 +25,10 @@ private struct ChatHost: View {
             if let model { ChatLayout(model: model, title: title, archivable: groupKind == nil && named == nil).environment(model) } else { Color.clear }
         }
         .navigationTitle(title.isEmpty ? "Untitled" : title)
-        #if os(iOS)
+        #if os(macOS)
+        // The chat's own header carries the title.
+        .toolbar(removing: .title)
+        #else
         // A large title collapses as the thread scrolls, which resizes the thread and moves it again, so a chat on iOS 26 never settles.
         // See https://github.com/kulesy/ghostshell/issues/148.
         .navigationBarTitleDisplayMode(.inline)
@@ -89,18 +92,13 @@ private struct ChatLayout: View {
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .environment(\.chatHeight, height)
-        .toolbar {
-            ToolbarItemGroup {
-                ChatSlots.fileToolbar(chat)
-                #if os(iOS)
-                ChatSlots.terminalToolbar(chat)
-                #endif
-            }
-        }
         #if os(macOS)
+        .toolbar { BareToolbarItems { ToolbarItemGroup { ChatSlots.fileToolbar(chat) } } }
         // The page's header is solid. A clear one lets scrolled messages run under the title.
         .toolbarBackground(Color.ghost.background, for: .windowToolbar)
         .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        #else
+        .toolbar { ToolbarItemGroup { ChatSlots.fileToolbar(chat); ChatSlots.terminalToolbar(chat) } }
         #endif
         #if os(iOS)
         // NOTE: [9 Nov 2026] EK - A phone has no room beside the thread, so the file panel and the terminal fill the screen and Back returns to the chat. They are not

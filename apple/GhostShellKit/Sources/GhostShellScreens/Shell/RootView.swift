@@ -53,7 +53,13 @@ public struct RootView: View {
         .toolbar(removing: .sidebarToggle)
         #endif
         .toolbar {
-            if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
+            if let id = model.navigator.selectedSessionID {
+                #if os(macOS)
+                BareToolbarItems { ToolbarItem { ContextMeter(sessionID: id) } }
+                #else
+                ToolbarItem { ContextMeter(sessionID: id) }
+                #endif
+            }
         }
         .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
@@ -137,3 +143,14 @@ struct EmptyDetail: View {
             .background(Color.ghost.muted, in: GhostShape(GhostRadius.sm))
     }
 }
+
+#if os(macOS)
+/// Items without the toolbar's shared glass capsule, which shows as an empty pill while an item has nothing to draw.
+struct BareToolbarItems<Content: ToolbarContent>: ToolbarContent {
+    @ToolbarContentBuilder let content: Content
+
+    var body: some ToolbarContent {
+        if #available(macOS 26.0, *) { content.sharedBackgroundVisibility(.hidden) } else { content }
+    }
+}
+#endif
