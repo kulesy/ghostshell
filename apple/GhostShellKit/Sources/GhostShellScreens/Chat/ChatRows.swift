@@ -90,9 +90,9 @@ struct UserMessageView: View {
                     Text(verbatim: body)
                         .font(ChatStyle.body).lineSpacing(ChatStyle.lineSpacing)
                         .textSelection(.enabled)
-                        .frame(maxWidth: ChatStyle.page ? .infinity : nil, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(ChatStyle.bubblePadding)
-                        .background(ChatStyle.bubble, in: RoundedRectangle(cornerRadius: ChatStyle.radiusBubble))
+                        .background(ChatStyle.bubble, in: ChatStyle.bubbleShape)
                 }
                 .frame(maxWidth: ChatStyle.column * 0.8, alignment: .trailing)
             }
@@ -103,7 +103,7 @@ struct UserMessageView: View {
     }
 }
 
-/// Holds a bubble to a share of the width it is offered, which the page sets at 80%. The Mac's share is all of it, up to the column's cap.
+/// Holds a bubble to a share of the width it is offered, which the page sets at 80%.
 /// A bubble that wraps fills its whole share, as the page's fit-content does.
 private struct BubbleWidth: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -137,9 +137,9 @@ struct SendingBubble: View {
                 BubbleWidth() {
                     Text(verbatim: ChatText.lf(message.text))
                         .font(ChatStyle.body).lineSpacing(ChatStyle.lineSpacing)
-                        .frame(maxWidth: ChatStyle.page ? .infinity : nil, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(ChatStyle.bubblePadding)
-                        .background(ChatStyle.bubble, in: RoundedRectangle(cornerRadius: ChatStyle.radiusBubble))
+                        .background(ChatStyle.bubble, in: ChatStyle.bubbleShape)
                 }
                 .frame(maxWidth: ChatStyle.column * 0.8, alignment: .trailing)
             }
@@ -168,7 +168,7 @@ private struct QuotedView: View {
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
-            .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusQuoted).strokeBorder(ChatStyle.border))
+            .overlay(GhostCorner(ChatStyle.radiusQuoted).strokeBorder(ChatStyle.border))
             .frame(maxWidth: ChatStyle.column * 0.8, alignment: .trailing)
             .contentShape(Rectangle())
         }
@@ -219,7 +219,7 @@ private struct DisclosureLine<Lead: View, Trail: View>: View {
             .padding(ChatStyle.summaryPadding)
             .frame(minHeight: minHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(hovering ? Color.secondary.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: ChatStyle.radiusSummary))
+            .background(hovering ? Color.secondary.opacity(0.1) : .clear, in: GhostCorner(ChatStyle.radiusSummary))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -236,7 +236,7 @@ struct ThinkRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            DisclosureLine(open: open, chevron: ChatStyle.rowChevrons, toggle: { model.toggle(item.key) }) {
+            DisclosureLine(open: open, chevron: false, toggle: { model.toggle(item.key) }) {
                 Text("Thought").fontWeight(.medium)
             } trail: {
                 Text(verbatim: ChatText.preview(text)).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
@@ -265,14 +265,14 @@ struct ToolIO: View {
         }
         .frame(maxHeight: maxHeight)
         .fixedSize(horizontal: false, vertical: true)
-        .background(ChatStyle.well, in: RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
+        .background(ChatStyle.well, in: GhostCorner(ChatStyle.radiusInner))
     }
 }
 
 private func statusColor(_ status: ToolStatus) -> AnyShapeStyle {
     switch status {
     case .failed, .denied: AnyShapeStyle(ChatStyle.removed)
-    case .ok where ChatStyle.page: AnyShapeStyle(ChatStyle.added)
+    case .ok: AnyShapeStyle(ChatStyle.added)
     default: ChatStyle.muted
     }
 }
@@ -285,7 +285,7 @@ struct ToolRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: ChatStyle.ioGap) {
-            DisclosureLine(open: open, chevron: ChatStyle.rowChevrons, toggle: { model.toggle(call.id) }) {
+            DisclosureLine(open: open, chevron: false, toggle: { model.toggle(call.id) }) {
                 HStack(spacing: 4) {
                     let server = ChatText.serverLabel(call.name, connectors: connectors)
                     if !server.isEmpty { Text(server).foregroundStyle(ChatStyle.muted) }
@@ -363,8 +363,8 @@ private struct ChipCard: View {
         }
         .padding(ChatStyle.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ChatStyle.card, in: RoundedRectangle(cornerRadius: ChatStyle.radiusCard))
-        .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusCard).strokeBorder(ChatStyle.border))
+        .background(ChatStyle.card, in: GhostCorner(ChatStyle.radiusCard))
+        .overlay(GhostCorner(ChatStyle.radiusCard).strokeBorder(ChatStyle.border))
     }
 }
 
@@ -466,8 +466,8 @@ private struct SystemNoticeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(ChatStyle.noticePadding)
-        .background(ChatStyle.card, in: RoundedRectangle(cornerRadius: ChatStyle.radiusNotice))
-        .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusNotice).strokeBorder(ChatStyle.border))
+        .background(ChatStyle.card, in: GhostCorner(ChatStyle.radiusNotice))
+        .overlay(GhostCorner(ChatStyle.radiusNotice).strokeBorder(ChatStyle.border))
     }
 }
 
@@ -487,8 +487,8 @@ private struct BashRunView: View {
             if !run.stderr.isEmpty { ToolIO(text: ChatText.clip(run.stderr, lines: 200, characters: 50_000)).foregroundStyle(ChatStyle.removed) }
         }
         .padding(10)
-        .background(ChatStyle.bashRun, in: RoundedRectangle(cornerRadius: ChatStyle.radiusBlock))
-        .overlay { if ChatStyle.page { RoundedRectangle(cornerRadius: ChatStyle.radiusBlock).strokeBorder(ChatStyle.border) } }
+        .background(ChatStyle.bashRun, in: GhostCorner(ChatStyle.radiusBlock))
+        .overlay(GhostCorner(ChatStyle.radiusBlock).strokeBorder(ChatStyle.border))
     }
 }
 

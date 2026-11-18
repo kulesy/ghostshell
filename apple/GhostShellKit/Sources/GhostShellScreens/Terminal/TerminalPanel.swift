@@ -12,14 +12,13 @@ private struct ScrollMetrics: Equatable, Sendable {
     var container: CGFloat = 0
 }
 
-/// The panel under the thread: the commands run for this chat as blocks with their output, and the line that runs the next one.
+/// The terminal: the commands run for this chat as blocks with their output, and the line that runs the next one. On the Mac it covers the chat pane.
 struct TerminalPanel: View {
     let chat: ChatContext
     private let store: TerminalStore
     @Environment(\.colorScheme) private var colorScheme
     @State private var position = ScrollPosition(edge: .bottom)
     @State private var pinned = true
-    @State private var dragStart: CGFloat?
 
     init(chat: ChatContext) {
         self.chat = chat
@@ -30,20 +29,17 @@ struct TerminalPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            #if os(macOS)
-            handle
-            #endif
             header
+            #if os(iOS)
             Divider()
+            #endif
             runs
             if !state.error.isEmpty { errorLine }
             TerminalInput(chat: chat, store: store)
         }
-        #if os(macOS)
-        .containerRelativeFrame(.vertical) { length, _ in min(store.height, length * 0.55) }
-        .overlay(alignment: .top) { Divider() }
-        #endif
+        #if os(iOS)
         .background(.background)
+        #endif
         .task { store.start() }
         .onChange(of: state.announceCount) { AccessibilityNotification.Announcement(state.announce).post() }
         .accessibilityElement(children: .contain)
@@ -52,23 +48,33 @@ struct TerminalPanel: View {
 
     // MARK: Parts
 
-    /// A strip along the top edge that resizes the panel. A phone's panel fills the screen, so it has none.
     #if os(macOS)
-    private var handle: some View {
-        Color.clear.frame(height: 6)
-            .contentShape(Rectangle())
-            .pointerStyle(.rowResize)
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { drag in
-                    let start = dragStart ?? store.height
-                    dragStart = start
-                    store.height = min(max(start - drag.translation.height, 120), 800)
-                }
-                .onEnded { _ in dragStart = nil })
-            .accessibilityHidden(true)
+    /// The page's panel head: the Terminal tab, then clear and close.
+    private var header: some View {
+        let rem = GhostMetrics.current.rem
+        return HStack(spacing: 0.25 * rem) {
+            HStack(spacing: 0.375 * rem) {
+                Image(systemName: "terminal")
+                Text("Terminal")
+            }
+            .font(.geist(0.875 * rem, weight: .medium)).foregroundStyle(Color.ghost.foreground)
+            .padding(.horizontal, 0.625 * rem).frame(height: 2 * rem)
+            .background(Color.ghost.muted, in: GhostCorner(GhostMetrics.current.md))
+            Spacer(minLength: 0)
+            headerButton("Clear finished commands", "trash") { Task { await store.clear() } }
+                .disabled(state.runs.allSatisfy(\.running))
+            headerButton("Close terminal", "xmark") { chat.terminalOpen = false }
+        }
+        .padding(EdgeInsets(top: 0.25 * rem, leading: 0.75 * rem, bottom: 0.25 * rem, trailing: 0.5 * rem))
+        .frame(minHeight: 3.375 * rem)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.ghost.border).frame(height: 1) }
     }
-    #endif
 
+    private func headerButton(_ label: String, _ symbol: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: symbol).frame(width: 2 * GhostMetrics.current.rem, height: 2 * GhostMetrics.current.rem).contentShape(Rectangle()) }
+            .buttonStyle(.plain).foregroundStyle(Color.ghost.foreground).help(label).accessibilityLabel(label)
+    }
+    #else
     /// Narrow columns drop the title word and keep the icon. The path's ideal width is 0 so it truncates before either does.
     private var header: some View {
         ViewThatFits(in: .horizontal) {
@@ -77,7 +83,9 @@ struct TerminalPanel: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 4)
     }
+    #endif
 
+    #if os(iOS)
     private func headerRow(_ title: some View) -> some View {
         HStack(spacing: 8) {
             title.font(ChatStyle.small.weight(.medium)).lineLimit(1).fixedSize()
@@ -90,23 +98,19 @@ struct TerminalPanel: View {
                 .phoneIconTouch()
                 .disabled(state.runs.allSatisfy(\.running))
                 .help("Clear finished commands")
-            // A phone closes the terminal with Back in the bar.
-            #if os(macOS)
-            Button { chat.terminalOpen = false } label: { Image(systemName: "xmark") }
-                .buttonStyle(.borderless).help("Close the terminal").accessibilityLabel("Close terminal")
-            #endif
         }
     }
+    #endif
 
     private var runs: some View {
         ScrollView {
             // Not lazy: a lazy stack estimates the rows it has not drawn from the ones it has, and a first run thousands of lines tall skews that estimate.
-            VStack(spacing: 12) {
+            VStack(spacing: 0.75 * GhostMetrics.current.rem) {
                 ForEach(state.runs, id: \.key) { run in
                     TerminalRunBlock(run: run, home: state.home, store: store).equatable()
                 }
             }
-            .padding(12)
+            .padding(0.75 * GhostMetrics.current.rem)
         }
         .scrollPosition($position)
         .onScrollGeometryChange(for: ScrollMetrics.self) { geometry in
@@ -123,7 +127,7 @@ struct TerminalPanel: View {
             if state.runs.isEmpty {
                 Text(state.ready ? "Commands start in \(TerminalRules.inHome(state.cwd, home: state.home)). Type one below, or press Run on a code block in the chat."
                      : "Connecting to the terminal")
-                    .font(ChatStyle.small).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .font(ChatStyle.small).foregroundStyle(ChatStyle.muted).multilineTextAlignment(.center)
                     .frame(maxWidth: 320).padding(12)
             }
         }
@@ -138,8 +142,8 @@ struct TerminalPanel: View {
                 .buttonStyle(.borderless).phoneIconTouch().help("Dismiss").accessibilityLabel("Dismiss")
         }
         .padding(.vertical, 6).padding(.leading, 12).padding(.trailing, 8)
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(AnsiStyler(colorScheme).danger.opacity(0.4)))
-        .padding(.horizontal, 12).padding(.bottom, 6)
+        .overlay(GhostCorner(GhostMetrics.current.lg).strokeBorder(AnsiStyler(colorScheme).danger.opacity(0.4)))
+        .padding(.horizontal, 0.75 * GhostMetrics.current.rem).padding(.bottom, 0.5 * GhostMetrics.current.rem)
         .accessibilityElement(children: .combine)
     }
 }
@@ -150,7 +154,6 @@ struct TerminalRunBlock: View, Equatable {
     let home: String
     let store: TerminalStore
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var rendered: AnsiOutput?
     @State private var lastDraw: ContinuousClock.Instant?
     @State private var drawnRevision = -1
@@ -161,29 +164,35 @@ struct TerminalRunBlock: View, Equatable {
     private var live: Bool { run.running && !run.pending }
     private var state: TerminalRules.RunState { TerminalRules.runState(run) }
 
+    private let rem = GhostMetrics.current.rem
+
     var body: some View {
         let styler = AnsiStyler(colorScheme)
+        let shape = GhostCorner(GhostMetrics.current.lg)
         VStack(alignment: .leading, spacing: 0) {
             head(styler)
             if !run.output.isEmpty {
-                Divider()
+                rule
                 Group {
                     if let rendered { AnsiLines(output: rendered).textSelection(.enabled) } else { Text(" ").font(ChatStyle.terminal) }
                 }
-                .padding(.horizontal, 12).padding(.vertical, 8)
+                .padding(.horizontal, 0.75 * rem).padding(.vertical, 0.5 * rem)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.12))
+                .background(Color.ghost.muted)
+            } else {
+                rule
             }
-            Divider().opacity(run.output.isEmpty ? 1 : 0)
             foot(styler)
         }
-        .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(state == .failed ? styler.danger.opacity(0.4) : Color.secondary.opacity(0.3)))
+        .background(Color.ghost.card, in: shape)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(state == .failed ? styler.danger.opacity(0.4) : Color.ghost.border))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Command \(run.command.split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? "")")
         .task(id: run.revision) { await draw() }
     }
+
+    private var rule: some View { Rectangle().fill(Color.ghost.border).frame(height: 1) }
 
     /// Draws at most once every 100 ms, so output that never pauses cannot starve the main thread, and the last change always draws.
     private func draw() async {
@@ -203,16 +212,17 @@ struct TerminalRunBlock: View, Equatable {
     }
 
     private func head(_ styler: AnsiStyler) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            HStack(spacing: 5) {
-                Text(TerminalRules.folderOf(run.cwd, home: home)).lineLimit(1).truncationMode(.tail).frame(maxWidth: 110, alignment: .leading)
+        HStack(alignment: .top, spacing: 0.5 * rem) {
+            HStack(spacing: 0.375 * rem) {
+                // The page caps the folder at 9rem and lets it shrink; a frame here would always fill the cap.
+                Text(String(TerminalRules.folderOf(run.cwd, home: home).prefix(18))).lineLimit(1)
                     .help(TerminalRules.inHome(run.cwd, home: home))
                 Text(run.source == "bang" ? "!" : "$").accessibilityHidden(true)
             }
-            .foregroundStyle(.secondary)
-            Text(run.command).foregroundStyle(.primary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 2) {
-                if live { tool("Stop command", "stop.fill") { Task { if let id = run.id { await store.stop(id) } } } }
+            .foregroundStyle(Color.ghost.mutedForeground)
+            Text(run.command).foregroundStyle(Color.ghost.foreground).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 0.125 * rem) {
+                if live { tool("Stop command", "stop") { Task { if let id = run.id { await store.stop(id) } } } }
                 if !run.output.isEmpty {
                     tool(copied ? "Output copied" : "Copy output", copied ? "checkmark" : "doc.on.doc") {
                         ChatLinks.copy(TerminalAnsi.plain(run.output))
@@ -227,18 +237,18 @@ struct TerminalRunBlock: View, Equatable {
                 }
             }
         }
-        .font(Font.system(size: 13, design: .monospaced))
-        .padding(.leading, 12).padding(.trailing, 4).padding(.vertical, 4)
+        .font(.geistMono(0.8125 * rem))
+        .padding(EdgeInsets(top: 0.25 * rem, leading: 0.75 * rem, bottom: 0.25 * rem, trailing: 0.25 * rem))
     }
 
     private func tool(_ label: String, _ symbol: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: symbol).font(.system(size: 11)).frame(width: 22, height: 20) }
-            .buttonStyle(.borderless).phoneIconTouch().help(label).accessibilityLabel(label)
+        Button(action: action) { Image(systemName: symbol).font(.system(size: 0.8 * rem)).frame(width: 1.5 * rem, height: 1.5 * rem).contentShape(Rectangle()) }
+            .buttonStyle(.plain).foregroundStyle(Color.ghost.foreground).phoneIconTouch().help(label).accessibilityLabel(label)
     }
 
     private func foot(_ styler: AnsiStyler) -> some View {
-        HStack(spacing: 8) {
-            if live { Lamp(color: styler.color(2), still: reduceMotion) }
+        HStack(spacing: 0.5 * rem) {
+            if live { ChatLamp(state: "working").accessibilityHidden(true) }
             if live {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(TerminalRules.runStanding(run, now: context.date.timeIntervalSince1970 * 1000))
@@ -248,23 +258,8 @@ struct TerminalRunBlock: View, Equatable {
             }
             Spacer(minLength: 0)
         }
-        .font(ChatStyle.small)
-        .foregroundStyle(state == .failed ? AnyShapeStyle(styler.danger) : state == .running ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-        .padding(.horizontal, 12).padding(.vertical, 5)
-    }
-}
-
-/// The small light beside a running command.
-private struct Lamp: View {
-    let color: Color
-    let still: Bool
-    @State private var dim = false
-
-    var body: some View {
-        Circle().fill(color).frame(width: 7, height: 7)
-            .opacity(dim ? 0.35 : 1)
-            .animation(still ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: dim)
-            .onAppear { dim = !still }
-            .accessibilityHidden(true)
+        .font(.geist(0.75 * rem))
+        .foregroundStyle(state == .failed ? AnyShapeStyle(styler.danger) : state == .running ? AnyShapeStyle(Color.ghost.foreground) : ChatStyle.muted)
+        .padding(.horizontal, 0.75 * rem).padding(.vertical, 0.3125 * rem)
     }
 }

@@ -10,6 +10,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { startChatStub } from './chat-fixtures.mjs';
+import { makePng } from './png.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
 import { routinesStub } from './routines-fixtures.mjs';
@@ -237,6 +238,22 @@ const SCREENS = {
     ['chat-empty', async (page, ctx) => { await ctx.go('#/s/empty'); await sleep(800); }],
     ['chat-streaming', chatScreen('stream', 'Go on, I am ready', () => sleep(4000))],
     ['approval-edit', chatScreen('ask-edit', 'I need your go-ahead')],
+    // The Mac composer flow's last state: a picture and a file attached, then a two-line draft.
+    ['composer-draft', chatScreen('composer', 'I renamed it in 4 files', async page => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-page-composer-'));
+      makePng(path.join(dir, 'screenshot.png'));
+      fs.writeFileSync(path.join(dir, 'release-notes.txt'), 'Release notes for 4.2\n');
+      await page.locator('input[type=file]').setInputFiles([path.join(dir, 'screenshot.png'), path.join(dir, 'release-notes.txt')]);
+      await page.getByRole('button', { name: 'Remove screenshot.png' }).waitFor();
+      await page.getByRole('button', { name: 'Remove release-notes.txt' }).waitFor();
+      await page.locator('#text').fill('Rename it in the docs too\nand keep the alias for one release');
+    })],
+    ['term-chat', chatScreen('term', 'Both blocks have a Run button')],
+    ['term-panel', chatScreen('term', 'Both blocks have a Run button', async page => {
+      await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+      await page.getByText('localhost:5173').first().waitFor({ timeout: 15_000 });
+      await sleep(1200);
+    })],
   ],
   groups: [
     ['groups-1-sidebar', (page, ctx) => ctx.go('#/')],

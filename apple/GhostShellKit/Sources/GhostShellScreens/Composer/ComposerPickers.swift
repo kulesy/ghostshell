@@ -8,9 +8,17 @@ struct ComposerPickers: View {
 
     var body: some View {
         HStack(spacing: 2) {
+            #if os(macOS)
+            // The page puts the permission mode on the left and the model and effort on the right, with no chevrons.
+            modeMenu
+            Spacer(minLength: 8)
+            modelMenu
+            effortMenu
+            #else
             modelMenu
             effortMenu
             modeMenu
+            #endif
         }
         .task(id: model.folder) {
             // A typed folder probes the CLI on the server, so wait for typing to pause.
@@ -22,12 +30,23 @@ struct ComposerPickers: View {
         }
     }
 
-    private func look(_ name: String, _ symbol: String) -> some View {
+    #if os(macOS)
+    private static let font = ChatStyle.body
+    private static let hidesIndicator = true
+    /// The effort is the quiet one, as on the page.
+    private func ink(_ quiet: Bool) -> AnyShapeStyle { quiet ? ChatStyle.muted : AnyShapeStyle(Color.ghost.foreground) }
+    #else
+    private static let font = ChatStyle.small
+    private static let hidesIndicator = false
+    private func ink(_ quiet: Bool) -> AnyShapeStyle { AnyShapeStyle(.secondary) }
+    #endif
+
+    private func look(_ name: String, _ symbol: String, quiet: Bool = false) -> some View {
         Group {
             if compact { Image(systemName: symbol) } else { Text(name) }
         }
-        .font(ChatStyle.small)
-        .foregroundStyle(.secondary)
+        .font(Self.font)
+        .foregroundStyle(ink(quiet))
         .padding(.horizontal, 6).padding(.vertical, 3)
         #if os(iOS)
         .frame(minWidth: 44, minHeight: 44)
@@ -60,8 +79,8 @@ struct ComposerPickers: View {
         } label: {
             look(modelName + (model.fast ? " fast" : ""), model.fast ? "bolt.fill" : "cpu")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(compact ? .hidden : .visible)
+        .pickerMenuStyle()
+        .menuIndicator(compact || Self.hidesIndicator ? .hidden : .visible)
         .fixedSize()
         .help("Model: \(modelName)")
         .accessibilityLabel("Model: \(modelName)")
@@ -75,10 +94,10 @@ struct ComposerPickers: View {
             }
             .pickerStyle(.inline)
         } label: {
-            look(name, "speedometer")
+            look(name, "speedometer", quiet: true)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(compact ? .hidden : .visible)
+        .pickerMenuStyle()
+        .menuIndicator(compact || Self.hidesIndicator ? .hidden : .visible)
         .fixedSize()
         .help("Effort: \(name)")
         .accessibilityLabel("Effort: \(name)")
@@ -94,10 +113,21 @@ struct ComposerPickers: View {
         } label: {
             look(name, "lock.shield")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(compact ? .hidden : .visible)
+        .pickerMenuStyle()
+        .menuIndicator(compact || Self.hidesIndicator ? .hidden : .visible)
         .fixedSize()
         .help("Permission mode: \(name)")
         .accessibilityLabel("Permission mode: \(name)")
+    }
+}
+
+private extension View {
+    /// The Mac's borderless menu draws its label in the primary colour, which hides the quiet effort. A plain button keeps the label's own colour.
+    @ViewBuilder func pickerMenuStyle() -> some View {
+        #if os(macOS)
+        menuStyle(.button).buttonStyle(.plain)
+        #else
+        menuStyle(.borderlessButton)
+        #endif
     }
 }

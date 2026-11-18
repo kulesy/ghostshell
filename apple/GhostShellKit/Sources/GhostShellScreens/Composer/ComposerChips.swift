@@ -1,30 +1,76 @@
 import GhostShellKit
 import SwiftUI
 
-/// The quotes and attachments above the box, each with a button that removes it.
+/// The quotes and attachments above the box, each with a button that removes it. On the Mac they are the page's cards.
 struct ComposerChips: View {
     let model: ComposerModel
-    @State private var contentHeight: CGFloat = 0
+
+    @Environment(\.chatHeight) private var chatHeight
 
     var body: some View {
+        #if os(macOS)
+        if !model.quotes.isEmpty || !model.attachments.isEmpty {
+            // As the page's two lists, the quotes in a column and the attachments in a row. Together they scroll past a share of the chat's height, so a short window keeps its thread.
+            // The page caps each list at 14rem and has no rule for a short window. Prompts waiting on an answer already take half the chat, so the chips leave them more room.
+            let share = model.chat?.status?.pending.isEmpty == false ? 0.2 : 0.4
+            ChipScroll(maxHeight: min(max(chatHeight * share, Self.minHeight), 2 * Self.maxHeight)) {
+                VStack(spacing: 0) {
+                    if !model.quotes.isEmpty {
+                        VStack(spacing: Self.gap) { ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } } }
+                            .padding([.horizontal, .top], Self.inset)
+                    }
+                    if !model.attachments.isEmpty {
+                        ChipFlow(spacing: Self.gap) { attachmentChips }.padding([.horizontal, .top], Self.inset)
+                    }
+                }
+            }
+        }
+        #else
         if !model.quotes.isEmpty || !model.attachments.isEmpty {
             // About two rows. Past that the chips scroll, and a small window shrinks the area before the box.
-            ScrollView(.vertical) {
-                chips.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+            ChipScroll(maxHeight: Self.maxHeight) {
+                ChipFlow(spacing: Self.gap) {
+                    ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
+                    attachmentChips
+                }
+                .padding([.horizontal, .top], Self.inset)
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .frame(maxHeight: min(contentHeight, 112))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        #endif
+    }
+
+    @ViewBuilder private var attachmentChips: some View {
+        ForEach(model.attachments) { item in
+            if item.isPicture { PictureChip(item: item) { model.remove(item) } } else { FileChip(item: item) { model.remove(item) } }
         }
     }
 
-    private var chips: some View {
-        ChipFlow(spacing: 8) {
-            ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
-            ForEach(model.attachments) { item in
-                if item.isPicture { PictureChip(item: item) { model.remove(item) } } else { FileChip(item: item) { model.remove(item) } }
-            }
+    #if os(macOS)
+    private static let maxHeight = 14 * GhostMetrics.current.rem
+    /// One row of chips and its inset, so even a short chat shows a chip.
+    private static let minHeight = 4 * GhostMetrics.current.rem
+    private static let inset = 0.75 * GhostMetrics.current.rem
+    private static let gap = 0.5 * GhostMetrics.current.rem
+    #else
+    private static let maxHeight: CGFloat = 112
+    private static let inset: CGFloat = 0
+    private static let gap: CGFloat = 8
+    #endif
+}
+
+/// Holds its content to `maxHeight` and scrolls past it.
+private struct ChipScroll<Content: View>: View {
+    let maxHeight: CGFloat
+    @ViewBuilder let content: Content
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        ScrollView(.vertical) {
+            content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: min(contentHeight, maxHeight))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -69,22 +115,59 @@ private struct RemoveButton: View {
 
     var body: some View {
         Button(action: action) {
+            #if os(macOS)
+            Image(systemName: "xmark").font(.system(size: 0.6 * GhostMetrics.current.rem, weight: .bold)).foregroundStyle(Color.ghost.foreground)
+                .frame(width: 1.5 * GhostMetrics.current.rem, height: 1.5 * GhostMetrics.current.rem)
+                .background(Color.ghost.secondary, in: Circle())
+                .contentShape(Circle())
+            #else
             Image(systemName: "xmark.circle.fill").symbolRenderingMode(.hierarchical).font(.system(size: 14))
                 .background { if onPicture { Circle().fill(.regularMaterial) } }
+            #endif
         }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .phoneIconTouch()
-            .accessibilityLabel(label)
-            .help(label)
+        #if os(macOS)
+        .buttonStyle(.plain)
+        #else
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .phoneIconTouch()
+        #endif
+        .accessibilityLabel(label)
+        .help(label)
     }
 }
 
 private struct PictureChip: View {
     let item: Attachment
     let remove: () -> Void
+    private let rem = GhostMetrics.current.rem
 
     var body: some View {
+        #if os(macOS)
+        tile
+            .frame(width: 5 * rem, height: 5 * rem)
+            .clipShape(GhostCorner(GhostMetrics.current.lg))
+            .padding(0.5 * rem)
+            .background(Color.ghost.card, in: GhostCorner(GhostMetrics.current.xl))
+            .overlay(GhostCorner(GhostMetrics.current.xl).strokeBorder(Color.ghost.border))
+            .overlay(alignment: .topTrailing) { RemoveButton(label: "Remove \(item.name)", onPicture: true, action: remove).padding(0.75 * rem) }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Image \(item.name)")
+        #else
+        tile
+            .frame(width: chipHeight, height: chipHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
+            .overlay(alignment: .topTrailing) {
+                RemoveButton(label: "Remove \(item.name)", onPicture: true, action: remove)
+                    .padding(2)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Image \(item.name)")
+        #endif
+    }
+
+    private var tile: some View {
         ZStack {
             if let thumb = item.thumbnail {
                 Image(decorative: thumb, scale: 1).resizable().scaledToFill()
@@ -93,23 +176,25 @@ private struct PictureChip: View {
             }
             if item.working { ProgressView().controlSize(.small) }
         }
-        .frame(width: chipHeight, height: chipHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
-        .overlay(alignment: .topTrailing) {
-            RemoveButton(label: "Remove \(item.name)", onPicture: true, action: remove)
-                .padding(2)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Image \(item.name)")
     }
 }
 
 private struct FileChip: View {
     let item: Attachment
     let remove: () -> Void
+    private let rem = GhostMetrics.current.rem
 
     var body: some View {
+        #if os(macOS)
+        FileFace(name: item.name, line: item.working ? "Uploading" : ChatFiles.cardLine(name: item.name, size: item.size), working: item.working)
+            .padding(EdgeInsets(top: 0.5 * rem, leading: 0.5 * rem, bottom: 0.5 * rem, trailing: 2.5 * rem))
+            .frame(width: 14 * rem, alignment: .leading)
+            .background(Color.ghost.card, in: GhostCorner(GhostMetrics.current.xl))
+            .overlay(GhostCorner(GhostMetrics.current.xl).strokeBorder(Color.ghost.border))
+            .overlay(alignment: .trailing) { RemoveButton(label: "Remove \(item.name)", action: remove).padding(.trailing, 0.5 * rem) }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("File \(item.name)")
+        #else
         HStack(spacing: 8) {
             ZStack {
                 if item.working { ProgressView().controlSize(.small) } else { Image(systemName: "doc").foregroundStyle(.secondary) }
@@ -130,6 +215,7 @@ private struct FileChip: View {
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("File \(item.name)")
+        #endif
     }
 }
 
@@ -148,13 +234,17 @@ private struct QuoteChip: View {
                 }
                 Text(verbatim: quote.text).font(ChatStyle.small).lineLimit(quote.fromID != here ? 1 : 2)
             }
+            #if os(macOS)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            #else
             .frame(maxWidth: 220, alignment: .leading)
+            #endif
             RemoveButton(label: "Remove quote", action: remove)
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
         .frame(height: chipHeight)
-        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
+        .background(Color.ghost.card, in: GhostCorner(GhostMetrics.current.xl))
+        .overlay(GhostCorner(GhostMetrics.current.xl).strokeBorder(Color.ghost.border))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Quote: \(quote.text)")
     }

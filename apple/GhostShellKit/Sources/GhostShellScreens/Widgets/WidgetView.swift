@@ -32,8 +32,8 @@ private struct WidgetBody: View {
                     .font(ChatStyle.body).foregroundStyle(ChatStyle.muted)
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(ChatStyle.card, in: RoundedRectangle(cornerRadius: Self.radius))
-                    .overlay(RoundedRectangle(cornerRadius: Self.radius).strokeBorder(ChatStyle.border))
+                    .background(ChatStyle.card, in: GhostCorner(Self.radius))
+                    .overlay(GhostCorner(Self.radius).strokeBorder(ChatStyle.border))
             } else {
                 frame
                 if let request = widget.request {
@@ -58,9 +58,10 @@ private struct WidgetBody: View {
                 .frame(maxWidth: .infinity)
                 .modifier(PendingRatio(ratio: pendingRatio))
                 .frame(height: heightWithBorder)
-                .background(Self.cardColor(mode), in: RoundedRectangle(cornerRadius: Self.radius))
-                .clipShape(RoundedRectangle(cornerRadius: Self.radius))
-                .overlay(RoundedRectangle(cornerRadius: Self.radius).strokeBorder(ChatStyle.border))
+                .background(Self.cardColor(mode), in: GhostCorner(Self.radius))
+                .clipShape(GhostCorner(Self.radius))
+                .overlay(GhostCorner(Self.radius).strokeBorder(ChatStyle.border))
+                .shadow(color: .black.opacity(0.1), radius: 1.5, y: 1)
         } else {
             web.frame(maxWidth: .infinity).frame(height: height)
         }

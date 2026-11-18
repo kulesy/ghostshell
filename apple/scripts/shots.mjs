@@ -33,6 +33,7 @@ if (argv.includes('--flow') && (!FLOW[0] || FLOW.some(flow => !FLOWS.includes(fl
 const APPEARANCES = option('--only') ? [option('--only')] : ['light', 'dark'];
 const DEFAULT_SIZE = [960, 640];
 const MIN_SIZE = [640, 420];
+const WIDE_SIZE = [1280, 800];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } };
@@ -577,6 +578,11 @@ class App {
   attachFile(file) {
     this.attachCount = (this.attachCount ?? 0) + 1;
     fs.writeFileSync(path.join(this.shotDir, 'attach.txt'), `${this.attachCount} ${file}`);
+  }
+  // The Debug build sets the sidebar's width to the number in sidebar.txt, and back to its own rule for anything else.
+  setSidebar(width) {
+    this.sidebarCount = (this.sidebarCount ?? 0) + 1;
+    fs.writeFileSync(path.join(this.shotDir, 'sidebar.txt'), `${this.sidebarCount} ${width}`);
   }
   // For a failed check: the buttons and fields in the window, so the next run can be fixed from the log.
   dump() {
@@ -1544,7 +1550,9 @@ async function filesFlow(bundle, appearance) {
   let panel = false;
   const follow = async link => {
     if (panel) { app.press('Close'); await sleep(600); panel = false; }
-    const found = app.clickLink(link);
+    // A link in a row the thread has not drawn is not in the tree, so the thread is stepped from the top to the end until the link shows.
+    let at = -1;
+    const found = await until(link, () => app.clickLink(link) || (app.scrollChat(Math.min(1, (at += 1) * 0.1)), false), 20);
     panel = found;
     return found;
   };
@@ -1722,7 +1730,7 @@ async function terminalFlow(bundle, appearance) {
     await sleep(1200);
     await app.both('term-blocks-end');
 
-    check(app.press('Terminal'), 'the toolbar has a Terminal button');
+    check(app.press('Terminal'), 'the chat head has a Terminal button');
     check(await until('panel', () => app.hasText('npm run dev'), 20), 'the terminal panel shows its runs');
     check(app.hasButton('Stop command'), 'a running command has a Stop button');
     check(await until('bottom', () => (app.terminalBar()?.value ?? 0) > 0.95, 10), 'the panel opens scrolled to its last output');
@@ -1734,11 +1742,9 @@ async function terminalFlow(bundle, appearance) {
     await app.shot(`${app.tag}-term-panel-min-settled-${appearance}`);
     app.resize(DEFAULT_SIZE);
     await sleep(1200);
-    app.scrollThread(0);
-    await sleep(1200);
-    await app.shot(`${app.tag}-term-panel-thread-top-${appearance}`);
-
-    check(app.press('Run in terminal'), 'a block can be run');
+    // At this size the panel covers the chat, so a pointer user closes it to reach a block's Run button, and Run opens it again.
+    check(app.press('Close terminal'), 'the panel has a Close button');
+    check(await until('run button', () => { app.scrollThread(0); return app.hasButton('Run in terminal'); }, 10) && app.press('Run in terminal'), 'a block can be run');
     check(await until('ran', () => called('run', body => body.source === 'block' && body.command === 'npm test -- upload'), 10), 'the Run button sends the block as a block run');
     await sleep(1200);
     await app.both('term-after-run');
@@ -1760,16 +1766,45 @@ async function terminalFlow(bundle, appearance) {
     await sleep(1200);
     await app.both('term-after-stop');
 
-    // The file panel is the inspector beside the thread and the terminal sits under the thread, so both can be open and each keeps its controls.
-    check(app.clickLink('NOTES.md'), 'the reply has a file link');
+    // The file panel covers the whole chat pane and its modal hides the chat's own buttons, so a file is opened with the terminal closed, closed from the toolbar, and the terminal is opened again.
+    check(app.press('Close terminal'), 'the panel is closed to reach the reply');
+    check(await until('file link', () => { app.scrollThread(0); return app.clickLink('NOTES.md'); }, 10), 'the reply has a file link');
     check(await until('file', () => app.hasText('Run the upload test, then the build.'), 15), 'the file opens in its panel');
     await sleep(1200);
-    check(!!input() && !!toggle() && app.hasButton('Hide file'), 'the terminal input and both toolbar buttons are there with the file panel open');
-    await app.both('term-with-file');
+    await app.both('term-file-open');
+    check(app.press('Hide file'), 'the file panel is closed');
+    check(await until('file closed', () => !app.hasText('Run the upload test, then the build.') && !!toggle(), 10), 'the chat is back with its Terminal button');
+    check(app.press('Terminal'), 'the Terminal button opens the panel again');
+    check(await until('input', () => input(), 10), 'the terminal input is there again');
+
+    // The chat pane is 704pt or more when the terminal sits beside the thread, as the page's does. The runner's screen caps the window near 992pt, so the Debug build narrows the sidebar to 270pt to give the pane that width.
+    // The file panel then covers the thread and the terminal both.
+    const runButton = () => app.find(node => node.role === 'AXButton' && app.label(node) === 'Run in terminal');
+    const beside = () => { const run = runButton(); const box = input(); return !!run && !!box && run.pos[0] + run.size[0] <= box.pos[0] + 1; };
+    app.resize(WIDE_SIZE);
+    await sleep(1500);
+    app.setSidebar(270);
+    await sleep(2500);
+    check(await until('beside', () => { app.scrollThread(0); return beside(); }, 10), 'at the wide size the terminal sits beside the thread');
+    await sleep(1200);
+    await app.shot(`${app.tag}-term-wide-${appearance}`);
+    check(await until('wide file link', () => { app.scrollThread(0); return app.clickLink('NOTES.md'); }, 10), 'the reply has a file link beside the terminal');
+    check(await until('wide file', () => app.hasText('Run the upload test, then the build.'), 15), 'the file opens over the thread and the terminal');
+    await sleep(1200);
+    await app.shot(`${app.tag}-term-wide-file-${appearance}`);
+    check(app.press('Hide file'), 'the file panel is closed at the wide size');
+    await sleep(1500);
+    app.setSidebar('default');
+    // A modal terminal hides the thread from the accessibility tree, so the Run button is gone or sits under the panel.
+    app.resize(DEFAULT_SIZE);
+    await sleep(2500);
+    check(await until('covers', () => { app.scrollThread(0); const run = runButton(); const box = input(); return !!box && (!run || run.pos[0] >= box.pos[0]); }, 10), 'at the default size the terminal covers the thread again');
+    await sleep(1200);
+    await app.shot(`${app.tag}-term-covers-again-${appearance}`);
 
     app.chooseRow(rowOf(stub, 'rich'));
     check(await until('rich', () => app.hasText('Done. I added one line under'), 20), 'a chat with no terminal opens');
-    check(toggle()?.enabled === false, 'the Terminal toggle is off in a chat that has no terminal');
+    check(!toggle(), 'the Terminal toggle is not there in a chat that has no terminal');
     await sleep(800);
     await app.both('term-toggle-off');
     app.signOutFromMenu();

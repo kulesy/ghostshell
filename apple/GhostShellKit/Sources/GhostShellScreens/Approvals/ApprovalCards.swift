@@ -43,8 +43,8 @@ private struct CardFrame<Content: View, Actions: View>: View {
         .padding(ChatStyle.cardPadding)
         .chatText()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ChatStyle.card, in: RoundedRectangle(cornerRadius: ChatStyle.radiusCard))
-        .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusCard).strokeBorder(ChatStyle.approvalEdge))
+        .background(ChatStyle.card, in: GhostCorner(ChatStyle.radiusCard))
+        .overlay(GhostCorner(ChatStyle.radiusCard).strokeBorder(ChatStyle.approvalEdge))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: title))
     }
@@ -78,17 +78,16 @@ private struct DiffBlock: View {
         }
         .padding(.vertical, ChatStyle.diffInset)
         .textSelection(.enabled)
-        .background(ChatStyle.well, in: RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
-        .clipShape(RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
+        .background(ChatStyle.well, in: GhostCorner(ChatStyle.radiusInner))
+        .clipShape(GhostCorner(ChatStyle.radiusInner))
     }
 
-    /// The page colours the diff's text. The Mac tints each line's background.
+    /// The page colours the diff's text.
     private func row(_ sign: String, _ line: String, _ tint: Color) -> some View {
-        Text(verbatim: sign + line).font(ChatStyle.commandMono).lineSpacing(ChatStyle.page ? 4 : 0)
-            .foregroundStyle(ChatStyle.page ? AnyShapeStyle(tint) : ChatStyle.text)
+        Text(verbatim: sign + line).font(ChatStyle.commandMono).lineSpacing(ChatStyle.commandLineSpacing)
+            .foregroundStyle(tint)
             .padding(.horizontal, ChatStyle.diffRowPadding).padding(.vertical, 1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(tint.opacity(ChatStyle.diffFill))
     }
 }
 
@@ -97,37 +96,27 @@ private struct AllInput: View {
     @Bindable var state: ApprovalCardState
 
     var body: some View {
-        if ChatStyle.page {
-            VStack(alignment: .leading, spacing: 4) {
-                Button { state.inputOpen.toggle() } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).rotationEffect(.degrees(state.inputOpen ? 90 : 0)).frame(width: 12)
-                        Text("All input").font(ChatStyle.body)
-                    }
-                    .frame(minHeight: ChatStyle.titleHeight)
-                    .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 4) {
+            Button { state.inputOpen.toggle() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right").font(.system(size: 10 * GhostMetrics.current.scale, weight: .semibold)).rotationEffect(.degrees(state.inputOpen ? 90 : 0)).frame(width: 12)
+                    Text("All input").font(ChatStyle.body)
                 }
-                .buttonStyle(.plain)
-                .accessibilityValue(state.inputOpen ? "expanded" : "collapsed")
-                if state.inputOpen { ToolIO(text: Approvals.allInput(of: prompt), maxHeight: 220, command: true) }
+                .frame(minHeight: ChatStyle.titleHeight)
+                .contentShape(Rectangle())
             }
-            .foregroundStyle(ChatStyle.muted)
-        } else {
-            DisclosureGroup("All input", isExpanded: $state.inputOpen) {
-                ToolIO(text: Approvals.allInput(of: prompt), maxHeight: 220).padding(.top, 4)
-            }
-            .font(ChatStyle.small).foregroundStyle(.secondary)
+            .buttonStyle(.plain)
+            .accessibilityValue(state.inputOpen ? "expanded" : "collapsed")
+            if state.inputOpen { ToolIO(text: Approvals.allInput(of: prompt), maxHeight: 220, command: true) }
         }
+        .foregroundStyle(ChatStyle.muted)
     }
 }
 
 private extension View {
-    @ViewBuilder func decisionButton(primary: Bool = false) -> some View {
-        if ChatStyle.page {
-            buttonStyle(.ghost(primary ? .primary : .outline, fills: true))
-        } else {
-            buttonStyle(.bordered).controlSize(.regular)
-        }
+    /// The page's buttons share the card's width on a phone and keep their own width on a pointer.
+    func decisionButton(primary: Bool = false) -> some View {
+        buttonStyle(.ghost(primary ? .primary : .outline, fills: GhostMetrics.current.touch))
     }
 }
 
@@ -176,7 +165,7 @@ struct PlanCard: View {
         CardFrame(title: "Claude has a plan", state: state) {
             MarkdownView(blocks: ChatMarkdown.parse(Approvals.plan(of: prompt) ?? "")).padding(12).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(ChatStyle.planWell, in: RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
+                .background(ChatStyle.planWell, in: GhostCorner(ChatStyle.radiusInner))
             if let description = prompt.description, !description.isEmpty {
                 Text(verbatim: description).font(ChatStyle.body).foregroundStyle(ChatStyle.muted).textSelection(.enabled)
             }
@@ -261,17 +250,13 @@ private struct QuestionBlock: View {
     }
 }
 
-/// The "Or write your own answer" field. The page outlines it at 36pt with the input colour, and the Mac keeps the system's rounded field.
+/// The "Or write your own answer" field, outlined at 36pt with the input colour as the page has it.
 private struct AnswerField: ViewModifier {
     func body(content: Content) -> some View {
-        if ChatStyle.page {
-            content.textFieldStyle(.plain).font(ChatStyle.fieldFont)
-                .padding(.horizontal, 12)
-                .frame(minHeight: ChatStyle.fieldHeight)
-                .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusButton).strokeBorder(ChatStyle.fieldEdge))
-        } else {
-            content.textFieldStyle(.roundedBorder).font(ChatStyle.body)
-        }
+        content.textFieldStyle(.plain).font(ChatStyle.fieldFont)
+            .padding(.horizontal, 12)
+            .frame(minHeight: ChatStyle.fieldHeight)
+            .overlay(GhostCorner(ChatStyle.radiusButton).strokeBorder(ChatStyle.fieldEdge))
     }
 }
 
@@ -285,9 +270,6 @@ private struct OptionButton: View {
     var body: some View {
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if ChatStyle.optionRadio {
-                    Image(systemName: chosen ? "checkmark.circle.fill" : "circle").foregroundStyle(chosen ? Color.accentColor : .secondary).accessibilityHidden(true)
-                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: option.label).font(ChatStyle.body).fontWeight(.medium)
                     if let description = option.description {
@@ -298,9 +280,9 @@ private struct OptionButton: View {
             }
             .padding(ChatStyle.optionPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(chosen ? ChatStyle.selectedFill(scheme) : ChatStyle.optionFill, in: RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
-            .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusInner).strokeBorder(chosen ? ChatStyle.selectedBorder : ChatStyle.optionEdge))
-            .contentShape(RoundedRectangle(cornerRadius: ChatStyle.radiusInner))
+            .background(chosen ? ChatStyle.selectedFill(scheme) : ChatStyle.optionFill, in: GhostCorner(ChatStyle.radiusInner))
+            .overlay(GhostCorner(ChatStyle.radiusInner).strokeBorder(chosen ? ChatStyle.selectedBorder : ChatStyle.optionEdge))
+            .contentShape(GhostCorner(ChatStyle.radiusInner))
         }
         .buttonStyle(.plain)
         .disabled(busy)

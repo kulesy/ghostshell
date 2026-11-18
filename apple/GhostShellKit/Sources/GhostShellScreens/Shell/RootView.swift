@@ -33,6 +33,10 @@ public struct RootView: View {
     // On a phone the split collapses to a stack. `preferredCompactColumn` is what the navigator drives, and it is ignored where both columns fit.
     @State private var compactColumn = NavigationSplitViewColumn.sidebar
     @State private var windowWidth: CGFloat = 960
+    #if DEBUG && os(macOS)
+    /// The test run narrows the sidebar this way, because its screen is too small for a window wide enough to show the side terminal.
+    @State private var debugSidebar: CGFloat?
+    #endif
 
     private var split: some View {
         NavigationSplitView(preferredCompactColumn: $compactColumn) {
@@ -53,10 +57,21 @@ public struct RootView: View {
         .toolbar(removing: .sidebarToggle)
         #endif
         .toolbar {
-            if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
+            if let id = model.navigator.selectedSessionID {
+                #if os(macOS)
+                BareToolbarItems { ToolbarItem { ContextMeter(sessionID: id) } }
+                #else
+                ToolbarItem { ContextMeter(sessionID: id) }
+                #endif
+            }
         }
         .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+        #if DEBUG && os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("GSDebugSidebar"))) { note in
+            debugSidebar = (note.object as? String).flatMap(Double.init).map { CGFloat($0) }
+        }
+        #endif
     }
 
     @ViewBuilder private var detailPane: some View {
@@ -73,7 +88,10 @@ public struct RootView: View {
     /// The page's `--list-width`, 25.5rem, from 56rem up. Narrower, the page's drawer is 18rem, which the Mac keeps beside the detail pane.
     private var sidebarWidth: CGFloat {
         #if os(macOS)
-        windowWidth < 840 ? 270 : 382
+        #if DEBUG
+        if let debugSidebar { return debugSidebar }
+        #endif
+        return windowWidth < 840 ? 270 : 382
         #else
         260
         #endif
@@ -137,3 +155,14 @@ struct EmptyDetail: View {
             .background(Color.ghost.muted, in: GhostShape(GhostRadius.sm))
     }
 }
+
+#if os(macOS)
+/// Items without the toolbar's shared glass capsule, which shows as an empty pill while an item has nothing to draw.
+struct BareToolbarItems<Content: ToolbarContent>: ToolbarContent {
+    @ToolbarContentBuilder let content: Content
+
+    var body: some ToolbarContent {
+        if #available(macOS 26.0, *) { content.sharedBackgroundVisibility(.hidden) } else { content }
+    }
+}
+#endif

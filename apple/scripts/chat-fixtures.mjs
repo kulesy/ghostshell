@@ -270,6 +270,8 @@ const send = (res, name, data) => res.write(`event: ${name}\ndata: ${JSON.string
 
 function stream(chat, res, timers) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+  // The page reads the terminal's runs from the stream; the Mac app asks the terminal route.
+  if (chat.terminal) send(res, 'terminal', { type: 'state', cwd: '/work/example', home: '/Users/example', runs: termRuns() });
   if (!chat.streaming) {
     send(res, 'status', { state: chat.pending ? 'waiting' : 'idle', running: true, model: 'claude-sonnet-5-5', shownModel: 'claude-sonnet-5-5', effort: 'high', mode: 'manual', live: '', pending: chat.pending || [] });
     return;

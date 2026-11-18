@@ -26,7 +26,7 @@ private struct RoutineBuckets: View {
         ForEach(buckets.filter { $0.heading != nil }) { bucket in
             HeadingRow(heading: SidebarHeading(id: bucket.id, title: bucket.heading ?? "", kind: .routineHeading), count: bucket.routines.count + bucket.idle.count)
             // The page sets a named group's routines 19pt in under its heading on a pointer.
-            if state.isOpen(bucket.id) { Rows(bucket: bucket).padding(.leading, SidebarMetrics.current.touch ? 0 : 19) }
+            if state.isOpen(bucket.id) { Rows(bucket: bucket).padding(.leading, GhostMetrics.current.touch ? 0 : 19) }
         }
     }
 

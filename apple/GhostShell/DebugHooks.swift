@@ -96,8 +96,19 @@ enum ShotWatcher {
         NotificationCenter.default.post(name: Notification.Name("GSDebugAttach"), object: String(request[request.index(after: space)...]))
     }
 
+    private static var sidebarSet = ""
+
+    // `sidebar.txt` holds `<number> <width>`. The window can't grow past the runner's screen, so the sidebar is narrowed to give the chat pane the width a wide window would.
+    private static func sidebarRequested(_ folder: URL) {
+        guard let request = try? String(contentsOf: folder.appendingPathComponent("sidebar.txt"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+              request != sidebarSet, let space = request.firstIndex(of: " ") else { return }
+        sidebarSet = request
+        NotificationCenter.default.post(name: Notification.Name("GSDebugSidebar"), object: String(request[request.index(after: space)...]))
+    }
+
     private static func check(_ folder: URL) {
         attachRequested(folder)
+        sidebarRequested(folder)
         guard let request = try? String(contentsOf: folder.appendingPathComponent("request.txt"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
               request != handled else { return }
         let parts = request.split(separator: " ", maxSplits: 1).map(String.init)

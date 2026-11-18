@@ -232,10 +232,12 @@ public enum ChatFiles {
                                 "pptx": "PowerPoint", "txt": "Text", "md": "Markdown", "json": "JSON", "zip": "ZIP"]
 
     /// The quiet line on a user's file card: its kind and size.
-    public static func cardLine(_ file: ChatFile) -> String {
-        let ext = fileExtension(file.name)
+    public static func cardLine(_ file: ChatFile) -> String { cardLine(name: file.name, size: file.size) }
+
+    public static func cardLine(name: String, size: Int) -> String {
+        let ext = fileExtension(name)
         let kind = kinds[ext] ?? (ext.isEmpty ? "File" : ext.uppercased())
-        return "\(kind) · \(cardSize(file.size))"
+        return "\(kind) · \(cardSize(size))"
     }
 
     /// Where a tool's output came from, worded for a sentence: its server, else the built-in tool itself. Format.js `toolSource`.

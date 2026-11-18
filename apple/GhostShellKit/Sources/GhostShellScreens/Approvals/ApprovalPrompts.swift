@@ -12,7 +12,6 @@ struct ApprovalPrompts: View {
         let cap = max(chatHeight * 0.5, 120)
         if !pending.isEmpty {
             VStack(spacing: 0) {
-                if !ChatStyle.page { Divider() }
                 ScrollView(.vertical) {
                     VStack(spacing: 10) {
                         ForEach(pending) { prompt in

@@ -64,7 +64,7 @@ struct ChatThreadView: View {
                 .labelStyle(.iconOnly).buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.large)
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .background { if ChatStyle.page { Color.ghost.background } }
+                .background(Color.ghost.background)
                 .help("Scroll to end")
             }
         }
@@ -120,7 +120,7 @@ struct ChatThreadView: View {
         }
         .onChange(of: model.earlierCount) { restore() }
         .accessibilityLabel("Messages")
-        .background { if ChatStyle.page { Color.ghost.background.ignoresSafeArea() } }
+        .background(Color.ghost.background.ignoresSafeArea())
     }
 
     /// Puts the reader back on the row they were on. Rows not yet measured are sized by estimate, so one jump lands short and a few more settle it.
