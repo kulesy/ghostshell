@@ -38,7 +38,7 @@ public struct RootView: View {
         NavigationSplitView(preferredCompactColumn: $compactColumn) {
             SidebarScreen()
                 .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
-                .navigationSplitViewColumnWidth(sidebarWidth)
+                .navigationSplitViewColumnWidth(min: 240, ideal: sidebarWidth, max: 420)
                 #if os(macOS)
                 .toolbar(removing: .sidebarToggle)
                 #endif
