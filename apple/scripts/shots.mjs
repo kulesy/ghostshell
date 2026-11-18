@@ -1764,37 +1764,34 @@ async function terminalFlow(bundle, appearance) {
     await sleep(1200);
     await app.both('term-after-stop');
 
-    // The file panel is the inspector beside the chat pane and the terminal covers that pane, so a file is opened with the terminal closed and the terminal is opened again over it.
+    // The file panel covers the whole chat pane and its modal hides the chat's own buttons, so a file is opened with the terminal closed, closed from the toolbar, and the terminal is opened again.
     check(app.press('Close terminal'), 'the panel is closed to reach the reply');
     check(await until('file link', () => { app.scrollThread(0); return app.clickLink('NOTES.md'); }, 10), 'the reply has a file link');
     check(await until('file', () => app.hasText('Run the upload test, then the build.'), 15), 'the file opens in its panel');
     await sleep(1200);
     await app.both('term-file-open');
-    // The pickers under the box fall back to icons when the pane beside the file is too narrow for their names.
-    app.resize(MIN_SIZE);
-    await sleep(2500);
-    await app.shot(`${app.tag}-term-file-open-min-settled-${appearance}`);
-    app.resize(DEFAULT_SIZE);
-    await sleep(1200);
+    check(app.press('Hide file'), 'the file panel is closed');
+    check(await until('file closed', () => !app.hasText('Run the upload test, then the build.') && !!toggle(), 10), 'the chat is back with its Terminal button');
     check(app.press('Terminal'), 'the Terminal button opens the panel again');
-    check(await until('input', () => input(), 10), 'the terminal input is there with the file panel open');
-    check(app.hasButton('Hide file'), 'the Hide file button is there with the terminal open');
-    await app.both('term-with-file');
+    check(await until('input', () => input(), 10), 'the terminal input is there again');
 
     // The chat pane is 704pt or more when the terminal sits beside the thread, as the page's does. The runner's screen caps the window near 992pt, so the Debug build narrows the sidebar to 270pt to give the pane that width.
-    // A file beside the chat narrows the pane again, so the terminal covers the thread then.
+    // The file panel then covers the thread and the terminal both.
     const runButton = () => app.find(node => node.role === 'AXButton' && app.label(node) === 'Run in terminal');
     const beside = () => { const run = runButton(); const box = input(); return !!run && !!box && run.pos[0] + run.size[0] <= box.pos[0] + 1; };
     app.resize(WIDE_SIZE);
     await sleep(1500);
     app.setSidebar(270);
     await sleep(2500);
-    await app.shot(`${app.tag}-term-wide-file-${appearance}`);
-    check(app.press('Hide file'), 'the file panel is closed at the wide size');
-    await sleep(1500);
     check(await until('beside', () => { app.scrollThread(0); return beside(); }, 10), 'at the wide size the terminal sits beside the thread');
     await sleep(1200);
     await app.shot(`${app.tag}-term-wide-${appearance}`);
+    check(await until('wide file link', () => { app.scrollThread(0); return app.clickLink('NOTES.md'); }, 10), 'the reply has a file link beside the terminal');
+    check(await until('wide file', () => app.hasText('Run the upload test, then the build.'), 15), 'the file opens over the thread and the terminal');
+    await sleep(1200);
+    await app.shot(`${app.tag}-term-wide-file-${appearance}`);
+    check(app.press('Hide file'), 'the file panel is closed at the wide size');
+    await sleep(1500);
     app.setSidebar('default');
     // A modal terminal hides the thread from the accessibility tree, so the Run button is gone or sits under the panel.
     app.resize(DEFAULT_SIZE);
