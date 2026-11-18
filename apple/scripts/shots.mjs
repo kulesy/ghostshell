@@ -349,6 +349,15 @@ class App {
     return item?.help === 'Turn notifications off' ? 'On' : item?.help === 'Turn notifications on' ? 'Off' : '';
   }
   toggleNotifications() { return this.pick(['Account', 'account'], 'Notifications'); }
+  // The account menu's item names in order. The shots are a self-render of the window, which does not draw a native menu, so the order is read from the tree.
+  accountMenuItems() {
+    const button = this.find(node => node.role === 'AXMenuButton' && [node.title, node.desc].some(name => ['Account', 'account'].includes(name)));
+    if (!button || !this.act(button)) return [];
+    const menu = this.waitFor(node => node.role === 'AXMenu' && node.path.length === button.path.length + 1 && node.path.slice(0, -1).join() === button.path.join());
+    const items = menu ? this.menuItemsOf(menu).map(item => item.title) : [];
+    this.closeMenu();
+    return items;
+  }
   // SwiftUI gives its bordered buttons no name, so a button is pressed by its place in the window.
   pressNth(n) {
     const button = this.findAll(node => node.role === 'AXButton')[n - 1];
@@ -958,6 +967,9 @@ async function mainFlow(bundle, appearance, withChat) {
 
     // The bell starts on (-GSNotify), turns notifications off and on again, and the pane agrees with it.
     check(app.notifications() === 'On', 'the account menu\'s notification switch starts on');
+    const account = app.accountMenuItems();
+    console.log('account menu:', account.join(' | '));
+    check(['Accounts', 'Passkeys', 'Notifications', 'Sign out'].every((name, i) => account[i]?.startsWith(name)), 'the account menu lists Accounts, Passkeys, Notifications and Sign out in that order');
     await app.both('toolbar-notifications-on');
     app.toggleNotifications();
     check(await until('bell off', () => app.notifications() === 'Off'), 'choosing the notification switch turns notifications off');
@@ -1346,6 +1358,16 @@ async function accountsFlow(bundle, appearance) {
       await sleep(500);
     }
     app.resize(DEFAULT_SIZE);
+
+    // The same two screens with nothing on them. Passkeys is opened first so the Accounts screen is built afresh.
+    accounts.accounts = [];
+    passkeys.passkeys = [];
+    check(app.menu('View', 'Passkeys'), 'the View menu has Passkeys again');
+    check(await until('no passkeys', () => sees('No passkeys added yet.'), 20), 'the Passkeys screen says none are added');
+    await app.both('passkeys-empty');
+    check(app.menu('View', 'Accounts'), 'the View menu has Accounts again');
+    check(await until('no accounts', () => !sees('Spare') && sees('Switch accounts by itself'), 30), 'the Accounts screen leaves the account list out when there are none');
+    await app.both('accounts-empty');
   } finally {
     await app.quit();
     stub.closeAllConnections();
@@ -1488,6 +1510,30 @@ async function routinesFlow(bundle, appearance) {
   }
 }
 
+// The Routines and Scheduled pages with nothing on them, from a stub that serves no routines and no scheduled sessions.
+async function routinesEmptyFlow(bundle, appearance) {
+  console.log(`\n== ${appearance}: routines and scheduled sessions, empty`);
+  const { server: stub } = routinesStub({ empty: true });
+  const app = await appOn(stub, bundle, appearance, '9');
+  const sees = text => app.texts().includes(text);
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('sidebar', () => app.rows() >= 1), 'the empty stub still lists its sessions');
+    check(app.press('Routines'), 'Routines is a link in the sidebar footer');
+    check(await until('no routines', () => sees('No routines yet.'), 20), 'the Routines page says there are none');
+    await app.both('routines-empty');
+    check(app.press('Scheduled'), 'Scheduled is a link in the sidebar footer');
+    check(await until('no scheduled', () => sees('No scheduled sessions.'), 20), 'the Scheduled page says there are none');
+    await app.both('scheduled-empty');
+  } finally {
+    await app.quit();
+    stub.closeAllConnections();
+    stub.close();
+  }
+}
+
 async function filesFlow(bundle, appearance) {
   const stub = await startFilesStub();
   console.log(`\n== ${appearance}: linked files and pictures`);
@@ -1510,7 +1556,7 @@ async function filesFlow(bundle, appearance) {
     check(app.clickTile(0), 'the first tool tile is there');
     check(await until('viewer', () => app.hasText('3 of 7'), 15), 'a tool tile opens the viewer on the whole chat\'s pictures');
     await sleep(800);
-    await app.shot(`10-viewer-tool-${appearance}`);
+    await app.both('viewer-tool');
     check(app.press('Next image'), 'the viewer has a Next image button');
     check(await until('next', () => app.hasText('4 of 7'), 10), 'the viewer steps to the next picture');
     await sleep(600);
@@ -1537,7 +1583,7 @@ async function filesFlow(bundle, appearance) {
 
     check(app.clickLink('report.pdf'), 'the PDF has a link');
     await sleep(2500);
-    await app.shot(`10-file-pdf-${appearance}-default`);
+    await app.both('file-pdf');
 
     check(app.clickLink('intro.wav'), 'the audio clip has a link');
     check(await until('clips', () => app.hasText('1 of 2'), 15), 'an audio file lists the chat\'s clips');
@@ -1546,11 +1592,11 @@ async function filesFlow(bundle, appearance) {
 
     await opens('a binary file', 'archive.zip', 'ZIP file');
     await sleep(600);
-    await app.shot(`10-file-binary-${appearance}-default`);
+    await app.both('file-binary');
 
     await opens('a missing file', 'gone.txt', 'There is no file at that path.');
     await sleep(600);
-    await app.shot(`10-file-missing-${appearance}-default`);
+    await app.both('file-missing');
     check(!app.hasText('Cannot open this file'), 'a missing file is a note in the panel, not an alert');
 
     // A save after the file changed on disk meets the server's 409.
@@ -1753,6 +1799,7 @@ try {
     if (flows.includes('approvals')) await approvalsFlow(bundle, appearance);
     if (flows.includes('organise')) await organiseFlow(bundle, appearance);
     if (flows.includes('routines')) await routinesFlow(bundle, appearance);
+    if (flows.includes('routines')) await routinesEmptyFlow(bundle, appearance);
     if (flows.includes('files')) await filesFlow(bundle, appearance);
     if (flows.includes('groups')) await groupsFlow(bundle, appearance);
     if (flows.includes('terminal')) await terminalFlow(bundle, appearance);
