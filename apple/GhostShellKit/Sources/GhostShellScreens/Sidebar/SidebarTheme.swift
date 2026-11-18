@@ -95,7 +95,13 @@ extension View {
     func sidebarListRow(picked: Bool = false) -> some View {
         listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: SidebarMetrics.current.touch ? 0 : 4))
             .listRowSeparator(.hidden)
-            .listRowBackground(picked ? Color.ghost.sidebarAccent : Color.ghost.sidebar)
+            .listRowBackground(ZStack {
+                Color.ghost.sidebar
+                if picked {
+                    // The page's chosen row is a rounded box on a pointer. A finger's row fills the width.
+                    if SidebarMetrics.current.touch { Color.ghost.sidebarAccent } else { RoundedRectangle(cornerRadius: GhostRadius.md).fill(Color.ghost.sidebarAccent).padding(.horizontal, 4) }
+                }
+            })
     }
 
     /// An icon button's square: 44pt for a finger and the page's smaller one for a pointer.

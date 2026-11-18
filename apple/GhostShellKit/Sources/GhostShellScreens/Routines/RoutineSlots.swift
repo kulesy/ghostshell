@@ -54,7 +54,7 @@ private struct ScheduledSidebarRow: View {
             let id = entry.id
             if entry.isPending { model.navigator.show { ScheduledFormScreen(id: id) } } else { model.navigator.show { ScheduledScreen() } }
         } label: {
-            QuietRow(title: entry.title, line: note.text, tint: note.tone == .problem ? .red : note.tone == .warning ? .orange : nil)
+            QuietRow(title: entry.title, line: note.text, tint: note.tone == .problem ? (SidebarMetrics.current.touch ? .red : Color.ghost.destructive) : note.tone == .warning ? .orange : nil)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(entry.title), \(note.text)")
