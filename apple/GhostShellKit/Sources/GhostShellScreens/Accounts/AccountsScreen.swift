@@ -15,7 +15,7 @@ public struct AccountsScreen: View {
                                onAction: { act("chrome") { try await $0.chromeOpen() } },
                                onDismiss: { act("chrome") { try await $0.chromeSeen() } })
             }
-            Text(state.list.map(accountsLead) ?? "Chats and routines run on the active account.").ghostMuted(16).fixedSize(horizontal: false, vertical: true)
+            Text(state.list.map(accountsLead) ?? "Chats and routines run on the active account.").ghostMuted(ghostBodySize).fixedSize(horizontal: false, vertical: true)
             if let list = state.list {
                 if !list.accounts.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
@@ -29,7 +29,7 @@ public struct AccountsScreen: View {
                 addForm(list)
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle(isOn: Binding(get: { list.autoSwitch }, set: { on in act("auto") { try await $0.setAutoSwitch(on) } })) {
-                        Text("Switch accounts by itself").font(.geist(14, weight: .medium)).foregroundStyle(Color.ghost.foreground)
+                        Text("Switch accounts by itself").font(.geist(ghostBodySize)).foregroundStyle(Color.ghost.foreground)
                     }
                     .tint(Color.ghost.primary)
                     .disabled(state.pending.contains("auto"))
@@ -42,7 +42,7 @@ public struct AccountsScreen: View {
             }
             if !state.problem.isEmpty { Notice(text: state.problem) }
         }
-        .navigationTitle("Accounts")
+        .pageHeader("Accounts")
         .onAppear { AccountsPresence.shared.open = true }
         .onDisappear { AccountsPresence.shared.open = false }
         .task(id: model.visible) {
@@ -63,7 +63,7 @@ public struct AccountsScreen: View {
     private func addForm(_ list: AccountList) -> some View {
         let clean = cleanName(name)
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Add an account").font(.geist(14, weight: .medium)).foregroundStyle(Color.ghost.foreground)
+            Text("Add an account").font(.geist(ghostBodySize, weight: .medium)).foregroundStyle(Color.ghost.foreground)
             HStack(spacing: 8) {
                 TextField("Name", text: $name, prompt: Text("Name, such as Work"))
                     .onChange(of: name) { _, text in if text.count > addNameLimit { name = String(text.prefix(addNameLimit)) } }
@@ -132,10 +132,10 @@ struct AccountRow: View {
 
     private var title: some View {
         HStack(spacing: 6) {
-            Text(account.name).font(.geist(16, weight: .semibold)).foregroundStyle(Color.ghost.foreground)
+            Text(account.name).font(.geist(ghostBodySize, weight: .semibold)).foregroundStyle(Color.ghost.foreground)
             if account.active {
                 Text("Active").font(.geist(12, weight: .medium)).foregroundStyle(Color.ghost.foreground).padding(.horizontal, 8).padding(.vertical, 2)
-                    .background(Color.ghost.muted, in: RoundedRectangle(cornerRadius: GhostRadius.sm, style: .continuous))
+                    .background(Color.ghost.muted, in: GhostShape(GhostRadius.sm))
             }
         }
         .accessibilityElement(children: .combine)
@@ -189,7 +189,7 @@ struct AccountRow: View {
             ForEach(account.chats) { chat in
                 HStack {
                     Button { model.navigator.openSession(chat.id) } label: { Text(chat.title.isEmpty ? "Untitled" : chat.title).font(.geist(14)).lineLimit(1) }
-                        .buttonStyle(.plain).foregroundStyle(Color.ghost.foreground).frame(minHeight: 44).contentShape(Rectangle())
+                        .buttonStyle(.plain).foregroundStyle(Color.ghost.foreground).phoneField().contentShape(Rectangle())
                     Spacer(minLength: 8)
                     Text(chatStateWords(chat.state)).ghostMuted(12)
                 }

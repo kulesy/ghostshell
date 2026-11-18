@@ -13,12 +13,12 @@ public struct PasskeysScreen: View {
 
     public var body: some View {
         FlatForm(spacing: 16) {
-            Text(passkeyLead).ghostMuted(16).fixedSize(horizontal: false, vertical: true)
+            Text(passkeyLead).ghostMuted(ghostBodySize).fixedSize(horizontal: false, vertical: true)
             if let list {
                 VStack(alignment: .leading, spacing: 0) {
                     Rule()
                     if list.passkeys.isEmpty {
-                        Text("No passkeys added yet.").ghostMuted(16).padding(.vertical, 14)
+                        Text("No passkeys added yet.").ghostMuted(ghostBodySize).padding(.vertical, 14)
                         Rule()
                     } else {
                         ForEach(list.passkeys) { passkey in
@@ -30,7 +30,7 @@ public struct PasskeysScreen: View {
                 if canAdd(list) {
                     VStack(alignment: .leading, spacing: 8) {
                         Button { Task { await add() } } label: { Text(adding ? "Adding a passkey" : "Add a passkey") }
-                            .buttonStyle(.ghost(.outline))
+                            .buttonStyle(.ghost(.primary))
                             .disabled(adding)
                         if added { Text("Passkey added.").ghostMuted(14) }
                     }
@@ -38,7 +38,7 @@ public struct PasskeysScreen: View {
                 } else if let url = pageURL {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Add a passkey from the page in a browser.").font(.geist(14)).foregroundStyle(Color.ghost.foreground)
-                        Link(url.absoluteString, destination: url).font(.geist(14)).frame(minHeight: 44, alignment: .leading)
+                        Link(url.absoluteString, destination: url).font(.geist(14)).phoneField()
                     }
                 }
                 if !list.available { Text(passkeyUnavailable).ghostMuted(13).fixedSize(horizontal: false, vertical: true) }
@@ -48,7 +48,7 @@ public struct PasskeysScreen: View {
             }
             if !problem.isEmpty { Notice(text: problem) }
         }
-        .navigationTitle("Passkeys")
+        .pageHeader("Passkeys")
         .task { await load() }
     }
 
@@ -66,7 +66,7 @@ public struct PasskeysScreen: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(passkeyDevice(passkey)).font(.geist(16, weight: .semibold)).foregroundStyle(Color.ghost.foreground)
+                    Text(passkeyDevice(passkey)).font(.geist(ghostBodySize, weight: .medium)).foregroundStyle(Color.ghost.foreground)
                     Text([passkey.rpId, "Added \(passkeyDate(passkey.created))", lastUsedWords(passkey.used)].filter { !$0.isEmpty }.joined(separator: "   "))
                         .font(.geistMono(12)).foregroundStyle(Color.ghost.mutedForeground)
                 }
