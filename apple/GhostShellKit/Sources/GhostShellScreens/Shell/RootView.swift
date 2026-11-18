@@ -42,10 +42,9 @@ public struct RootView: View {
                 #endif
                 .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
                 // NOTE: [18 Nov 2026] EK - on macOS 27.0 a toolbar modifier after this one drops the width, and the column falls to about 145pt.
-                // The minimum stays low because a chat pane is wider than 640 less a 240pt column, and a split wider than the window runs off both edges.
-                .navigationSplitViewColumnWidth(min: Self.sidebarMinimum, ideal: sidebarWidth, max: sidebarWidth)
+                .navigationSplitViewColumnWidth(sidebarWidth)
         } detail: {
-            if let detail = model.navigator.detail { detail } else { EmptyDetail() }
+            detailPane
         }
         #if os(macOS)
         .toolbar(removing: .sidebarToggle)
@@ -57,7 +56,15 @@ public struct RootView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
     }
 
-    private static let sidebarMinimum: CGFloat = 200
+    @ViewBuilder private var detailPane: some View {
+        let pane = Group { if let detail = model.navigator.detail { detail } else { EmptyDetail() } }
+        #if os(macOS)
+        // NOTE: [18 Nov 2026] EK - A chat pane asks for more than 640pt less the sidebar, and the split then runs wider than the window and off both its edges.
+        NoMinimumWidth { pane }
+        #else
+        pane
+        #endif
+    }
 
     /// The page's `--list-width`, 25.5rem, from 56rem up. Narrower, the page's drawer is 18rem, which the Mac keeps beside the detail pane.
     private var sidebarWidth: CGFloat {
@@ -68,6 +75,26 @@ public struct RootView: View {
         #endif
     }
 }
+
+#if os(macOS)
+/// Fills what it is offered and reports no minimum width, so a pane inside it can be squeezed without widening the split that holds it.
+private struct NoMinimumWidth<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View { NoMinimumLayout { content } }
+}
+
+private struct NoMinimumLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let ideal = subviews.first?.sizeThatFits(.unspecified) ?? .zero
+        return CGSize(width: proposal.width ?? ideal.width, height: proposal.height ?? ideal.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(bounds.size))
+    }
+}
+#endif
 
 /// The page's empty pane: the mark over a soft shadow, and a line with the shortcuts as key caps.
 struct EmptyDetail: View {
