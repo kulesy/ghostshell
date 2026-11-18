@@ -10,6 +10,7 @@ struct TerminalInput: View {
     let chat: ChatContext
     let store: TerminalStore
     @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var scheme
     @State private var selection: TextSelection?
     @State private var walk = Walk()
 
@@ -34,14 +35,10 @@ struct TerminalInput: View {
         #endif
     }()
 
+    #if os(iOS)
     /// A thumb's 44pt comes from the frame around the button, so the button itself stays the size of the Mac's.
-    private static let runSize: ControlSize = {
-        #if os(macOS)
-        .small
-        #else
-        .regular
-        #endif
-    }()
+    private static let runSize = ControlSize.regular
+    #endif
 
     private var state: TerminalState { store.state }
     /// The target at the moment of a key, which a redraw may not have caught up with.
@@ -50,40 +47,74 @@ struct TerminalInput: View {
     var body: some View {
         let target = shown
         let sending = target.run != nil || target.ended
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Self.gap) {
             label(target)
             #if os(iOS)
             keyRow(target)
             #endif
-            HStack(alignment: Self.rowAlignment, spacing: 8) {
-                Text(sending ? ">" : "$").font(ChatStyle.mono).foregroundStyle(.secondary).padding(.bottom, 1).accessibilityHidden(true)
-                TextField(target.run != nil ? "Send a line to the running command" : "Run a command", text: Binding(get: { state.input }, set: { store.setInput($0) }),
-                          selection: $selection, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(ChatStyle.mono)
-                    .lineLimit(1...8)
-                    .focused($focused)
-                    .autocorrectionDisabled()
-                    #if !os(macOS)
-                    .textInputAutocapitalization(.never)
-                    #endif
-                    .onKeyPress(phases: .down) { press in keyPressed(press) }
-                    .accessibilityLabel(labelText(target))
-                Button(action: submit) { Image(systemName: "play.fill").frame(width: 20, height: 20) }
-                    .buttonStyle(.borderedProminent).controlSize(Self.runSize).phoneIconTouch()
-                    .disabled(target.ended || (target.run == nil && state.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
-                    .help(sending ? "Send line" : "Run command")
-                    .accessibilityLabel(sending ? "Send line" : "Run command")
-            }
-            .phoneFieldRow($focused)
-            Text(hint(target)).font(ChatStyle.caption).foregroundStyle(.secondary)
+            fieldBox(target, sending: sending)
+            Text(hint(target)).font(ChatStyle.caption).foregroundStyle(ChatStyle.muted)
         }
-        .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
+        .padding(Self.inset)
+        .background(Self.ground)
+        .overlay(alignment: .top) { Rectangle().fill(Color.ghost.border).frame(height: 1) }
         #if os(macOS)
         .onAppear { focused = true }
         #endif
+    }
+
+    #if os(macOS)
+    private static let gap = 0.25 * GhostMetrics.current.rem
+    private static let inset = EdgeInsets(top: 0.5 * GhostMetrics.current.rem, leading: 0.75 * GhostMetrics.current.rem, bottom: 0.75 * GhostMetrics.current.rem, trailing: 0.75 * GhostMetrics.current.rem)
+    private static let ground = AnyShapeStyle(Color.ghost.background)
+    #else
+    private static let gap: CGFloat = 4
+    private static let inset = EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
+    private static let ground = AnyShapeStyle(.bar)
+    #endif
+
+    private func fieldBox(_ target: (run: TerminalRun?, ended: Bool), sending: Bool) -> some View {
+        HStack(alignment: Self.rowAlignment, spacing: 8) {
+            Text(sending ? ">" : "$").font(ChatStyle.mono).foregroundStyle(ChatStyle.muted).padding(.bottom, 1).accessibilityHidden(true)
+            TextField(target.run != nil ? "Send a line to the running command" : "Run a command", text: Binding(get: { state.input }, set: { store.setInput($0) }),
+                      selection: $selection, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(ChatStyle.mono)
+                .lineLimit(1...8)
+                .focused($focused)
+                .autocorrectionDisabled()
+                #if !os(macOS)
+                .textInputAutocapitalization(.never)
+                #endif
+                .onKeyPress(phases: .down) { press in keyPressed(press) }
+                .accessibilityLabel(labelText(target))
+            runButton(target, sending: sending)
+        }
+        .phoneFieldRow($focused)
+        #if os(macOS)
+        .padding(EdgeInsets(top: 0.25 * GhostMetrics.current.rem, leading: 0.75 * GhostMetrics.current.rem, bottom: 0.25 * GhostMetrics.current.rem, trailing: 0.25 * GhostMetrics.current.rem))
+        .background(scheme == .dark ? Color.ghost.input.opacity(0.3) : .clear, in: GhostCorner(GhostMetrics.current.lg))
+        .overlay(GhostCorner(GhostMetrics.current.lg).strokeBorder(focused ? Color.ghost.ring : Color.ghost.input))
+        .overlay { if focused { GhostCorner(GhostMetrics.current.lg).inset(by: -1.5).stroke(Color.ghost.ring.opacity(0.5), lineWidth: 3) } }
+        #endif
+    }
+
+    private func runButton(_ target: (run: TerminalRun?, ended: Bool), sending: Bool) -> some View {
+        Button(action: submit) {
+            #if os(macOS)
+            Image(systemName: "play")
+            #else
+            Image(systemName: "play.fill").frame(width: 20, height: 20)
+            #endif
+        }
+        #if os(macOS)
+        .buttonStyle(.ghost(.primary, size: .icon))
+        #else
+        .buttonStyle(.borderedProminent).controlSize(Self.runSize).phoneIconTouch()
+        #endif
+        .disabled(target.ended || (target.run == nil && state.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+        .help(sending ? "Send line" : "Run command")
+        .accessibilityLabel(sending ? "Send line" : "Run command")
     }
 
     private func labelText(_ target: (run: TerminalRun?, ended: Bool)) -> String {
@@ -95,7 +126,7 @@ struct TerminalInput: View {
     private func label(_ target: (run: TerminalRun?, ended: Bool)) -> some View {
         HStack(spacing: 8) {
             Text(target.run.map { firstLine($0.command) } ?? (target.ended ? "That command has ended" : TerminalRules.inHome(state.cwd, home: state.home)))
-                .font(ChatStyle.monoSmall).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                .font(ChatStyle.monoSmall).foregroundStyle(ChatStyle.muted).lineLimit(1).truncationMode(.middle)
                 .accessibilityHidden(true)
             Spacer(minLength: 0)
             if let run = target.run, run.running, !run.pending, let id = run.id {
