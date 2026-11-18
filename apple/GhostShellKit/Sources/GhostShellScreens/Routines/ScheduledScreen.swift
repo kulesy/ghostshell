@@ -101,7 +101,7 @@ private struct ScheduledRow: View {
             if let retry = s.retry, s.status == "pending" {
                 alert("\(retryWords(retry)). The last try said: \(s.lastError ?? "no reason given")", Color.ghost.warningForeground)
             } else if let error = s.lastError, !error.isEmpty, s.status == "skipped" || s.status == "started" {
-                alert(error, Color.ghost.destructive)
+                alert(error, macOr(Color.ghost.destructive, Color.ghost.warningForeground))
             }
         }
     }
@@ -116,13 +116,13 @@ private struct ScheduledRow: View {
             } label: {
                 Label("Actions for \(entry.title)", systemImage: "ellipsis").labelStyle(.iconOnly).foregroundStyle(Color.ghost.foreground).phoneIconTouch()
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .menuStyle(.borderlessButton).menuIndicator(macOr(.hidden, .automatic)).fixedSize()
         }
     }
 
     @ViewBuilder private var status: some View {
         if entry.status == "started", let id = entry.sessionId, !id.isEmpty {
-            Button { model.navigator.openSession(id) } label: { Text("Started ") + Text(fireTime(entry.startedAt)).underline() }
+            Button { model.navigator.openSession(id) } label: { macOr(Text("Started ") + Text(fireTime(entry.startedAt)).underline(), Text("Started \(fireTime(entry.startedAt))").underline()) }
                 .buttonStyle(.plain).font(.geist(ghostBodySize)).foregroundStyle(Color.ghost.foreground).phoneField()
         } else {
             let when = ["pending", "cancelled", "skipped"].contains(entry.status) ? fireTime(entry.at) : ""
@@ -144,7 +144,7 @@ private struct ScheduledRow: View {
     }
 
     private func alert(_ text: String, _ tint: Color) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle").symbolVariant(.none).font(.geist(14)).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
+        Label(text, systemImage: macOr("exclamationmark.triangle", "exclamationmark.triangle.fill")).font(.geist(14)).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -29,7 +29,7 @@ public struct AccountsScreen: View {
                 addForm(list)
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle(isOn: Binding(get: { list.autoSwitch }, set: { on in act("auto") { try await $0.setAutoSwitch(on) } })) {
-                        Text("Switch accounts by itself").font(.geist(ghostBodySize)).foregroundStyle(Color.ghost.foreground)
+                        Text("Switch accounts by itself").font(.geist(14, weight: macOr(.regular, .medium))).foregroundStyle(Color.ghost.foreground)
                     }
                     .tint(Color.ghost.primary)
                     .disabled(state.pending.contains("auto"))
@@ -63,7 +63,7 @@ public struct AccountsScreen: View {
     private func addForm(_ list: AccountList) -> some View {
         let clean = cleanName(name)
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Add an account").font(.geist(ghostBodySize, weight: .medium)).foregroundStyle(Color.ghost.foreground)
+            Text("Add an account").font(.geist(14, weight: .medium)).foregroundStyle(Color.ghost.foreground)
             HStack(spacing: 8) {
                 TextField("Name", text: $name, prompt: Text("Name, such as Work"))
                     .onChange(of: name) { _, text in if text.count > addNameLimit { name = String(text.prefix(addNameLimit)) } }

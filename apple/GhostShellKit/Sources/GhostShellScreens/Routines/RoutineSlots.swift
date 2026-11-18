@@ -87,7 +87,7 @@ struct IdleRoutineRow: View {
                 let id = full.id
                 if model.routines.features.routineEdits { model.navigator.show(page: "routine:\(id)") { RoutineFormScreen(id: id) } } else { model.navigator.show { RoutinesScreen() } }
             } label: {
-                QuietRow(title: full.title, line: words, tint: nil, selected: model.navigator.page == "routine:\(full.id)")
+                QuietRow(title: full.title, line: words, tint: nil, selected: macOr(model.navigator.page == "routine:\(full.id)", false))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(full.title), \(words)")

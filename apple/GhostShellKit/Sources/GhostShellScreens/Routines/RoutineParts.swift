@@ -83,7 +83,7 @@ struct SuggestField<Tag: Hashable>: View {
                     Image(systemName: "chevron.down").font(.footnote).foregroundStyle(Color.ghost.mutedForeground).phoneIconTouch()
                 }
                 .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
+                .menuIndicator(macOr(.hidden, .automatic))
                 .fixedSize()
                 .help("Choose one you have used")
                 .accessibilityLabel("\(label) choices")

@@ -35,6 +35,15 @@ let ghostBodySize: CGFloat = 16
 let ghostBodySize: CGFloat = 14
 #endif
 
+/// A look the Mac takes from the page while the phone keeps the one it shipped with.
+func macOr<T>(_ mac: @autoclosure () -> T, _ phone: @autoclosure () -> T) -> T {
+    #if os(macOS)
+    mac()
+    #else
+    phone()
+    #endif
+}
+
 /// The page's empty state: a title, a muted paragraph and an action, left aligned between two 1px rules.
 struct FlatEmpty<Action: View>: View {
     let title: String

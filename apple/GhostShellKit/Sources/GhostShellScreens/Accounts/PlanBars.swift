@@ -12,12 +12,12 @@ struct PlanBars: View {
             ForEach(rows) { row in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(row.label).font(page ? .geist(14) : .callout).foregroundStyle(page ? Color.ghost.foreground : .primary)
+                        Text(row.label).font(page ? .geist(ghostBodySize) : .callout).foregroundStyle(page ? Color.ghost.foreground : .primary)
                         Spacer(minLength: 8)
-                        Text(page ? "\(row.percent)%" : row.text).font(page ? .geist(14) : .caption).foregroundStyle(page ? Color.ghost.foreground : .secondary).multilineTextAlignment(.trailing)
+                        Text(page ? macOr("\(row.percent)%", row.text) : row.text).font(page ? .geist(ghostBodySize) : .caption).foregroundStyle(page ? Color.ghost.foreground : .secondary).multilineTextAlignment(.trailing)
                     }
                     bar(Double(min(max(row.percent, 0), 100)), tint(row.severity))
-                    if page, let reset = row.reset { Text(reset).ghostMuted(12) }
+                    if macOr(page, false), let reset = row.reset { Text(reset).ghostMuted(12) }
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(row.label), \(row.text)")

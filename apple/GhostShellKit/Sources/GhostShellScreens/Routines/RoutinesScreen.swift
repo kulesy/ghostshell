@@ -177,7 +177,7 @@ private struct RoutineRow: View {
                 } label: {
                     Label("Actions for \(routine.title)", systemImage: "ellipsis").labelStyle(.iconOnly).foregroundStyle(Color.ghost.foreground).phoneIconTouch()
                 }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .menuStyle(.borderlessButton).menuIndicator(macOr(.hidden, .automatic)).fixedSize()
             }
         }
     }

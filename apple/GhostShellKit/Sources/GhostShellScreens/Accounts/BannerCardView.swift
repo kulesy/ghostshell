@@ -27,7 +27,7 @@ struct BannerCardView: View {
                         Text(verbatim: "\(n + 1). \(step)").font(.geist(13)).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(.leading, 16)
+                .padding(.leading, macOr(16, 0))
                 Text(card.caution).font(.geist(13)).foregroundStyle(quiet).fixedSize(horizontal: false, vertical: true)
             }
             if !card.changes.isEmpty { changes }
@@ -39,9 +39,9 @@ struct BannerCardView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(card.warning ? Color.ghost.warningMuted : Color.ghost.card, in: shape)
+        .background(card.warning ? Color.ghost.warningMuted : macOr(Color.ghost.card, Color.ghost.muted), in: shape)
         .overlay { shape.strokeBorder(card.warning ? Color.ghost.warning : Color.ghost.border, lineWidth: 1) }
-        .shadow(color: .black.opacity(card.warning ? 0 : 0.06), radius: 2, y: 1)
+        .shadow(color: .black.opacity(macOr(card.warning ? 0 : 0.06, 0)), radius: 2, y: 1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(card.title)
     }
@@ -49,6 +49,8 @@ struct BannerCardView: View {
     private var changes: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(card.changes.enumerated()), id: \.offset) { _, change in
+                #if os(macOS)
+                // The page lists each change as a bullet with an ink, underlined link.
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(verbatim: "\u{2022}").accessibilityHidden(true)
                     Group {
@@ -57,6 +59,12 @@ struct BannerCardView: View {
                     .lineLimit(2)
                 }
                 .font(.geist(13))
+                #else
+                Group {
+                    if let url = change.url { Link(change.title, destination: url) } else { Text(change.title) }
+                }
+                .font(.geist(13)).lineLimit(2)
+                #endif
             }
             if card.more > 0 { Text("and \(card.more) more").font(.geist(13)).foregroundStyle(quiet) }
         }

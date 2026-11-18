@@ -29,7 +29,7 @@ struct SidebarFooter: View {
     }
 
     private func footLink(_ title: String, page: String, action: @escaping () -> Void) -> some View {
-        let current = model.navigator.page == page
+        let current = macOr(model.navigator.page == page, false)
         return Button(action: action) {
             Text(title)
                 .font(.geist(SidebarMetrics.current.footFont, weight: .medium, relativeTo: .body))
@@ -56,7 +56,7 @@ private struct AccountMenu: View {
             Divider()
             Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") { Task { await model.signOut() } }
         } label: {
-            Image(systemName: "person.circle").font(.system(size: SidebarMetrics.current.touch ? 19 : 16)).foregroundStyle(Color.ghost.sidebarMuted).sidebarIconTouch()
+            Image(systemName: macOr("person.circle", "person.crop.circle")).font(.system(size: macOr(16, 19))).foregroundStyle(Color.ghost.sidebarMuted).sidebarIconTouch()
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

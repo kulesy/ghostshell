@@ -30,7 +30,7 @@ public struct PasskeysScreen: View {
                 if canAdd(list) {
                     VStack(alignment: .leading, spacing: 8) {
                         Button { Task { await add() } } label: { Text(adding ? "Adding a passkey" : "Add a passkey") }
-                            .buttonStyle(.ghost(.primary))
+                            .buttonStyle(.ghost(macOr(.primary, .outline)))
                             .disabled(adding)
                         if added { Text("Passkey added.").ghostMuted(14) }
                     }
@@ -69,7 +69,7 @@ public struct PasskeysScreen: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(passkeyDevice(passkey)).font(.geist(ghostBodySize, weight: .medium)).foregroundStyle(Color.ghost.foreground)
+                    Text(passkeyDevice(passkey)).font(.geist(ghostBodySize, weight: macOr(.medium, .semibold))).foregroundStyle(Color.ghost.foreground)
                     Text([passkey.rpId, "Added \(passkeyDate(passkey.created))", lastUsedWords(passkey.used)].filter { !$0.isEmpty }.joined(separator: "   "))
                         .font(.geistMono(12)).foregroundStyle(Color.ghost.mutedForeground)
                 }
