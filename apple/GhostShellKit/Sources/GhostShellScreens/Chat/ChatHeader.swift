@@ -70,9 +70,9 @@ struct ChatHeader: View {
     private func subtitle(_ chat: ChatContext) -> String {
         let session = chat.session
         let modelLabel = (chat.status?.shownModel ?? chat.status?.model).map { ComposerOptions.modelName($0) }
-        let effort = chat.status?.effort.map(ComposerOptions.effortName)
+        let settings = [modelLabel, chat.status?.effort.map { "\($0) effort" }].compactMap { $0 }.joined(separator: ", ")
         return [session.cwd.isEmpty ? nil : SidebarOutline.folderName(session.cwd), session.branch.isEmpty ? nil : session.branch,
-                session.routine.map { "\($0) routine" }, modelLabel, effort]
+                session.routine.map { "\($0) routine" }, settings.isEmpty ? nil : settings]
             .compactMap { $0 }.joined(separator: "  ")
     }
 
