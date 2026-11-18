@@ -501,6 +501,7 @@ class App {
     return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
   }
   menu(bar, item) { return this.run('menu', bar, item).ok === true; }
+  menuItems(bar) { const items = this.run('menuitems', bar); return Array.isArray(items) ? items : []; }
   // Opens a menu or pop-up button by its name, then presses one of its items.
   // `name` can be a list, because an icon-only menu button is named by its label or by its icon's name, whichever the system reports.
   pick(name, item) {
@@ -1782,6 +1783,7 @@ async function terminalFlow(bundle, appearance) {
     const beside = () => { const run = runButton(); const box = input(); return !!run && !!box && run.pos[0] + run.size[0] <= box.pos[0] + 1; };
     app.resize(WIDE_SIZE);
     await sleep(1500);
+    console.log(`View menu: ${JSON.stringify(app.menuItems('View'))}`);
     check(app.menu('View', 'Hide Sidebar'), 'the View menu hides the sidebar');
     await sleep(2500);
     await app.shot(`${app.tag}-term-wide-file-${appearance}`);
