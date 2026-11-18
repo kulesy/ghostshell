@@ -1758,7 +1758,7 @@ async function terminalFlow(bundle, appearance) {
     await app.both('term-after-stop');
 
     // The file panel is the inspector beside the chat pane and the terminal covers that pane, so both can be open and each keeps its controls.
-    check(app.clickLink('NOTES.md'), 'the reply has a file link');
+    check(await until('file link', () => { app.scrollThread(0); return app.clickLink('NOTES.md'); }, 10), 'the reply has a file link');
     check(await until('file', () => app.hasText('Run the upload test, then the build.'), 15), 'the file opens in its panel');
     await sleep(1200);
     check(!!input() && !!toggle() && app.hasButton('Hide file'), 'the terminal input and both toolbar buttons are there with the file panel open');
