@@ -35,5 +35,5 @@ struct ViewMenuContent: View {
 
 extension ViewLamp {
     /// The page's colours: warning for waiting, success for working.
-    var color: Color { self == .waiting ? .orange : .green }
+    var color: Color { self == .waiting ? Color.ghost.warning : Color.ghost.successForeground }
 }
