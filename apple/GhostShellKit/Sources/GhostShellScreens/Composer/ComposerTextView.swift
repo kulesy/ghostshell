@@ -14,7 +14,13 @@ struct ComposerTextView: NSViewRepresentable {
     let focusRequests: Int
     let autofocus: Bool
 
-    static let font = NSFont.systemFont(ofSize: 14)
+    /// Geist at the page's 0.875rem, or the system font if the bundled files did not load.
+    static let font: NSFont = {
+        let size = 14 * GhostMetrics.current.scale
+        GhostFonts.register()
+        let family = NSFontDescriptor(fontAttributes: [.family: GhostFonts.sans])
+        return NSFont(descriptor: family, size: size) ?? .systemFont(ofSize: size)
+    }()
     static let maxHeight: CGFloat = 220
 
     func makeCoordinator() -> Coordinator { Coordinator(model) }

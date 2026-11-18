@@ -99,23 +99,47 @@ private struct PictureTile: View {
     }
 }
 
+/// The inside of a file card: a square showing the extension, then the name with the kind and size under it. The composer's chips draw the same card.
+struct FileFace: View {
+    let name: String
+    let line: String
+    var working = false
+    private let rem = GhostMetrics.current.rem
+
+    var body: some View {
+        HStack(spacing: 0.625 * rem) {
+            ZStack {
+                if working { ProgressView().controlSize(.small) } else { Text(verbatim: glyph).font(.geistMono(0.625 * rem, weight: .semibold)).tracking(0.02 * 0.625 * rem) }
+            }
+            .foregroundStyle(Color.ghost.mutedForeground)
+            .frame(width: 2.25 * rem, height: 2.25 * rem)
+            .background(Color.ghost.muted, in: GhostCorner(GhostMetrics.current.lg))
+            VStack(alignment: .leading, spacing: 0) {
+                Text(verbatim: name).font(.geist(0.875 * rem, weight: .medium)).lineLimit(1)
+                Text(verbatim: line).font(.geist(0.75 * rem)).foregroundStyle(Color.ghost.mutedForeground).lineLimit(1)
+            }
+        }
+    }
+
+    private var glyph: String {
+        let ext = ChatFiles.fileExtension(name).uppercased().prefix(4)
+        return ext.isEmpty ? "FILE" : String(ext)
+    }
+}
+
 /// A file a person sent. It is not openable, because it was never one of the chat's linked files.
 private struct FileCardView: View {
     let file: ChatFile
+    private let rem = GhostMetrics.current.rem
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc").font(.system(size: 18, weight: .light)).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(verbatim: file.name).font(ChatStyle.small.weight(.medium)).lineLimit(1).truncationMode(.middle)
-                Text(verbatim: ChatFiles.cardLine(file)).font(ChatStyle.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .frame(maxWidth: 240, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-        .help(file.path)
-        .accessibilityElement(children: .combine)
+        FileFace(name: file.name, line: ChatFiles.cardLine(file))
+            .padding(EdgeInsets(top: 0.5 * rem, leading: 0.5 * rem, bottom: 0.5 * rem, trailing: 0.75 * rem))
+            .frame(width: 14 * rem, alignment: .leading)
+            .background(Color.ghost.card, in: GhostCorner(GhostMetrics.current.xl))
+            .overlay(GhostCorner(GhostMetrics.current.xl).strokeBorder(Color.ghost.border))
+            .help(file.path)
+            .accessibilityElement(children: .combine)
     }
 }
 
