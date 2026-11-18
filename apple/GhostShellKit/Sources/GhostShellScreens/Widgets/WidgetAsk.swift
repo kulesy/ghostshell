@@ -55,8 +55,8 @@ struct WidgetAsk: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ChatStyle.card, in: RoundedRectangle(cornerRadius: ChatStyle.radiusCard))
-        .overlay(RoundedRectangle(cornerRadius: ChatStyle.radiusCard).strokeBorder(ChatStyle.border))
+        .background(ChatStyle.card, in: GhostCorner(ChatStyle.radiusCard))
+        .overlay(GhostCorner(ChatStyle.radiusCard).strokeBorder(ChatStyle.border))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Request from the widget")
         .task(id: request.error) {
