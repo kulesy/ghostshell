@@ -2,6 +2,7 @@
 // over HTTP, so the cookie headers, the route order and the lockout are checked where they are wired together.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -16,6 +17,9 @@ const HTTPS = { 'x-forwarded-proto': 'https' };
 const listUrl = origin => `/api/passkeys?origin=${encodeURIComponent(origin)}`;
 const maxAge = cookie => Number(/; Max-Age=(\d+)/.exec(cookie)[1]);
 const closeTo = (seconds, days) => Math.abs(seconds - days * 86400) <= 5;
+
+const keyOf = token => `sha256:${crypto.createHash('sha256').update(token).digest('hex')}`;
+const tokenFile = s => JSON.parse(fs.readFileSync(s.tokens, 'utf8'));
 
 function rewriteTokens(s, change) {
   const tokens = JSON.parse(fs.readFileSync(s.tokens, 'utf8'));
@@ -363,20 +367,20 @@ test('renew sends the cookie again at most once a day, and pushes the expiry 90 
   assert.equal(fresh.headers['set-cookie'], undefined);
 
   rewriteTokens(s, tokens => {
-    tokens[token].used = new Date(Date.now() - 2 * DAY).toISOString();
-    tokens[token].expires = new Date(Date.now() + 5 * DAY).toISOString();
+    tokens[keyOf(token)].used = new Date(Date.now() - 2 * DAY).toISOString();
+    tokens[keyOf(token)].expires = new Date(Date.now() + 5 * DAY).toISOString();
   });
   const due = await renew();
   assert.equal(due.status, 200);
   assert.match(due.headers['set-cookie'][0], new RegExp(`^capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=\\d+$`));
   assert.ok(closeTo(maxAge(due.headers['set-cookie'][0]), 90), due.headers['set-cookie'][0]);
-  const record = JSON.parse(fs.readFileSync(s.tokens, 'utf8'))[token];
+  const record = tokenFile(s)[keyOf(token)];
   assert.ok(Math.abs(Date.parse(record.expires) - Date.now() - 90 * DAY) < 60_000);
   assert.ok(Date.now() - Date.parse(record.used) < 60_000);
 
   assert.equal((await renew()).headers['set-cookie'], undefined);
 
-  rewriteTokens(s, tokens => { tokens[token].used = new Date(Date.now() - 2 * DAY).toISOString(); });
+  rewriteTokens(s, tokens => { tokens[keyOf(token)].used = new Date(Date.now() - 2 * DAY).toISOString(); });
   assert.match((await renew(HTTPS)).headers['set-cookie'][0], /; Max-Age=\d+; Secure$/);
 });
 
@@ -385,14 +389,26 @@ test('renew stops pushing the expiry past 365 days after sign-in, and the cookie
   const { token } = await signIn(s);
   const made = Date.now() - 300 * DAY;
   rewriteTokens(s, tokens => {
-    tokens[token].created = new Date(made).toISOString();
-    tokens[token].used = new Date(Date.now() - 2 * DAY).toISOString();
-    tokens[token].expires = new Date(Date.now() + 80 * DAY).toISOString();
+    tokens[keyOf(token)].created = new Date(made).toISOString();
+    tokens[keyOf(token)].used = new Date(Date.now() - 2 * DAY).toISOString();
+    tokens[keyOf(token)].expires = new Date(Date.now() + 80 * DAY).toISOString();
   });
   const due = await request(s, 'POST', '/renew', { headers: as(token), json: {} });
   assert.equal(due.status, 200);
   assert.ok(closeTo(maxAge(due.headers['set-cookie'][0]), 65), due.headers['set-cookie'][0]);
-  assert.equal(JSON.parse(fs.readFileSync(s.tokens, 'utf8'))[token].expires, new Date(made + 365 * DAY).toISOString());
+  assert.equal(tokenFile(s)[keyOf(token)].expires, new Date(made + 365 * DAY).toISOString());
+});
+
+test('a value copied out of the token file does not sign in to the API', async () => {
+  const s = await start();
+  const { token } = await signIn(s);
+  const keys = Object.keys(tokenFile(s));
+  assert.deepEqual(keys, [keyOf(token)]);
+  assert.ok(!fs.readFileSync(s.tokens, 'utf8').includes(token));
+  for (const copied of [keys[0], keys[0].slice('sha256:'.length)]) {
+    assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(copied) })).status, 401, copied);
+  }
+  assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(token) })).status, 200);
 });
 
 test('signing out clears the cookie, with Secure behind an https proxy, ends that session and has the browser drop its cache', async () => {
@@ -411,7 +427,7 @@ test('signing out clears the cookie, with Secure behind an https proxy, ends tha
 test('signing out from a tab whose sign-in a new password already ended still clears the cookie and the cache', async () => {
   const s = await start();
   const { token } = await signIn(s);
-  rewriteTokens(s, tokens => { delete tokens[token]; });
+  rewriteTokens(s, tokens => { delete tokens[keyOf(token)]; });
 
   const out = await request(s, 'POST', '/logout', { headers: as(token), json: {} });
   assert.equal(out.status, 303);
@@ -428,7 +444,8 @@ test('a token file in the old shape keeps its browsers signed in, and an expired
 
   assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(live) })).status, 200);
   assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(expired) })).status, 401);
-  const record = JSON.parse(fs.readFileSync(s.tokens, 'utf8'))[live];
+  assert.ok(!fs.readFileSync(s.tokens, 'utf8').includes(live), 'the old raw tokens are hashed on disk');
+  const record = tokenFile(s)[keyOf(live)];
   assert.ok(Math.abs(Date.parse(record.expires) - Date.now() - 90 * DAY) < 60_000);
   assert.ok(Date.parse(record.created) < Date.now());
   assert.equal(record.device, 'Chrome 141 on macOS');

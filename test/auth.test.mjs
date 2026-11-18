@@ -1,6 +1,7 @@
 // Run with `npm test`. Sign-in is driven by a clock we move by hand, so a year passes in a loop.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,6 +27,8 @@ function rig() {
   };
 }
 
+// The file's key for a token, written out here so a change to the on-disk form shows up as a failing test.
+const keyOf = token => `sha256:${crypto.createHash('sha256').update(token).digest('hex')}`;
 const withCookie = token => ({ headers: { cookie: `theme=dark; capcom=${token}; other=1` } });
 
 test('the cookie keeps its flags, and lasts as long as the token has left', () => {
@@ -59,7 +62,7 @@ test('a sign-in gets a token with when it was made, last used, when it ends and 
   const token = r.auth.issue(CHROME);
   assert.match(token, /^[0-9a-f]{64}$/);
   assert.equal(r.auth.check(withCookie(token)), token);
-  const record = r.saved()[token];
+  const record = r.saved()[keyOf(token)];
   assert.deepEqual(record, {
     created: '2026-10-16T09:00:00.000Z',
     used: '2026-10-16T09:00:00.000Z',
@@ -105,9 +108,9 @@ test('using a token pushes its end 90 days out, written and re-sent at most once
 
   r.tick(1000);
   r.auth.touch(token, CHROME);
-  assert.equal(r.saved()[token].used, new Date(r.now()).toISOString());
-  assert.equal(r.saved()[token].expires, new Date(r.now() + IDLE).toISOString());
-  assert.equal(r.saved()[token].created, '2026-10-16T09:00:00.000Z');
+  assert.equal(r.saved()[keyOf(token)].used, new Date(r.now()).toISOString());
+  assert.equal(r.saved()[keyOf(token)].expires, new Date(r.now() + IDLE).toISOString());
+  assert.equal(r.saved()[keyOf(token)].created, '2026-10-16T09:00:00.000Z');
   assert.equal(r.auth.cookieDue(token), true);
   assert.equal(r.auth.cookieDue(token), false);
 
@@ -136,7 +139,7 @@ test('each use pushes the end 90 days out until 365 days after sign-in comes fir
     r.tick(55 * DAY);
     assert.equal(r.auth.check(withCookie(token)), token, `day ${day}`);
     r.auth.touch(token, CHROME);
-    assert.equal(r.saved()[token].expires, new Date(made + ends * DAY).toISOString(), `used on day ${day}`);
+    assert.equal(r.saved()[keyOf(token)].expires, new Date(made + ends * DAY).toISOString(), `used on day ${day}`);
     assert.equal(r.auth.cookie(token, false), `capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=${(ends - day) * 86400}`, `cookie on day ${day}`);
   }
 });
@@ -162,11 +165,11 @@ test('a record with no readable creation time renews on the 90 day rule instead 
   const r = rig();
   const token = r.auth.issue(CHROME);
   const record = r.saved();
-  delete record[token].created;
+  delete record[keyOf(token)].created;
   fs.writeFileSync(r.file, JSON.stringify(record));
   r.tick(2 * DAY);
   r.auth.touch(token, CHROME);
-  assert.equal(r.saved()[token].expires, new Date(r.now() + IDLE).toISOString());
+  assert.equal(r.saved()[keyOf(token)].expires, new Date(r.now() + IDLE).toISOString());
 });
 
 test('keeps the first browser label, and fills one in where there was none', () => {
@@ -174,9 +177,9 @@ test('keeps the first browser label, and fills one in where there was none', () 
   const token = r.auth.issue(CHROME);
   r.tick(2 * DAY);
   r.auth.touch(token, SAFARI);
-  assert.equal(r.saved()[token].device, 'Chrome 141 on macOS');
+  assert.equal(r.saved()[keyOf(token)].device, 'Chrome 141 on macOS');
   const blank = r.auth.issue(undefined);
-  assert.equal(r.saved()[blank].device, 'Unknown browser');
+  assert.equal(r.saved()[keyOf(blank)].device, 'Unknown browser');
 });
 
 test('signs out no one when it reads the old token file, and moves them to the new shape on use', () => {
@@ -194,13 +197,49 @@ test('signs out no one when it reads the old token file, and moves them to the n
 
   auth.touch(live, SAFARI);
   const saved = JSON.parse(fs.readFileSync(path.join(dir, 'tokens.json'), 'utf8'));
-  assert.deepEqual(saved[live], { created: new Date(now - 10 * DAY).toISOString(), used: new Date(now).toISOString(), expires: new Date(now + IDLE).toISOString(), device: 'Safari 18 on iPhone' });
+  assert.deepEqual(saved[keyOf(live)], { created: new Date(now - 10 * DAY).toISOString(), used: new Date(now).toISOString(), expires: new Date(now + IDLE).toISOString(), device: 'Safari 18 on iPhone' });
   assert.equal(auth.cookieDue(live), true);
 
   t += 80 * DAY;
   assert.equal(makeAuth(dir, { now: () => t }).check(withCookie(live)), live);
   t += 10 * DAY;
   assert.equal(makeAuth(dir, { now: () => t }).check(withCookie(live)), null);
+});
+
+test('the token file holds nothing that works as a cookie', () => {
+  const r = rig();
+  const tokens = [r.auth.issue(CHROME), r.auth.issue(SAFARI)];
+  const text = fs.readFileSync(r.file, 'utf8');
+  for (const token of tokens) assert.ok(!text.includes(token), 'the raw token is not on disk');
+  const values = [];
+  const walk = v => { if (typeof v === 'string') values.push(v, v.replace(/^sha256:/, '')); else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { values.push(k, k.replace(/^sha256:/, '')); walk(x); } };
+  walk(r.saved());
+  for (const value of values) assert.equal(r.auth.check(withCookie(value)), null, value);
+  for (const token of tokens) assert.equal(r.auth.check(withCookie(token)), token);
+});
+
+test('hashes the raw tokens of a file saved before hashing on first load, and keeps everyone signed in', () => {
+  const dir = fs.mkdtempSync(path.join(base, 'raw-'));
+  const file = path.join(dir, 'tokens.json');
+  const now = Date.UTC(2026, 9, 16, 9, 0, 0);
+  const current = 'c'.repeat(64);
+  const older = 'd'.repeat(64);
+  const record = { created: new Date(now - DAY).toISOString(), used: new Date(now - DAY).toISOString(), expires: new Date(now + 89 * DAY).toISOString(), device: 'Chrome 141 on macOS' };
+  fs.writeFileSync(file, JSON.stringify({ [current]: record, [older]: now + 20 * DAY }));
+  const auth = makeAuth(dir, { now: () => now });
+
+  assert.equal(auth.check(withCookie(current)), current);
+  const text = fs.readFileSync(file, 'utf8');
+  assert.ok(!text.includes(current) && !text.includes(older), 'the first load rewrote the file');
+  assert.deepEqual(Object.keys(JSON.parse(text)).sort(), [keyOf(current), keyOf(older)].sort());
+  assert.deepEqual(JSON.parse(text)[keyOf(current)], record);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.equal(auth.check(withCookie(older)), older);
+  assert.equal(makeAuth(dir, { now: () => now }).check(withCookie(current)), current, 'a restart reads the hashed file');
+  assert.equal(auth.check(withCookie(keyOf(current))), null, 'the hashed key copied as a cookie');
+
+  writePassword(dir, 'a different long password');
+  assert.equal(auth.check(withCookie(current)), null, 'set-password still signs everyone out');
 });
 
 test('forgets a token that is revoked', () => {
@@ -211,7 +250,7 @@ test('forgets a token that is revoked', () => {
   r.auth.revoke('not-a-token');
   assert.equal(r.auth.check(withCookie(token)), null);
   assert.equal(r.auth.check(withCookie(other)), other);
-  assert.deepEqual(Object.keys(r.saved()), [other]);
+  assert.deepEqual(Object.keys(r.saved()), [keyOf(other)]);
 });
 
 test('drops expired tokens from the file the next time one is issued', () => {
@@ -219,7 +258,7 @@ test('drops expired tokens from the file the next time one is issued', () => {
   const old = r.auth.issue(CHROME);
   r.tick(IDLE + DAY);
   const fresh = r.auth.issue(CHROME);
-  assert.deepEqual(Object.keys(r.saved()), [fresh]);
+  assert.deepEqual(Object.keys(r.saved()), [keyOf(fresh)]);
   assert.equal(r.auth.check(withCookie(old)), null);
 });
 
