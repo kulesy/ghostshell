@@ -40,7 +40,7 @@ public struct PasskeysScreen: View {
                         Text("Add a passkey from the page in a browser.").font(.geist(14)).foregroundStyle(Color.ghost.foreground)
                         Link(url.absoluteString, destination: url).font(.geist(14)).phoneField()
                             #if os(macOS)
-                            .underline().tint(Color.ghost.foreground)  // The page's links are ink, not system blue.
+                            .underline().foregroundStyle(Color.ghost.foreground)  // The page's links are ink, not system blue.
                             #endif
                     }
                 }
