@@ -1776,10 +1776,13 @@ async function terminalFlow(bundle, appearance) {
     check(app.hasButton('Hide file'), 'the Hide file button is there with the terminal open');
     await app.both('term-with-file');
 
-    // A wide window gives the chat pane 704pt or more, so the terminal sits beside the thread as the page's does. A file beside the chat narrows the pane, so the terminal still covers it then.
+    // The chat pane is 704pt or more when the terminal sits beside the thread, as the page's does. The runner's screen caps the window near 992pt, so the sidebar is hidden to give the pane that width.
+    // A file beside the chat narrows the pane again, so the terminal covers the thread then.
     const runButton = () => app.find(node => node.role === 'AXButton' && app.label(node) === 'Run in terminal');
     const beside = () => { const run = runButton(); const box = input(); return !!run && !!box && run.pos[0] + run.size[0] <= box.pos[0] + 1; };
     app.resize(WIDE_SIZE);
+    await sleep(1500);
+    check(app.menu('View', 'Hide Sidebar'), 'the View menu hides the sidebar');
     await sleep(2500);
     await app.shot(`${app.tag}-term-wide-file-${appearance}`);
     check(app.press('Hide file'), 'the file panel is closed at the wide size');
@@ -1787,6 +1790,7 @@ async function terminalFlow(bundle, appearance) {
     check(await until('beside', () => { app.scrollThread(0); return beside(); }, 10), 'at the wide size the terminal sits beside the thread');
     await sleep(1200);
     await app.shot(`${app.tag}-term-wide-${appearance}`);
+    check(app.menu('View', 'Show Sidebar'), 'the View menu shows the sidebar again');
     app.resize(DEFAULT_SIZE);
     await sleep(2500);
     check(await until('covers', () => { app.scrollThread(0); const run = runButton(); const box = input(); return !!run && !!box && run.pos[0] >= box.pos[0]; }, 10), 'at the default size the terminal covers the thread again');
