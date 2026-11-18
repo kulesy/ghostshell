@@ -1366,7 +1366,7 @@ async function accountsFlow(bundle, appearance) {
     check(await until('no passkeys', () => sees('No passkeys added yet.'), 20), 'the Passkeys screen says none are added');
     await app.both('passkeys-empty');
     check(app.menu('View', 'Accounts'), 'the View menu has Accounts again');
-    check(await until('no accounts', () => !sees('Spare') && sees('Switch accounts by itself'), 30), 'the Accounts screen leaves the account list out when there are none');
+    check(await until('no accounts', () => !sees('Spare') && sees('Add an account'), 30), 'the Accounts screen leaves the account list out when there are none');
     await app.both('accounts-empty');
   } finally {
     await app.quit();
@@ -1538,8 +1538,16 @@ async function filesFlow(bundle, appearance) {
   const stub = await startFilesStub();
   console.log(`\n== ${appearance}: linked files and pictures`);
   const app = new App(bundle, { address: stub.address, appearance, tag: '10' });
+  // The Mac's file panel fills the chat pane, so it is closed before the next link in the chat can be pressed.
+  let panel = false;
+  const follow = async link => {
+    if (panel) { app.press('Close'); await sleep(600); panel = false; }
+    const found = app.clickLink(link);
+    panel = found;
+    return found;
+  };
   const opens = async (what, link, shown, seconds = 20) => {
-    check(app.clickLink(link), `${what} has a link`);
+    check(await follow(link), `${what} has a link`);
     return check(await until(what, () => app.hasText(shown), seconds), `${what} opens`);
   };
   try {
@@ -1581,11 +1589,11 @@ async function filesFlow(bundle, appearance) {
     await sleep(800);
     await app.both('file-text-line');
 
-    check(app.clickLink('report.pdf'), 'the PDF has a link');
+    check(await follow('report.pdf'), 'the PDF has a link');
     await sleep(2500);
     await app.both('file-pdf');
 
-    check(app.clickLink('intro.wav'), 'the audio clip has a link');
+    check(await follow('intro.wav'), 'the audio clip has a link');
     check(await until('clips', () => app.hasText('1 of 2'), 15), 'an audio file lists the chat\'s clips');
     await sleep(600);
     await app.both('file-audio');

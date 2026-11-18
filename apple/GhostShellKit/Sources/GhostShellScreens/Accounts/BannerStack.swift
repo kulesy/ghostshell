@@ -35,9 +35,8 @@ public struct BannerStack: View {
                 .scrollIndicators(.hidden)
                 .frame(height: min(height, cap))
                 // The page fades the end of a long stack out and does not cut it with a rule.
-                .mask {
-                    LinearGradient(stops: [.init(color: .black, location: height > cap ? 0.85 : 1), .init(color: height > cap ? .clear : .black, location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
+                .overlay(alignment: .bottom) {
+                    if height > cap { LinearGradient(colors: [.clear, Color.ghost.sidebar], startPoint: .top, endPoint: .bottom).frame(height: 24).allowsHitTesting(false) }
                 }
             }
         }
