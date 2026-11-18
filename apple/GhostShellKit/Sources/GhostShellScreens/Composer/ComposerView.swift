@@ -106,7 +106,12 @@ struct ComposerView: View {
             .overlay(alignment: .topLeading) {
                 if model.menuOpen { SlashMenu(model: model).offset(y: -(SlashMenu.height(for: model.matches.count) + 6)) }
             }
-            ComposerPickers(model: model, compact: false).padding(.horizontal, 0.25 * rem)
+            // The page keeps the pickers on one row below 40rem and shrinks the mode's label. Here the row falls back to icons alone when the names do not fit, so nothing clips.
+            ViewThatFits(in: .horizontal) {
+                ComposerPickers(model: model, compact: false)
+                ComposerPickers(model: model, compact: true)
+            }
+            .padding(.horizontal, 0.25 * rem)
         }
     }
     #endif
