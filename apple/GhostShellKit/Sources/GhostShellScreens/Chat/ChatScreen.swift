@@ -79,6 +79,8 @@ private struct ChatLayout: View {
     @State private var paneWidth: CGFloat = 1000
     /// The page's `PANEL`: the panel is 448 wide by default, at least 288, and leaves the thread 320. A pane narrower than 704 has no room for both.
     private static let sideFrom: CGFloat = 704
+    /// What the chat keeps beside a 320pt file panel in a 960pt window, where the page would cover it.
+    private static let threadMin: CGFloat = 240
     private static func sideWidth(_ pane: CGFloat) -> CGFloat { min(448, max(288, pane - 320)) }
     #endif
 
@@ -101,7 +103,8 @@ private struct ChatLayout: View {
     /// As the page does (public/ui/terminal-rules.js): the terminal sits beside the thread in a pane 704pt wide or more, and covers it in a narrower one.
     private func column(_ chat: ChatContext) -> some View {
         HStack(spacing: 0) {
-            thread(chat)
+            // The chat keeps room for its box and buttons, so the file panel beside it gives way and the ViewThatFits in the box does not set the chat's width.
+            thread(chat).frame(minWidth: Self.threadMin)
             if paneWidth >= Self.sideFrom && chat.terminalOpen {
                 ChatSlots.terminal(chat).frame(width: Self.sideWidth(paneWidth)).background(Color.ghost.background)
                     .overlay(alignment: .leading) { Rectangle().fill(Color.ghost.border).frame(width: 1) }

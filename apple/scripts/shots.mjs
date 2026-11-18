@@ -33,6 +33,7 @@ if (argv.includes('--flow') && (!FLOW[0] || FLOW.some(flow => !FLOWS.includes(fl
 const APPEARANCES = option('--only') ? [option('--only')] : ['light', 'dark'];
 const DEFAULT_SIZE = [960, 640];
 const MIN_SIZE = [640, 420];
+const WIDE_SIZE = [1280, 800];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } };
@@ -1774,6 +1775,23 @@ async function terminalFlow(bundle, appearance) {
     check(await until('input', () => input(), 10), 'the terminal input is there with the file panel open');
     check(app.hasButton('Hide file'), 'the Hide file button is there with the terminal open');
     await app.both('term-with-file');
+
+    // A wide window gives the chat pane 704pt or more, so the terminal sits beside the thread as the page's does. A file beside the chat narrows the pane, so the terminal still covers it then.
+    const runButton = () => app.find(node => node.role === 'AXButton' && app.label(node) === 'Run in terminal');
+    const beside = () => { const run = runButton(); const box = input(); return !!run && !!box && run.pos[0] + run.size[0] <= box.pos[0] + 1; };
+    app.resize(WIDE_SIZE);
+    await sleep(2500);
+    await app.shot(`${app.tag}-term-wide-file-${appearance}`);
+    check(app.press('Hide file'), 'the file panel is closed at the wide size');
+    await sleep(1500);
+    check(await until('beside', () => { app.scrollThread(0); return beside(); }, 10), 'at the wide size the terminal sits beside the thread');
+    await sleep(1200);
+    await app.shot(`${app.tag}-term-wide-${appearance}`);
+    app.resize(DEFAULT_SIZE);
+    await sleep(2500);
+    check(await until('covers', () => { app.scrollThread(0); const run = runButton(); const box = input(); return !!run && !!box && run.pos[0] >= box.pos[0]; }, 10), 'at the default size the terminal covers the thread again');
+    await sleep(1200);
+    await app.shot(`${app.tag}-term-covers-again-${appearance}`);
 
     app.chooseRow(rowOf(stub, 'rich'));
     check(await until('rich', () => app.hasText('Done. I added one line under'), 20), 'a chat with no terminal opens');
