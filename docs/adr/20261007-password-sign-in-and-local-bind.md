@@ -40,6 +40,8 @@ Chosen option: "A password, a local bind and a private network, with no further 
 
 **Amended 2026-11-07.** The native Swift app signs in through the same `login` route and gets the same token with the same limits. It is not a browser, so `HttpOnly`, `Secure`, `SameSite` and the cookie's scope don't protect it. The app keeps the token in the Keychain, writes the `Cookie` header itself, refuses redirects, allows plain http only on loopback and sends `Origin` on every write. The server's sign-in code did not change. See [Replace the page with a native Swift app](20261107-native-swift-app-keeps-the-node-server.md).
 
+**Amended 2026-11-18.** `tokens.json` keeps a SHA-256 hash of each token as its key, written as `sha256:` and the hex digest, and never the token itself. Since https://github.com/kulesy/ghostshell/pull/179 a group's chat in Bypass runs commands with no card, so a command that read the file could have copied a token into a cookie and approved any card through the API. The server hashes the cookie and looks that up, so nothing in the file signs in. A token is 32 random bytes, which leaves nothing to guess, so the hash needs no salt and no slow function. The first load after the change hashes any key without the prefix and writes the file back, so a browser signed in before it stays signed in. `npm run set-password` still empties the file. See https://github.com/kulesy/ghostshell/issues/180.
+
 ### Consequences
 
 - ✅ Only a device on the private network can reach Capcom, and sign-in still needs the password.
