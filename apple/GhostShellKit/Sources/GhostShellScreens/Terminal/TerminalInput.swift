@@ -122,18 +122,20 @@ struct TerminalInput: View {
         return target.ended ? "That command has ended" : "Command in \(TerminalRules.inHome(state.cwd, home: state.home))"
     }
 
-    // A running command's Stop is also here, because its own block may be scrolled out of the panel.
+    // On a phone a running command's Stop is also here, because its own block may be scrolled out of the panel. The Mac has it in the run card only, as the page does.
     private func label(_ target: (run: TerminalRun?, ended: Bool)) -> some View {
         HStack(spacing: 8) {
             Text(target.run.map { firstLine($0.command) } ?? (target.ended ? "That command has ended" : TerminalRules.inHome(state.cwd, home: state.home)))
                 .font(ChatStyle.monoSmall).foregroundStyle(ChatStyle.muted).lineLimit(1).truncationMode(.middle)
                 .accessibilityHidden(true)
             Spacer(minLength: 0)
+            #if os(iOS)
             if let run = target.run, run.running, !run.pending, let id = run.id {
                 Button("Stop") { Task { await store.stop(id) } }
                     .buttonStyle(.borderless).font(ChatStyle.caption).phoneIconTouch().help("Stop the command")
                     .accessibilityLabel("Stop command")
             }
+            #endif
         }
     }
 
