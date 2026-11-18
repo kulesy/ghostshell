@@ -120,11 +120,6 @@ case "menu":
     guard let top = children(bar as! AXUIElement).first(where: { (attr($0, "AXTitle") as? String) == args[2] }), let menu = children(top).first else { fail("no menu \(args[2])") }
     guard let item = children(menu).first(where: { (attr($0, "AXTitle") as? String) == args[3] }) else { fail("no item \(args[3])") }
     out(result(AXUIElementPerformAction(item, "AXPress" as CFString)))
-case "menuitems":
-    guard args.count >= 3 else { fail("usage: ax menuitems <pid> <bar item>") }
-    guard let bar = attr(app, kAXMenuBarAttribute) else { fail("no menu bar") }
-    guard let top = children(bar as! AXUIElement).first(where: { (attr($0, "AXTitle") as? String) == args[2] }), let menu = children(top).first else { fail("no menu \(args[2])") }
-    out(children(menu).compactMap { attr($0, "AXTitle") as? String })
 case "pick":
     guard args.count >= 4 else { fail("usage: ax pick <pid> <target> <item>") }
     let shown = AXUIElementPerformAction(target(app, args[2]), "AXShowMenu" as CFString)

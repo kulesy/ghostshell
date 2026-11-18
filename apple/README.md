@@ -123,7 +123,7 @@ The app is launched with `open -g -n`, so it never comes to the front, and with 
 
 The default folder is `apple/screenshots`, which git ignores. Pass `--out <folder>` to save elsewhere.
 
-A picture or file is attached through the Debug hook `attach.txt` in the shot folder (`<number> <path>`), because the file panel and the pasteboard can't be driven in the background.
+A picture or file is attached through the Debug hook `attach.txt` in the shot folder (`<number> <path>`), because the file panel and the pasteboard can't be driven in the background. The sidebar's width is set the same way through `sidebar.txt` (`<number> <width>`, anything else restores the rule), because the runner's screen caps the window near 992pt and the chat pane needs 704pt to show the terminal beside the thread.
 
 The Debug hooks are launch arguments: `-GSKeychainService`, `-GSAddress`, `-GSDefaultsSuite`, `-GSAppearance`, `-GSShotDir`, `-GSNotify on` and `-GSAlertLog <file>`. A run with `-GSDefaultsSuite` starts with notifications off, so it never raises the system permission dialog, unless it passes `-GSNotify on`. `-GSAlertLog` swaps the notification centre for a file that gets one line per alert. They sit behind `#if DEBUG` in `apple/GhostShell/DebugHooks.swift`. Every run uses a new Keychain service name, so a run never reads an item that an older build made.
 
