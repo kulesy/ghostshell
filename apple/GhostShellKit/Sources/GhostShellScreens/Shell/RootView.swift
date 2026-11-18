@@ -42,7 +42,8 @@ public struct RootView: View {
                 #endif
                 .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
                 // NOTE: [18 Nov 2026] EK - on macOS 27.0 a toolbar modifier after this one drops the width, and the column falls to about 145pt.
-                .navigationSplitViewColumnWidth(sidebarWidth)
+                // The minimum stays low because a chat pane is wider than 640 less a 240pt column, and a split wider than the window runs off both edges.
+                .navigationSplitViewColumnWidth(min: Self.sidebarMinimum, ideal: sidebarWidth, max: sidebarWidth)
         } detail: {
             if let detail = model.navigator.detail { detail } else { EmptyDetail() }
         }
@@ -55,6 +56,8 @@ public struct RootView: View {
         .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
     }
+
+    private static let sidebarMinimum: CGFloat = 200
 
     /// The page's `--list-width`, 25.5rem, from 56rem up. Narrower, the page's drawer is 18rem, which the Mac keeps beside the detail pane.
     private var sidebarWidth: CGFloat {
