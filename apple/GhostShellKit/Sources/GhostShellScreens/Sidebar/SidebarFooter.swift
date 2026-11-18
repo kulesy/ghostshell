@@ -12,7 +12,7 @@ struct SidebarFooter: View {
             if model.connection == .unreachable { UnreachableLine() }
             if state.editing { SidebarSelectBar() }
             // A phone's footer rides up on the keyboard, so it steps aside while a row is being named or it covers that row.
-            if !SidebarMetrics.current.touch || organise.naming?.inline != true {
+            if !GhostMetrics.current.touch || organise.naming?.inline != true {
                 Rectangle().fill(Color.ghost.sidebarBorder).frame(height: 1)
                 HStack(spacing: 0) {
                     footLink("Routines", page: "routines") { model.navigator.show(page: "routines") { RoutinesScreen() } }
@@ -32,10 +32,10 @@ struct SidebarFooter: View {
         let current = macOr(model.navigator.page == page, false)
         return Button(action: action) {
             Text(title)
-                .font(.geist(SidebarMetrics.current.footFont, weight: .medium, relativeTo: .body))
+                .font(.geist(GhostMetrics.current.footFont, weight: .medium, relativeTo: .body))
                 .foregroundStyle(current ? Color.ghost.sidebarForeground : Color.ghost.sidebarMuted)
                 .padding(.horizontal, 10)
-                .frame(minHeight: SidebarMetrics.current.foot)
+                .frame(minHeight: GhostMetrics.current.foot)
                 .background(current ? Color.ghost.sidebarAccent : .clear, in: GhostShape(GhostRadius.sm))
                 .contentShape(Rectangle())
         }
@@ -78,7 +78,7 @@ struct SidebarSelectBar: View {
             Text("\(state.selection.count) selected").font(.geist(13, relativeTo: .footnote)).monospacedDigit().foregroundStyle(Color.ghost.sidebarForeground).padding(.leading, 10)
             Spacer(minLength: 4)
             Button { organise.archiveMany(ids) } label: {
-                Label("Archive", systemImage: "archivebox").font(.geist(13, relativeTo: .footnote)).foregroundStyle(Color.ghost.sidebarForeground).padding(.horizontal, 10).frame(minHeight: SidebarMetrics.current.target).contentShape(Rectangle())
+                Label("Archive", systemImage: "archivebox").font(.geist(13, relativeTo: .footnote)).foregroundStyle(Color.ghost.sidebarForeground).padding(.horizontal, 10).frame(minHeight: GhostMetrics.current.target).contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .disabled(ids.isEmpty)

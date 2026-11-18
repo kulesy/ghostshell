@@ -11,7 +11,7 @@ struct SidebarNameField: View {
     @State private var selection: TextSelection?
     @FocusState private var focused: Bool
     @State private var hadFocus = false
-    private let metrics = SidebarMetrics.current
+    private let metrics = GhostMetrics.current
 
     init(naming: OrganiseModel.Naming, heading: Bool = false) {
         self.naming = naming

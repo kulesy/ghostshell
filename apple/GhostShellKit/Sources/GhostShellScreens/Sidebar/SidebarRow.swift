@@ -19,7 +19,7 @@ struct SidebarSessionRow: View {
     var fold: RowFold?
     var nested = false
     var last = false
-    private let metrics = SidebarMetrics.current
+    private let metrics = GhostMetrics.current
 
     var body: some View {
         let name = title.isEmpty ? "Untitled" : title
@@ -92,7 +92,7 @@ private struct RowMore: View {
         Menu {
             SessionRowMenuSlot(row: row)
         } label: {
-            Image(systemName: "ellipsis").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ghost.sidebarMuted).frame(width: SidebarMetrics.current.button.width, height: SidebarMetrics.current.button.height).contentShape(Rectangle())
+            Image(systemName: "ellipsis").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.ghost.sidebarMuted).frame(width: GhostMetrics.current.button.width, height: GhostMetrics.current.button.height).contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .buttonStyle(.borderless)
@@ -106,7 +106,7 @@ struct FoldButton: View {
     var body: some View {
         Button(action: fold.toggle) {
             Image(systemName: "chevron.right").rotationEffect(.degrees(fold.open ? 90 : 0)).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.ghost.sidebarMuted)
-                .frame(width: SidebarMetrics.current.button.width, height: SidebarMetrics.current.button.height).contentShape(Rectangle())
+                .frame(width: GhostMetrics.current.button.width, height: GhostMetrics.current.button.height).contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .help(fold.label)

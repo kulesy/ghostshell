@@ -228,7 +228,7 @@ struct PhoneRadios<Value: Hashable>: View {
                         Image(systemName: chosen ? "largecircle.fill.circle" : "circle").foregroundStyle(chosen ? Color.ghost.primary : Color.ghost.input)
                         Text(option.label).font(.geist(ghostBodySize)).foregroundStyle(Color.ghost.foreground).lineLimit(1).minimumScaleFactor(0.85)
                     }
-                    .frame(minHeight: SidebarMetrics.current.target).contentShape(Rectangle())
+                    .frame(minHeight: GhostMetrics.current.target).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.label)

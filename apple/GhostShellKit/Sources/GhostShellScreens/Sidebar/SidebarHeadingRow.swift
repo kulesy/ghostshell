@@ -10,7 +10,7 @@ struct HeadingRow: View {
     let heading: SidebarHeading
     let count: Int
     var first = false
-    private let metrics = SidebarMetrics.current
+    private let metrics = GhostMetrics.current
 
     var body: some View {
         let open = state.isOpen(heading.id)
@@ -71,10 +71,10 @@ struct SectionLabel: View {
     let title: String
 
     var body: some View {
-        Text(title).font(.geist(SidebarMetrics.current.headingFont, weight: .semibold, relativeTo: .caption)).textCase(.uppercase).tracking(0.96)
+        Text(title).font(.geist(GhostMetrics.current.headingFont, weight: .semibold, relativeTo: .caption)).textCase(.uppercase).tracking(0.96)
             .foregroundStyle(Color.ghost.sidebarForeground)
             .padding(.leading, 6)
-            .frame(maxWidth: .infinity, minHeight: SidebarMetrics.current.heading, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: GhostMetrics.current.heading, alignment: .leading)
             .accessibilityAddTraits(.isHeader)
             .sidebarListRow()
             .selectionDisabled()

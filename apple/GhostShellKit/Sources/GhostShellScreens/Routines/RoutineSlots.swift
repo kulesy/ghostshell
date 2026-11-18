@@ -54,7 +54,7 @@ private struct ScheduledSidebarRow: View {
             let id = entry.id
             if entry.isPending { model.navigator.show { ScheduledFormScreen(id: id) } } else { model.navigator.show { ScheduledScreen() } }
         } label: {
-            QuietRow(title: entry.title, line: note.text, tint: note.tone == .problem ? (SidebarMetrics.current.touch ? .red : Color.ghost.destructive) : note.tone == .warning ? .orange : nil)
+            QuietRow(title: entry.title, line: note.text, tint: note.tone == .problem ? (GhostMetrics.current.touch ? .red : Color.ghost.destructive) : note.tone == .warning ? .orange : nil)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(entry.title), \(note.text)")
@@ -106,7 +106,7 @@ private struct QuietRow: View {
     var selected = false
 
     var body: some View {
-        let metrics = SidebarMetrics.current
+        let metrics = GhostMetrics.current
         let note = Text(line).font(.geist(metrics.touch ? 12 : 11, relativeTo: .caption)).foregroundStyle(tint ?? Color.ghost.sidebarMuted).lineLimit(1)
         // The page puts a pointer's line on the title's row, at the right.
         Group {

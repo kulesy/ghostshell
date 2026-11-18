@@ -13,7 +13,7 @@ struct EmptyNotice: View {
     #endif
 
     var body: some View {
-        let touch = SidebarMetrics.current.touch
+        let touch = GhostMetrics.current.touch
         EmptyList(title: noGroups ? "No groups yet" : "No sessions found",
                   text: noGroups ? (touch ? "Tap + to make one, or move one here from a group's menu in Home." : "Make one from the + menu, or move one here from a group's menu in Home.")
                       : searching ? "Nothing matches that search." : (touch ? "Tap + to start one." : "Press \(Self.newKey)N to start one."))

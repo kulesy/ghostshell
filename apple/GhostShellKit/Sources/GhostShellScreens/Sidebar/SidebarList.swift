@@ -20,8 +20,8 @@ struct SidebarList: View {
             if !model.hasLoaded {
                 List {
                     ForEach(0..<8, id: \.self) { _ in
-                        Text("Session title goes here").font(.geist(SidebarMetrics.current.rowFont, relativeTo: .body)).padding(.leading, 6)
-                            .frame(maxWidth: .infinity, minHeight: SidebarMetrics.current.row, alignment: .leading)
+                        Text("Session title goes here").font(.geist(GhostMetrics.current.rowFont, relativeTo: .body)).padding(.leading, 6)
+                            .frame(maxWidth: .infinity, minHeight: GhostMetrics.current.row, alignment: .leading)
                             .redacted(reason: .placeholder).sidebarListRow().selectionDisabled()
                     }
                 }
@@ -73,7 +73,7 @@ struct SidebarList: View {
     }
 
     private var noGroupsNotice: some View {
-        Text(SidebarMetrics.current.touch ? "No groups yet. Tap + to make one." : "No groups yet. Use + to make one.")
+        Text(GhostMetrics.current.touch ? "No groups yet. Tap + to make one." : "No groups yet. Use + to make one.")
             .font(.geist(12, relativeTo: .caption)).foregroundStyle(Color.ghost.sidebarMuted).padding(.leading, 6).sidebarListRow().selectionDisabled()
     }
 

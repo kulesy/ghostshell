@@ -7,7 +7,7 @@ struct SidebarHeader: View {
     @Environment(SidebarState.self) private var state
     @State private var searching = false
     @FocusState private var focused: Bool
-    private let metrics = SidebarMetrics.current
+    private let metrics = GhostMetrics.current
 
     private func close() {
         searching = false
@@ -63,7 +63,7 @@ struct SidebarTopBar: View {
     @Environment(SidebarState.self) private var state
     @Environment(OrganiseModel.self) private var organise: OrganiseModel?
     @Binding var searching: Bool
-    private let k = SidebarMetrics.current.rem / 16
+    private let k = GhostMetrics.current.rem / 16
 
     var body: some View {
         let index = model.index ?? SessionIndex()
@@ -113,6 +113,6 @@ struct SidebarTopBar: View {
             .accessibilityLabel("Search")
         }
         .padding(.horizontal, 4)
-        .padding(.vertical, SidebarMetrics.current.touch ? 0 : 8)
+        .padding(.vertical, GhostMetrics.current.touch ? 0 : 8)
     }
 }
