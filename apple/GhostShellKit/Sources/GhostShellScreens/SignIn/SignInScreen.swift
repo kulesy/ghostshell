@@ -45,7 +45,7 @@ public struct SignInScreen: View {
                 .onChange(of: failure == nil) { scroll.scrollTo(Self.top, anchor: .top) }
             }
         }
-        .background(Color.ghost.muted.ignoresSafeArea())
+        .background(Self.ground.ignoresSafeArea())
         .onAppear {
             address = model.addressText
             focus = address.isEmpty ? .address : .password
@@ -69,8 +69,8 @@ public struct SignInScreen: View {
                     Text("GHOST")
                     Text("SHELL")
                 }
-                .font(.geistMono(26, weight: .medium, relativeTo: .title))
-                .tracking(4)
+                .font(.geistMono(Self.wordmarkSize, weight: Self.wordmarkWeight, relativeTo: .title))
+                .tracking(Self.wordmarkSize > 24 ? 4 : 3)
                 .foregroundStyle(Color.ghost.foreground)
                 .padding(.bottom, 6)
                 .accessibilityElement(children: .ignore)
@@ -95,10 +95,17 @@ public struct SignInScreen: View {
                         .autocorrectionDisabled()
                 }
                 field("Password", problem: passwordProblem, focused: focus == .password) {
+                    #if os(macOS)
+                    SecureField(text: $password, prompt: Text("")) { Text("Password") }
+                        .focused($focus, equals: .password)
+                        .submitLabel(.go)
+                        .onSubmit(signIn)
+                    #else
                     SecureField("Password", text: $password)
                         .focused($focus, equals: .password)
                         .submitLabel(.go)
                         .onSubmit(signIn)
+                    #endif
                 }
                 #if os(iOS)
                 if passkeyOffered {
@@ -118,34 +125,60 @@ public struct SignInScreen: View {
             }
             .buttonStyle(.ghost(.primary, radius: Self.fieldRadius, fills: true))
             .keyboardShortcut(.defaultAction)
-            .disabled(working || passkeyWorking || password.isEmpty)
+            .disabled(working || passkeyWorking || (Self.needsPassword && password.isEmpty))
         }
         .textFieldStyle(.plain)
         .padding(24)
-        .background(Color.ghost.card, in: RoundedRectangle(cornerRadius: Self.cardRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Self.cardRadius, style: .continuous).strokeBorder(Color.ghost.border, lineWidth: 1))
+        .background(Self.cardFill, in: GhostShape(Self.cardRadius))
+        .overlay(GhostShape(Self.cardRadius).strokeBorder(Self.line, lineWidth: 1))
         .shadow(color: .black.opacity(0.06), radius: 2, y: 1)
     }
 
     // NOTE: [11 Nov 2026] EK - The sign-in page loads only app.css, so it keeps shadcn's own radii (14 card, 8 field) and not the 2 to 4 of GhostRadius.
+    // On the Mac the page draws both bevelled, 11 on the card and 5 on a field, in app.css's own palette, which GhostPalette does not hold.
+    #if os(macOS)
+    private static let cardRadius = GhostRadius.xl
+    private static let fieldRadius = GhostRadius.sm
+    private static let fieldHeight: CGFloat = 36
+    private static let fieldSize: CGFloat = 14
+    private static let wordmarkSize: CGFloat = 22
+    private static let wordmarkWeight = Font.Weight.regular
+    private static let needsPassword = false
+    private static let ringRadius = GhostRadius.sm
+    private static let ground = Color(light: .init(0.97), dark: .init(0.269))
+    private static let cardFill = Color(light: .init(1), dark: .init(0.205))
+    private static let line = Color(light: .init(0.922), dark: .init(1, alpha: 0.10))
+    private static let inputLine = Color(light: .init(0.922), dark: .init(1, alpha: 0.15))
+    #else
     private static let cardRadius: CGFloat = 14
     private static let fieldRadius: CGFloat = 8
+    private static let fieldHeight: CGFloat = 44
+    private static let fieldSize: CGFloat = 16
+    private static let wordmarkSize: CGFloat = 26
+    private static let wordmarkWeight = Font.Weight.medium
+    private static let needsPassword = true
+    private static let ringRadius: CGFloat = 9.5
+    private static let ground = Color.ghost.muted
+    private static let cardFill = Color.ghost.card
+    private static let line = Color.ghost.border
+    private static let inputLine = Color.ghost.input
+    #endif
     private static let top = "top"
 
     private func field<Input: View>(_ label: String, problem: String?, focused: Bool, @ViewBuilder input: () -> Input) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label).font(.geist(14, weight: .medium, relativeTo: .subheadline)).foregroundStyle(Color.ghost.foreground)
             input()
-                .font(.geist(16))
+                .font(.geist(Self.fieldSize))
                 .foregroundStyle(Color.ghost.cardForeground)
                 .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background(Color.ghost.card, in: RoundedRectangle(cornerRadius: Self.fieldRadius, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Self.fieldRadius, style: .continuous)
-                    .strokeBorder(problem != nil ? Color.ghost.destructive : focused ? Color.ghost.ring : Color.ghost.input, lineWidth: 1))
+                .frame(minHeight: Self.fieldHeight)
+                .background(Self.cardFill, in: GhostShape(Self.fieldRadius))
+                .overlay(GhostShape(Self.fieldRadius)
+                    .strokeBorder(problem != nil ? Color.ghost.destructive : focused ? Color.ghost.ring : Self.inputLine, lineWidth: 1))
                 .overlay {
                     if problem != nil || focused {
-                        RoundedRectangle(cornerRadius: Self.fieldRadius + 1.5, style: .continuous)
+                        GhostShape(Self.ringRadius)
                             .strokeBorder((problem != nil ? Color.ghost.destructive : Color.ghost.ring).opacity(problem != nil ? 0.2 : 0.5), lineWidth: 3)
                             .padding(-3)
                             .allowsHitTesting(false)
