@@ -154,7 +154,6 @@ struct TerminalRunBlock: View, Equatable {
     let home: String
     let store: TerminalStore
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var rendered: AnsiOutput?
     @State private var lastDraw: ContinuousClock.Instant?
     @State private var drawnRevision = -1
@@ -215,7 +214,8 @@ struct TerminalRunBlock: View, Equatable {
     private func head(_ styler: AnsiStyler) -> some View {
         HStack(alignment: .top, spacing: 0.5 * rem) {
             HStack(spacing: 0.375 * rem) {
-                Text(TerminalRules.folderOf(run.cwd, home: home)).lineLimit(1).truncationMode(.tail).frame(maxWidth: 9 * rem, alignment: .leading)
+                // The page caps the folder at 9rem and lets it shrink; a frame here would always fill the cap.
+                Text(String(TerminalRules.folderOf(run.cwd, home: home).prefix(18))).lineLimit(1)
                     .help(TerminalRules.inHome(run.cwd, home: home))
                 Text(run.source == "bang" ? "!" : "$").accessibilityHidden(true)
             }
@@ -248,7 +248,7 @@ struct TerminalRunBlock: View, Equatable {
 
     private func foot(_ styler: AnsiStyler) -> some View {
         HStack(spacing: 0.5 * rem) {
-            if live { Lamp(color: styler.color(2), still: reduceMotion) }
+            if live { ChatLamp(state: "working").accessibilityHidden(true) }
             if live {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(TerminalRules.runStanding(run, now: context.date.timeIntervalSince1970 * 1000))
@@ -261,20 +261,5 @@ struct TerminalRunBlock: View, Equatable {
         .font(.geist(0.75 * rem))
         .foregroundStyle(state == .failed ? AnyShapeStyle(styler.danger) : state == .running ? AnyShapeStyle(Color.ghost.foreground) : ChatStyle.muted)
         .padding(.horizontal, 0.75 * rem).padding(.vertical, 0.3125 * rem)
-    }
-}
-
-/// The small light beside a running command.
-private struct Lamp: View {
-    let color: Color
-    let still: Bool
-    @State private var dim = false
-
-    var body: some View {
-        Circle().fill(color).frame(width: 7, height: 7)
-            .opacity(dim ? 0.35 : 1)
-            .animation(still ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: dim)
-            .onAppear { dim = !still }
-            .accessibilityHidden(true)
     }
 }
