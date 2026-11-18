@@ -37,11 +37,12 @@ public struct RootView: View {
     private var split: some View {
         NavigationSplitView(preferredCompactColumn: $compactColumn) {
             SidebarScreen()
-                .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
-                .navigationSplitViewColumnWidth(min: 240, ideal: sidebarWidth, max: 420)
                 #if os(macOS)
                 .toolbar(removing: .sidebarToggle)
                 #endif
+                .safeAreaInset(edge: .top, spacing: 0) { BannerStack() }
+                // NOTE: [18 Nov 2026] EK - on macOS 27.0 a toolbar modifier after this one drops the width, and the column falls to about 145pt.
+                .navigationSplitViewColumnWidth(sidebarWidth)
         } detail: {
             if let detail = model.navigator.detail { detail } else { EmptyDetail() }
         }
