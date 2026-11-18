@@ -79,7 +79,7 @@ struct ComposerPickers: View {
         } label: {
             look(modelName + (model.fast ? " fast" : ""), model.fast ? "bolt.fill" : "cpu")
         }
-        .menuStyle(.borderlessButton)
+        .pickerMenuStyle()
         .menuIndicator(compact || Self.hidesIndicator ? .hidden : .visible)
         .fixedSize()
         .help("Model: \(modelName)")
@@ -96,7 +96,7 @@ struct ComposerPickers: View {
         } label: {
             look(name, "speedometer", quiet: true)
         }
-        .menuStyle(.borderlessButton)
+        .pickerMenuStyle()
         .menuIndicator(compact || Self.hidesIndicator ? .hidden : .visible)
         .fixedSize()
         .help("Effort: \(name)")
@@ -113,10 +113,21 @@ struct ComposerPickers: View {
         } label: {
             look(name, "lock.shield")
         }
-        .menuStyle(.borderlessButton)
+        .pickerMenuStyle()
         .menuIndicator(compact || Self.hidesIndicator ? .hidden : .visible)
         .fixedSize()
         .help("Permission mode: \(name)")
         .accessibilityLabel("Permission mode: \(name)")
+    }
+}
+
+private extension View {
+    /// The Mac's borderless menu draws its label in the primary colour, which hides the quiet effort. A plain button keeps the label's own colour.
+    @ViewBuilder func pickerMenuStyle() -> some View {
+        #if os(macOS)
+        menuStyle(.button).buttonStyle(.plain)
+        #else
+        menuStyle(.borderlessButton)
+        #endif
     }
 }
