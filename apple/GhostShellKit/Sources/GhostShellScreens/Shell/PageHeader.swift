@@ -27,7 +27,8 @@ private struct PageToolbar: ToolbarContent {
     private var heading: some View {
         HStack(spacing: 8) {
             if let back {
-                Button(action: goBack) { Label(back, systemImage: "chevron.left") }.buttonStyle(.ghost(.ghost, size: .compact))
+                // A toolbar draws a Label as its icon alone, and the page's back link has its words.
+                Button(action: goBack) { HStack(spacing: 4) { Image(systemName: "chevron.left"); Text(back) } }.buttonStyle(.ghost(.ghost, size: .compact)).accessibilityLabel(back)
             }
             Text(title).font(.geist(16, weight: .semibold)).foregroundStyle(Color.ghost.foreground).lineLimit(1)
         }
@@ -41,6 +42,8 @@ private struct PageToolbar: ToolbarContent {
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
             ToolbarItem(placement: .navigation) { heading }.sharedBackgroundVisibility(.hidden)
+            // With the title removed nothing stretches between the two, so the action would sit beside the heading.
+            ToolbarSpacer(.flexible)
             if button != nil { ToolbarItem(placement: .primaryAction) { action }.sharedBackgroundVisibility(.hidden) }
         }
         if #unavailable(macOS 26) {
