@@ -11,6 +11,10 @@ struct FilePanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
+            PanelTabs(store: store)
+            Rule()
+            #endif
             if let file = store.file {
                 FileHeader(store: store, file: file)
                 Rule()
@@ -58,6 +62,25 @@ struct FilePanel: View {
 struct Rule: View {
     var body: some View { Rectangle().fill(Color.ghost.border).frame(height: 1) }
 }
+
+#if os(macOS)
+/// The page's bar above the file: the File tab and a close button. The phone's sheet has its own title bar.
+private struct PanelTabs: View {
+    let store: FilesStore
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Label("File", systemImage: "doc").font(.geist(14, weight: .medium, relativeTo: .subheadline)).foregroundStyle(Color.ghost.foreground)
+                .padding(.horizontal, 10).frame(height: 32).background(Color.ghost.muted, in: GhostShape(GhostRadius.md))
+            Spacer(minLength: 4)
+            Button { store.close() } label: { Label("Close", systemImage: "xmark").labelStyle(.iconOnly).font(.system(size: 14, weight: .medium)) }
+                .buttonStyle(.ghost(.ghost, size: .icon)).help("Close")
+        }
+        .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 4)
+        .frame(minHeight: 52)
+    }
+}
+#endif
 
 private struct FileHeader: View {
     let store: FilesStore
