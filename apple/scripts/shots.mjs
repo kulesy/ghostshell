@@ -1734,7 +1734,8 @@ async function terminalFlow(bundle, appearance) {
     await app.shot(`${app.tag}-term-panel-min-settled-${appearance}`);
     app.resize(DEFAULT_SIZE);
     await sleep(1200);
-    // The panel covers the thread, so the Run buttons are scrolled back into the tree behind it and waited for.
+    // At this size the panel covers the chat, so a pointer user closes it to reach a block's Run button, and Run opens it again.
+    check(app.press('Close terminal'), 'the panel has a Close button');
     check(await until('run button', () => { app.scrollThread(0); return app.hasButton('Run in terminal'); }, 10) && app.press('Run in terminal'), 'a block can be run');
     check(await until('ran', () => called('run', body => body.source === 'block' && body.command === 'npm test -- upload'), 10), 'the Run button sends the block as a block run');
     await sleep(1200);
@@ -1757,11 +1758,21 @@ async function terminalFlow(bundle, appearance) {
     await sleep(1200);
     await app.both('term-after-stop');
 
-    // The file panel is the inspector beside the chat pane and the terminal covers that pane, so both can be open and each keeps its controls.
+    // The file panel is the inspector beside the chat pane and the terminal covers that pane, so a file is opened with the terminal closed and the terminal is opened again over it.
+    check(app.press('Close terminal'), 'the panel is closed to reach the reply');
     check(await until('file link', () => { app.scrollThread(0); return app.clickLink('NOTES.md'); }, 10), 'the reply has a file link');
     check(await until('file', () => app.hasText('Run the upload test, then the build.'), 15), 'the file opens in its panel');
     await sleep(1200);
-    check(!!input() && !!toggle() && app.hasButton('Hide file'), 'the terminal input and both toolbar buttons are there with the file panel open');
+    await app.both('term-file-open');
+    // The pickers under the box fall back to icons when the pane beside the file is too narrow for their names.
+    app.resize(MIN_SIZE);
+    await sleep(2500);
+    await app.shot(`${app.tag}-term-file-open-min-settled-${appearance}`);
+    app.resize(DEFAULT_SIZE);
+    await sleep(1200);
+    check(app.press('Terminal'), 'the Terminal button opens the panel again');
+    check(await until('input', () => input(), 10), 'the terminal input is there with the file panel open');
+    check(app.hasButton('Hide file'), 'the Hide file button is there with the terminal open');
     await app.both('term-with-file');
 
     app.chooseRow(rowOf(stub, 'rich'));

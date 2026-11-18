@@ -75,9 +75,14 @@ private struct ChatLayout: View {
     let title: String
     let archivable: Bool
     @State private var height = EnvironmentValues().chatHeight
+    #if os(macOS)
+    @State private var paneWidth: CGFloat = 1000
+    /// The page's `PANEL`: the panel is 448 wide by default, at least 288, and leaves the thread 320. A pane narrower than 704 has no room for both.
+    private static let sideFrom: CGFloat = 704
+    private static func sideWidth(_ pane: CGFloat) -> CGFloat { min(448, max(288, pane - 320)) }
+    #endif
 
-    var body: some View {
-        @Bindable var chat = model.chat
+    private func thread(_ chat: ChatContext) -> some View {
         VStack(spacing: 0) {
             #if os(macOS)
             ChatHeader(title: title, archivable: archivable)
@@ -90,6 +95,33 @@ private struct ChatLayout: View {
             ChatSlots.prompts(chat)
             ChatSlots.composer(chat)
         }
+    }
+
+    #if os(macOS)
+    /// As the page does (public/ui/terminal-rules.js): the terminal sits beside the thread in a pane 704pt wide or more, and covers it in a narrower one.
+    private func column(_ chat: ChatContext) -> some View {
+        HStack(spacing: 0) {
+            thread(chat)
+            if paneWidth >= Self.sideFrom && chat.terminalOpen {
+                ChatSlots.terminal(chat).frame(width: Self.sideWidth(paneWidth)).background(Color.ghost.background)
+                    .overlay(alignment: .leading) { Rectangle().fill(Color.ghost.border).frame(width: 1) }
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { paneWidth = $0 }
+    }
+    #endif
+
+    @ViewBuilder private func content(_ chat: ChatContext) -> some View {
+        #if os(macOS)
+        column(chat)
+        #else
+        thread(chat)
+        #endif
+    }
+
+    var body: some View {
+        @Bindable var chat = model.chat
+        content(chat)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .environment(\.chatHeight, height)
         #if os(macOS)
@@ -118,7 +150,11 @@ private struct ChatLayout: View {
         // The composer under the terminal would keep the keyboard.
         .onChange(of: chat.terminalOpen) { _, open in if open { dismissKeyboard() } }
         #else
-        .overlay { if chat.terminalOpen { ChatSlots.terminal(chat).background(Color.ghost.background) } }
+        .overlay {
+            if chat.terminalOpen && paneWidth < Self.sideFrom {
+                ChatSlots.terminal(chat).background(Color.ghost.background).accessibilityAddTraits(.isModal)
+            }
+        }
         // The page's file panel takes the whole main pane. An inspector squeezed the chat to a sliver and ran past the window's edge.
         .overlay { if chat.filePanelOpen { ChatSlots.filePanel(chat).background(.background).accessibilityAddTraits(.isModal) } }
         #endif
