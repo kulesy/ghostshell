@@ -6,11 +6,17 @@ struct EmptyNotice: View {
     let noGroups: Bool
     var searching = false
 
+    #if os(macOS)
+    private static let newKey = "\u{2318}"
+    #else
+    private static let newKey = "^"
+    #endif
+
     var body: some View {
         let touch = SidebarMetrics.current.touch
         EmptyList(title: noGroups ? "No groups yet" : "No sessions found",
                   text: noGroups ? (touch ? "Tap + to make one, or move one here from a group's menu in Home." : "Make one from the + menu, or move one here from a group's menu in Home.")
-                      : searching ? "Nothing matches that search." : (touch ? "Tap + to start one." : "Press ^N to start one."))
+                      : searching ? "Nothing matches that search." : (touch ? "Tap + to start one." : "Press \(Self.newKey)N to start one."))
     }
 }
 
