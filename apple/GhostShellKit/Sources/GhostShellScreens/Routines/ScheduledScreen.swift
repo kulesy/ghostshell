@@ -101,7 +101,7 @@ private struct ScheduledRow: View {
             if let retry = s.retry, s.status == "pending" {
                 alert("\(retryWords(retry)). The last try said: \(s.lastError ?? "no reason given")", Color.ghost.warningForeground)
             } else if let error = s.lastError, !error.isEmpty, s.status == "skipped" || s.status == "started" {
-                alert(error, Color.ghost.warningForeground)
+                alert(error, Color.ghost.destructive)
             }
         }
     }
@@ -144,7 +144,7 @@ private struct ScheduledRow: View {
     }
 
     private func alert(_ text: String, _ tint: Color) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle").font(.geist(14)).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
+        Label(text, systemImage: "exclamationmark.triangle").symbolVariant(.none).font(.geist(14)).foregroundStyle(tint).fixedSize(horizontal: false, vertical: true)
     }
 }
 

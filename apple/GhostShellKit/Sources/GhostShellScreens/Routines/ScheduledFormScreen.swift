@@ -21,7 +21,7 @@ struct ScheduledFormScreen: View {
         #if os(iOS)
         .navigationTitle(id == nil ? "Schedule a session" : "Edit scheduled session")
         #else
-        .pageHeader(id == nil ? "Schedule a session" : "Edit scheduled session", back: "Scheduled", goBack: { model.navigator.show { ScheduledScreen() } })
+        .pageHeader(id == nil ? "Schedule a session" : "Edit scheduled session", back: "Scheduled", goBack: { model.navigator.show(page: "scheduled") { ScheduledScreen() } })
         #endif
         .ghostScreen()
         .task(id: id) { await open() }
@@ -157,5 +157,5 @@ private struct ScheduledFields: View {
         }
     }
 
-    private func leave() { model.navigator.show { ScheduledScreen() } }
+    private func leave() { model.navigator.show(page: "scheduled") { ScheduledScreen() } }
 }

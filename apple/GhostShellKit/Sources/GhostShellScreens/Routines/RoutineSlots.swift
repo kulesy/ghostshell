@@ -85,9 +85,9 @@ struct IdleRoutineRow: View {
             let words = idleWords(full)
             Button {
                 let id = full.id
-                if model.routines.features.routineEdits { model.navigator.show { RoutineFormScreen(id: id) } } else { model.navigator.show { RoutinesScreen() } }
+                if model.routines.features.routineEdits { model.navigator.show(page: "routine:\(id)") { RoutineFormScreen(id: id) } } else { model.navigator.show { RoutinesScreen() } }
             } label: {
-                QuietRow(title: full.title, line: words, tint: nil)
+                QuietRow(title: full.title, line: words, tint: nil, selected: model.navigator.page == "routine:\(full.id)")
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(full.title), \(words)")
@@ -103,6 +103,7 @@ private struct QuietRow: View {
     let title: String
     let line: String
     let tint: Color?
+    var selected = false
 
     var body: some View {
         let metrics = SidebarMetrics.current
@@ -124,6 +125,7 @@ private struct QuietRow: View {
         }
         .padding(.leading, 6)
         .frame(maxWidth: .infinity, minHeight: metrics.touch ? 48 : metrics.row, alignment: .leading)
+        .background(selected ? Color.ghost.sidebarAccent : .clear, in: GhostShape(GhostRadius.sm))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }

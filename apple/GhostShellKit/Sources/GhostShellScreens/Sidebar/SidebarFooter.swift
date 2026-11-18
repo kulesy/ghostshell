@@ -15,9 +15,9 @@ struct SidebarFooter: View {
             if !SidebarMetrics.current.touch || organise.naming?.inline != true {
                 Rectangle().fill(Color.ghost.sidebarBorder).frame(height: 1)
                 HStack(spacing: 0) {
-                    footLink("Routines") { model.navigator.show { RoutinesScreen() } }
+                    footLink("Routines", page: "routines") { model.navigator.show(page: "routines") { RoutinesScreen() } }
                     if model.routines.features.scheduled {
-                        footLink("Scheduled") { model.navigator.show { ScheduledScreen() } }
+                        footLink("Scheduled", page: "scheduled") { model.navigator.show(page: "scheduled") { ScheduledScreen() } }
                     }
                     Spacer(minLength: 0)
                     AccountMenu()
@@ -28,13 +28,15 @@ struct SidebarFooter: View {
         .background(Color.ghost.sidebar)
     }
 
-    private func footLink(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+    private func footLink(_ title: String, page: String, action: @escaping () -> Void) -> some View {
+        let current = model.navigator.page == page
+        return Button(action: action) {
             Text(title)
                 .font(.geist(SidebarMetrics.current.footFont, weight: .medium, relativeTo: .body))
-                .foregroundStyle(Color.ghost.sidebarMuted)
+                .foregroundStyle(current ? Color.ghost.sidebarForeground : Color.ghost.sidebarMuted)
                 .padding(.horizontal, 10)
                 .frame(minHeight: SidebarMetrics.current.foot)
+                .background(current ? Color.ghost.sidebarAccent : .clear, in: GhostShape(GhostRadius.sm))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
@@ -54,7 +56,7 @@ private struct AccountMenu: View {
             Divider()
             Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") { Task { await model.signOut() } }
         } label: {
-            Image(systemName: "person.crop.circle").font(.system(size: 19)).foregroundStyle(Color.ghost.sidebarMuted).sidebarIconTouch()
+            Image(systemName: "person.circle").font(.system(size: SidebarMetrics.current.touch ? 19 : 16)).foregroundStyle(Color.ghost.sidebarMuted).sidebarIconTouch()
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

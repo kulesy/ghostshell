@@ -25,7 +25,7 @@ struct RoutineFormScreen: View {
         #if os(iOS)
         .navigationTitle(id == nil ? "New routine" : "Edit routine")
         #else
-        .pageHeader(id.flatMap { model.routines.routine($0)?.title } ?? (id == nil ? "New routine" : "Routine"), back: "Routines", goBack: { model.navigator.show { RoutinesScreen() } })
+        .pageHeader(id.flatMap { model.routines.routine($0)?.title } ?? (id == nil ? "New routine" : "Routine"), back: "Routines", goBack: { model.navigator.show(page: "routines") { RoutinesScreen() } })
         #endif
         .ghostScreen()
         .task(id: id) { await open() }
@@ -322,5 +322,5 @@ private struct RoutineFields: View {
         if await store.delete(routine) { leave() }
     }
 
-    private func leave() { model.navigator.show { RoutinesScreen() } }
+    private func leave() { model.navigator.show(page: "routines") { RoutinesScreen() } }
 }
