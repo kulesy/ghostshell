@@ -4,17 +4,40 @@ import SwiftUI
 /// The quotes and attachments above the box, each with a button that removes it. On the Mac they are the page's cards.
 struct ComposerChips: View {
     let model: ComposerModel
-    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
+        #if os(macOS)
+        // As the page's two lists: the quotes in a column and the attachments in a row, each scrolling past 14rem.
+        VStack(spacing: 0) {
+            if !model.quotes.isEmpty {
+                ChipScroll(maxHeight: Self.maxHeight) {
+                    VStack(spacing: Self.gap) { ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } } }
+                        .padding([.horizontal, .top], Self.inset)
+                }
+            }
+            if !model.attachments.isEmpty {
+                ChipScroll(maxHeight: Self.maxHeight) {
+                    ChipFlow(spacing: Self.gap) { attachmentChips }.padding([.horizontal, .top], Self.inset)
+                }
+            }
+        }
+        #else
         if !model.quotes.isEmpty || !model.attachments.isEmpty {
             // About two rows. Past that the chips scroll, and a small window shrinks the area before the box.
-            ScrollView(.vertical) {
-                chips.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+            ChipScroll(maxHeight: Self.maxHeight) {
+                ChipFlow(spacing: Self.gap) {
+                    ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
+                    attachmentChips
+                }
+                .padding([.horizontal, .top], Self.inset)
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .frame(maxHeight: min(contentHeight, Self.maxHeight))
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        #endif
+    }
+
+    @ViewBuilder private var attachmentChips: some View {
+        ForEach(model.attachments) { item in
+            if item.isPicture { PictureChip(item: item) { model.remove(item) } } else { FileChip(item: item) { model.remove(item) } }
         }
     }
 
@@ -27,15 +50,21 @@ struct ComposerChips: View {
     private static let inset: CGFloat = 0
     private static let gap: CGFloat = 8
     #endif
+}
 
-    private var chips: some View {
-        ChipFlow(spacing: Self.gap) {
-            ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
-            ForEach(model.attachments) { item in
-                if item.isPicture { PictureChip(item: item) { model.remove(item) } } else { FileChip(item: item) { model.remove(item) } }
-            }
+/// Holds its content to `maxHeight` and scrolls past it.
+private struct ChipScroll<Content: View>: View {
+    let maxHeight: CGFloat
+    @ViewBuilder let content: Content
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        ScrollView(.vertical) {
+            content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         }
-        .padding([.horizontal, .top], Self.inset)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: min(contentHeight, maxHeight))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -199,7 +228,11 @@ private struct QuoteChip: View {
                 }
                 Text(verbatim: quote.text).font(ChatStyle.small).lineLimit(quote.fromID != here ? 1 : 2)
             }
+            #if os(macOS)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            #else
             .frame(maxWidth: 220, alignment: .leading)
+            #endif
             RemoveButton(label: "Remove quote", action: remove)
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
