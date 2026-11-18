@@ -105,7 +105,7 @@ struct SidebarTopBar: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .accessibilityLabel("New")
-            Button { searching.toggle() } label: {
+            Button { if searching { state.query = "" }; searching.toggle() } label: {
                 Image(systemName: "magnifyingglass").font(.system(size: 17)).foregroundStyle(Color.ghost.sidebarForeground).sidebarIconTouch()
             }
             .buttonStyle(.borderless)
