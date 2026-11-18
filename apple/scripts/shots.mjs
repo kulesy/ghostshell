@@ -1796,9 +1796,10 @@ async function terminalFlow(bundle, appearance) {
     await sleep(1200);
     await app.shot(`${app.tag}-term-wide-${appearance}`);
     app.setSidebar('default');
+    // A modal terminal hides the thread from the accessibility tree, so the Run button is gone or sits under the panel.
     app.resize(DEFAULT_SIZE);
     await sleep(2500);
-    check(await until('covers', () => { app.scrollThread(0); const run = runButton(); const box = input(); return !!run && !!box && run.pos[0] >= box.pos[0]; }, 10), 'at the default size the terminal covers the thread again');
+    check(await until('covers', () => { app.scrollThread(0); const run = runButton(); const box = input(); return !!box && (!run || run.pos[0] >= box.pos[0]); }, 10), 'at the default size the terminal covers the thread again');
     await sleep(1200);
     await app.shot(`${app.tag}-term-covers-again-${appearance}`);
 
