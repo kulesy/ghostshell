@@ -835,3 +835,68 @@ test('spawn_task called in a chat resolves the group name to its id when the chi
   assert.match(await spawn('Nowhere'), /no group called "Nowhere"\. The groups are "Work", "Home"\./);
   assert.deepEqual((await chipsOf(s, token, 'maker')).map(c => c.group), ['cg-home']);
 });
+
+// Chips that name a parent: Maker's chips open under Main, in Main's group, whatever group Maker is in.
+const UNDER = [
+  { id: 'maker', title: 'Maker', group: 'cg-home', ago: 5 },
+  { id: 'main', title: 'Main', group: 'cg-work', ago: 6 },
+  { id: 'inner', title: 'Inner', parent: 'main', ago: 7 },
+  { id: 'old', title: 'Old', archived: true, ago: 8 },
+  { id: 'run', title: 'Nightly', routine: 'nightly', ago: 9 },
+];
+const PARENTED = [
+  { sessionId: 'maker', toolUseId: 'toolu_main', status: 'open', prompt: 'begin a session', parent: 'main' },
+  { sessionId: 'maker', toolUseId: 'toolu_inner', status: 'open', prompt: 'begin a session', parent: 'inner' },
+  { sessionId: 'maker', toolUseId: 'toolu_old', status: 'open', prompt: 'begin a session', parent: 'old' },
+  { sessionId: 'maker', toolUseId: 'toolu_run', status: 'open', prompt: 'begin a session', parent: 'run' },
+  { sessionId: 'maker', toolUseId: 'toolu_lost', status: 'open', prompt: 'begin a session', parent: 'nobody' },
+  { sessionId: 'maker', toolUseId: 'toolu_plain', status: 'open', prompt: 'begin a session' },
+];
+
+test('a chip that names a parent starts its session under that session\'s family root, in its group, and the maker is still the chip\'s maker', async () => {
+  const s = await start({ sessions: UNDER, groups: GROUPS, claude: true, chips: PARENTED });
+  const { token } = await signIn(s);
+  const opens = async () => Object.fromEntries((await chipsOf(s, token, 'maker')).map(c => [c.toolUseId, c.opensIn]));
+  assert.deepEqual(await opens(), {
+    toolu_main: 'Opens under “Main”, in Work',
+    toolu_inner: 'Opens under “Main”, in Work',
+    toolu_old: 'Opens under “Old”',
+    toolu_run: 'Opens under “Nightly”',
+    toolu_lost: 'The session it opens under is gone',
+    toolu_plain: 'Opens under this session, in Home',
+  });
+  const res = await startChip(s, token, 'toolu_inner');
+  assert.equal(res.status, 200, res.text);
+  const { id, chip } = res.body();
+  assert.deepEqual([chip.nestUnder, chip.sessionId, chip.opensIn], ['main', 'maker', 'Opens under “Main”, in Work']);
+  const row = rowOf(await index(s, token), id);
+  assert.deepEqual([row.parent, row.group], ['main', 'cg-work']);
+  assert.equal((await opens()).toolu_inner, 'Opens under “Main”, in Work', 'a started chip keeps the line');
+  const again = await restart(s);
+  assert.equal(rowOf(await index(again, (await signIn(again)).token), id).parent, 'main', 'a restart reads it from chips.json');
+});
+
+test('a chip with a parent that is archived, a routine run or missing at Start refuses and starts nothing, and a chip with no parent still nests under its maker', async () => {
+  const s = await start({ sessions: UNDER, groups: GROUPS, claude: true, chips: PARENTED });
+  const { token } = await signIn(s);
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const [old, run, lost] = await Promise.all(['toolu_old', 'toolu_run', 'toolu_lost'].map(id => startChip(s, token, id)));
+  assert.deepEqual([old.status, old.body().error], [400, 'The session this chip opens under is no longer available: it is archived. Unarchive it with unarchive_session, or ask the session to suggest the task again.']);
+  assert.deepEqual([run.status, lost.status], [400, 400]);
+  assert.match(run.body().error, /routine run cannot hold sessions/);
+  assert.match(lost.body().error, /^The session this chip opens under is no longer available: No session with that id on this Mac\./);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+  assert.equal(cliCalls(s).some(c => c.started), false, 'no session was started');
+  assert.equal((await chipsOf(s, token, 'maker')).find(c => c.toolUseId === 'toolu_old').status, 'open');
+  const plain = await startChip(s, token, 'toolu_plain');
+  assert.equal(plain.status, 200, plain.text);
+  assert.deepEqual([rowOf(await index(s, token), plain.body().id).parent, Object.hasOwn(plain.body().chip, 'nestUnder')], ['maker', false]);
+});
+
+test('a parent posted with the card places nothing: only the chip the server stored names one', async () => {
+  const s = await start({ sessions: UNDER, groups: GROUPS, claude: true, chips: PARENTED });
+  const { token } = await signIn(s);
+  const res = await startChip(s, token, 'toolu_plain', { parent: 'main' });
+  assert.equal(res.status, 200, res.text);
+  assert.equal(rowOf(await index(s, token), res.body().id).parent, 'maker');
+});

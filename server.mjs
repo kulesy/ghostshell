@@ -636,6 +636,12 @@ function withOpensIn(chip, row, rowOf = findRow) {
   const nameOf = id => groups.find(g => g.id === id)?.name;
   const opensIn = (() => {
     if (chip.group) return nameOf(chip.group) ? `Opens in ${nameOf(chip.group)}` : 'Its group has been deleted';
+    if (chip.parent) {
+      const target = rowOf(chip.parent);
+      const root = chip.status === 'started' && chip.nestUnder ? rowOf(chip.nestUnder) : target?.parent ? rowOf(target.parent) : target;
+      if (!root) return 'The session it opens under is gone';
+      return nameOf(root.group) ? `Opens under “${root.title}”, in ${nameOf(root.group)}` : `Opens under “${root.title}”`;
+    }
     if (!row || row.routine) return null;
     if (row.groupSession) return nameOf(row.groupSession) ? `Opens in ${nameOf(row.groupSession)}` : null;
     const beside = chip.status === 'started' ? chip.nestUnder : liveHeadOf(row, rowOf);
@@ -2193,8 +2199,18 @@ async function api(req, res, u) {
       }
     }
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
+    // A chip the server stored with a parent opens under that session's family root, if it can still hold sessions.
+    let chosen = null;
+    if (known?.parent && !named && !groupId) {
+      try {
+        chosen = familyRoot(known.parent).root;
+      } catch (e) {
+        const archived = findRow(known.parent)?.archived;
+        return send(res, 400, { error: `The session this chip opens under is no longer available: ${archived ? 'it is archived. Unarchive it with unarchive_session, or ask the session to suggest the task again.' : `${e.message} Ask the session to suggest the task again.`}` });
+      }
+    }
     // A chip from a sub session starts its session beside it, under the sub session's parent. A chip naming a group is unlinked anyway.
-    const nestUnder = named ? null : liveHeadOf(findRow(known?.sessionId || sessionId));
+    const nestUnder = chosen || (named ? null : liveHeadOf(findRow(known?.sessionId || sessionId)));
     const makerId = known?.sessionId || sessionId;
     const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort, group: named || groupId || null, parent: named || groupId ? null : nestUnder || makerId });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a

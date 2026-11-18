@@ -1,6 +1,6 @@
 # Let a chip name the group its session opens in
 
-- Status: Accepted
+- Status: Accepted, amended 2026-11-18
 - Deciders: Eli
 - Date: 2026-10-27
 - Tags: chips, groups, nesting, layout, tools
@@ -52,6 +52,14 @@ Chosen option: "Resolve the name to an id when the chip is made, refuse an unkno
 - ❌ A named group takes the session out of its parent's family. It no longer shows under the session that raised it, and that session's sub session tools no longer list it. The owner can nest it back by hand.
 - ❌ A shared group name cannot be used until one of the groups is renamed.
 - ❌ A chip made before this change, or by a session that has not restarted, cannot name a group.
+
+## Amendment
+
+**Amended 2026-11-18.** `spawn_task` also takes an optional `parent`, the id of a session, so a task session can open follow-up work under its project's main session without asking that session to make the chip. See [issue 186](https://github.com/kulesy/ghostshell/issues/186).
+
+1. **Checked when the chip is made.** `parent` with `group` is refused. The parent must be a listed session that is not archived, not a routine run and not a group's or section's chat, in the same project as the caller (Home is a project of its own). It must be the caller, its parent, a sibling, one of its sub sessions, or the main session of the project: a top level session in a group of that project. `chipParentRefusal` in `lib/subs.mjs` decides, reusing `inOwnTree`. A group's or section's chat has no family, so `parent` is refused there and left out of its schema. Each refusal comes back as text the model can act on, and no chip is stored.
+2. **Stored and re-checked.** The chip keeps `parent: <id>` and still records the caller as `sessionId`, so `list_chips` names the caller as maker. Only the stored chip names a parent, never the posted card. At Start, `familyRoot` checks the parent again: one now missing, archived, a group's chat or a routine run answers 400, and an archived one points at `unarchive_session`. The project and family rules are not checked again, since the owner may have moved sessions since and presses Start knowing where it opens.
+3. **Nested under the family root.** The session nests under the parent's family root, recorded as `nestUnder` on the started chip, so it shows in the root's group. The card's "Opens" line reads "Opens under" the root's title and "in" its group, for open and started chips.
 
 ## Pros and Cons of the Options
 

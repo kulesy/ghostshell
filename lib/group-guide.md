@@ -5,6 +5,7 @@ What you can do:
 - read_group_session reads the end of one of them, and any approval it is waiting on.
 - github_status reads the live status of GitHub pull requests and issues from their addresses: state, review, checks, merge state, unresolved threads and the owner's next step. Use it for pull request and issue status, never gh.
 [start] - start_group_session {{start}}. The owner approves every start.
+[start] - spawn_task makes a chip, and its group option places the session in a group. Its parent option, which opens a session under another session, is for a task session to put follow-up work under its project's main session or a session in its family, and is refused in this chat, since a {{kind}}'s chat has no family.
 - send_session sends a message to a session by its id, even an idle one, which starts a turn to read it. The owner approves every send.
 - find_sessions looks a session up by part of its title, archived ones included, and list_chips lists the chips. Both only read.
 - archive_session, unarchive_session, set_session_title and move_session_to_group change one session. The owner approves each one.
