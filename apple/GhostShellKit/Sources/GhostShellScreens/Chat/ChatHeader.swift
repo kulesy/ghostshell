@@ -26,7 +26,7 @@ struct ChatHeader: View {
             HStack(spacing: 0.5 * Self.rem) {
                 if archivable { archiveButton(chat) }
                 AgentsButton()
-                TerminalToggle(chat: chat).labelStyle(.iconOnly).buttonStyle(.ghost(.ghost, size: .icon))
+                TerminalToggle(chat: chat)
                 ChatLamp(state: lampState(chat)).accessibilityHidden(true)
             }
         }

@@ -1722,7 +1722,7 @@ async function terminalFlow(bundle, appearance) {
     await sleep(1200);
     await app.both('term-blocks-end');
 
-    check(app.press('Terminal'), 'the toolbar has a Terminal button');
+    check(app.press('Terminal'), 'the chat head has a Terminal button');
     check(await until('panel', () => app.hasText('npm run dev'), 20), 'the terminal panel shows its runs');
     check(app.hasButton('Stop command'), 'a running command has a Stop button');
     check(await until('bottom', () => (app.terminalBar()?.value ?? 0) > 0.95, 10), 'the panel opens scrolled to its last output');
@@ -1766,7 +1766,7 @@ async function terminalFlow(bundle, appearance) {
 
     app.chooseRow(rowOf(stub, 'rich'));
     check(await until('rich', () => app.hasText('Done. I added one line under'), 20), 'a chat with no terminal opens');
-    check(toggle()?.enabled === false, 'the Terminal toggle is off in a chat that has no terminal');
+    check(!toggle(), 'the Terminal toggle is not there in a chat that has no terminal');
     await sleep(800);
     await app.both('term-toggle-off');
     app.signOutFromMenu();
