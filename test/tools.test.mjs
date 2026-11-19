@@ -398,3 +398,79 @@ test('a group\'s guide says the owner can rename it and that the name list_group
   assert.match(guideFor('Work'), /^The owner can rename this group, so the name in this prompt may be out of date\. The name list_group_sessions opens with is current, and wins over it\.$/m);
   for (const id of ['pinned', 'routines', 'started']) assert.doesNotMatch(guideFor('x', id), /can rename this group|\[group\]/, id);
 });
+
+// Task is a top level session beside Main in a project's group; Kid is Task's own sub session.
+const PROJECT_GROUPS = [{ id: 'g-w', name: 'Work', project: 'p-1' }, { id: 'g-v', name: 'Other', project: 'p-2' }, { id: 'g-h', name: 'Loose' }];
+const FAMILY_ROWS = [
+  { id: 'task', title: 'Task', group: 'g-w', parent: null },
+  { id: 'main', title: 'Main', group: 'g-w', parent: null },
+  { id: 'kid', title: 'Kid', group: 'g-w', parent: 'task' },
+  { id: 'aunt', title: 'Aunt', group: 'g-w', parent: 'main' },
+  { id: 'far', title: 'Far', group: 'g-v', parent: null },
+  { id: 'home', title: 'Home one', group: null, parent: null },
+  { id: 'old', title: 'Old', group: 'g-w', parent: null, archived: true },
+  { id: 'run', title: 'Nightly', group: null, parent: null, routine: 'nightly' },
+  { id: 'chat', title: 'Work', group: null, parent: null, groupSession: 'g-w' },
+];
+
+function parentCtx(self = 'task', rows = FAMILY_ROWS) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-chips-'));
+  const subs = { lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived) }) };
+  return { dir, chips: makeChips(dir), sessionId: self, cwd: '/tmp/work', subs, groups: () => PROJECT_GROUPS };
+}
+const spawnWith = (ctx, args) => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...args } } }, ctx).result;
+
+test('spawn_task parent is stored on the chip for the caller, its family and its project\'s main session, and list_chips still names the caller as maker', t => {
+  const ctx = parentCtx();
+  t.after(() => fs.rmSync(ctx.dir, { recursive: true, force: true }));
+  for (const parent of ['main', 'task', 'kid']) {
+    const ok = spawnWith(ctx, { parent });
+    assert.equal(ok.isError, undefined, `${parent}: ${ok.content[0].text}`);
+    assert.match(ok.content[0].text, new RegExp(`to open under the session ${parent}`));
+  }
+  assert.deepEqual(ctx.chips.list().map(c => [c.parent, c.sessionId]), [['main', 'task'], ['task', 'task'], ['kid', 'task']]);
+  const listed = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_chips', arguments: {} } }, ctx).result.content[0].text;
+  assert.equal(listed.match(/made by \[task\]/g).length, 3);
+  spawnWith(ctx, {});
+  assert.equal(Object.hasOwn(ctx.chips.list().at(-1), 'parent'), false, 'no parent keeps today\'s chip');
+});
+
+test('spawn_task parent is refused, with a reason, for a group alongside it, an unknown, archived or other-project session and one outside the family, and stores no chip', t => {
+  const ctx = parentCtx();
+  t.after(() => fs.rmSync(ctx.dir, { recursive: true, force: true }));
+  const refused = [
+    [{ parent: 'main', group: 'Work' }, /parent or group, not both/],
+    [{ parent: 'nobody' }, /is not a session/],
+    [{ parent: 'chat' }, /chat of a group or section/],
+    [{ parent: 'run' }, /routine run/],
+    [{ parent: 'old' }, /archived\. Unarchive it with unarchive_session/],
+    [{ parent: 'far' }, /another project/],
+    [{ parent: 'home' }, /another project/],
+    [{ parent: 'aunt' }, /not in this session's family/],
+    [{ parent: 5 }, /must be the id of a session/],
+  ];
+  for (const [args, why] of refused) {
+    const result = spawnWith(ctx, args);
+    assert.equal(result.isError, true, JSON.stringify(args));
+    assert.match(result.content[0].text, why, JSON.stringify(args));
+  }
+  assert.deepEqual(ctx.chips.list(), []);
+  const loose = parentCtx('home');
+  t.after(() => fs.rmSync(loose.dir, { recursive: true, force: true }));
+  assert.match(spawnWith(loose, { parent: 'main' }).content[0].text, /another project/, 'Home is a project of its own');
+  assert.equal(spawnWith(parentCtx('ghost'), { parent: 'main' }).isError, true, 'a caller the index does not list yet is refused');
+});
+
+test('spawn_task parent is refused in a group\'s chat and left out of its schema, and a blank parent counts as none', t => {
+  const ctx = parentCtx();
+  t.after(() => fs.rmSync(ctx.dir, { recursive: true, force: true }));
+  const refused = spawnWith({ ...ctx, group: { stateDir: '/tmp/state' } }, { parent: 'main', cwd: '/tmp' });
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /no family/);
+  const spawn = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { group: { stateDir: '/tmp/state' } }).result.tools.find(x => x.name === 'spawn_task');
+  assert.equal(Object.hasOwn(spawn.inputSchema.properties, 'parent'), false);
+  assert.doesNotMatch(spawn.description, /parent/);
+  assert.equal(call('tools/list').result.tools.find(x => x.name === 'spawn_task').inputSchema.properties.parent.type, 'string');
+  assert.equal(spawnWith(ctx, { parent: '  ' }).isError, undefined);
+  assert.deepEqual(ctx.chips.list().map(c => Object.hasOwn(c, 'parent')), [false]);
+});
