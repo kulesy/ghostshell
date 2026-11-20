@@ -399,6 +399,7 @@ test('a path that is not a file shows its problem beside the path, keeps the for
   await press(page, '#routine-kind-file');
   await page.until(`!!document.querySelector('#routine-file')`);
   await type(page, '#routine-file', path.join(app.prompts, 'missing.md'));
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`!!document.querySelector('#routine-file-error').textContent`);
   assert.match(await text(page, '#routine-file-error'), /missing\.md/);
@@ -496,6 +497,7 @@ test('back on the list the focus is on the saved routine\'s switch after a Save,
   await type(page, '#routine-cron', '15 18 * * *');
   await type(page, '#routine-cwd', app.work);
   await type(page, '#routine-prompt', 'Look at where the focus goes.');
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`location.hash === '#/routines' && !!document.querySelector('${row('focus-check')}')`);
   await hasFocus(page, switchOf('focus-check'));

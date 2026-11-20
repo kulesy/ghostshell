@@ -60,18 +60,16 @@ async function hubPage(t, { phone = false } = {}) {
     if (!(await page.evaluate(`!!document.querySelector('#panel .subs')`))) await page.tap('#subsButton');
   }
   await page.until(`!!document.querySelector('#panel .subs [data-reply-card]')`, 10_000);
+  // Each card's summary draws a line above its Reply button as it lands, so a press aimed before the nine children have theirs can miss.
+  await page.until(`document.querySelectorAll('#panel .subs :is(.sub-said, .sub-next)').length >= 9`);
   return page;
 }
 
-// Opens a card's box and waits for it to take the focus. The list can still be moving as its summaries arrive, and a press lands where the button was, so it tries again.
+// Opens a card's box and waits for it to take the focus.
 const openBox = async (page, id, { press = page.click, at = 'nearest' } = {}) => {
-  const focused = `document.activeElement === document.querySelector(${JSON.stringify(box(id))})`;
-  for (let tries = 5; tries; tries--) {
-    await page.evaluate(`document.querySelector(${JSON.stringify(button(id))}).scrollIntoView({ block: ${JSON.stringify(at)} })`);
-    await press(button(id));
-    if (await page.until(focused, 1500).then(() => true, () => false)) return;
-  }
-  assert.fail(`the box of ${id} did not open`);
+  await page.evaluate(`document.querySelector(${JSON.stringify(button(id))}).scrollIntoView({ block: ${JSON.stringify(at)} })`);
+  await press(button(id));
+  await page.until(`document.activeElement === document.querySelector(${JSON.stringify(box(id))})`);
 };
 const button = id => `[data-reply-card="${id}"]`;
 const box = id => `[data-reply-text="${id}"]`;

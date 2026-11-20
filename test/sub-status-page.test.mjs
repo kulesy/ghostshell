@@ -150,6 +150,8 @@ const text = (page, selector) => page.evaluate(`document.querySelector(${JSON.st
 const all = (page, selector, read) => page.evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].map(el => ${read})`);
 // The ids each request for summaries named, in order, with whether it asked for the whole reply.
 const asked = page => page.evaluate(`performance.getEntriesByType('resource').filter(e => e.name.includes('api/summaries')).map(e => { const q = new URL(e.name).searchParams; return [q.get('ids'), q.get('detail')]; })`);
+// The first line's summary draws a status above its buttons and moves them down, so a click aimed before it lands misses.
+const summarised = page => page.until(`!!document.querySelector('.sub')?.querySelector(':is(.sub-said, .sub-next)')`);
 
 test('a chat with sub sessions has the Sub sessions tab, open and first, and a header button that names how many there are and what waits on you', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/top');
@@ -186,6 +188,7 @@ test('a line has its title as a link, when it last moved, what to do next about 
 test('a line opens to its whole reply with nothing under it, and closes again, and a reply from another session has no Run', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/top');
   await page.until(`!!document.querySelector('.sub .sub-fold')`);
+  await summarised(page);
   assert.equal(await page.evaluate(`document.querySelector('.sub-fold').getAttribute('aria-expanded')`), 'false');
   assert.equal(await page.evaluate(`document.querySelector('.sub-fold').hasAttribute('aria-controls')`), false);
   await page.click('.sub-fold');
@@ -385,6 +388,7 @@ test('a line that moves while its summary is on the way is asked for again when 
 test('a tab out of sight, and a closed panel, ask the server for nothing while sessions move', { skip, timeout: 40_000 }, async t => {
   const page = await appPage(t, '#/s/lead', { origin: spy.origin });
   await page.until(`!!document.querySelector('#panel .subs .sub')`, 15_000);
+  await summarised(page);
   await page.click('.sub-fold');
   await page.until(`!!document.querySelector('.sub-open .sub-reply')`, 15_000);
   assert.ok(spy.summaries().some(url => listen(url, { ids: 'mover', detail: true })), 'the open line read its reply');

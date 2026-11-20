@@ -84,9 +84,15 @@ async function openPage(t, c, hash = '', { phone = false } = {}) {
   if (await page.until(`!!document.querySelector('.offer')`, 1500).then(() => true, () => false)) {
     await page.evaluate(`[...document.querySelectorAll('.offer .btn')].find(b => b.textContent === 'Not now')?.click()`);
   }
+  await accountsKnown(page);
   if (hash) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
   return page;
 }
+
+// A menu takes its items as it opens, so one opened before the page's own read of the accounts lands has no Account item.
+const accountsKnown = page => page.until(`import('/ui/account-list.js').then(m => m.accountList.get().accounts !== null)`, 15_000);
+// The page's own row, which a menu is built from, can lag the server's after a change.
+const pageRow = (page, id) => `Promise.all([import('/ui/subs.js'), import('/ui/tree.js')]).then(([{ sessionIndex }, { findRow }]) => findRow(sessionIndex.get().ix, ${JSON.stringify(id)}))`;
 
 const rightClick = (page, selector) => page.evaluate(`(el => { const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.x + 40, clientY: r.y + r.height / 2 })); })(document.querySelector(${JSON.stringify(selector)}))`);
 const itemsOf = (page, menu) => page.evaluate(`[...document.querySelectorAll('${menu} [role^=menuitem]')].map(el => el.querySelector('.menu-text').textContent + (el.getAttribute('aria-checked') === 'true' ? ' (checked)' : '') + (el.hasAttribute('data-disabled') ? ' (disabled)' : ''))`);
@@ -171,6 +177,7 @@ test('with two accounts the model menu, the row menu, the group menu and the pro
   await page.evaluate(`localStorage.setItem('capcom.projectsDocked', 'true')`);
   await page.reload();
   await page.until(`!!document.querySelector('button[aria-label="Actions for Proj"]')`, 15_000);
+  await accountsKnown(page);
   await page.click('button[aria-label="Actions for Proj"]');
   await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
   await openSub(page, 'Account');
@@ -412,15 +419,10 @@ test('when the survey proves Chrome is on Main, the Account menu, the routine fo
   assert.deepEqual(page.problems, []);
 });
 
-// Opens a menu and its Account submenu, trying again until the page has read the accounts, since the first menu can open before they arrive.
+// Opens a menu and its Account submenu.
 async function accountSub(page, open) {
-  for (let tries = 0; tries < 20; tries++) {
-    await open();
-    if ((await labels(page)).includes('Account')) return openSub(page, 'Account');
-    await page.press('Escape');
-    await new Promise(done => setTimeout(done, 250));
-  }
-  throw new Error('the Account item never appeared');
+  await open();
+  await openSub(page, 'Account');
 }
 const post = (c, url, json) => request(c.s, 'POST', url, { headers: { connection: 'close', origin: c.s.origin, ...as(c.token) }, json });
 const pinTo = (c, kind, id, account, overflow) => post(c, '/api/layout/account', { kind, id, account, overflow });
@@ -440,6 +442,7 @@ test('the row menu of a pinned session picks and clears an overflow under the pi
   await shot(page, 'overflow-menu-session-none');
   await spare(page, 'If Second runs out', 'Main');
   await until(async () => (await rowOf(c, 'live')).accountOverflow === 'main');
+  await page.until(`${pageRow(page, 'live')}.then(r => r.accountOverflow === 'main')`);
   await accountSub(page, () => rowMenu(page, 'live'));
   assert.deepEqual(await itemsOf(page, SUB), ['Active account', 'Main', 'Second (checked)', 'Main (checked)', 'Stay on Second']);
   await shot(page, 'overflow-menu-session-main');
@@ -466,6 +469,7 @@ test('the group and project menus pick an overflow, and a single account shows n
   await page.evaluate(`localStorage.setItem('capcom.projectsDocked', 'true')`);
   await page.reload();
   await page.until(`!!document.querySelector('button[aria-label="Actions for Proj"]')`, 15_000);
+  await accountsKnown(page);
   await accountSub(page, async () => {
     await page.until(`!document.querySelector('.menu')`);
     await page.click('button[aria-label="Actions for Proj"]');

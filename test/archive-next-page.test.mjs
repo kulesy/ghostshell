@@ -72,7 +72,8 @@ async function appPage(t, s, hash = '#/', { phone = false, rows = 5 } = {}) {
   await login(page);
   if ((await page.evaluate('location.hash')) !== hash) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
   await page.until(`document.querySelectorAll('a.row[data-id]').length >= ${rows}`);
-  if (hash.startsWith('#/s/')) await page.until(`!!document.querySelector('.chat-head')`);
+  // The Terminal button comes with the chat's messages and moves Archive left, so a press aimed before it lands misses.
+  if (hash.startsWith('#/s/')) await page.until(`!!document.querySelector('.chat-head') && !!document.querySelector('#terminalButton')`);
   return page;
 }
 
