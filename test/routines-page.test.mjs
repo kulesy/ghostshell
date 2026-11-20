@@ -399,6 +399,7 @@ test('a path that is not a file shows its problem beside the path, keeps the for
   await press(page, '#routine-kind-file');
   await page.until(`!!document.querySelector('#routine-file')`);
   await type(page, '#routine-file', path.join(app.prompts, 'missing.md'));
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`!!document.querySelector('#routine-file-error').textContent`);
   assert.match(await text(page, '#routine-file-error'), /missing\.md/);
@@ -423,6 +424,7 @@ test('the form for a routine on a file elsewhere shows the path and that the fil
   assert.equal(await page.evaluate(`!!document.querySelector('.routine-on .routine-alert')`), false);
   const outside = fs.readFileSync(app.scrum);
   await type(page, '#routine-title', 'Daily scrum, renamed');
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`location.hash === '#/routines' && document.querySelector('${row('scrum')} .routine-title')?.textContent === 'Daily scrum, renamed'`);
   assert.equal(routineOf('scrum').file, app.scrum);
@@ -439,6 +441,7 @@ test('switching a routine on a file elsewhere to GhostShell\'s own text fills th
   await page.until(`!!document.querySelector('#routine-prompt')`);
   assert.equal(await valueOf(page, '#routine-prompt'), 'Check the board.');
   assert.equal(await text(page, '#routine-prompt-hint'), 'GhostShell keeps the text in its own folder, and you edit it here. The file stays as it is.');
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`location.hash === '#/routines'`);
   const own = path.join(app.state, 'routines', 'scrum.md');
@@ -496,6 +499,7 @@ test('back on the list the focus is on the saved routine\'s switch after a Save,
   await type(page, '#routine-cron', '15 18 * * *');
   await type(page, '#routine-cwd', app.work);
   await type(page, '#routine-prompt', 'Look at where the focus goes.');
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`location.hash === '#/routines' && !!document.querySelector('${row('focus-check')}')`);
   await hasFocus(page, switchOf('focus-check'));
@@ -505,10 +509,12 @@ test('back on the list the focus is on the saved routine\'s switch after a Save,
     if (title) await type(page, '#routine-title', title);
   };
   await edit();
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`location.hash === '#/routines' && !!document.querySelector('${row('focus-check')}')`);
   await hasFocus(page, switchOf('focus-check'));
   await edit('Focus check, renamed');
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`location.hash === '#/routines' && document.querySelector('${row('focus-check')} .routine-title')?.textContent === 'Focus check, renamed'`);
   await hasFocus(page, switchOf('focus-check'));
@@ -531,6 +537,7 @@ test('a save whose reply comes after the owner has opened a session leaves the o
     ? new Promise(done => setTimeout(done, 800, new Response(JSON.stringify({ routine: { id: 'alpha' } }), { status: 200, headers: { 'content-type': 'application/json' } })))
     : of(url, init)); })(window.fetch)`);
   await type(page, '#routine-title', 'Alpha check, late');
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`document.querySelector('.routine-buttons button[type=submit]').disabled`);
   await page.evaluate(`location.hash = '#/s/r1'`);
@@ -1030,6 +1037,7 @@ async function putInGroup(page, { phone, id, group }) {
   await type(page, '#routine-heading', group);
   // The last save's toast sits over the submit button on a phone, so it goes before the tap.
   await page.evaluate(`document.querySelectorAll('[data-sonner-toaster]').forEach(el => el.remove())`);
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await reveal(page, '.routine-buttons button[type=submit]');
   await click('.routine-buttons button[type=submit]');
   await page.until(`!document.querySelector('#routine-form')`);
@@ -1080,6 +1088,7 @@ test('the Group field shows a refusal beside it and takes the focus', { skip, ti
     ? Promise.resolve(new Response(JSON.stringify({ error: 'Nothing was saved. Check the group.', problems: { heading: 'A group name runs to 120 characters at most.' } }), { status: 400, headers: { 'content-type': 'application/json' } }))
     : of(url, init)); })(window.fetch)`);
   await type(page, '#routine-heading', 'x');
+  await page.until(`document.querySelectorAll('.routine-fires span').length === 4`);
   await press(page, '.routine-buttons button[type=submit]');
   await page.until(`document.querySelector('#routine-heading-error')?.textContent.includes('120 characters')`);
   assert.equal(await page.evaluate(`document.querySelector('#routine-heading').getAttribute('aria-invalid')`), 'true');

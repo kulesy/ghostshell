@@ -72,7 +72,8 @@ async function appPage(t, s, hash = '#/', { phone = false, rows = 5 } = {}) {
   await login(page);
   if ((await page.evaluate('location.hash')) !== hash) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
   await page.until(`document.querySelectorAll('a.row[data-id]').length >= ${rows}`);
-  if (hash.startsWith('#/s/')) await page.until(`!!document.querySelector('.chat-head')`);
+  // The Terminal button comes with the chat's messages and moves Archive left, so a press aimed before it lands misses.
+  if (hash.startsWith('#/s/')) await page.until(`!!document.querySelector('.chat-head') && !!document.querySelector('#terminalButton')`);
   return page;
 }
 
@@ -446,7 +447,7 @@ test('the next session opens with the draft that was left in it', { skip, timeou
   await page.until(`JSON.parse(localStorage.getItem('capcom.drafts') ?? '{}')['${below}'] === 'half written'`);
   await page.evaluate(`location.hash = '#/s/s2'`);
   await page.until(`document.querySelector('#text')?.value === ''`);
-  await page.until(`${LABEL} === 'Archive'`);
+  await page.until(`${LABEL} === 'Archive' && !!document.querySelector('#terminalButton')`);
   await page.click(BUTTON);
   await noteIs(page, 'Archived “Billing copy update”.');
   assert.equal(await hashOf(page), `#/s/${below}`);

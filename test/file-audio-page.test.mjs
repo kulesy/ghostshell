@@ -184,6 +184,8 @@ test('a move leaves the transcript where it is, keeps the File tab and the focus
   await playing(page, 'four');
   await page.click('.file-clips-nav button:first-child');
   await page.until(`document.querySelector('.file-clips-count').textContent === '3 of 5'`);
+  // The missing clip's note scrolls the panel back to the top as it lands, which moves the buttons.
+  await page.until(`!!document.querySelector('.file-note[role="alert"]')`);
   await page.click('.file-clips-nav button:first-child');
   await playing(page, 'two');
   assert.equal(await page.evaluate(`document.activeElement === window.previous && window.previous.isConnected && window.next.isConnected`), true, 'the buttons are the same ones throughout');

@@ -70,6 +70,8 @@ async function openPage(t, c, hash = '', { phone = false, before = '' } = {}) {
   }
   if (hash) {
     if (before) await page.reload();
+    // A turn that ends before the chat's event stream is connected leaves no notice, so the chat tests wait for the stream before they send.
+    await page.evaluate(`window.streams = 0; const Real = window.EventSource; window.EventSource = class extends Real { constructor(...args) { super(...args); this.addEventListener('open', () => window.streams++); } }`);
     await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
   }
   return page;
@@ -199,6 +201,7 @@ test('a chat whose turn ran out of usage offers to switch and continue, and the 
   const c = await open();
   const page = await openPage(t, c, '#/s/live');
   await page.until(`!!document.querySelector('#notice') && !!document.querySelector('.btn.context, textarea, .composer')`, 15_000);
+  await page.until(`window.streams >= 1`);
   await page.evaluate(`window.asked = []; const real = window.fetch; window.fetch = (...a) => { window.asked.push(String(a[0])); return real(...a); }`);
   await request(c.s, 'POST', '/api/sessions/live/send', { headers: { origin: c.s.origin, ...as(c.token) }, json: { text: 'hit the usage limit' } });
   await page.until(`!!document.querySelector('.notice-action button')`, 15_000);
@@ -216,6 +219,7 @@ test('a transient limit in a chat shows its error and no switch button', { skip,
   const c = await open();
   const page = await openPage(t, c, '#/s/live');
   await page.until(`!!document.querySelector('#notice') && !!document.querySelector('.composer, textarea')`, 15_000);
+  await page.until(`window.streams >= 1`);
   await request(c.s, 'POST', '/api/sessions/live/send', { headers: { origin: c.s.origin, ...as(c.token) }, json: { text: 'hit a busy limit' } });
   await page.until(`document.querySelector('#notice').textContent === 'API Error: Request rejected (429)'`, 15_000);
   assert.equal(await page.evaluate(`!!document.querySelector('.notice-action')`), false);
