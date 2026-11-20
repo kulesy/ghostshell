@@ -49,8 +49,11 @@ function checkout() {
 
 // A server started again after its home was given `files`, with the checkout `root` to update. It returns once the server has read the sign-in
 // and, when there is a checkout, fetched it, so the page's first read does not beat them and wait 15 seconds for the next.
+// The server holds restarts from 06:59 to 09:45 on weekdays by its own clock, so the zone keeps that clock 12 hours away from those hours.
+const awayFromQuiet = () => ({ TZ: new Date().getUTCHours() >= 6 && new Date().getUTCHours() < 10 ? 'Etc/GMT-12' : 'UTC' });
+
 async function open(files, root = null) {
-  const first = await start({ env: { CAPCOM_UPDATE_DELAY_MS: '50', ...(root && { CAPCOM_UPDATE_ROOT: root }) } });
+  const first = await start({ env: { CAPCOM_UPDATE_DELAY_MS: '50', ...awayFromQuiet(), ...(root && { CAPCOM_UPDATE_ROOT: root }) } });
   for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(first.home, name), text);
   const s = await restart(first);
   const { token } = await signIn(s);
