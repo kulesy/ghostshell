@@ -71,14 +71,19 @@ function WidgetWait({ ctrl, work }) {
 }
 
 // The thinking and the reply as they are written, the place held for a widget, and the line that says what Claude is doing.
+// A reply still being written is drawn again on every chunk, and the files route sends no-store, so each draw would fetch its pictures
+// again. They show as links until the turn ends and the saved reply draws them.
+const noPictures = fileUrl => fileUrl && ((path, line, kind) => (kind === 'picture' ? null : fileUrl(path, line)));
+
 function Live({ ctrl, box, pin, fileUrl }) {
   const { live, think, work, turnStart, outside, outsideStart } = useFields(ctrl.store, 'live', 'think', 'work', 'turnStart', 'outside', 'outsideStart');
   const turn = useStore(ctrl.store, turnOf);
   const names = useStore(ctrl.store, s => s.session?.connectors);
   const other = turn === 'outside';
+  const linkOnly = useMemo(() => noPictures(fileUrl), [fileUrl]);
   useStick(box, pin);
   return html`${think ? html`<${LiveThink} key=${think.id} think=${think} />` : null}
-    <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live, fileUrl) : '' }}></div>
+    <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live, linkOnly) : '' }}></div>
     <${WidgetWait} ctrl=${ctrl} work=${work} />
     <${Working} work=${other ? outside : work} since=${other ? outsideStart : turnStart} on=${!!turn} outside=${other} names=${names} />`;
 }

@@ -44,7 +44,8 @@ const FILE_LINK = new RegExp(`\\[([^\\]\\n]{1,${MAX_TEXT}})\\]\\((?:<([^>\\n]{1,
 const OTHER_LINK = new RegExp(`\\[([^\\]\\n]{1,${MAX_TEXT}})\\]\\(([^\\s)]{1,${MAX_PATH}})\\)`, 'g');
 
 // Code spans and links are set aside before emphasis runs, so an underscore in a URL stays a URL. `file(path, line)`, if given,
-// returns the address that opens a file, or null; a path it returns null for is drawn as if there were no `file`.
+// returns the address that opens a file, or null; a path it returns null for is drawn as if there were no `file`. It is asked
+// `file(path, null, 'picture')` for an image, and a null there draws the image as the link it would otherwise be.
 function inline(src, file) {
   const kept = [];
   const spans = new Map();
@@ -62,7 +63,7 @@ function inline(src, file) {
     .replace(IMAGE, (_, alt, angled, bare) => {
       const raw = angled ?? bare;
       const target = !/^https?:\/\//.test(raw) && file && fileTarget(raw, true);
-      const href = target && target.line === null && PICTURE.test(target.path) ? file(target.path, null) : null;
+      const href = target && target.line === null && PICTURE.test(target.path) ? file(target.path, null, 'picture') : null;
       const text = alt || (target ? target.path.split('/').pop() : raw).replace(/[[\]]/g, '');
       if (!href) return `[${text}](${angled === undefined ? raw : `<${angled}>`})`;
       const name = text.replace(/\u0000(\d+)\u0000/g, (_, i) => spans.get(Number(i)) ?? '');

@@ -331,3 +331,11 @@ test('an image in a list item, a table cell and a line of text is drawn, and eac
   assert.match(table, /<td><button[^>]*class="md-image"/);
   assert.deepEqual([...linkedFiles('- ![a](/Users/me/a.png)\n\n| x |\n| --- |\n| ![b](/Users/me/b.png) |')], ['/Users/me/a.png', '/Users/me/b.png']);
 });
+
+test('an image is asked for as a picture, and a caller that declines pictures gets the link the text would draw', () => {
+  const asked = [];
+  md('![a](/Users/me/a.png)', (path, line, kind) => { asked.push(kind); return href(path, line); });
+  assert.equal(asked[0], 'picture');
+  const linkOnly = (path, line, kind) => (kind === 'picture' ? null : href(path, line));
+  assert.equal(md('![a](/Users/me/a.png)', linkOnly), md('[a](/Users/me/a.png)', href));
+});
