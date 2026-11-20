@@ -38,6 +38,8 @@ const TRAILING = '.,;:!?\'"';
 const MAX_TEXT = 1000;
 const MAX_PATH = 4096;
 const HTTP_LINK = new RegExp(`\\[([^\\]\\n]{1,${MAX_TEXT}})\\]\\((https?:\\/\\/[^\\s)]{1,${MAX_PATH}})\\)`, 'g');
+const IMAGE = new RegExp(`!\\[([^\\]\\n]{0,${MAX_TEXT}})\\]\\((?:<([^>\\n]{1,${MAX_PATH}})>|([^\\s)]{1,${MAX_PATH}}))\\)`, 'g');
+const PICTURE = /\.(?:png|jpe?g|gif|webp)$/i;
 const FILE_LINK = new RegExp(`\\[([^\\]\\n]{1,${MAX_TEXT}})\\]\\((?:<([^>\\n]{1,${MAX_PATH}})>|([^\\s)]{1,${MAX_PATH}}))\\)`, 'g');
 const OTHER_LINK = new RegExp(`\\[([^\\]\\n]{1,${MAX_TEXT}})\\]\\(([^\\s)]{1,${MAX_PATH}})\\)`, 'g');
 
@@ -55,6 +57,17 @@ function inline(src, file) {
   };
   const s = esc(src
     .replace(/`([^`\n]+)`/g, (_, c) => { spans.set(kept.length, c); return keep(`<code>${esc(c)}</code>`); })
+    // A picture is drawn only for a local file the page can open. An http image stays a link, since loading a URL a model wrote
+    // lets a reply carry data out in its query string.
+    .replace(IMAGE, (_, alt, angled, bare) => {
+      const raw = angled ?? bare;
+      const target = !/^https?:\/\//.test(raw) && file && fileTarget(raw, true);
+      const href = target && target.line === null && PICTURE.test(target.path) ? file(target.path, null) : null;
+      const text = alt || (target ? target.path.split('/').pop() : raw).replace(/[[\]]/g, '');
+      if (!href) return `[${text}](${angled === undefined ? raw : `<${angled}>`})`;
+      const name = text.replace(/\u0000(\d+)\u0000/g, (_, i) => spans.get(Number(i)) ?? '');
+      return keep(`<button type="button" class="md-image" data-md-image="${esc(href)}" data-path="${esc(target.path)}"><img loading="lazy" src="${esc(href)}" alt="${esc(name)}"></button>`);
+    })
     .replace(HTTP_LINK, (_, t, u) => link(t, u))
     .replace(FILE_LINK, (m, t, angled, bare) => {
       const open = opener(angled ?? bare, true);

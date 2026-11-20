@@ -147,13 +147,40 @@ export function Transcript({ ctrl, quoting }) {
   }, [ctrl]);
   useEffect(() => closeViewer, []);
 
-  // A plain click on a file link opens it here. A click with a modifier is left to the browser, so it opens the file in a new tab or window.
+  // A plain click on a picture in a reply opens the viewer on that message's pictures, and one on a file link opens it here. A click with a modifier is left to the browser, so it opens the file in a new tab or window.
   const openLink = e => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const pic = e.target.closest?.('button[data-md-image]');
+    if (pic) {
+      const shots = [...(pic.closest('.msg, .think-text') ?? pic.parentElement).querySelectorAll('button[data-md-image]')]
+        .map(b => ({ key: b.dataset.mdImage, src: b.dataset.mdImage, alt: b.querySelector('img')?.alt ?? '' }))
+        .filter((shot, n, all) => all.findIndex(o => o.key === shot.key) === n);
+      openViewer(shots, Math.max(0, shots.findIndex(shot => shot.key === pic.dataset.mdImage)), pic);
+      return;
+    }
     const link = e.target.closest?.('a[data-file]');
-    if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (!link) return;
     e.preventDefault();
     openFile({ id: ctrl.id, path: link.dataset.file, line: link.dataset.line ? Number(link.dataset.line) : null, from: link });
   };
+  // A picture in a reply that will not load becomes the file link its text would have drawn. The error event does not bubble, so this listens in the capture phase.
+  useEffect(() => {
+    const el = box.current;
+    const failed = e => {
+      const button = e.target.closest?.('.md-image');
+      if (!button || e.target.tagName !== 'IMG') return;
+      const link = document.createElement('a');
+      link.className = 'file-link';
+      link.href = button.dataset.mdImage;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.dataset.file = button.dataset.path;
+      link.textContent = e.target.alt;
+      button.replaceWith(link);
+    };
+    el.addEventListener('error', failed, true);
+    return () => el.removeEventListener('error', failed, true);
+  }, []);
   useEffect(() => closeFile, []);
 
   // A message still on its way into the thread begins the next turn, so the group above it belongs to the last one.
