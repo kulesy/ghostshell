@@ -447,7 +447,7 @@ test('the next session opens with the draft that was left in it', { skip, timeou
   await page.until(`JSON.parse(localStorage.getItem('capcom.drafts') ?? '{}')['${below}'] === 'half written'`);
   await page.evaluate(`location.hash = '#/s/s2'`);
   await page.until(`document.querySelector('#text')?.value === ''`);
-  await page.until(`${LABEL} === 'Archive'`);
+  await page.until(`${LABEL} === 'Archive' && !!document.querySelector('#terminalButton')`);
   await page.click(BUTTON);
   await noteIs(page, 'Archived “Billing copy update”.');
   assert.equal(await hashOf(page), `#/s/${below}`);

@@ -60,10 +60,12 @@ async function hubPage(t, { phone = false } = {}) {
     if (!(await page.evaluate(`!!document.querySelector('#panel .subs')`))) await page.tap('#subsButton');
   }
   await page.until(`!!document.querySelector('#panel .subs [data-reply-card]')`, 10_000);
-  // Each card's summary draws a line above its Reply button as it lands, so a press aimed before the nine children have theirs can miss.
-  await page.until(`document.querySelectorAll('#panel .subs :is(.sub-said, .sub-next)').length >= 9`);
+  await summarised(page);
   return page;
 }
+
+// A card's summary draws a line above its Reply button as it lands, so a press aimed before every card has its line can miss.
+const summarised = page => page.until(`[...document.querySelectorAll('#panel .subs .sub-card')].filter(card => card.querySelector('[data-reply-card]')).every(card => card.querySelector(':is(.sub-said, .sub-next)'))`);
 
 // Opens a card's box and waits for it to take the focus.
 const openBox = async (page, id, { press = page.click, at = 'nearest' } = {}) => {
@@ -287,6 +289,7 @@ test('a session with a card waiting in its chat says the message waits behind it
   }
   if ((await page.evaluate('location.hash')) !== '#/s/hub') await page.evaluate(`location.hash = '#/s/hub'`);
   await page.until(`!!document.querySelector(${JSON.stringify(button('asking'))})`, 15_000);
+  await summarised(page);
   await openBox(page, 'asking');
   await page.until(`/after you answer that/.test(document.querySelector('.sub-send-note')?.textContent ?? '')`);
   const note = await page.evaluate(`document.querySelector('.sub-send-note').id`);
