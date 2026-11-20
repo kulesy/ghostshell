@@ -71,14 +71,19 @@ function WidgetWait({ ctrl, work }) {
 }
 
 // The thinking and the reply as they are written, the place held for a widget, and the line that says what Claude is doing.
+// A reply still being written is drawn again on every chunk, and the files route sends no-store, so each draw would fetch its pictures
+// again. They show as links until the turn ends and the saved reply draws them.
+const noPictures = fileUrl => fileUrl && ((path, line, kind) => (kind === 'picture' ? null : fileUrl(path, line)));
+
 function Live({ ctrl, box, pin, fileUrl }) {
   const { live, think, work, turnStart, outside, outsideStart } = useFields(ctrl.store, 'live', 'think', 'work', 'turnStart', 'outside', 'outsideStart');
   const turn = useStore(ctrl.store, turnOf);
   const names = useStore(ctrl.store, s => s.session?.connectors);
   const other = turn === 'outside';
+  const linkOnly = useMemo(() => noPictures(fileUrl), [fileUrl]);
   useStick(box, pin);
   return html`${think ? html`<${LiveThink} key=${think.id} think=${think} />` : null}
-    <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live, fileUrl) : '' }}></div>
+    <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live, linkOnly) : '' }}></div>
     <${WidgetWait} ctrl=${ctrl} work=${work} />
     <${Working} work=${other ? outside : work} since=${other ? outsideStart : turnStart} on=${!!turn} outside=${other} names=${names} />`;
 }
@@ -147,13 +152,40 @@ export function Transcript({ ctrl, quoting }) {
   }, [ctrl]);
   useEffect(() => closeViewer, []);
 
-  // A plain click on a file link opens it here. A click with a modifier is left to the browser, so it opens the file in a new tab or window.
+  // A plain click on a picture in a reply opens the viewer on that message's pictures, and one on a file link opens it here. A click with a modifier is left to the browser, so it opens the file in a new tab or window.
   const openLink = e => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const pic = e.target.closest?.('button[data-md-image]');
+    if (pic) {
+      const shots = [...(pic.closest('.msg, .think-text') ?? pic.parentElement).querySelectorAll('button[data-md-image]')]
+        .map(b => ({ key: b.dataset.mdImage, src: b.dataset.mdImage, alt: b.querySelector('img')?.alt ?? '' }))
+        .filter((shot, n, all) => all.findIndex(o => o.key === shot.key) === n);
+      openViewer(shots, Math.max(0, shots.findIndex(shot => shot.key === pic.dataset.mdImage)), pic);
+      return;
+    }
     const link = e.target.closest?.('a[data-file]');
-    if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (!link) return;
     e.preventDefault();
     openFile({ id: ctrl.id, path: link.dataset.file, line: link.dataset.line ? Number(link.dataset.line) : null, from: link });
   };
+  // A picture in a reply that will not load becomes the file link its text would have drawn. The error event does not bubble, so this listens in the capture phase.
+  useEffect(() => {
+    const el = box.current;
+    const failed = e => {
+      const button = e.target.closest?.('.md-image');
+      if (!button || e.target.tagName !== 'IMG') return;
+      const link = document.createElement('a');
+      link.className = 'file-link';
+      link.href = button.dataset.mdImage;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.dataset.file = button.dataset.path;
+      link.textContent = e.target.alt;
+      button.replaceWith(link);
+    };
+    el.addEventListener('error', failed, true);
+    return () => el.removeEventListener('error', failed, true);
+  }, []);
   useEffect(() => closeFile, []);
 
   // A message still on its way into the thread begins the next turn, so the group above it belongs to the last one.

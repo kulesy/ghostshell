@@ -281,3 +281,61 @@ test('marking a console block\'s commands adds nothing for the server to link, a
   assert.deepEqual([...linkedFiles('```console\n$ cat /Users/eli/a.md\n[x](/Users/eli/b.md)\n```')], []);
   assert.equal(md('```console\n$ echo "</span><img src=x onerror=alert(1)>"\n```').includes('<img'), false);
 });
+
+const pictures = markup => [...markup.matchAll(/<button type="button" class="md-image" data-md-image="([^"]*)" data-path="([^"]*)"><img loading="lazy" src="[^"]*" alt="([^"]*)"><\/button>/g)]
+  .map(([, src, file, alt]) => ({ src, file, alt }));
+
+test('an image whose target is a picture on this Mac is drawn as a button holding the picture, and its path is one the server may open', () => {
+  assert.equal(md('![the chart](/Users/me/chart.png)', href),
+    '<p><button type="button" class="md-image" data-md-image="/f?p=%2FUsers%2Fme%2Fchart.png" data-path="/Users/me/chart.png"><img loading="lazy" src="/f?p=%2FUsers%2Fme%2Fchart.png" alt="the chart"></button></p>');
+  assert.deepEqual(pictures(md('![a](~/shots/a.JPG)', href)), [{ src: '/f?p=~%2Fshots%2Fa.JPG', file: '~/shots/a.JPG', alt: 'a' }]);
+  assert.deepEqual(pictures(md('![a](</Users/me/my shots/a b.webp>)', href)).map(p => p.file), ['/Users/me/my shots/a b.webp']);
+  assert.deepEqual(pictures(md('![a](/Users/me/my%20shots/a.gif)', href)).map(p => p.file), ['/Users/me/my shots/a.gif']);
+  for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'webp']) assert.equal(pictures(md(`![a](/Users/me/a.${ext})`, href)).length, 1, ext);
+  assert.deepEqual([...linkedFiles('![chart](/Users/me/chart.png)')], ['/Users/me/chart.png']);
+});
+
+test('an image with no alt text takes the name of its file, and the alt text is escaped', () => {
+  assert.equal(pictures(md('![](/Users/me/shots/board.png)', href))[0].alt, 'board.png');
+  assert.equal(pictures(md('![a "b" <i>c</i> & `d`](/Users/me/a.png)', href))[0].alt, 'a &quot;b&quot; &lt;i&gt;c&lt;/i&gt; &amp; d');
+  assert.equal(md('![x" onerror="y](/Users/me/a.png)', href).includes('onerror="'), false);
+});
+
+test('an image the page will not open as a picture draws what the same link draws, with no stray bang', () => {
+  const same = target => {
+    const image = md(`![alt](${target})`, href);
+    assert.equal(pictures(image).length, 0, target);
+    assert.equal(image, md(`[alt](${target})`, href), target);
+    assert.equal(image.includes('!'), false, target);
+  };
+  for (const target of ['shots/a.png', '../a.png', '/Users/me/../a.png', '/Users/me/a.png:12', '/Users/me/a.txt', '/Users/me/a.svg', '/Users/me/a']) same(target);
+  assert.deepEqual(found('![alt](/Users/me/a.txt)'), [{ file: '/Users/me/a.txt', line: null, text: 'alt' }]);
+  assert.equal(md('![alt](/Users/me/a.png)', () => null), md('[alt](/Users/me/a.png)', () => null));
+  assert.equal(pictures(md('![alt](/Users/me/a.png)')).length, 0);
+  assert.equal(md('![alt](/Users/me/a.png)'), md('[alt](/Users/me/a.png)'));
+  assert.deepEqual([...linkedFiles('![a](shots/a.png) ![b](/Users/me/../a.png)')], []);
+});
+
+test('an https image stays a link labelled with its alt text, or its address, and is never loaded', () => {
+  const url = 'https://example.com/a.png?x=1';
+  assert.equal(md(`![chart](${url})`, href), `<p><a href="${url}" target="_blank" rel="noopener noreferrer">chart</a></p>`);
+  assert.equal(md(`![](${url})`, href), `<p><a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a></p>`);
+  assert.equal(/<img|md-image/.test(md(`![chart](${url}) ![b](http://example.com/b.png)`, href)), false);
+});
+
+test('an image in a list item, a table cell and a line of text is drawn, and each path is linked', () => {
+  const list = md('- ![a](/Users/me/a.png)\n- ![b](/Users/me/b.png) text', href);
+  assert.deepEqual(pictures(list).map(p => p.file), ['/Users/me/a.png', '/Users/me/b.png']);
+  assert.match(list, /<li><button/);
+  const table = md('| x | y |\n| --- | --- |\n| ![a](/Users/me/a.png) | b |', href);
+  assert.match(table, /<td><button[^>]*class="md-image"/);
+  assert.deepEqual([...linkedFiles('- ![a](/Users/me/a.png)\n\n| x |\n| --- |\n| ![b](/Users/me/b.png) |')], ['/Users/me/a.png', '/Users/me/b.png']);
+});
+
+test('an image is asked for as a picture, and a caller that declines pictures gets the link the text would draw', () => {
+  const asked = [];
+  md('![a](/Users/me/a.png)', (path, line, kind) => { asked.push(kind); return href(path, line); });
+  assert.equal(asked[0], 'picture');
+  const linkOnly = (path, line, kind) => (kind === 'picture' ? null : href(path, line));
+  assert.equal(md('![a](/Users/me/a.png)', linkOnly), md('[a](/Users/me/a.png)', href));
+});
