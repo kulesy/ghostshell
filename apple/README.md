@@ -57,7 +57,7 @@ The `Swift app` workflow (`.github/workflows/swift.yml`) runs the Swift builds, 
 | --- | --- | --- |
 | `build-and-test` | `apple:test`, then the Release builds of the Mac, iPhone and watch apps, each searched for the Debug hooks | none |
 | `mac-shots` | `apple:shot -- --no-chat` for the `main`, `widgets`, `approvals`, `routines`, `files`, `accounts`, `chats`, `composer` and `terminal` flows, then the `journeys` flow in light in a step of its own | `mac-screenshots` |
-| `parity`, after `mac-shots` succeeds | The web page at the Mac window sizes and its journeys, paired with the Mac shots (see Pair run below) | `parity-pairs`, `web-screenshots` |
+| `parity`, after `mac-shots`, whether or not it passed | The web page at the Mac window sizes and its journeys, paired with the Mac shots (see Pair run below) | `parity-pairs`, `web-screenshots` |
 | `iphone-shots`, four jobs, one per device and appearance, only when started by hand with `-f iphone=true` | `apple:ios-shot` on iOS 27.2 | `iphone-screenshots-<device>-<appearance>`, plus `iphone-test-logs-<device>-<appearance>` when one fails |
 
 A run differs from one on the Mac in these ways:
@@ -83,7 +83,7 @@ The workflow's token can only read, and no step reads a secret, so a run from a 
 
 The `parity` job renders the web page at the Mac window's default (960 by 640) and minimum (640 by 420) size, in light and dark, and pairs each web shot with the Mac shot of the same screen and state. It makes one side-by-side image per pair, with the Mac on the left and the web page on the right, and a `pairs.md` that lists the pairs, the pairs with one side missing and the shots no pair names. `apple/scripts/parity-pairs.json` says which Mac shot goes with which web screen. A new shot on either side shows up in `pairs.md` as unpaired until it has a line there. `docs/parity.md` is the ledger this run feeds.
 
-Start it with `gh workflow run swift.yml --ref <branch>`. It runs after `mac-shots` succeeds. Fetch the images with:
+Start it with `gh workflow run swift.yml --ref <branch>`. It runs after `mac-shots` even when a Mac step failed, and a missing or partial Mac shot folder shows as not run in `pairs.md`. Fetch the images with:
 
 ```
 gh run download "$run" --name parity-pairs --dir <folder>
@@ -103,7 +103,7 @@ A journey is a task a person does, played on the Mac app and on the web page in 
 
 A shot is named `j-<journey>-<n>-<step>`, with n counted from 1. The Mac saves it as `j-<journey>-<n>-<step>-light-default.png` and the web page as `page/960/light/j-<journey>-<n>-<step>.png`. Both play at 960 by 640 in light only. `parity.mjs` pairs every step from the list, so a step needs no line in `parity-pairs.json`.
 
-A step that fails (the verb can't do it, or its `expect` doesn't show within the timeout) is recorded, still shot, and the rest of its journey is marked skipped. The next journey still runs, and a failed step does not change either run's exit code, so `parity` goes on. Each runner prints `JOURNEY <mac|web> <journey>/<step>: <reason>` for a failure and writes `journeys-mac.json` beside the Mac shots and `journeys-web.json` in the web folder, as `[{ journey, step, n, status: 'ok' | 'failed' | 'skipped', reason }]`. `pairs.md` ends with a Journeys section that tables each step's status on both sides and its side-by-side file and lists each failure's reason, and the `parity` job copies that section to the run's summary.
+A step that fails (the verb can't do it, or its `expect` doesn't show within the timeout) is recorded, and a journey whose setup fails (the stub, the launch or the page load) fails its first step with the reason, still shot, and the rest of its journey is marked skipped. The next journey still runs, and a failed step does not change either run's exit code, so `parity` goes on. Each runner prints `JOURNEY <mac|web> <journey>/<step>: <reason>` for a failure and writes `journeys-mac.json` beside the Mac shots and `journeys-web.json` in the web folder, as `[{ journey, step, n, status: 'ok' | 'failed' | 'skipped', reason }]`. `pairs.md` ends with a Journeys section that tables each step's status on both sides and its side-by-side file and lists each failure's reason, and the `parity` job copies that section to the run's summary.
 
 The web side runs on its own against the stubs, with real clicks and keys in headless Chromium:
 

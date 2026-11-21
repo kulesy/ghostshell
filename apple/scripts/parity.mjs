@@ -118,7 +118,6 @@ async function main() {
   const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
   const [macDir, pageDir, outDir] = ['--mac', '--page', '--out'].map(name => (option(name) ? path.resolve(option(name)) : null));
   if (!macDir || !pageDir || !outDir) throw new Error('usage: node apple/scripts/parity.mjs --mac <folder> --page <folder holding page/> --out <folder>');
-  if (!fs.existsSync(macDir)) throw new Error(`no Mac shot folder at ${macDir}`);
   if (!fs.existsSync(path.join(pageDir, 'page'))) throw new Error(`no page/ folder in ${pageDir}`);
   const headless = findChromium();
   if (!headless) throw new Error(notFound());

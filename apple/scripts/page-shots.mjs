@@ -5,7 +5,7 @@
 //   node apple/scripts/page-shots.mjs --journeys [--journey <id>] [--out <folder>]
 // Writes <out>/page/<width>/<scheme>/<screen>.png. Screen names follow the iPhone UI tests' shot names where one exists.
 // --journeys plays apple/scripts/journeys.mjs at 960 wide in light with real clicks and keys, a shot after each step as j-<journey>-<n>-<step>.png, and writes <out>/journeys-web.json.
-// A failed step is recorded and its journey skipped from there. Only a crash of the run itself sets the exit code.
+// A failed step, or a setup that fails, is recorded and its journey skipped from there. Only a crash of the run itself sets the exit code.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -447,22 +447,32 @@ async function expectShown(page, expect) {
 }
 
 // Plays one journey on a fresh stub and returns a record per step. A failed step still gets its shot and the rest are skipped.
+// A setup that fails (the stub, the page load) fails the journey's first step with its reason, so the next journey still runs.
 async function playJourney(browser, journey, dir) {
-  const server = await JOURNEY_STUBS[journey.stub]();
-  const context = await browser.newContext({ viewport: { width: 960, height: SIZES[960] }, deviceScaleFactor: 2, colorScheme: 'light' });
   const records = [];
+  let server;
+  let context;
   try {
-    const page = await context.newPage();
-    page.on('pageerror', e => console.error(`  page error: ${e.message}`));
-    await page.goto(`${server.address}/`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#root > *', { timeout: 15_000 });
-    await sleep(1500);
+    let page;
+    let setupError = null;
+    try {
+      server = await JOURNEY_STUBS[journey.stub]();
+      context = await browser.newContext({ viewport: { width: 960, height: SIZES[960] }, deviceScaleFactor: 2, colorScheme: 'light' });
+      page = await context.newPage();
+      page.on('pageerror', e => console.error(`  page error: ${e.message}`));
+      await page.goto(`${server.address}/`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#root > *', { timeout: 15_000 });
+      await sleep(1500);
+    } catch (e) {
+      setupError = e;
+    }
     let failedAt = null;
     for (const [i, step] of journey.steps.entries()) {
       const record = { journey: journey.id, step: step.id, n: i + 1, status: 'ok', reason: '' };
       records.push(record);
       if (failedAt) { Object.assign(record, { status: 'skipped', reason: `after ${failedAt}` }); continue; }
       try {
+        if (setupError) throw setupError;
         const verb = verbOf(step);
         await VERBS[verb](page, step.do[verb], step.do);
         await expectShown(page, step.expect);
@@ -471,16 +481,19 @@ async function playJourney(browser, journey, dir) {
         Object.assign(record, { status: 'failed', reason: e.message.split('\n')[0] });
         console.log(`JOURNEY web ${journey.id}/${step.id}: ${record.reason}`);
       }
-      await sleep(500);
-      await page.screenshot({ path: path.join(dir, `${shotName(journey.id, i + 1, step.id)}.png`) });
+      if (!setupError) {
+        await sleep(500);
+        await page.screenshot({ path: path.join(dir, `${shotName(journey.id, i + 1, step.id)}.png`) });
+      }
     }
   } finally {
-    await context.close();
-    await server.stop();
+    await context?.close();
+    await server?.stop();
   }
   return records;
 }
 
+// The record is written after each journey, so a crash keeps what was played.
 async function runJourneys(browser) {
   const dir = path.join(OUT, 'page', '960', 'light');
   fs.mkdirSync(dir, { recursive: true });
@@ -489,8 +502,8 @@ async function runJourneys(browser) {
   for (const journey of JOURNEYS.filter(j => !wanted.length || wanted.includes(j.id))) {
     console.log(`== journey ${journey.id}`);
     records.push(...await playJourney(browser, journey, dir));
+    fs.writeFileSync(path.join(OUT, 'journeys-web.json'), JSON.stringify(records, null, 2));
   }
-  fs.writeFileSync(path.join(OUT, 'journeys-web.json'), JSON.stringify(records, null, 2));
   const bad = records.filter(r => r.status !== 'ok');
   console.log(`Journeys: ${records.length - bad.length} of ${records.length} steps ok.`);
 }

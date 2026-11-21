@@ -1905,16 +1905,25 @@ const results = app => app.sessionRows().filter(([, help]) => help).length;
 const macShows = (app, expect) => !expect || ('results' in expect ? results(app) === expect.results : 'gone' in expect ? !app.hasText(expect.gone) : [].concat(expect.text).every(text => app.hasText(text)));
 
 // Plays one journey in a fresh app on a fresh stub. A failed step is recorded and still shot, and the rest are skipped. Nothing here goes through check().
+// A setup that fails (the stub, the launch, sign-in) fails the journey's first step with its reason, so the next journey still runs.
 async function playJourney(bundle, appearance, journey) {
-  const stub = await journeyStub(journey.stub);
   console.log(`\n== ${appearance}: journey ${journey.id}`);
-  const app = new App(bundle, { address: stub.address, appearance, tag: 'j' });
   const records = [];
+  let stub;
+  let app;
   try {
-    await app.launch();
-    app.type('whatever');
-    app.submit();
-    const ready = await until('ready', () => stub.ready(app), 20);
+    let ready = false;
+    let setupError = null;
+    try {
+      stub = await journeyStub(journey.stub);
+      app = new App(bundle, { address: stub.address, appearance, tag: 'j' });
+      await app.launch();
+      app.type('whatever');
+      app.submit();
+      ready = await until('ready', () => stub.ready(app), 20);
+    } catch (e) {
+      setupError = e;
+    }
     let failedAt = null;
     for (const [i, step] of journey.steps.entries()) {
       const record = { journey: journey.id, step: step.id, n: i + 1, status: 'ok', reason: '' };
@@ -1922,6 +1931,7 @@ async function playJourney(bundle, appearance, journey) {
       if (failedAt) Object.assign(record, { status: 'skipped', reason: `after ${failedAt}` });
       else {
         try {
+          if (setupError) throw setupError;
           if (!ready) throw new Error('the app did not list its chats');
           const verb = verbOf(step);
           await MAC_VERBS[verb](app, stub, step.do[verb], step.do);
@@ -1933,14 +1943,14 @@ async function playJourney(bundle, appearance, journey) {
         }
       }
       if (record.status === 'failed') console.log(`JOURNEY mac ${journey.id}/${step.id}: ${record.reason}`);
-      if (record.status !== 'skipped') {
+      if (record.status !== 'skipped' && !setupError) {
         await sleep(800);
         await app.shot(`${shotName(journey.id, i + 1, step.id)}-${appearance}-default`);
       }
     }
   } finally {
-    await app.quit();
-    stub.stop();
+    await app?.quit();
+    stub?.stop();
   }
   return records;
 }

@@ -87,6 +87,7 @@ jobs:
       - if: success() || failure()
         run: npm run apple:shot -- --no-chat --flow chats,composer,terminal --out "$RUNNER_TEMP/shots/mac"
       # The journeys, in light only. A step that fails is recorded in journeys-mac.json and does not fail this step.
+      # A failure in an earlier Mac step does not stop the parity job, which pairs the Mac shots that were taken.
       - if: success() || failure()
         run: npm run apple:shot -- --no-chat --only light --flow journeys --out "$RUNNER_TEMP/shots/mac"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -99,7 +100,7 @@ jobs:
   # The web page at the Mac window sizes, each shot paired with the Mac shot of the same screen. See apple/README.md.
   parity:
     needs: mac-shots
-    if: needs.mac-shots.result == 'success'
+    if: ${{ !cancelled() && needs.mac-shots.result != 'skipped' }}
     # The same runner as mac-shots, so the fonts match.
     runs-on: xcode-27
     timeout-minutes: 30
@@ -111,7 +112,9 @@ jobs:
         with:
           node-version: 20
           package-manager-cache: false
+      # A Mac job that took no shots uploads nothing. parity.mjs then treats the Mac side as not run.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
         with:
           name: mac-screenshots
           path: ${{ runner.temp }}/shots/mac
