@@ -4,7 +4,7 @@ This ledger tracks how closely the Mac app matches the web page. The web page un
 
 - **Pair run.** `npm run apple:parity` lays each Mac shot beside its web shot. The `parity` job in the `Swift app` workflow runs it after the Mac shots and keeps the side-by-side images as the `parity-pairs` artifact. `apple/scripts/parity-pairs.json` maps the shot names that differ, and `apple/README.md` says how to read a run.
 - **Built.** 21 Nov 2026 from commit d19857db, with one side-by-side pass. The Pass log at the end says what it covered.
-- **Rows.** 368: direct 232, translated 29, partial 39, missing 44, unsupported 11, extra 12, manual 1.
+- **Rows.** 368: direct 233, translated 27, partial 40, missing 44, unsupported 11, extra 12, manual 1.
 
 ## Statuses
 
@@ -281,7 +281,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | # | Item | Status | Reference | Target | Mac shot | Page shot | Notes |
 |---|---|---|---|---|---|---|---|
 | 7.1 | Tool-result tiles (picture and file) | direct | `public/ui/gallery.js:10` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/Attachments.swift:5` | 10-tool-tiles | files/10-tool-tiles | See 7.1a |
-| 7.2 | Image viewer overlay | translated | `public/ui/viewer.js:301` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:22` | 10-viewer-tool | files/10-viewer-tool | See 7.2a |
+| 7.2 | Image viewer overlay | partial | `public/ui/viewer.js:301` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:22` | 10-viewer-tool | files/10-viewer-tool | See 7.2a |
 | 7.3 | Image viewer: Zoom and Fit to screen | direct | `public/ui/viewer.js:223` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/Zoom.swift:160` | 10-viewer-tool | files/10-viewer-picture | Pinch and double-click on the Mac |
 | 7.4 | Image viewer: Open in new tab | missing | `public/ui/viewer.js:306` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:21` | 10-viewer-tool | files/10-viewer-tool | Noted in https://github.com/kulesy/ghostshell/issues/177 |
 | 7.5 | Image viewer: Close (Esc) | direct | `public/ui/viewer.js:21` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:21` | 10-viewer-tool | files/10-viewer-tool | - |
@@ -299,7 +299,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 7.17 | Audio player and Previous and Next clips | direct | `public/ui/file-audio.js:64` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/AudioPane.swift:71` | 10-file-audio | files/10-file-audio | https://github.com/kulesy/ghostshell/pull/70 |
 | 7.18 | Audio "browser cannot play" error | unsupported | `public/ui/file-audio.js:59` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/AudioPane.swift:20` | - | - | Native player has no such state |
 | 7.19 | Binary file card | direct | `public/ui/file-card.js:6` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:119` | 10-file-binary | files/10-file-binary | - |
-| 7.20 | Missing file card | direct | `public/ui/file-view.js:97` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:243` | 10-file-missing | files/10-file-missing | Page shows "TXT file, NaN MB" per https://github.com/kulesy/ghostshell/issues/177; may be a page bug |
+| 7.20 | Missing file card | direct | `public/ui/file-view.js:97` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:243` | 10-file-missing | files/10-file-missing | See 7.20a |
 | 7.21 | Loading state | direct | `public/ui/file-view.js:23` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:239` | - | - | - |
 | 7.22 | Header: Download | direct | `public/ui/file-view.js:78` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:119` | 10-file-text-line | files/10-file-text-line | Save to Files on iPhone |
 | 7.23 | Header: Open in a new tab | missing | `public/ui/file-view.js:119` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:119` | 10-file-markdown | files/10-file-markdown | - |
@@ -395,7 +395,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 11.16 | Routine form: model, effort, permission selects | direct | `public/ui/routines.js:235` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineFormScreen.swift:6` | 9-routine-form | routines/routine-form | - |
 | 11.17 | Routine form: prompt file path | direct | `public/ui/routines.js:235` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineFormScreen.swift:199` | 9-routine-form | routines/routine-form | - |
 | 11.18 | Routine form: prompt text | direct | `public/ui/routines.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineFormScreen.swift:13` | 9-routine-form | routines/routine-form | - |
-| 11.19 | Routine form: Next fire times and timezone hint | translated | `public/ui/routines.js:242` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineFormScreen.swift:244` | 9-routine-form | routines/routine-form | See 11.19a |
+| 11.19 | Routine form: Next fire times and timezone hint | direct | `public/ui/routines.js:242` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineFormScreen.swift:244` | 9-routine-form | routines/routine-form | See 11.19a |
 | 11.20 | Routine form: Run on its schedule toggle | direct | `public/ui/routines.js:48` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineFormScreen.swift:160` | 9-routine-form | routines/routine-form | - |
 | 11.21 | Routine form: Save, Cancel, Delete at the foot | translated | `public/ui/routines.js:438` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineParts.swift:130` | 9-routine-form | routines/routine-form | Mac toolbar, page foot |
 | 11.22 | Routine form: refused by server | direct | `public/ui/routines.js:39` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineFormScreen.swift:113` | 9-routine-refused | - | - |
@@ -486,10 +486,10 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 | 1.4a | convention | 6-chat-rich (min) | At 640 the page shows one column with a Sessions back link. The Mac keeps the sidebar, by the same decision as 1.1a. 5.9a shows what it costs the main pane. |
 | 1.5a | gap, minor | 1-list-rows, 2-list-empty, 9-sidebar-routines | The empty main pane shows the diamond mark on the Mac and the arrows mark on the page. |
 | 1.5b | convention | 1-list-rows | Key hints read Cmd+F, Cmd+N and Shift+Cmd+N on the Mac against Ctrl+K, Ctrl+N and Ctrl+Shift+N on the page. macOS HIG, Keyboard: Cmd+F is the standard Find. |
-| 1.31a | gap, minor | 1-session-chosen | The chosen row on the Mac shows the "..." button and a chevron at rest. The page shows "..." on hover only. |
+| 1.31a | gap, minor | 1-session-chosen | The chosen row on the Mac shows a chevron after the "..." button. The page shows "..." only. |
 | 3.15a | gap, major | 6-chat-empty | An empty chat on the Mac shows "Nothing here yet" mid-pane with the composer under it and a blank band below. The page keeps a blank thread with the composer at the bottom. |
 | 3.23a | gap | 12-term-chat | The Run button on a `console` block looks turned off on the Mac, the same grey as the refused `sh` block. The page shows it on. The Mac also puts Run before Copy. |
-| 3.31a | gap, minor | 6-chat-rich | The Thought row on the Mac has a chevron and lighter text. |
+| 3.31a | gap, minor | 6-chat-streaming | The Thought row on the Mac has a chevron and lighter text. |
 | 3.32a | convention | 6-chat-streaming | The Mac shows the system spinner while a reply streams. macOS HIG, Progress indicators. |
 | 4.1a | convention | 7-widgets | The Mac composer draws the system focus ring. macOS HIG, Focus and selection. |
 | 4.2a | gap | 1-session-chosen, 12-term-chat | The Mac placeholder reads "Type / for commands" with the terminal on. The page adds "or ! to run a command", and the Mac has no ! mode (rows 4.2 and 4.3). |
@@ -497,13 +497,14 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 | 5.7a | gap | 7-approval-edit, 7-approval-plan | The Mac edit and plan cards have no "All input" disclosure. The page shows it on every card. |
 | 5.9a | gap, major | 7-approval-question | The Mac question card is shorter. At 960 the own-answer field and the second question sit below the fold. At 640 only the first option shows, cut through its description. The page shows both options and the own-answer field at 640. |
 | 7.1a | question | 10-tool-tiles | With five pictures, the Mac shows three tiles and a "+2" tile. The page at 960 shows three tiles and no overflow tile, though `public/ui/gallery.js:32` has one. Check which is right. |
-| 7.2a | gap, minor | 10-viewer-tool | The Mac image viewer dims the chat pane only and leaves the sidebar and title bar bright. The page dims the whole window and adds a zoom button. The pair also opens different pictures (3 of 7 against 6 of 7), a pair-data mismatch. |
+| 7.2a | gap | 10-viewer-tool | The Mac image viewer dims the chat pane and the sidebar header and footer, but leaves the sidebar list bright, and in light the title bar too, so the window looks half dimmed. The page dims the whole window. The page has Zoom and Open in a new tab buttons, and the Mac has an expand button instead. The pair also opens different pictures (3 of 7 against 6 of 7), a pair-data mismatch. |
 | 7.17a | convention | 10-file-audio | The Mac uses the system audio controls, with no volume or menu button. macOS HIG, Playing audio. |
 | 7.19a | gap, minor | 10-file-binary | The Mac binary card's header has a Download button as well as the card's own. The page header has Close only. |
+| 7.20a | question | 10-file-missing | For a file that is gone, the Mac says "There is no file at that path." with Close only. The page shows "TXT file, NaN MB" with Download and Open in a new tab, which looks like a page bug (https://github.com/kulesy/ghostshell/issues/177). Check which is right. |
 | 7.23a | gap | 10-file-markdown, 10-file-pdf | The Mac file header has no "Open in a new tab" button (row 7.23). |
 | 10.7a | question | 6-force-question | The page's banner stack shows the Chrome extension banner, and the Mac's does not. The Mac shows that banner on Accounts. Check whether the pair data or `BannerRules.swift` differs. |
 | 10.12a | convention | 6-force-question | The Mac asks with a native sheet. macOS HIG, Alerts. |
-| 11.1a | gap | 9-routines-list, 9-scheduled-list | On the Routines and Scheduled pages the Mac sidebar loses its header (brand, New, Search) and its Routines and Scheduled tabs. The page keeps both. The SCHEDULED heading on the page also has a new-schedule button the Mac lacks. |
+| 11.1a | gap | 9-routines-list, 9-scheduled-list | With rows in the Routines or Scheduled list, the Mac sidebar loses its header (brand, New, Search) and its Routines and Scheduled tabs. The page keeps both. `9-routines-empty`, `9-scheduled-empty` and `9-sidebar-routines` keep them on the Mac, so this looks like a layout bug when the list has rows. The SCHEDULED heading on the page also has a new-schedule button the Mac lacks. |
 | 11.8a | convention | 9-routines-list (dark, min) | Mac switches show grey in an inactive window. macOS HIG, Toggles. |
 | 11.15a | convention | 9-routine-form | The Mac shows Group and Folder as pickers with typing. The page uses text fields with suggestions. macOS HIG, Combo boxes. |
 | 11.19a | gap, minor | 9-routine-form | The schedule hint reads "in the GhostShell server's time zone" on the Mac and "in this Mac's time" on the page. |
@@ -515,6 +516,9 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 - 148 pairs laid side by side. All 38 default light pairs read, plus a sample at 640 and in dark.
 - 4 pairs had one side missing at the minimum size. `10-tool-tiles` has no Mac shot there. The Mac names its `6-chat-rich-middle` shot at that size `-min-<scheme>`, which this run missed and the pair run now accepts.
 - 47 Mac shots had no web partner. Most are states the page shots don't stage, such as `7-composer-quote`, `7-composer-slash` and the terminal steps.
-- 19 web shots had no Mac partner: `01-sign-in`, `02-sidebar`, `09-accounts`, `10-passkeys`, `10-viewer-picture`, `11-account-menu`, the groups shots and the organise shots. The runner can't run the Mac `organise`, `groups` and `marks` flows, so those rows have no Mac shot.
+- 19 web shots had no Mac partner: `01-sign-in`, `02-sidebar`, `07b-approval-plan-buttons`, `09-accounts`, `09b-accounts-scrolled`, `10-passkeys`, `10-viewer-picture`, `11-account-menu`, the groups shots and the organise shots. The runner can't run the Mac `organise`, `groups` and `marks` flows, so those rows have no Mac shot.
 - Pair-data mismatches, not gaps: the page proxy turns on Scheduled, so the page sidebar shows a Scheduled tab where the Mac chat shots don't. The `6-banners` Mac sidebar has 3 rows against 14 on the page. The Mac `7-composer-draft` has two quote chips and the page has none. `6-chat-rich-middle` and `04-chat-scrolled` stop at different scroll positions.
+- More pair-data mismatches: the page's empty Routines, Scheduled, Accounts and Passkeys shots empty the whole sidebar, where the Mac keeps its groups. `6-passkeys` has two passkeys on the Mac and one on the page. The Mac Routines and Scheduled shots come from an inactive window.
 - The page side of `10-file-pdf` is blank because the headless shell has no PDF viewer.
+
+**21 Nov 2026, commit 23ceaebb.** A rerun after the pair run fixes gave 150 pairs, 2 with one side missing (`10-tool-tiles` at the minimum size) and 46 Mac shots with no web partner. A like-for-like review read all the default light pairs and a sample at 640 and in dark, and corrected 1.31a, 3.31a, 7.2a, 11.1a and the statuses of 7.2 and 11.19, and added 7.20a.
