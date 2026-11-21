@@ -12,7 +12,8 @@ struct ApprovalPrompts: View {
         let cap = max(chatHeight * 0.5, 120)
         if !pending.isEmpty {
             VStack(spacing: 0) {
-                ScrollView(.vertical) {
+                // The floor shows one card's title, a short body and its buttons, so a tall draft and chips cannot squeeze the card out.
+                HuggingScroll(minHeight: ChatStyle.cardChrome + 40, maxHeight: cap) {
                     VStack(spacing: 10) {
                         ForEach(pending) { prompt in
                             ApprovalCard(prompt: prompt, chat: chat, model: model).id(prompt.requestID)
@@ -24,10 +25,10 @@ struct ApprovalPrompts: View {
                     // The title, the buttons and the padding take ChatStyle.cardChrome, so the rest is the body's. CardFrame takes an error line off it.
                     .environment(\.approvalBodyCap, max(cap - ChatStyle.cardChrome, 60))
                 }
-                .frame(maxHeight: cap)
-                .fixedSize(horizontal: false, vertical: true)
             }
             .background(ChatStyle.dock)
+            // Under the composer's 1, so a composer holding chips takes its room first and the stack scrolls in what is left. Over the thread's 0.
+            .layoutPriority(0.5)
             .onChange(of: pending.map(\.requestID)) { _, ids in model.keep(Set(ids)) }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Waiting for your answer")
