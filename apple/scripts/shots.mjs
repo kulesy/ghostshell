@@ -2,7 +2,8 @@
 // Drives the Debug app through accessibility, in the background (XCUITest is not available here), and saves every state in light and dark.
 // The app draws its own window into a PNG because screen capture permission is off. See apple/README.md.
 //
-//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines|files|groups|composer, comma separated] [--files-only] [--no-files]
+//   node apple/scripts/shots.mjs [--out <folder>] [--only light|dark] [--no-chat] [--chats-only] [--widgets-only] [--approvals-only] [--flow main|marks|chats|widgets|accounts|approvals|organise|routines|files|groups|terminal|composer|journeys, comma separated] [--files-only] [--no-files] [--journey <id, comma separated>]
+// The journeys flow plays apple/scripts/journeys.mjs in light at the default size and runs only when named. It saves a shot after each step and writes journeys-mac.json beside them.
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -17,6 +18,7 @@ import { listen } from '../../test/speakers.mjs';
 import { makePng } from './png.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
+import { JOURNEYS, shotName, verbOf } from './journeys.mjs';
 import { routinesStub } from './routines-fixtures.mjs';
 import { copyTranscript, startScratch, TEST_CWD } from './test-server.mjs';
 
@@ -25,7 +27,7 @@ const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? ''
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(option('--out') || path.join(here, '..', 'screenshots'));
 const FLOW = option('--flow')?.split(',');
-const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups', 'terminal', 'composer'];
+const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups', 'terminal', 'composer', 'journeys'];
 if (argv.includes('--flow') && (!FLOW[0] || FLOW.some(flow => !FLOWS.includes(flow)))) {
   console.error(`${FLOW[0] ? `Unknown --flow ${FLOW.join(',')}.` : '--flow needs a value.'} The flows are: ${FLOWS.join(', ')}.`);
   process.exit(2);
@@ -543,12 +545,16 @@ class App {
   setComposer(text) { const box = this.composerBox(); return !!box && this.set(box, 'AXFocused', true) && this.set(box, 'AXValue', text); }
   // The one step that takes the focus: under the keys lock, ax activates the app, posts the keys to its pid and gives the focus back.
   async keys(...names) {
+    return check((await this.keysQuiet(...names)).ok === true, `keys ${names.join(' ')} were sent`);
+  }
+  // The same, answering with the helper's result and not failing the run, for a journey step that records its own failure.
+  async keysQuiet(...names) {
     return withLock(KEYS_LOCK, async () => {
       this.keying = true;
       try {
         const r = this.run('keys', ...names);
         await sleep(800);
-        return check(r.ok === true, `keys ${names.join(' ')} were sent`);
+        return r;
       } finally {
         this.keying = false;
       }
@@ -1828,6 +1834,113 @@ async function terminalFlow(bundle, appearance) {
   }
 }
 
+// MARK: Journeys
+
+// The stub for each journey's `stub`: where the app signs in, when its sidebar is ready, and how a chat id becomes a row.
+async function journeyStub(kind) {
+  if (kind === 'routines') {
+    const { server } = routinesStub({ accept: true });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    return { address: `http://localhost:${server.address().port}`, ready: app => app.headings() >= 4, stop: () => { server.closeAllConnections(); server.close(); } };
+  }
+  const stub = kind === 'files' ? await startFilesStub() : await startChatStub({ decisions: true });
+  return { address: stub.address, ready: app => app.rows() === stub.rows.length, rowOf: id => rowOf(stub, id), stop: () => stub.stop() };
+}
+
+// What the window offers when a step can't find its button, so the next run can be fixed from the record.
+const offered = app => app.findAll(node => node.role === 'AXButton').map(node => app.label(node) || node.title || '').filter(Boolean).slice(0, 14).join(', ');
+const FORM_FIELDS = ['Title', 'Group', 'Schedule', 'Jitter', 'Folder'];
+
+// Each verb of journeys.mjs on the Mac, through accessibility. A verb throws the reason a step failed.
+const MAC_VERBS = {
+  open: async (app, stub, id) => { if (!app.chooseRow(stub.rowOf(id))) throw new Error(`the sidebar has no row ${stub.rowOf(id)} for ${id}`); },
+  type: async (app, stub, text) => {
+    if (!(app.focusComposer() && app.type(text))) throw new Error('the composer could not be typed into');
+    await sleep(400);
+    if (!app.composerText().includes(text)) throw new Error(`the composer holds "${app.composerText()}"`);
+  },
+  key: async (app, stub, key) => {
+    const r = await app.keysQuiet(key === 'Enter' ? 'return' : key.toLowerCase());
+    if (r.ok !== true) throw new Error(`the ${key} key was not sent: ${r.error ?? 'no reason'}`);
+  },
+  press: async (app, stub, name, { card, nth = 0 } = {}) => {
+    if (!(card ? app.pressHelped(card, nth) : app.press(name))) throw new Error(`no ${name} button${card ? ` on the card "${card}"` : ''} (the window offers: ${offered(app)})`);
+  },
+  pick: async (app, stub, [question, ...options]) => {
+    for (const o of options) if (!app.pressHelped(question, o)) throw new Error(`no option ${o} on the question "${question}"`);
+  },
+  // A link in a row the thread has not drawn is not in the tree, so the thread is stepped from the top to the end until the link shows.
+  link: async (app, stub, text) => {
+    let at = -1;
+    if (!await until(text, () => app.clickLink(text) || (app.scrollChat(Math.min(1, (at += 1) * 0.1)), false), 20)) throw new Error(`the chat has no link ${text}`);
+  },
+  search: async (app, stub, text) => { if (!app.search(text)) throw new Error('the sidebar search could not be opened'); },
+  choose: async (app, stub, n) => { if (!app.chooseRow(n)) throw new Error(`the sidebar has no result ${n}`); },
+  route: async (app, stub, name) => { if (!app.press(name[0].toUpperCase() + name.slice(1))) throw new Error(`no ${name} link in the sidebar footer`); },
+  // A field is found by its label, or by its place among the form's text fields. The prompt is the form's text area.
+  fill: async (app, stub, { field, text }) => {
+    const fields = app.findAll(node => node.role === 'AXTextField' && node.path.length > 4);
+    const box = field === 'Prompt text' ? app.findAll(node => node.role === 'AXTextArea').at(-1)
+      : fields.find(node => [node.desc, node.title, node.help].includes(field)) ?? fields[FORM_FIELDS.indexOf(field)];
+    if (!box || !(app.set(box, 'AXFocused', true) && app.set(box, 'AXValue', text))) throw new Error(`the form has no ${field} field (it has ${fields.length} text fields)`);
+  },
+};
+
+// What the window should show once the step is done.
+const macShows = (app, expect) => !expect || ('results' in expect ? app.rows() === expect.results : 'gone' in expect ? !app.hasText(expect.gone) : [].concat(expect.text).every(text => app.hasText(text)));
+
+// Plays one journey in a fresh app on a fresh stub. A failed step is recorded and still shot, and the rest are skipped. Nothing here goes through check().
+async function playJourney(bundle, appearance, journey) {
+  const stub = await journeyStub(journey.stub);
+  console.log(`\n== ${appearance}: journey ${journey.id}`);
+  const app = new App(bundle, { address: stub.address, appearance, tag: 'j' });
+  const records = [];
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    const ready = await until('ready', () => stub.ready(app), 20);
+    let failedAt = null;
+    for (const [i, step] of journey.steps.entries()) {
+      const record = { journey: journey.id, step: step.id, n: i + 1, status: 'ok', reason: '' };
+      records.push(record);
+      if (failedAt) Object.assign(record, { status: 'skipped', reason: `after ${failedAt}` });
+      else {
+        try {
+          if (!ready) throw new Error('the app did not list its chats');
+          const verb = verbOf(step);
+          await MAC_VERBS[verb](app, stub, step.do[verb], step.do);
+          if (!await until(step.id, () => macShows(app, step.expect), 15)) throw new Error(`${JSON.stringify(step.expect)} did not show`);
+        } catch (e) {
+          failedAt = step.id;
+          Object.assign(record, { status: 'failed', reason: e.message.split('\n')[0] });
+        }
+      }
+      if (record.status === 'failed') console.log(`JOURNEY mac ${journey.id}/${step.id}: ${record.reason}`);
+      if (record.status !== 'skipped') {
+        await sleep(800);
+        await app.shot(`${shotName(journey.id, i + 1, step.id)}-${appearance}-default`);
+      }
+    }
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+  return records;
+}
+
+// Every journey in light, the record written after each so a crash keeps what was played.
+async function journeysFlow(bundle, appearance) {
+  const wanted = (option('--journey') || '').split(',').filter(Boolean);
+  const records = [];
+  for (const journey of JOURNEYS.filter(j => !wanted.length || wanted.includes(j.id))) {
+    records.push(...await playJourney(bundle, appearance, journey));
+    fs.writeFileSync(path.join(OUT, 'journeys-mac.json'), JSON.stringify(records, null, 2));
+  }
+  const bad = records.filter(r => r.status !== 'ok').length;
+  console.log(`Journeys: ${records.length - bad} of ${records.length} steps ok.`);
+}
+
 const cleanup = async () => {
   for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
   for (const server of servers) { try { process.kill(server.pid, 'SIGCONT'); } catch {} await server.stop(); }
@@ -1843,7 +1956,7 @@ try {
     compileHelper();
     return built;
   });
-  const flows = argv.includes('--files-only') ? ['files'] : argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? FLOW : FLOWS.filter(flow => flow !== 'files' || !argv.includes('--no-files'));
+  const flows = argv.includes('--files-only') ? ['files'] : argv.includes('--approvals-only') ? ['approvals'] : argv.includes('--widgets-only') ? ['widgets'] : argv.includes('--chats-only') ? ['chats', 'widgets'] : FLOW ? FLOW : FLOWS.filter(flow => flow !== 'journeys' && (flow !== 'files' || !argv.includes('--no-files')));
   for (const appearance of APPEARANCES) {
     if (flows.includes('main')) {
       await mainFlow(bundle, appearance, !argv.includes('--no-chat'));
@@ -1862,6 +1975,7 @@ try {
     if (flows.includes('groups')) await groupsFlow(bundle, appearance);
     if (flows.includes('terminal')) await terminalFlow(bundle, appearance);
     if (flows.includes('composer')) await composerFlow(bundle, appearance);
+    if (flows.includes('journeys') && appearance === 'light') await journeysFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.
   if (!cameToFront.length) check(true, `no test app came to the front (${frontChecks} samples)`);
