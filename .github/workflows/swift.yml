@@ -86,6 +86,9 @@ jobs:
       # The chat screens, the composer and the terminal, in their own step so a failure above does not skip them.
       - if: success() || failure()
         run: npm run apple:shot -- --no-chat --flow chats,composer,terminal --out "$RUNNER_TEMP/shots/mac"
+      # The journeys, in light only. A step that fails is recorded in journeys-mac.json and does not fail this step.
+      - if: success() || failure()
+        run: npm run apple:shot -- --no-chat --only light --flow journeys --out "$RUNNER_TEMP/shots/mac"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -124,10 +127,17 @@ jobs:
           exit $status
         env:
           PLAYWRIGHT_CORE: ${{ runner.temp }}/playwright/node_modules/playwright-core
+      # The same journeys as the Mac, into the same folder. A failed step is recorded in journeys-web.json and does not fail this step.
+      - if: always()
+        run: node apple/scripts/page-shots.mjs --journeys --size 960 --scheme light --out "$RUNNER_TEMP/shots/web"
+        env:
+          PLAYWRIGHT_CORE: ${{ runner.temp }}/playwright/node_modules/playwright-core
       - if: always()
         run: node apple/scripts/parity.mjs --mac "$RUNNER_TEMP/shots/mac" --page "$RUNNER_TEMP/shots/web" --out "$RUNNER_TEMP/shots/pairs"
         env:
           PLAYWRIGHT_CORE: ${{ runner.temp }}/playwright/node_modules/playwright-core
+      - if: always()
+        run: awk '/^## /{p=($0=="## Journeys")} p' "$RUNNER_TEMP/shots/pairs/pairs.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
