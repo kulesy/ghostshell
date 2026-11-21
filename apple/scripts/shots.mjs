@@ -1898,8 +1898,20 @@ const MAC_VERBS = {
   },
 };
 
-// The sidebar's session rows that carry hover text, which a search's section headings do not.
-const results = app => app.sessionRows().filter(([, help]) => help).length;
+// The sidebar rows that hold hover text at any depth, which a search's section headings do not.
+// NOTE: [21 Nov 2026] EK - Counting the outline's groups found no result in a search, so the hover text sits deeper there.
+const helpedRows = app => {
+  const nodes = app.tree();
+  const under = row => nodes.some(node => node.help && node.path.length > row.path.length && node.path.slice(0, row.path.length).join() === row.path.join());
+  return app.sessionRowNodes().map(row => [row, under(row)]);
+};
+const results = app => helpedRows(app).filter(([, helped]) => helped).length;
+// Each sidebar row's roles and hover text, for a failed count.
+const rowDump = app => {
+  const nodes = app.tree();
+  return app.sessionRowNodes().map(row => nodes.filter(node => node.path.length > row.path.length && node.path.slice(0, row.path.length).join() === row.path.join())
+    .map(node => `${node.path.length - row.path.length}:${node.role}${node.help ? `[${node.help}]` : ''}${typeof node.value === 'string' && node.value ? `=${node.value}` : ''}`).join(' '));
+};
 
 // What the window should show once the step is done.
 const macShows = (app, expect) => !expect || ('results' in expect ? results(app) === expect.results : 'gone' in expect ? !app.hasText(expect.gone) : [].concat(expect.text).every(text => app.hasText(text)));
@@ -1936,7 +1948,7 @@ async function playJourney(bundle, appearance, journey) {
           const verb = verbOf(step);
           await MAC_VERBS[verb](app, stub, step.do[verb], step.do);
           // A results count that is off names what the sidebar held, so the run says which rows were counted.
-          if (!await until(step.id, () => macShows(app, step.expect), 15)) throw new Error(`${JSON.stringify(step.expect)} did not show${'results' in (step.expect ?? {}) ? ` (sidebar ${JSON.stringify(app.outline())}, ${app.rows()} rows)` : ''}`);
+          if (!await until(step.id, () => macShows(app, step.expect), 15)) throw new Error(`${JSON.stringify(step.expect)} did not show${'results' in (step.expect ?? {}) ? ` (sidebar ${JSON.stringify(app.outline())}, ${app.rows()} rows: ${JSON.stringify(rowDump(app))})` : ''}`);
         } catch (e) {
           failedAt = step.id;
           Object.assign(record, { status: 'failed', reason: e.message.split('\n')[0] });
