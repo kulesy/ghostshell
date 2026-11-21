@@ -1886,7 +1886,7 @@ const MAC_VERBS = {
     const put = app.run('set', JSON.stringify(box.path), 'AXValue', JSON.stringify(text));
     if (put.ok !== true) throw new Error(`the search field would not take text: ${put.error ?? JSON.stringify(put)} (field ${box.pos.join('x')} role ${box.role} path ${box.path.join('.')})`);
   },
-  // A search's section heading is a row of its own with no hover text, and it sits above the results, so the results are counted without it and skipped past.
+  // A search's section heading is a row of its own above the results, so the results are counted without it and skipped past.
   choose: async (app, stub, n) => { if (!app.chooseRow(n + app.rows() - results(app))) throw new Error(`the sidebar has no result ${n}`); },
   route: async (app, stub, name) => { if (!app.press(name[0].toUpperCase() + name.slice(1))) throw new Error(`no ${name} link in the sidebar footer`); },
   // A field is found by its label, or by its place among the form's text fields. The prompt is the form's text area.
@@ -1898,14 +1898,8 @@ const MAC_VERBS = {
   },
 };
 
-// The sidebar rows that hold hover text at any depth, which a search's section headings do not.
-// NOTE: [21 Nov 2026] EK - Counting the outline's groups found no result in a search, so the hover text sits deeper there.
-const helpedRows = app => {
-  const nodes = app.tree();
-  const under = row => nodes.some(node => node.help && node.path.length > row.path.length && node.path.slice(0, row.path.length).join() === row.path.join());
-  return app.sessionRowNodes().map(row => [row, under(row)]);
-};
-const results = app => helpedRows(app).filter(([, helped]) => helped).length;
+// A search's results are the sidebar rows whose cell is not a section heading. A result row has no hover text there.
+const results = app => app.sessionRowNodes().filter(row => row.kid(0, 0)?.role !== 'AXHeading').length;
 // Each sidebar row's roles and hover text, for a failed count.
 const rowDump = app => {
   const nodes = app.tree();
