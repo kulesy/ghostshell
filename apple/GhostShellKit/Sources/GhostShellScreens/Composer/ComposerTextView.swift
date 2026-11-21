@@ -81,12 +81,24 @@ struct ComposerTextView: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView scroll: NSScrollView, context: Context) -> CGSize? {
-        guard let view = scroll.documentView as? NSTextView, let layout = view.layoutManager, let container = view.textContainer else { return nil }
+        guard let view = scroll.documentView as? NSTextView, let text = view.textStorage else { return nil }
         let width = proposal.width ?? 400
-        container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        return CGSize(width: width, height: Self.height(of: text, width: width))
+    }
+
+    /// The box's height for `text` laid out at `width`, from one line up to `maxHeight`.
+    // NOTE: [21 Nov 2026] EK - Measure a copy, never the box's own text container. Sizing the live container at SwiftUI's trial widths made the
+    // text view resize itself while drawing, which asked for another layout without end, and AppKit crashed the app. See https://github.com/kulesy/ghostshell/issues/198.
+    static func height(of text: NSAttributedString, width: CGFloat) -> CGFloat {
+        let storage = NSTextStorage(attributedString: text)
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
         layout.ensureLayout(for: container)
-        let line = layout.defaultLineHeight(for: Self.font)
-        return CGSize(width: width, height: min(max(ceil(layout.usedRect(for: container).height), ceil(line)), Self.maxHeight))
+        let line = layout.defaultLineHeight(for: font)
+        return min(max(ceil(layout.usedRect(for: container).height), ceil(line)), maxHeight)
     }
 
     @MainActor
