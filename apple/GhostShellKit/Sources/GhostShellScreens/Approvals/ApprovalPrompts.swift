@@ -12,7 +12,8 @@ struct ApprovalPrompts: View {
         let cap = max(chatHeight * 0.5, 120)
         if !pending.isEmpty {
             VStack(spacing: 0) {
-                HuggingScroll(maxHeight: cap) {
+                // The floor shows one card's title, a short body and its buttons, so a tall draft and chips cannot squeeze the card out.
+                HuggingScroll(minHeight: ChatStyle.cardChrome + 40, maxHeight: cap) {
                     VStack(spacing: 10) {
                         ForEach(pending) { prompt in
                             ApprovalCard(prompt: prompt, chat: chat, model: model).id(prompt.requestID)

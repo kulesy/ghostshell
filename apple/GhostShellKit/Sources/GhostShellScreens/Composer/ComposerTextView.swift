@@ -22,6 +22,7 @@ struct ComposerTextView: NSViewRepresentable {
         return NSFont(descriptor: family, size: size) ?? .systemFont(ofSize: size)
     }()
     static let maxHeight: CGFloat = 220
+    static var oneLine: CGFloat { ceil(NSLayoutManager().defaultLineHeight(for: font)) }
 
     func makeCoordinator() -> Coordinator { Coordinator(model) }
 
@@ -83,7 +84,10 @@ struct ComposerTextView: NSViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, nsView scroll: NSScrollView, context: Context) -> CGSize? {
         guard let view = scroll.documentView as? NSTextView, let text = view.textStorage else { return nil }
         let width = proposal.width ?? 400
-        return CGSize(width: width, height: Self.height(of: text, width: width))
+        let full = Self.height(of: text, width: width)
+        // Shrinks to the room offered, down to one line, and scrolls inside, so chips and prompts above can't squeeze the box away.
+        guard let offered = proposal.height, offered.isFinite else { return CGSize(width: width, height: full) }
+        return CGSize(width: width, height: max(Self.oneLine, min(full, offered)))
     }
 
     /// The box's height for `text` laid out at `width`, from one line up to `maxHeight`.

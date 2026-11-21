@@ -13,6 +13,7 @@ private struct ScrollMetrics: Equatable, Sendable {
 struct ChatThreadView: View {
     @Environment(ChatModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chatHeight) private var chatHeight
     // NOTE: [13 Nov 2026] EK - Do not start at ScrollPosition(edge: .bottom) or scroll to the edge while the rows fit. SwiftUI then leaves the content offset by the thread's inset, 16pt in x and y on iOS 18.6.
     // See https://github.com/kulesy/ghostshell/issues/160
     @State private var position = ScrollPosition()
@@ -25,6 +26,8 @@ struct ChatThreadView: View {
     @State private var restoring: Task<Void, Never>?
 
     private static let near: CGFloat = 40
+    /// Between the smallest window's chat column (about 420) and the default one's (about 588).
+    private static let shortChat: CGFloat = 500
 
     var body: some View {
         switch model.phase {
@@ -56,7 +59,8 @@ struct ChatThreadView: View {
     private var thread: some View {
         VStack(spacing: 0) {
             scroller
-            if away {
+            // Not in a short chat with prompts waiting: the strip would hold the thread up and push the card's buttons out of view.
+            if away && !(chatHeight < Self.shortChat && model.chat.status?.pending.isEmpty == false) {
                 Button("Scroll to end", systemImage: "arrow.down") {
                     pinned = true
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { position.scrollTo(edge: .bottom) }

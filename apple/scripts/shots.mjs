@@ -525,10 +525,17 @@ class App {
     // The chips' scroll area must be as tall as the picture chip, or the chip is on screen but squeezed to a strip (https://github.com/kulesy/ghostshell/issues/202).
     const picture = nodes.find(n => [n.desc, n.title].includes('Image screenshot.png'));
     const chipScroll = picture && nodes.filter(n => n.role === 'AXScrollArea' && picture.path.join().startsWith(`${n.path.join()},`)).at(-1);
+    // With a prompt stack up, the first card's Allow and Deny (its first and last button, named by the card's hover text) must be whole inside the stack, not scrolled out.
+    const stack = nodes.find(n => n.desc === 'Waiting for your answer');
+    const helped = stack ? nodes.filter(n => n.role === 'AXButton' && n.help && n.path.join().startsWith(`${stack.path.join()},`)) : [];
+    const card = helped.filter(n => n.help === helped[0]?.help);
+    const inStack = n => inside(n) && n.pos[1] >= stack.pos[1] - 1 && n.pos[1] + n.size[1] <= stack.pos[1] + stack.size[1] + 1;
     const parts = { box, 'a box tall enough to type in': box && box.size[1] >= 16 ? box : null, Send: button('Send'), Attach: button('Attach files'),
       Model: button('Model: '), Effort: button('Effort: '), Permissions: button('Permission mode: '), 'a chip': button('Remove screenshot.png'),
       'a whole picture chip': chipScroll && chipScroll.size[1] >= picture.size[1] - 1 ? picture : null };
-    return Object.entries(parts).filter(([, node]) => !inside(node)).map(([name]) => name);
+    const gaps = Object.entries(parts).filter(([, node]) => !inside(node)).map(([name]) => name);
+    if (stack) for (const [name, node] of [['the card\'s Allow button', card[0]], ['the card\'s Deny button', card.at(-1)]]) if (!node || !inStack(node)) gaps.push(name);
+    return gaps;
   }
   focusComposer() { const box = this.composerBox(); return !!box && this.set(box, 'AXFocused', true); }
   setComposer(text) { const box = this.composerBox(); return !!box && this.set(box, 'AXFocused', true) && this.set(box, 'AXValue', text); }
