@@ -525,10 +525,12 @@ class App {
     // The chips' scroll area must be as tall as the picture chip, or the chip is on screen but squeezed to a strip (https://github.com/kulesy/ghostshell/issues/202).
     const picture = nodes.find(n => [n.desc, n.title].includes('Image screenshot.png'));
     const chipScroll = picture && nodes.filter(n => n.role === 'AXScrollArea' && picture.path.join().startsWith(`${n.path.join()},`)).at(-1);
-    // With a prompt stack up, the first card's Allow and Deny (its first and last button, named by the card's hover text) must be whole inside the stack, not scrolled out.
+    // With a prompt stack up, the first card's Allow and Deny (its first and last button, its siblings in the tree) must be whole inside the stack, not scrolled out.
+    // Two cards can share a hover text, so the card is found by its place in the tree.
     const stack = nodes.find(n => n.desc === 'Waiting for your answer');
     const helped = stack ? nodes.filter(n => n.role === 'AXButton' && n.help && n.path.join().startsWith(`${stack.path.join()},`)) : [];
-    const card = helped.filter(n => n.help === helped[0]?.help);
+    const parent = n => n.path.slice(0, -1).join();
+    const card = helped.filter(n => parent(n) === (helped[0] && parent(helped[0])));
     const inStack = n => inside(n) && n.pos[1] >= stack.pos[1] - 1 && n.pos[1] + n.size[1] <= stack.pos[1] + stack.size[1] + 1;
     const parts = { box, 'a box tall enough to type in': box && box.size[1] >= 16 ? box : null, Send: button('Send'), Attach: button('Attach files'),
       Model: button('Model: '), Effort: button('Effort: '), Permissions: button('Permission mode: '), 'a chip': button('Remove screenshot.png'),
