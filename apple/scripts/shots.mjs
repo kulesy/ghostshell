@@ -1879,7 +1879,8 @@ const MAC_VERBS = {
     const icon = () => app.find(node => node.role === 'AXButton' && node.desc === 'Search');
     const field = () => { const at = icon(); return at && app.find(node => node.role === 'AXTextField' && node.pos[1] > at.pos[1] && node.pos[1] < at.pos[1] + 90 && node.pos[0] < at.pos[0]); };
     if (!field() && !app.press('Search')) throw new Error(`no Search button (the window offers: ${offered(app)})`);
-    const box = app.waitFor(field);
+    let box;
+    await until('search field', () => (box = field()), 10);
     if (!box) throw new Error(`no search field under the icon (text fields: ${app.findAll(node => node.role === 'AXTextField').map(node => node.pos.join('x')).join(', ') || 'none'})`);
     app.set(box, 'AXFocused', true);
     const put = app.run('set', JSON.stringify(box.path), 'AXValue', JSON.stringify(text));
