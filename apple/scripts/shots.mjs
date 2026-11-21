@@ -1925,7 +1925,8 @@ async function playJourney(bundle, appearance, journey) {
           if (!ready) throw new Error('the app did not list its chats');
           const verb = verbOf(step);
           await MAC_VERBS[verb](app, stub, step.do[verb], step.do);
-          if (!await until(step.id, () => macShows(app, step.expect), 15)) throw new Error(`${JSON.stringify(step.expect)} did not show`);
+          // A results count that is off names what the sidebar held, so the run says which rows were counted.
+          if (!await until(step.id, () => macShows(app, step.expect), 15)) throw new Error(`${JSON.stringify(step.expect)} did not show${'results' in (step.expect ?? {}) ? ` (sidebar ${JSON.stringify(app.outline())}, ${app.rows()} rows)` : ''}`);
         } catch (e) {
           failedAt = step.id;
           Object.assign(record, { status: 'failed', reason: e.message.split('\n')[0] });

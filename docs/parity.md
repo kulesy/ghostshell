@@ -4,7 +4,7 @@ This ledger tracks how closely the Mac app matches the web page. The web page un
 
 - **Pair run.** `npm run apple:parity` lays each Mac shot beside its web shot. The `parity` job in the `Swift app` workflow runs it after the Mac shots and keeps the side-by-side images as the `parity-pairs` artifact. `apple/scripts/parity-pairs.json` maps the shot names that differ, and `apple/README.md` says how to read a run.
 - **Built.** 21 Nov 2026 from commit d19857db, with one side-by-side pass. The Pass log at the end says what it covered.
-- **Rows.** 368: direct 233, translated 27, partial 40, missing 44, unsupported 11, extra 12, manual 1.
+- **Rows.** 370: direct 234, translated 27, partial 40, missing 45, unsupported 11, extra 12, manual 1.
 
 ## Statuses
 
@@ -311,6 +311,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 7.29 | Edit: Discard confirm | direct | `public/ui/file-edit.js:96` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:49` | - | - | - |
 | 7.30 | Edit: unsaved edits kept notice and restored hint | partial | `public/ui/file-edit.js:137` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FileDrafts.swift:6` | - | - | Drafts kept; hint line not found |
 | 7.31 | Chat attachments list (file cards) | direct | `public/ui/file-card.js:9` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/Attachments.swift:5` | 10-attachments | - | - |
+| 7.32 | Esc closes the file panel | missing | `public/ui/panel.js:163` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:76` | - | - | See 7.32a |
 
 ## 8. Terminal
 
@@ -416,6 +417,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 11.37 | Scheduled form | direct | `public/ui/scheduled.js:168` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/ScheduledFormScreen.swift:5` | 9-scheduled-form | - | Page shot set has no scheduled form |
 | 11.38 | Scheduled form: date and time picker | translated | `public/ui/scheduled.js:168` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/ScheduledFormScreen.swift:78` | 9-scheduled-form | - | Native date picker |
 | 11.39 | Scheduled form: missing session note | partial | `public/ui/scheduled.js:198` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/ScheduledFormScreen.swift:15` | - | - | Not found |
+| 11.40 | Added or Saved notice after a routine is saved | direct | `public/ui/routines.js:353` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineFormScreen.swift:310` | j-routines-6-save | j-routines-6-save | See 11.40a |
 
 ## 12. Sign-in
 
@@ -502,12 +504,15 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 | 7.19a | gap, minor | 10-file-binary | The Mac binary card's header has a Download button as well as the card's own. The page header has Close only. |
 | 7.20a | question | 10-file-missing | For a file that is gone, the Mac says "There is no file at that path." with Close only. The page shows "TXT file, NaN MB" with Download and Open in a new tab, which looks like a page bug (https://github.com/kulesy/ghostshell/issues/177). Check which is right. |
 | 7.23a | gap | 10-file-markdown, 10-file-pdf | The Mac file header has no "Open in a new tab" button (row 7.23). |
+| 7.32a | gap | journey `files`, step `escape` in run https://github.com/kulesy/ghostshell/actions/runs/44886589954 | Esc closes the file panel on the page and does nothing on the Mac, where the system beeps instead. The Mac's image viewer closes on Esc (`ImageViewer.swift:101`), so the file panel is the odd one out. macOS HIG, Keyboard: Esc dismisses. The journey now closes with the Close button on both sides, so the run's sound check passes. |
 | 10.7a | question | 6-force-question | The page's banner stack shows the Chrome extension banner, and the Mac's does not. The Mac shows that banner on Accounts. Check whether the pair data or `BannerRules.swift` differs. |
 | 10.12a | convention | 6-force-question | The Mac asks with a native sheet. macOS HIG, Alerts. |
 | 11.1a | gap | 9-routines-list, 9-scheduled-list | With rows in the Routines or Scheduled list, the Mac sidebar loses its header (brand, New, Search) and its Routines and Scheduled tabs. The page keeps both. `9-routines-empty`, `9-scheduled-empty` and `9-sidebar-routines` keep them on the Mac, so this looks like a layout bug when the list has rows. The SCHEDULED heading on the page also has a new-schedule button the Mac lacks. |
 | 11.8a | convention | 9-routines-list (dark, min) | Mac switches show grey in an inactive window. macOS HIG, Toggles. |
 | 11.15a | convention | 9-routine-form | The Mac shows Group and Folder as pickers with typing. The page uses text fields with suggestions. macOS HIG, Combo boxes. |
 | 11.19a | gap, minor | 9-routine-form | The schedule hint reads "in the GhostShell server's time zone" on the Mac and "in this Mac's time" on the page. |
+| 11.29a | question | j-routines-2-new, j-routines-5-prompt | The Scheduled section lists 3 items on the Mac and 4 on the page. The page's extra row has no title, only "Starts Tomorrow, 09:00", under "Draft the release notes". Both use the same stub. Check whether the page splits one item into two rows or the Mac drops one. |
+| 11.40a | question | j-routines-6-save | After Save, the page shows the toast "Added “Weekly digest”." and the Mac shot shows no note. The Mac code sets the same note (`RoutineFormScreen.swift:310`) and `NoteBar` shows it for 6 seconds, so the Mac shot may come after it has gone. Check with a Mac shot taken straight after Save. |
 
 ## Pass log
 
@@ -522,3 +527,12 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 - The page side of `10-file-pdf` is blank because the headless shell has no PDF viewer.
 
 **21 Nov 2026, commit 23ceaebb.** A rerun after the pair run fixes gave 150 pairs, 2 with one side missing (`10-tool-tiles` at the minimum size) and 46 Mac shots with no web partner. A like-for-like review read all the default light pairs and a sample at 640 and in dark, and corrected 1.31a, 3.31a, 7.2a, 11.1a and the statuses of 7.2 and 11.19, and added 7.20a.
+
+**21 Nov 2026, first journey pass, run https://github.com/kulesy/ghostshell/actions/runs/44898115869.** Six journeys from `apple/scripts/journeys.mjs`, 20 steps, played on both apps at 960 by 640 in light, with each step's pair read side by side. The web page played all 20 steps. The Mac played 18.
+
+- The journeys found two things the fixed shots had missed. Esc does not close the file panel on the Mac (7.32a). After a routine is saved, the page shows an Added toast and the Mac shot shows none (11.40a), though the Mac code has the same note.
+- `routines`, step `save`: the Mac sidebar loses its brand, New and Search once the list has a new row, as 11.1a describes. The Scheduled section holds a different number of items on each side (11.29a).
+- `search`, step `query`: the Mac shot shows the one right result, but the Mac runner counted the sidebar rows wrongly, so the step failed and `choose` was skipped. This is a runner defect, and the step now prints the sidebar it counted. The pair shows rows 1.14 and 1.16 as logged: an inline sidebar filter on the Mac, a dialog with type chips on the page.
+- `approvals-question`, step `pick-checks`: the page scrolls the card to the second question and the Mac stays on the first. That is a scroll state of the pair run, not a gap.
+- `chat`, `approvals-bash` and `files` matched step for step apart from rows already logged.
+
