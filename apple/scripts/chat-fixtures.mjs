@@ -315,12 +315,15 @@ function terminalRoute(route, body, res, requests) {
     exitCode: 0, signal: null, stopped: false, running: false, truncated: false, delivered: null, output: [{ stream: 'out', text: `\x1b[32mran\x1b[0m ${body.command}\n` }] } });
 }
 
-export async function startChatStub() {
+// With `decisions`, an approve call is accepted: the prompt leaves the chat's `pending` and the open streams hear `approval-resolved`, as the real server sends it.
+// A send then ends its turn on those streams, so the page fetches the reply. Without it the route is missing, so a decision fails with a 404 and the card keeps its buttons.
+export async function startChatStub({ decisions = false } = {}) {
   const all = chats();
+  const streams = new Map();
   const rows = Object.entries(all).map(([id, chat], i) => ({ id, title: chat.title, dot: null, state: 'idle', sortAt: Date.now() - i * 60_000 }));
   const timers = [];
   // What the app sent, for the checks: sends, stops, picker changes, uploads and new sessions.
-  const calls = { send: [], stop: [], pick: [], upload: [], created: [] };
+  const calls = { send: [], stop: [], pick: [], upload: [], created: [], approve: [] };
   const sends = calls.send;
   const requests = [];
   const server = http.createServer((req, res) => {
@@ -364,7 +367,7 @@ export async function startChatStub() {
         rows.unshift({ id, title: all[id].title, dot: null, state: 'idle', sortAt: Date.now() });
         return json(res, 200, { id });
       }
-      const m = /^\/api\/sessions\/([^/]+)\/(messages|events|send|stop|mode|model|effort|fast)$/.exec(url.pathname);
+      const m = new RegExp(`^/api/sessions/([^/]+)/(messages|events|send|stop|mode|model|effort|fast${decisions ? '|approve' : ''})$`).exec(url.pathname);
       const chat = m && all[m[1]];
       if (!chat) return void res.writeHead(404).end('{}');
       if (m[2] === 'send') {
@@ -372,9 +375,18 @@ export async function startChatStub() {
         calls.send.push({ id: m[1], ...sent });
         if (/reject/.test(sent.text || '')) return json(res, 400, { error: 'That message is too long for this session.' });
         chat.items.push(user(sent.text || '(attachments)', 0.1), reply(`r${chat.items.length}`, 'Got it.', 0));
+        for (const open of decisions ? streams.get(m[1]) ?? [] : []) send(open, 'turn-end', {});
         return json(res, 200, idleStatus());
       }
       if (m[2] === 'stop') { calls.stop.push(m[1]); return json(res, 200, idleStatus()); }
+      if (m[2] === 'approve') {
+        const decided = body();
+        calls.approve.push({ id: m[1], ...decided });
+        if (!chat.pending?.some(p => p.requestId === decided.requestId)) return json(res, 410, idleStatus());
+        chat.pending = chat.pending.filter(p => p.requestId !== decided.requestId);
+        for (const open of streams.get(m[1]) ?? []) send(open, 'approval-resolved', { requestId: decided.requestId, decision: decided.decision });
+        return json(res, 200, idleStatus({ state: chat.pending.length ? 'waiting' : 'idle', pending: chat.pending }));
+      }
       if (['mode', 'model', 'effort', 'fast'].includes(m[2])) {
         const value = body()[m[2]];
         calls.pick.push({ id: m[1], [m[2]]: value });
@@ -387,6 +399,10 @@ export async function startChatStub() {
         return json(res, 200, page);
       }
       stream(chat, res, timers);
+      if (decisions) {
+        streams.set(m[1], (streams.get(m[1]) ?? new Set()).add(res));
+        res.on('close', () => streams.get(m[1])?.delete(res));
+      }
       if (m[1] === 'rich') {
         send(res, 'subagents', { agents: [
           { id: 'a1', type: 'Explore', description: 'Look for other races', state: 'done', startedAt: NOW - 600_000, endedAt: NOW - 540_000, ms: 60_000 },
