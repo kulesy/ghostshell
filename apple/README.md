@@ -42,6 +42,7 @@ Xcode 16.4 and Node 20 are enough. Nothing needs signing. The app uses an ad hoc
 | `npm run apple:ios-build` | Builds the iPhone app for the Simulator (Debug). Add `-- --release` for a Release device build with signing off, which is then searched for the Debug hooks like the Mac one. |
 | `npm run apple:watch-build` | Builds the watch app for the Simulator (Debug). Add `-- --release` for a Release device build with signing off, which is then searched for the Debug hooks. The iPhone app embeds the watch app, so `apple:ios-build` builds it too. |
 | `npm run apple:ios-shot` | Runs the iPhone UI tests on an iPhone SE (3rd generation) and an iPhone 16 Pro, light and dark, and saves screenshots to `apple/screenshots/iphone`. See below. |
+| `npm run apple:parity` | Lays each Mac shot beside the web shot of the same screen and writes `pairs.md`. See Pair run below. |
 | `npm run apple:server` | Starts a scratch server and prints its address and the path of its password file. It stops on Ctrl-C. |
 
 To run the app by hand, start `npm run apple:server`, open `apple/GhostShell.xcodeproj` in Xcode and run the GhostShell scheme. Type the printed address and the password from the file. The scratch server never touches port 4310 or your real state.

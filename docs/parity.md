@@ -40,7 +40,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 1.1 | Native window, title bar, menu bar and shortcuts | unsupported | `public/index.html:96` | `apple/GhostShell/GhostShellApp.swift:29` | 1-list-rows | chat/02-sidebar | Kept native on purpose, see https://github.com/kulesy/ghostshell/issues/175#issuecomment-6931080623 |
 | 1.2 | Unsupported-browser message | unsupported | `public/index.html:106` | `apple/GhostShell/GhostShellApp.swift:29` | - | - | No browser to be too old for on the Mac |
 | 1.3 | Two-column layout at wide sizes | direct | `public/app.js:8` | `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:34` | 1-session-chosen | chat/02-sidebar | - |
-| 1.4 | Narrow width (640): one column plus "Sessions" back link | translated | `public/ui/chat.js:33` | `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:34` | 1-session-chosen-min | chat/02-sidebar | Mac keeps both columns at 640 by decision in #175 and gives the sidebar the page width |
+| 1.4 | Narrow width (640): one column plus "Sessions" back link | translated | `public/ui/chat.js:33` | `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:34` | 1-session-chosen-min | chat/02-sidebar | Mac keeps both columns at 640 by decision in https://github.com/kulesy/ghostshell/issues/175 and gives the sidebar the page width |
 | 1.5 | Empty main pane text | partial | `public/app.js:372` | `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:136` | 1-list-rows | chat/02-sidebar | See 1.5a and 1.5b |
 | 1.6 | Sidebar header brand mark | direct | `public/index.html:113` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarHeader.swift:88` | 1-list-rows | chat/02-sidebar | - |
 | 1.7 | Projects toggle button | translated | `public/index.html:112` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarHeader.swift:82` | 5-project-view | groups/organise-projects-menu | Page docks a rail; Mac opens a View menu (ViewMenuContent) listing Home and projects with lamps and counts |
@@ -91,7 +91,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 1.52 | Account menu: Accounts | translated | `public/ui/sessions-list.js:5` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:53` | 6-accounts | chat/11-account-menu | Page shows it only when the server supports accounts; Mac always shows it |
 | 1.53 | Account menu: Passkeys | direct | `public/ui/sessions-list.js:1134` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:54` | 6-passkeys | chat/11-account-menu | - |
 | 1.54 | Account menu: Sign out | direct | `public/ui/sessions-list.js:1129` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:57` | 1-signed-out | chat/11-account-menu | - |
-| 1.55 | Account menu: Notifications | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationToggle.swift:13` | 1-toolbar-notifications-on | - | Mac-only extra, kept by decision in #177 |
+| 1.55 | Account menu: Notifications | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationToggle.swift:13` | 1-toolbar-notifications-on | - | Mac-only extra, kept by decision in https://github.com/kulesy/ghostshell/issues/177 |
 | 1.56 | Multi-select pick bar: "N selected", Move, Archive, Clear | partial | `public/ui/sessions-list.js:1393` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:70` | 8-multi-selection | organise/organise-select | Mac bar has Archive, Actions menu and Done; Move sits inside Actions |
 | 1.57 | Select with Cmd or Ctrl click, Shift click and Shift+arrow range | partial | `public/ui/pick.js:15` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarList.swift:35` | 8-multi-selection | organise/organise-select | List selection gives Cmd and Shift click and arrow range; not verified against the page's rules |
 | 1.58 | Escape clears the selection | missing | `public/ui/sessions-list.js:1069` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarList.swift:66` | - | - | No Escape handler found; Done button clears it |
@@ -155,14 +155,14 @@ A status describes what the Mac app can do. A look difference with no missing pi
 
 | # | Item | Status | Reference | Target | Mac shot | Page shot | Notes |
 |---|---|---|---|---|---|---|---|
-| 3.1 | Chat header: title and subtitle (folder, branch, model) | direct | `public/ui/chat.js:122` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:22` | 1-chat-real | chat/03-chat-rich | Subtitle in mono, matches after #191 |
+| 3.1 | Chat header: title and subtitle (folder, branch, model) | direct | `public/ui/chat.js:122` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:22` | 1-chat-real | chat/03-chat-rich | Subtitle in mono, matches after https://github.com/kulesy/ghostshell/issues/191 |
 | 3.2 | Chat header: Back to sessions | translated | `public/ui/chat.js:33` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatScreen.swift:130` | 1-session-chosen-min | chat/03-chat-rich | Only used by the phone shell; the Mac keeps the sidebar |
 | 3.3 | Chat header: rename pencil | missing | `public/ui/chat.js:127` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:21` | - | - | Renamed through the sidebar row menu on the Mac |
 | 3.4 | Chat header: archive button | direct | `public/ui/chat-archive.js:31` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:50` | 1-chat-real | chat/03-chat-rich | - |
 | 3.5 | Chat header: archive confirm "Stop and archive" | direct | `public/ui/chat-archive.js:38` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:37` | - | - | - |
 | 3.6 | Chat header: archive failure alert | direct | `public/ui/chat-archive.js:31` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:40` | - | - | - |
 | 3.7 | Chat header: terminal button | direct | `public/ui/chat.js:37` | `apple/GhostShellKit/Sources/GhostShellScreens/Terminal/TerminalControls.swift:6` | 12-term-chat | chat/term-chat | - |
-| 3.8 | Chat header: Subagents button with dot | translated | `public/ui/chat.js:24` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:124` | 6-chat-rich | chat/03-chat-rich | Header icon on the page; Mac also shows a Subagents row above the composer (ChatLive.swift, decided in #176) |
+| 3.8 | Chat header: Subagents button with dot | translated | `public/ui/chat.js:24` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:124` | 6-chat-rich | chat/03-chat-rich | Header icon on the page; Mac also shows a Subagents row above the composer (ChatLive.swift, decided in https://github.com/kulesy/ghostshell/issues/176) |
 | 3.9 | Chat header: sub sessions button | direct | `public/ui/chat.js:26` | `apple/GhostShellKit/Sources/GhostShellScreens/Groups/SubSessionsPanel.swift:7` | 11-view | groups/groups-2-group-chat | - |
 | 3.10 | Start-in-group chip on a new chat ("In X") | direct | `public/ui/chat.js:130` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/NewSessionScreen.swift:39` | 7-new-session | - | - |
 | 3.11 | Document title per chat | unsupported | `public/ui/chat.js:12` | `apple/GhostShell/GhostShellApp.swift:29` | - | - | Window title is the navigation title on the Mac |
@@ -283,7 +283,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 7.1 | Tool-result tiles (picture and file) | direct | `public/ui/gallery.js:10` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/Attachments.swift:5` | 10-tool-tiles | files/10-tool-tiles | See 7.1a |
 | 7.2 | Image viewer overlay | translated | `public/ui/viewer.js:301` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:22` | 10-viewer-tool | files/10-viewer-tool | See 7.2a |
 | 7.3 | Image viewer: Zoom and Fit to screen | direct | `public/ui/viewer.js:223` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/Zoom.swift:160` | 10-viewer-tool | files/10-viewer-picture | Pinch and double-click on the Mac |
-| 7.4 | Image viewer: Open in new tab | missing | `public/ui/viewer.js:306` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:21` | 10-viewer-tool | files/10-viewer-tool | Noted in #177 |
+| 7.4 | Image viewer: Open in new tab | missing | `public/ui/viewer.js:306` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:21` | 10-viewer-tool | files/10-viewer-tool | Noted in https://github.com/kulesy/ghostshell/issues/177 |
 | 7.5 | Image viewer: Close (Esc) | direct | `public/ui/viewer.js:21` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:21` | 10-viewer-tool | files/10-viewer-tool | - |
 | 7.6 | Image viewer: Previous and Next | direct | `public/ui/viewer.js:317` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:109` | 10-viewer-next | - | - |
 | 7.7 | Image viewer: loading and error states | direct | `public/ui/viewer.js:298` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:79` | - | - | - |
@@ -299,7 +299,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 7.17 | Audio player and Previous and Next clips | direct | `public/ui/file-audio.js:64` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/AudioPane.swift:71` | 10-file-audio | files/10-file-audio | https://github.com/kulesy/ghostshell/pull/70 |
 | 7.18 | Audio "browser cannot play" error | unsupported | `public/ui/file-audio.js:59` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/AudioPane.swift:20` | - | - | Native player has no such state |
 | 7.19 | Binary file card | direct | `public/ui/file-card.js:6` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:119` | 10-file-binary | files/10-file-binary | - |
-| 7.20 | Missing file card | direct | `public/ui/file-view.js:97` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:243` | 10-file-missing | files/10-file-missing | Page shows "TXT file, NaN MB" per #177; may be a page bug |
+| 7.20 | Missing file card | direct | `public/ui/file-view.js:97` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:243` | 10-file-missing | files/10-file-missing | Page shows "TXT file, NaN MB" per https://github.com/kulesy/ghostshell/issues/177; may be a page bug |
 | 7.21 | Loading state | direct | `public/ui/file-view.js:23` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:239` | - | - | - |
 | 7.22 | Header: Download | direct | `public/ui/file-view.js:78` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:119` | 10-file-text-line | files/10-file-text-line | Save to Files on iPhone |
 | 7.23 | Header: Open in a new tab | missing | `public/ui/file-view.js:119` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:119` | 10-file-markdown | files/10-file-markdown | - |
@@ -336,7 +336,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 |---|---|---|---|---|---|---|---|
 | 9.1 | Accounts screen header and back | direct | `public/ui/accounts.js:5` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/AccountsScreen.swift:110` | 6-accounts | chat/09-accounts | - |
 | 9.2 | Running chats list | direct | `public/ui/accounts.js:67` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/AccountsScreen.swift:188` | 6-accounts | chat/09-accounts | - |
-| 9.3 | Account row: name, Active badge, plan bars | direct | `public/ui/accounts.js:100` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/PlanBars.swift:5` | 6-meter | chat/09b-accounts-scrolled | Layout of bars differs, per #177 |
+| 9.3 | Account row: name, Active badge, plan bars | direct | `public/ui/accounts.js:100` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/PlanBars.swift:5` | 6-meter | chat/09b-accounts-scrolled | Layout of bars differs, per https://github.com/kulesy/ghostshell/issues/177 |
 | 9.4 | Account row: Switch to this | direct | `public/ui/accounts.js:83` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/AccountsScreen.swift:166` | 6-accounts | chat/09-accounts | - |
 | 9.5 | Account row: Sign in, Waiting for the Mac | missing | `public/ui/accounts.js:108` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Accounts/AccountsScreen.swift:166` | - | - | Not found on the Accounts screen (the banner has it) |
 | 9.6 | Account row: Rename | direct | `public/ui/accounts.js:93` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/AccountsScreen.swift:146` | 6-accounts | - | - |
@@ -371,7 +371,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 10.11 | Force restart button | direct | `public/ui/banners.js:90` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/BannerStack.swift:68` | 6-force-question | banners/6-force-question | - |
 | 10.12 | Force restart question dialog | translated | `public/ui/banner-rules.js:74` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/BannerStack.swift:125` | 6-force-question | banners/6-force-question | Stock alert on the page-style layer; page dialog is wider |
 | 10.13 | Reload bar for a changed page | unsupported | `public/ui/reload.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/BannerStack.swift:6` | - | - | See Window and sidebar |
-| 10.14 | Banner stack shadow, fade and position | translated | `public/ui/banner.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/BannerCardView.swift:5` | 6-banners | banners/6-banners | Native layer, differences recorded in #177 |
+| 10.14 | Banner stack shadow, fade and position | translated | `public/ui/banner.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/BannerCardView.swift:5` | 6-banners | banners/6-banners | Native layer, differences recorded in https://github.com/kulesy/ghostshell/issues/177 |
 
 ## 11. Routines and scheduled
 
@@ -404,7 +404,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | 11.25 | Project sidebar total counts routines with no run | direct | https://github.com/kulesy/ghostshell/pull/167 | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/ViewMenuContent.swift:23` | 9-project-routines | - | - |
 | 11.26 | Routine queue and retry note | direct | https://github.com/kulesy/ghostshell/pull/25 | `apple/GhostShellKit/Sources/GhostShellKit/Rules/RoutineRules.swift:120` | 9-sidebar-routines | routines/sidebar-routines | - |
 | 11.27 | Rename a routine from its row | missing | https://github.com/kulesy/ghostshell/pull/23 | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineSlots.swift:5` | - | - | Mac row menu has no Rename |
-| 11.28 | Sidebar highlights the routine being edited | missing | `public/ui/routines.js:29` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineSlots.swift:5` | 9-routine-form | routines/routine-form | Per #177 |
+| 11.28 | Sidebar highlights the routine being edited | missing | `public/ui/routines.js:29` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineSlots.swift:5` | 9-routine-form | routines/routine-form | Per https://github.com/kulesy/ghostshell/issues/177 |
 | 11.29 | Scheduled list screen | partial | `public/ui/scheduled.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/ScheduledScreen.swift:5` | 9-scheduled-list | routines/scheduled-list | See 11.1a |
 | 11.30 | Scheduled: Schedule a session button | direct | `public/ui/scheduled.js:143` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/ScheduledScreen.swift:34` | 9-scheduled-list | routines/scheduled-list | - |
 | 11.31 | Scheduled empty | direct | `public/ui/scheduled.js:153` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/ScheduledScreen.swift:34` | 9-scheduled-empty | empty/scheduled-empty | - |
@@ -422,7 +422,7 @@ A status describes what the Mac app can do. A look difference with no missing pi
 | # | Item | Status | Reference | Target | Mac shot | Page shot | Notes |
 |---|---|---|---|---|---|---|---|
 | 12.1 | Sign-in card | direct | `public/login.html:26` | `apple/GhostShellKit/Sources/GhostShellScreens/SignIn/SignInScreen.swift:79` | 1-signin-idle | signin/1-signin-idle | - |
-| 12.2 | Address field | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/SignIn/SignInScreen.swift:87` | 1-signin-idle | - | Mac-only, kept by decision in #177 |
+| 12.2 | Address field | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/SignIn/SignInScreen.swift:87` | 1-signin-idle | - | Mac-only, kept by decision in https://github.com/kulesy/ghostshell/issues/177 |
 | 12.3 | Password field and Sign in button | direct | `public/login.html:26` | `apple/GhostShellKit/Sources/GhostShellScreens/SignIn/SignInScreen.swift:104` | 1-signin-idle | signin/1-signin-idle | - |
 | 12.4 | Sign in with a passkey | direct | `public/login.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/SignIn/SignInScreen.swift:113` | 1-signin-idle | - | Needs a passkey entitlement; iPhone path |
 | 12.5 | Wrong password | direct | `public/login.js:31` | `apple/GhostShellKit/Sources/GhostShellScreens/SignIn/SignInScreen.swift:43` | 1-wrong-password | signin/1-wrong-password | - |
@@ -513,7 +513,7 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 **21 Nov 2026, commit d19857db.** Mac shots from the `Swift app` workflow on the `xcode-27` runner. Web shots from `page-shots.mjs --set all` in the headless shell at 960 and 640, light and dark.
 
 - 148 pairs laid side by side. All 38 default light pairs read, plus a sample at 640 and in dark.
-- 4 pairs had one side missing: `6-chat-rich-middle` and `10-tool-tiles` have no Mac shot at the minimum size.
+- 4 pairs had one side missing at the minimum size. `10-tool-tiles` has no Mac shot there. The Mac names its `6-chat-rich-middle` shot at that size `-min-<scheme>`, which this run missed and the pair run now accepts.
 - 47 Mac shots had no web partner. Most are states the page shots don't stage, such as `7-composer-quote`, `7-composer-slash` and the terminal steps.
 - 19 web shots had no Mac partner: `01-sign-in`, `02-sidebar`, `09-accounts`, `10-passkeys`, `10-viewer-picture`, `11-account-menu`, the groups shots and the organise shots. The runner can't run the Mac `organise`, `groups` and `marks` flows, so those rows have no Mac shot.
 - Pair-data mismatches, not gaps: the page proxy turns on Scheduled, so the page sidebar shows a Scheduled tab where the Mac chat shots don't. The `6-banners` Mac sidebar has 3 rows against 14 on the page. The Mac `7-composer-draft` has two quote chips and the page has none. `6-chat-rich-middle` and `04-chat-scrolled` stop at different scroll positions.

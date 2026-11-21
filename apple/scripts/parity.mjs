@@ -13,7 +13,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The Mac window's default and minimum size, which the web page is rendered at too.
 const SIZES = { default: { width: 960, height: 640 }, min: { width: 640, height: 420 } };
 const SCHEMES = ['light', 'dark'];
-const MAC_FILE = /^(.+)-(light|dark)(?:-(default|min))?\.png$/;
+const MAC_FILE = /^(.+?)(?:-(?:default|min))?-(light|dark)(?:-(?:default|min))?\.png$/;
 
 // Given the file names in each folder and the pairs map, returns the pairs with both shots, the pairs with one, and the shots no pair names.
 // macFiles are names such as `1-list-rows-light-default.png`; pageFiles are paths such as `960/light/list-rows.png`.
@@ -24,7 +24,7 @@ export function pairUp({ macFiles, pageFiles, pairs }) {
   const half = [];
   for (const { mac: macBase, page: screen, note = '' } of pairs) {
     for (const scheme of SCHEMES) for (const size of Object.keys(SIZES)) {
-      const macFile = [`${macBase}-${scheme}-${size}.png`, ...(size === 'default' ? [`${macBase}-${scheme}.png`] : [])].find(f => mac.has(f)) ?? null;
+      const macFile = [`${macBase}-${scheme}-${size}.png`, `${macBase}-${size}-${scheme}.png`, ...(size === 'default' ? [`${macBase}-${scheme}.png`] : [])].find(f => mac.has(f)) ?? null;
       const pageFile = page.has(`${SIZES[size].width}/${scheme}/${screen}.png`) ? `${SIZES[size].width}/${scheme}/${screen}.png` : null;
       if (!macFile && !pageFile) continue;
       const row = { mac: macBase, page: screen, scheme, size, macFile, pageFile, note, name: `${macBase}-${scheme}-${size}.png` };
@@ -44,7 +44,7 @@ const list = dir => { try { return fs.readdirSync(dir); } catch { return []; } }
 function pageFilesOf(root) {
   const found = [];
   for (const width of list(path.join(root, 'page'))) for (const scheme of list(path.join(root, 'page', width))) {
-    for (const file of list(path.join(root, 'page', width, scheme))) if (file.endsWith('.png')) found.push(`${width}/${scheme}/${file}`);
+    for (const file of list(path.join(root, 'page', width, scheme))) if (file.endsWith('.png') && !file.endsWith('.FAILED.png')) found.push(`${width}/${scheme}/${file}`);
   }
   return found;
 }
