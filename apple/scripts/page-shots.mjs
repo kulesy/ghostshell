@@ -2,7 +2,10 @@
 // Screenshots the web page at phone width, and at the Mac window's default and minimum size, against the same stubs the iPhone run signs in to, so a screen shows the same data on both.
 // Headless Chromium only. Set PLAYWRIGHT_CORE to the playwright-core folder of a checkout that has it. It never opens a browser the owner uses, port 4310 or ~/.config/capcom.
 //   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402|960|640] [--scheme light|dark] [--set chat,groups,empty,organise,routines,files,banners,signin|all] [--only <screen prefix>]
+//   node apple/scripts/page-shots.mjs --journeys [--journey <id>] [--out <folder>]
 // Writes <out>/page/<width>/<scheme>/<screen>.png. Screen names follow the iPhone UI tests' shot names where one exists.
+// --journeys plays apple/scripts/journeys.mjs at 960 wide in light with real clicks and keys, a shot after each step as j-<journey>-<n>-<step>.png, and writes <out>/journeys-web.json.
+// A failed step is recorded and its journey skipped from there. Only a crash of the run itself sets the exit code.
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -14,6 +17,7 @@ import { startChatStub } from './chat-fixtures.mjs';
 import { makePng } from './png.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
+import { JOURNEYS, shotName, verbOf } from './journeys.mjs';
 import { routinesStub } from './routines-fixtures.mjs';
 import { startScratch } from './test-server.mjs';
 
@@ -133,18 +137,20 @@ function startProxy(upstream, { answer = () => undefined, patch = () => undefine
 
 // The server's system notices carry a `details` list that the chat stub leaves out, and the page reads its length. The files and groups stubs
 // ignore `after`, so the page's poll would append the whole chat again.
-const forMessages = query => body => ({ ...body, items: query.has('after') ? [] : body.items.map(i => (i.kind === 'system' && !i.details ? { ...i, details: [] } : i)),
-  ...(query.has('after') && { start: body.end }) });
-const forList = features => (p, query) => (p === '/api/sessions' ? body => ({ ...LIST, ...body, ...(features && { features }) }) : /\/messages$/.test(p) ? forMessages(query) : undefined);
+// A journey sends a message and waits for the reply, so it keeps the stub's `after` answers.
+const forMessages = (query, live = false) => body => ({ ...body, items: query.has('after') && !live ? [] : body.items.map(i => (i.kind === 'system' && !i.details ? { ...i, details: [] } : i)),
+  ...(query.has('after') && !live && { start: body.end }) });
+const forList = (features, live) => (p, query) => (p === '/api/sessions' ? body => ({ ...LIST, ...body, ...(features && { features }) }) : /\/messages$/.test(p) ? forMessages(query, live) : undefined);
 
 // Each set starts its stubs fresh, so what one screen changes never reaches the next run.
 const SETS = {
-  async chat() {
-    const stub = await startChatStub();
+  // `journey` is for the journeys run: the stub takes approvals and the page's polls reach it.
+  async chat({ journey = false } = {}) {
+    const stub = await startChatStub({ decisions: journey });
     const fixtures = accountsFixture();
     const proxy = await startProxy(stub.address, {
       answer: p => (p === '/api/accounts' || p === '/api/accounts/plan' ? fixtures.accounts : p === '/api/banners' ? {} : p === '/api/passkeys' ? fixtures.passkeys : undefined),
-      patch: forList(FEATURES),
+      patch: forList(FEATURES, journey),
     });
     return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
   },
@@ -168,7 +174,7 @@ const SETS = {
     return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
   },
   async routines(extra = {}) {
-    const stub = routinesStub();
+    const stub = routinesStub({ accept: extra.accept });
     await new Promise(resolve => stub.server.listen(0, '127.0.0.1', resolve));
     const proxy = await startProxy(`http://localhost:${stub.server.address().port}`, {
       answer: p => (p === '/api/banners' ? {} : extra.answer?.(p)),
@@ -398,6 +404,97 @@ async function runSet(browser, name, width, scheme) {
   return failed;
 }
 
+// MARK: Journeys
+
+const STEP_TIMEOUT = 8_000;
+const JOURNEY_STUBS = { chat: () => SETS.chat({ journey: true }), files: () => SETS.files(), routines: () => SETS.routines({ accept: true }) };
+const visible = (page, text) => page.getByText(text).locator('visible=true');
+
+// Each verb of apple/scripts/journeys.mjs as the page's real input: a click or a key a person would press.
+const VERBS = {
+  open: (page, id) => page.locator(`a.row[href="#/s/${id}"]`).click({ timeout: STEP_TIMEOUT }),
+  type: async (page, text) => {
+    if (!(await page.evaluate(() => document.activeElement?.matches('input, textarea')))) await page.locator('#text').click({ timeout: STEP_TIMEOUT });
+    await page.keyboard.type(text);
+  },
+  key: (page, key) => page.keyboard.press(key),
+  press: (page, name, { card, nth = 0 } = {}) => {
+    const scope = card ? page.locator('article.approval').filter({ hasText: card }) : page;
+    const buttons = scope.getByRole('button', { name, exact: true });
+    return (card ? buttons.nth(nth) : buttons.or(page.getByRole('link', { name, exact: true })).locator('visible=true').first()).click({ timeout: STEP_TIMEOUT });
+  },
+  pick: async (page, [question, ...options]) => {
+    for (const o of options) await page.locator('fieldset.ask').filter({ hasText: question }).locator(`button.option[data-o="${o}"]`).click({ timeout: STEP_TIMEOUT });
+  },
+  link: (page, text) => page.getByText(text, { exact: true }).first().click({ timeout: STEP_TIMEOUT }),
+  search: async (page, text) => { await page.locator('button.find').click({ timeout: STEP_TIMEOUT }); await page.keyboard.type(text); },
+  choose: (page, n) => page.locator('[role=option]').nth(n).click({ timeout: STEP_TIMEOUT }),
+  route: (page, name) => page.locator(`a[href="#/${name}"]`).locator('visible=true').first().click({ timeout: STEP_TIMEOUT }),
+  fill: async (page, { field, text }) => {
+    const box = page.getByLabel(field, { exact: true });
+    await box.click({ timeout: STEP_TIMEOUT });
+    await page.keyboard.press('ControlOrMeta+A');
+    await page.keyboard.type(text);
+  },
+};
+
+// What the page shows once the step is done, or throws when it does not within the timeout.
+async function expectShown(page, expect) {
+  if (!expect) return;
+  if ('results' in expect) return void await page.waitForFunction(n => document.querySelectorAll('[role=option]').length === n, expect.results, { timeout: STEP_TIMEOUT });
+  if ('gone' in expect) return void await page.getByText(expect.gone).locator('visible=true').first().waitFor({ state: 'hidden', timeout: STEP_TIMEOUT });
+  for (const text of [].concat(expect.text)) await visible(page, text).first().waitFor({ timeout: STEP_TIMEOUT });
+}
+
+// Plays one journey on a fresh stub and returns a record per step. A failed step still gets its shot and the rest are skipped.
+async function playJourney(browser, journey, dir) {
+  const server = await JOURNEY_STUBS[journey.stub]();
+  const context = await browser.newContext({ viewport: { width: 960, height: SIZES[960] }, deviceScaleFactor: 2, colorScheme: 'light' });
+  const records = [];
+  try {
+    const page = await context.newPage();
+    page.on('pageerror', e => console.error(`  page error: ${e.message}`));
+    await page.goto(`${server.address}/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#root > *', { timeout: 15_000 });
+    await sleep(1500);
+    let failedAt = null;
+    for (const [i, step] of journey.steps.entries()) {
+      const record = { journey: journey.id, step: step.id, n: i + 1, status: 'ok', reason: '' };
+      records.push(record);
+      if (failedAt) { Object.assign(record, { status: 'skipped', reason: `after ${failedAt}` }); continue; }
+      try {
+        const verb = verbOf(step);
+        await VERBS[verb](page, step.do[verb], step.do);
+        await expectShown(page, step.expect);
+      } catch (e) {
+        failedAt = step.id;
+        Object.assign(record, { status: 'failed', reason: e.message.split('\n')[0] });
+        console.log(`JOURNEY web ${journey.id}/${step.id}: ${record.reason}`);
+      }
+      await sleep(500);
+      await page.screenshot({ path: path.join(dir, `${shotName(journey.id, i + 1, step.id)}.png`) });
+    }
+  } finally {
+    await context.close();
+    await server.stop();
+  }
+  return records;
+}
+
+async function runJourneys(browser) {
+  const dir = path.join(OUT, 'page', '960', 'light');
+  fs.mkdirSync(dir, { recursive: true });
+  const wanted = (option('--journey') || '').split(',').filter(Boolean);
+  const records = [];
+  for (const journey of JOURNEYS.filter(j => !wanted.length || wanted.includes(j.id))) {
+    console.log(`== journey ${journey.id}`);
+    records.push(...await playJourney(browser, journey, dir));
+  }
+  fs.writeFileSync(path.join(OUT, 'journeys-web.json'), JSON.stringify(records, null, 2));
+  const bad = records.filter(r => r.status !== 'ok');
+  console.log(`Journeys: ${records.length - bad.length} of ${records.length} steps ok.`);
+}
+
 // --serve <set> starts one set's servers, prints the address and waits, for looking at the page by hand in a test browser.
 if (option('--serve')) {
   const server = await SETS[option('--serve')]();
@@ -409,6 +506,10 @@ if (option('--serve')) {
 const headless = findChromium();
 if (!headless) { console.error(notFound()); process.exit(1); }
 const browser = await chromium.launch({ executablePath: headless });
+if (argv.includes('--journeys')) {
+  try { await runJourneys(browser); } finally { await browser.close(); }
+  process.exit(0);
+}
 const failures = [];
 try {
   for (const width of sizes) for (const scheme of schemes) for (const name of sets.includes('all') ? Object.keys(SETS) : sets) {
