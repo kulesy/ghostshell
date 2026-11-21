@@ -522,8 +522,12 @@ class App {
       && n.pos[0] + n.size[0] <= win.pos[0] + win.size[0] + 1 && n.pos[1] + n.size[1] <= win.pos[1] + win.size[1] + 1;
     const button = part => nodes.find(n => ['AXButton', 'AXMenuButton', 'AXPopUpButton'].includes(n.role) && [n.desc, n.help, n.title].some(text => text?.includes(part)));
     const box = this.composerBox();
+    // The chips' scroll area must be as tall as the picture chip, or the chip is on screen but squeezed to a strip (https://github.com/kulesy/ghostshell/issues/202).
+    const picture = nodes.find(n => [n.desc, n.title].includes('Image screenshot.png'));
+    const chipScroll = picture && nodes.filter(n => n.role === 'AXScrollArea' && picture.path.join().startsWith(`${n.path.join()},`)).at(-1);
     const parts = { box, 'a box tall enough to type in': box && box.size[1] >= 16 ? box : null, Send: button('Send'), Attach: button('Attach files'),
-      Model: button('Model: '), Effort: button('Effort: '), Permissions: button('Permission mode: '), 'a chip': button('Remove screenshot.png') };
+      Model: button('Model: '), Effort: button('Effort: '), Permissions: button('Permission mode: '), 'a chip': button('Remove screenshot.png'),
+      'a whole picture chip': chipScroll && chipScroll.size[1] >= picture.size[1] - 1 ? picture : null };
     return Object.entries(parts).filter(([, node]) => !inside(node)).map(([name]) => name);
   }
   focusComposer() { const box = this.composerBox(); return !!box && this.set(box, 'AXFocused', true); }

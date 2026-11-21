@@ -13,7 +13,7 @@ struct ComposerChips: View {
             // As the page's two lists, the quotes in a column and the attachments in a row. Together they scroll past a share of the chat's height, so a short window keeps its thread.
             // The page caps each list at 14rem and has no rule for a short window. Prompts waiting on an answer already take half the chat, so the chips leave them more room.
             let share = model.chat?.status?.pending.isEmpty == false ? 0.2 : 0.4
-            ChipScroll(maxHeight: min(max(chatHeight * share, Self.minHeight), 2 * Self.maxHeight)) {
+            HuggingScroll(minHeight: Self.minHeight, maxHeight: min(max(chatHeight * share, Self.minHeight), 2 * Self.maxHeight)) {
                 VStack(spacing: 0) {
                     if !model.quotes.isEmpty {
                         VStack(spacing: Self.gap) { ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } } }
@@ -28,7 +28,7 @@ struct ComposerChips: View {
         #else
         if !model.quotes.isEmpty || !model.attachments.isEmpty {
             // About two rows. Past that the chips scroll, and a small window shrinks the area before the box.
-            ChipScroll(maxHeight: Self.maxHeight) {
+            HuggingScroll(minHeight: Self.minHeight, maxHeight: Self.maxHeight) {
                 ChipFlow(spacing: Self.gap) {
                     ForEach(model.quotes) { quote in QuoteChip(quote: quote, here: model.chat?.sessionID) { model.remove(quote) } }
                     attachmentChips
@@ -47,31 +47,16 @@ struct ComposerChips: View {
 
     #if os(macOS)
     private static let maxHeight = 14 * GhostMetrics.current.rem
-    /// One row of chips and its inset, so even a short chat shows a chip.
-    private static let minHeight = 4 * GhostMetrics.current.rem
+    /// A picture chip, the tallest, and its inset, so even a short chat under a waiting prompt shows a whole chip.
+    private static let minHeight = 6.75 * GhostMetrics.current.rem
     private static let inset = 0.75 * GhostMetrics.current.rem
     private static let gap = 0.5 * GhostMetrics.current.rem
     #else
     private static let maxHeight: CGFloat = 112
+    private static let minHeight = chipHeight
     private static let inset: CGFloat = 0
     private static let gap: CGFloat = 8
     #endif
-}
-
-/// Holds its content to `maxHeight` and scrolls past it.
-private struct ChipScroll<Content: View>: View {
-    let maxHeight: CGFloat
-    @ViewBuilder let content: Content
-    @State private var contentHeight: CGFloat = 0
-
-    var body: some View {
-        ScrollView(.vertical) {
-            content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .frame(maxHeight: min(contentHeight, maxHeight))
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 }
 
 /// Lays the chips out left to right and starts a new line when the next one does not fit.
