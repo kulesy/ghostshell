@@ -111,7 +111,7 @@ The web side runs on its own against the stubs, with real clicks and keys in hea
 PLAYWRIGHT_CORE=<playwright-core folder> node apple/scripts/page-shots.mjs --journeys [--journey <id>] --out <web folder>
 ```
 
-The Mac side runs only in the workflow (`apple:shot -- --no-chat --only light --flow journeys`), under the rule below. The chat stub takes approvals and ends the turn after a send only when started with `decisions` (`startChatStub({ decisions: true })`), as the journeys do. Without it the approve route stays missing, which the approvals flow relies on to show a failed decision. The routines stub accepts writes for a journey, as on the iPhone run.
+The Mac side runs only in the workflow (`apple:shot -- --no-chat --only light --flow journeys`), under the rule below. The files journey closes the file with its Close button on both sides. Esc closes it on the web page but not on the Mac, and a real Esc the Mac does not handle makes the system beep, which fails the run's sound check, so the journey does not press it. The chat stub takes approvals and ends the turn after a send only when started with `decisions` (`startChatStub({ decisions: true })`), as the journeys do. Without it the approve route stays missing, which the approvals flow relies on to show a failed decision. The routines stub accepts writes for a journey, as on the iPhone run.
 
 ### Running on the Mac
 

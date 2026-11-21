@@ -1863,8 +1863,8 @@ const MAC_VERBS = {
     const r = await app.keysQuiet(key === 'Enter' ? 'return' : key.toLowerCase());
     if (r.ok !== true) throw new Error(`the ${key} key was not sent: ${r.error ?? 'no reason'}`);
   },
-  press: async (app, stub, name, { card, nth = 0 } = {}) => {
-    if (!(card ? app.pressHelped(card, nth) : app.press(name))) throw new Error(`no ${name} button${card ? ` on the card "${card}"` : ''} (the window offers: ${offered(app)})`);
+  press: async (app, stub, name, { card, nth = 0, mac = name } = {}) => {
+    if (!(card ? app.pressHelped(card, nth) : app.press(mac))) throw new Error(`no ${name} button${card ? ` on the card "${card}"` : ''} (the window offers: ${offered(app)})`);
   },
   pick: async (app, stub, [question, ...options]) => {
     for (const o of options) if (!app.pressHelped(question, o)) throw new Error(`no option ${o} on the question "${question}"`);
@@ -1874,7 +1874,15 @@ const MAC_VERBS = {
     let at = -1;
     if (!await until(text, () => app.clickLink(text) || (app.scrollChat(Math.min(1, (at += 1) * 0.1)), false), 20)) throw new Error(`the chat has no link ${text}`);
   },
-  search: async (app, stub, text) => { if (!app.search(text)) throw new Error('the sidebar search could not be opened'); },
+  // The field is found under the search icon by position, so it is found however the window's tree is nested.
+  search: async (app, stub, text) => {
+    const icon = () => app.find(node => node.role === 'AXButton' && node.desc === 'Search');
+    const field = () => { const at = icon(); return at && app.find(node => node.role === 'AXTextField' && node.pos[1] > at.pos[1] && node.pos[1] < at.pos[1] + 90 && node.pos[0] < at.pos[0]); };
+    if (!field() && !app.press('Search')) throw new Error(`no Search button (the window offers: ${offered(app)})`);
+    const box = app.waitFor(field);
+    if (!box) throw new Error(`no search field under the icon (text fields: ${app.findAll(node => node.role === 'AXTextField').map(node => node.pos.join('x')).join(', ') || 'none'})`);
+    if (!(app.set(box, 'AXFocused', true) && app.set(box, 'AXValue', text))) throw new Error('the search field would not take text');
+  },
   choose: async (app, stub, n) => { if (!app.chooseRow(n)) throw new Error(`the sidebar has no result ${n}`); },
   route: async (app, stub, name) => { if (!app.press(name[0].toUpperCase() + name.slice(1))) throw new Error(`no ${name} link in the sidebar footer`); },
   // A field is found by its label, or by its place among the form's text fields. The prompt is the form's text area.

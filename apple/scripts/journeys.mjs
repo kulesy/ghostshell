@@ -5,7 +5,7 @@
 //   { open: '<chat id>' }                     choose that chat in the sidebar
 //   { type: '<text>' }                        type into the focused box, the composer unless a form is open
 //   { key: 'Enter' | 'Escape' }               press a real key
-//   { press: '<button>', card, nth }          press a button by its name; `card` and `nth` name a card's buttons by hover text and place, which the Mac can't read by name
+//   { press: '<button>', mac, card, nth }     press a button by its name (`mac` where the Mac's name differs); `card` and `nth` name a card's buttons by hover text and place, which the Mac can't read by name
 //   { pick: ['<question>', <option>, ...] }   choose options (counted from 0) on a question card
 //   { link: '<link text>' }                   follow a link in the chat
 //   { search: '<text>' }                      open the sidebar's search and type into it
@@ -33,7 +33,7 @@ export const JOURNEYS = [
   { id: 'files', stub: 'files', steps: [
     { id: 'open', do: { open: 'files' }, expect: { text: 'All five match the notes.' } },
     { id: 'link', do: { link: 'NOTES.md:14' }, expect: { text: 'Upload notes' } },
-    { id: 'escape', do: { key: 'Escape' }, expect: { gone: 'Upload notes' } },
+    { id: 'close', do: { press: 'Close file', mac: 'Close' }, expect: { gone: 'Upload notes' } },
   ] },
   { id: 'routines', stub: 'routines', steps: [
     { id: 'route', do: { route: 'routines' }, expect: { text: 'Weekdays at 07:30' } },
