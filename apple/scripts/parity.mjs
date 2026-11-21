@@ -3,11 +3,13 @@
 // Headless Chromium only. Set PLAYWRIGHT_CORE to the playwright-core folder of a checkout that has it.
 //   node apple/scripts/parity.mjs --mac <folder of Mac shots> --page <folder holding page/> --out <folder>
 // The Mac folder is the mac-screenshots artifact and the page folder is what page-shots.mjs wrote, at 960 and 640. parity-pairs.json says which shots go together.
+// Each step of journeys.mjs is paired too, and when journeys-mac.json and journeys-web.json are there, pairs.md ends with a Journeys section that says how each side played them.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { findChromium, notFound } from '../../test/browser.mjs';
+import { journeyPairs, journeySteps } from './journeys.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The Mac window's default and minimum size, which the web page is rendered at too.
@@ -69,7 +71,32 @@ function table(rows, head) {
   return [line(head), line(head.map(() => '---')), ...rows.map(line)].join('\n');
 }
 
-function report({ pairs, half, unpairedMac, unpairedPage }) {
+// A step's status on one side, from that side's journeys json. `not run` is a step the json has no record of, such as a run that crashed first.
+const statusOf = (records, journey, step) => records.find(r => r.journey === journey && r.step === step);
+
+// The Journeys section: one row per step of journeys.mjs with each side's status and the side-by-side file, then the reason for each failure.
+// `pairs` are the pairs made, so a step has a file only when both its shots exist.
+export function journeySection({ macRecords = [], webRecords = [], pairs = [], journeys }) {
+  const steps = journeySteps(journeys);
+  const rows = steps.map(({ journey, step, n, name }) => {
+    const mac = statusOf(macRecords, journey, step);
+    const web = statusOf(webRecords, journey, step);
+    const file = pairs.find(p => p.mac === name && p.scheme === 'light' && p.size === 'default')?.name ?? '';
+    return { journey, step: `${n} ${step}`, mac, web, file };
+  });
+  const count = (records, status) => steps.filter(({ journey, step }) => (statusOf(records, journey, step)?.status ?? 'not run') === status).length;
+  const totals = records => ['ok', 'failed', 'skipped', 'not run'].map(status => `${count(records, status)} ${status}`).join(', ');
+  const failures = rows.flatMap(r => [['Mac', r.mac], ['Web', r.web]].filter(([, x]) => x?.status === 'failed').map(([side, x]) => `- ${side} ${r.journey}/${r.step.split(' ')[1]}: ${x.reason}`));
+  return [
+    '## Journeys',
+    `${steps.length} steps. Mac: ${totals(macRecords)}. Web: ${totals(webRecords)}.`,
+    table(rows.map(r => [r.journey, r.step, r.mac?.status ?? 'not run', r.web?.status ?? 'not run', r.file]), ['Journey', 'Step', 'Mac', 'Web', 'Side by side']),
+    '### Journey failures',
+    failures.length ? failures.join('\n') : 'None.',
+  ].join('\n\n');
+}
+
+function report({ pairs, half, unpairedMac, unpairedPage }, journeys = '') {
   const bullets = items => (items.length ? items.map(i => `- ${i}`).join('\n') : 'None.');
   return [
     '# Pair run',
@@ -82,7 +109,8 @@ function report({ pairs, half, unpairedMac, unpairedPage }) {
     bullets(unpairedMac),
     '## Web shots with no pair',
     bullets(unpairedPage),
-  ].join('\n\n') + '\n';
+    journeys,
+  ].filter(Boolean).join('\n\n') + '\n';
 }
 
 async function main() {
@@ -90,7 +118,6 @@ async function main() {
   const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
   const [macDir, pageDir, outDir] = ['--mac', '--page', '--out'].map(name => (option(name) ? path.resolve(option(name)) : null));
   if (!macDir || !pageDir || !outDir) throw new Error('usage: node apple/scripts/parity.mjs --mac <folder> --page <folder holding page/> --out <folder>');
-  if (!fs.existsSync(macDir)) throw new Error(`no Mac shot folder at ${macDir}`);
   if (!fs.existsSync(path.join(pageDir, 'page'))) throw new Error(`no page/ folder in ${pageDir}`);
   const headless = findChromium();
   if (!headless) throw new Error(notFound());
@@ -100,7 +127,7 @@ async function main() {
   const result = pairUp({
     macFiles: list(macDir).filter(f => f.endsWith('.png')),
     pageFiles: pageFilesOf(pageDir),
-    pairs: JSON.parse(fs.readFileSync(path.join(HERE, 'parity-pairs.json'), 'utf8')),
+    pairs: [...JSON.parse(fs.readFileSync(path.join(HERE, 'parity-pairs.json'), 'utf8')), ...journeyPairs()],
   });
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -121,7 +148,9 @@ async function main() {
   } finally {
     await browser.close();
   }
-  fs.writeFileSync(path.join(outDir, 'pairs.md'), report(result));
+  const records = file => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } };
+  const journeys = journeySection({ macRecords: records(path.join(macDir, 'journeys-mac.json')), webRecords: records(path.join(pageDir, 'journeys-web.json')), pairs: result.pairs });
+  fs.writeFileSync(path.join(outDir, 'pairs.md'), report(result, journeys));
   console.log(`${result.pairs.length} pairs made, ${result.half.length} with one side missing, ${result.unpairedMac.length} Mac and ${result.unpairedPage.length} web shots with no pair. See ${path.join(outDir, 'pairs.md')}`);
 }
 

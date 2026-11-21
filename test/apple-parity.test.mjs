@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { pairUp } from '../apple/scripts/parity.mjs';
+import { pairUp, journeySection } from '../apple/scripts/parity.mjs';
+import { JOURNEYS, journeyPairs, journeySteps, shotName, verbOf } from '../apple/scripts/journeys.mjs';
 
 const pairs = [{ mac: '1-list-rows', page: 'list-rows' }, { mac: '6-chat-rich-middle', page: '04-chat-scrolled', note: 'scroll positions differ' }];
 
@@ -52,4 +53,49 @@ test('the ledger header counts match the statuses in its rows', () => {
   assert.ok(header, 'docs/parity.md needs its "- **Rows.** N: status count, ..." line');
   assert.equal(Number(header[1]), total);
   assert.deepEqual(Object.fromEntries(header[2].split(', ').map(s => s.split(' ')).map(([k, v]) => [k, Number(v)])), counts);
+});
+
+const VERBS = ['open', 'type', 'key', 'press', 'pick', 'link', 'search', 'choose', 'route', 'fill'];
+const STUBS = ['chat', 'files', 'routines'];
+
+test('the journey list is well formed, with shots named from 1 and no name used twice', () => {
+  assert.ok(JOURNEYS.length >= 6 && JOURNEYS.length <= 8);
+  for (const { id, stub, steps } of JOURNEYS) {
+    assert.ok(STUBS.includes(stub), `${id} names a stub`);
+    assert.ok(steps.length > 0);
+    for (const step of steps) {
+      assert.ok(VERBS.includes(verbOf(step)), `${id}/${step.id} uses a known verb`);
+      assert.ok(!step.expect || ['text', 'gone', 'results'].some(key => key in step.expect), `${id}/${step.id} expects something`);
+    }
+  }
+  const names = journeySteps().map(s => s.name);
+  assert.equal(new Set(names).size, names.length);
+  assert.equal(shotName('chat', 1, 'open'), 'j-chat-1-open');
+  assert.ok(names.includes('j-chat-3-send'));
+});
+
+test('each journey step pairs the Mac shot and the web shot of the same name, at the default size in light only', () => {
+  const result = pairUp({
+    macFiles: ['j-chat-1-open-light-default.png', 'j-chat-2-type-light-default.png'],
+    pageFiles: ['960/light/j-chat-1-open.png', '960/light/j-chat-3-send.png'],
+    pairs: journeyPairs(),
+  });
+  assert.deepEqual(result.pairs.map(p => p.name), ['j-chat-1-open-light-default.png']);
+  assert.deepEqual(result.half.map(p => [p.mac, p.macFile ? 'mac' : 'web']), [['j-chat-2-type', 'mac'], ['j-chat-3-send', 'web']]);
+});
+
+test('the Journeys section gives each step its status on both sides, its side-by-side file and each failure\'s reason', () => {
+  const journeys = [{ id: 'chat', stub: 'chat', steps: [{ id: 'open', do: { open: 'x' } }, { id: 'send', do: { key: 'Enter' } }, { id: 'done', do: { key: 'Escape' } }] }];
+  const made = pairUp({ macFiles: ['j-chat-1-open-light-default.png'], pageFiles: ['960/light/j-chat-1-open.png'], pairs: journeyPairs(journeys) }).pairs;
+  const text = journeySection({
+    journeys,
+    pairs: made,
+    macRecords: [{ journey: 'chat', step: 'open', status: 'ok' }, { journey: 'chat', step: 'send', status: 'failed', reason: 'no reply' }, { journey: 'chat', step: 'done', status: 'skipped', reason: 'after send' }],
+    webRecords: [{ journey: 'chat', step: 'open', status: 'ok' }],
+  });
+  assert.match(text, /^## Journeys/);
+  assert.match(text, /3 steps\. Mac: 1 ok, 1 failed, 1 skipped, 0 not run\. Web: 1 ok, 0 failed, 0 skipped, 2 not run\./);
+  assert.match(text, /\| chat \| 1 open \| ok \| ok \| j-chat-1-open-light-default\.png \|/);
+  assert.match(text, /\| chat \| 2 send \| failed \| not run \|  \|/);
+  assert.match(text, /- Mac chat\/send: no reply/);
 });
