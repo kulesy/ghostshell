@@ -30,6 +30,7 @@ final class ComposerTextViewTests: XCTestCase {
     /// Sizing must leave the live text view's container alone, or the view resizes itself while drawing and the window never settles.
     func testMeasuringLeavesTheTextViewsContainerAlone() {
         let view = NSTextView(usingTextLayoutManager: false)
+        view.textContainer?.widthTracksTextView = false
         view.textContainer?.size = NSSize(width: 300, height: CGFloat.greatestFiniteMagnitude)
         view.textStorage?.setAttributedString(text(String(repeating: "word ", count: 20)))
         guard let storage = view.textStorage else { return XCTFail("no text storage") }
