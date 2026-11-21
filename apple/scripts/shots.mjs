@@ -1886,7 +1886,8 @@ const MAC_VERBS = {
     const put = app.run('set', JSON.stringify(box.path), 'AXValue', JSON.stringify(text));
     if (put.ok !== true) throw new Error(`the search field would not take text: ${put.error ?? JSON.stringify(put)} (field ${box.pos.join('x')} role ${box.role} path ${box.path.join('.')})`);
   },
-  choose: async (app, stub, n) => { if (!app.chooseRow(n)) throw new Error(`the sidebar has no result ${n}`); },
+  // A search's section heading is a row of its own with no hover text, and it sits above the results, so the results are counted without it and skipped past.
+  choose: async (app, stub, n) => { if (!app.chooseRow(n + app.rows() - results(app))) throw new Error(`the sidebar has no result ${n}`); },
   route: async (app, stub, name) => { if (!app.press(name[0].toUpperCase() + name.slice(1))) throw new Error(`no ${name} link in the sidebar footer`); },
   // A field is found by its label, or by its place among the form's text fields. The prompt is the form's text area.
   fill: async (app, stub, { field, text }) => {
@@ -1897,8 +1898,11 @@ const MAC_VERBS = {
   },
 };
 
+// The sidebar's session rows that carry hover text, which a search's section headings do not.
+const results = app => app.sessionRows().filter(([, help]) => help).length;
+
 // What the window should show once the step is done.
-const macShows = (app, expect) => !expect || ('results' in expect ? app.rows() === expect.results : 'gone' in expect ? !app.hasText(expect.gone) : [].concat(expect.text).every(text => app.hasText(text)));
+const macShows = (app, expect) => !expect || ('results' in expect ? results(app) === expect.results : 'gone' in expect ? !app.hasText(expect.gone) : [].concat(expect.text).every(text => app.hasText(text)));
 
 // Plays one journey in a fresh app on a fresh stub. A failed step is recorded and still shot, and the rest are skipped. Nothing here goes through check().
 async function playJourney(bundle, appearance, journey) {
