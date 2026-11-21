@@ -1881,7 +1881,9 @@ const MAC_VERBS = {
     if (!field() && !app.press('Search')) throw new Error(`no Search button (the window offers: ${offered(app)})`);
     const box = app.waitFor(field);
     if (!box) throw new Error(`no search field under the icon (text fields: ${app.findAll(node => node.role === 'AXTextField').map(node => node.pos.join('x')).join(', ') || 'none'})`);
-    if (!(app.set(box, 'AXFocused', true) && app.set(box, 'AXValue', text))) throw new Error('the search field would not take text');
+    app.set(box, 'AXFocused', true);
+    const put = app.run('set', JSON.stringify(box.path), 'AXValue', JSON.stringify(text));
+    if (put.ok !== true) throw new Error(`the search field would not take text: ${put.error ?? JSON.stringify(put)} (field ${box.pos.join('x')} role ${box.role} path ${box.path.join('.')})`);
   },
   choose: async (app, stub, n) => { if (!app.chooseRow(n)) throw new Error(`the sidebar has no result ${n}`); },
   route: async (app, stub, name) => { if (!app.press(name[0].toUpperCase() + name.slice(1))) throw new Error(`no ${name} link in the sidebar footer`); },
