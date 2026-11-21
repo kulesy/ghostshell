@@ -56,6 +56,7 @@ The `Swift app` workflow (`.github/workflows/swift.yml`) runs the Swift builds, 
 | --- | --- | --- |
 | `build-and-test` | `apple:test`, then the Release builds of the Mac, iPhone and watch apps, each searched for the Debug hooks | none |
 | `mac-shots` | `apple:shot -- --no-chat` for the `main`, `widgets`, `approvals`, `routines`, `files`, `accounts`, `chats`, `composer` and `terminal` flows | `mac-screenshots` |
+| `parity`, after `mac-shots` succeeds | The web page at the Mac window sizes, paired with the Mac shots (see Pair run below) | `parity-pairs`, `web-screenshots` |
 | `iphone-shots`, four jobs, one per device and appearance, only when started by hand with `-f iphone=true` | `apple:ios-shot` on iOS 27.2 | `iphone-screenshots-<device>-<appearance>`, plus `iphone-test-logs-<device>-<appearance>` when one fails |
 
 A run differs from one on the Mac in these ways:
@@ -76,6 +77,24 @@ gh run download "$run" --name mac-screenshots --dir <folder>
 The filter leaves out the run a same-repo pull request starts, whose jobs all skip. A push that touches none of those paths starts no run, so when the list comes back empty, start one with `gh workflow run swift.yml --ref <branch>` and look again. `gh workflow run swift.yml --ref <branch> -f iphone=true` also runs the iPhone jobs, and adding `-f tests=<name>,<name>` runs only those iPhone UI tests, to rerun a failure without the full run of about 30 minutes. The iPhone screenshots come down with `gh run download "$run" --pattern 'iphone-screenshots-*' --dir <folder>`. The screenshots then go into the PR body the usual way.
 
 The workflow's token can only read, and no step reads a secret, so a run from a fork cannot write to the repo. Anyone can download the artifacts of a public repo, so the fixtures hold no real names, paths or addresses.
+
+### Pair run
+
+The `parity` job renders the web page at the Mac window's default (960 by 640) and minimum (640 by 420) size, in light and dark, and pairs each web shot with the Mac shot of the same screen and state. It makes one side-by-side image per pair, with the Mac on the left and the web page on the right, and a `pairs.md` that lists the pairs, the pairs with one side missing and the shots no pair names. `apple/scripts/parity-pairs.json` says which Mac shot goes with which web screen. A new shot on either side shows up in `pairs.md` as unpaired until it has a line there. `docs/parity.md` is the ledger this run feeds.
+
+Start it with `gh workflow run swift.yml --ref <branch>`. It runs after `mac-shots` succeeds. Fetch the images with:
+
+```
+gh run download "$run" --name parity-pairs --dir <folder>
+```
+
+`web-screenshots` holds the web shots alone. To run it locally, render the page at both sizes and then pair the shots. This needs a playwright-core folder and a Chromium headless shell (`CAPCOM_BROWSER` or Playwright's cache), and it opens no window:
+
+```
+export PLAYWRIGHT_CORE=<playwright-core folder>
+for width in 960 640; do node apple/scripts/page-shots.mjs --set all --size "$width" --out <web folder>; done
+npm run apple:parity -- --mac <folder of Mac shots> --page <web folder> --out <pairs folder>
+```
 
 ### Running on the Mac
 

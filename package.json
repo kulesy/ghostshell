@@ -14,6 +14,7 @@
     "apple:build": "node apple/scripts/build.mjs",
     "apple:test": "node apple/scripts/test.mjs",
     "apple:shot": "node apple/scripts/shots.mjs",
+    "apple:parity": "node apple/scripts/parity.mjs",
     "apple:install": "node apple/scripts/install.mjs",
     "apple:ios-build": "node apple/scripts/iphone.mjs build",
     "apple:watch-build": "node apple/scripts/watch.mjs build",

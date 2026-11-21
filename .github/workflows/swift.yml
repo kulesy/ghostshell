@@ -41,6 +41,8 @@ concurrency:
 
 env:
   DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+  # Same pin as node.yml. page-shots.mjs and parity.mjs find the headless shell this installs in Playwright's cache (test/browser.mjs).
+  PLAYWRIGHT_VERSION: 1.65.0
 
 jobs:
   build-and-test:
@@ -89,6 +91,50 @@ jobs:
         with:
           name: mac-screenshots
           path: ${{ runner.temp }}/shots/mac
+          retention-days: 14
+
+  # The web page at the Mac window sizes, each shot paired with the Mac shot of the same screen. See apple/README.md.
+  parity:
+    needs: mac-shots
+    if: needs.mac-shots.result == 'success'
+    # The same runner as mac-shots, so the fonts match.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mac-screenshots
+          path: ${{ runner.temp }}/shots/mac
+      # playwright-core goes in a folder under RUNNER_TEMP, not into the repo.
+      - run: npm install --prefix "$RUNNER_TEMP/playwright" --no-save --no-audit --no-fund "playwright-core@$PLAYWRIGHT_VERSION"
+      - run: npx --yes "playwright@$PLAYWRIGHT_VERSION" install chromium-headless-shell
+      - run: |
+          for width in 960 640; do
+            node apple/scripts/page-shots.mjs --set all --size "$width" --out "$RUNNER_TEMP/shots/web"
+          done
+        env:
+          PLAYWRIGHT_CORE: ${{ runner.temp }}/playwright/node_modules/playwright-core
+      - run: node apple/scripts/parity.mjs --mac "$RUNNER_TEMP/shots/mac" --page "$RUNNER_TEMP/shots/web" --out "$RUNNER_TEMP/shots/pairs"
+        env:
+          PLAYWRIGHT_CORE: ${{ runner.temp }}/playwright/node_modules/playwright-core
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: parity-pairs
+          path: ${{ runner.temp }}/shots/pairs
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: web-screenshots
+          path: ${{ runner.temp }}/shots/web
           retention-days: 14
 
   # One job per device and appearance, because the four passes take about two hours in a row.

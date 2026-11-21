@@ -16,5 +16,6 @@ The detail behind GhostShell, the browser chat client for Claude Code sessions o
 - [Remote access](remote-access.md): reverse proxies, https, cookies, passkeys and request sizes.
 - [The page](front-end.md): Preact, htm, the vendored libraries and the main files.
 - [The Swift app](../apple/README.md): the native Mac app that will replace the page.
+- [The parity ledger](parity.md): how closely the Mac app matches the web page, row by row.
 
 The reasons behind the design are in [the decision records](adr/README.md), one record per decision.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Screenshots the web page at phone width, and at the Mac window's default and minimum size, against the same stubs the iPhone run signs in to, so a screen shows the same data on both.
 // Headless Chromium only. Set PLAYWRIGHT_CORE to the playwright-core folder of a checkout that has it. It never opens a browser the owner uses, port 4310 or ~/.config/capcom.
-//   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402|960|640] [--scheme light|dark] [--set chat,groups,empty,organise,routines,files,banners,signin] [--only <screen prefix>]
+//   node apple/scripts/page-shots.mjs [--out <folder>] [--size 375|402|960|640] [--scheme light|dark] [--set chat,groups,empty,organise,routines,files,banners,signin|all] [--only <screen prefix>]
 // Writes <out>/page/<width>/<scheme>/<screen>.png. Screen names follow the iPhone UI tests' shot names where one exists.
 import fs from 'node:fs';
 import http from 'node:http';
@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { findChromium, notFound } from '../../test/browser.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
 import { makePng } from './png.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
@@ -405,12 +406,12 @@ if (option('--serve')) {
   await new Promise(() => {});
 }
 
-// NOTE: [11 Nov 2026] EK - playwright-core 1.63 asks for chromium_headless_shell-1243, and only -1234 is cached, which runs fine.
-const HEADLESS = path.join(os.homedir(), 'Library/Caches/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-mac-arm64/chrome-headless-shell');
-const browser = await chromium.launch({ executablePath: HEADLESS });
+const headless = findChromium();
+if (!headless) { console.error(notFound()); process.exit(1); }
+const browser = await chromium.launch({ executablePath: headless });
 const failures = [];
 try {
-  for (const width of sizes) for (const scheme of schemes) for (const name of sets) {
+  for (const width of sizes) for (const scheme of schemes) for (const name of sets.includes('all') ? Object.keys(SETS) : sets) {
     console.log(`== ${name} ${width} ${scheme}`);
     failures.push(...await runSet(browser, name, width, scheme));
   }
