@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readGroupSession } from '../lib/groups.mjs';
-import { inOwnTree, listSubSessions, listSubSessionsWithPulls, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
+import { inChipFamily, inOwnTree, listSubSessions, listSubSessionsWithPulls, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
 import { GROUP_READ_NAMES, handleMcp, SUB_READ_NAMES, SEND_NAME, TOOL_NAMES } from '../lib/tools.mjs';
 import { indexTranscripts } from '../lib/transcripts.mjs';
@@ -53,9 +53,10 @@ const ROWS = [
 ];
 
 const ASKS = { pending: () => [], summaries: {} };
-function subsFor(rows, { self = 'top', pending = () => [], summaries = {}, send = () => 'idle' } = {}) {
+function subsFor(rows, { self = 'top', pending = () => [], summaries = {}, send = () => 'idle', chip = null } = {}) {
   return {
     send,
+    chipOf: id => (id === self ? chip : null),
     lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived).map(r => ({ ...r, parent: archived ? r.parent : r.skip })) }),
     pending,
     summary: id => (summaries[id] === undefined ? null : { line: summaries[id], reply: summaries[id], at: null }),
@@ -513,4 +514,30 @@ test('only the rows the list shows are asked about, so archived ones and those p
 test('the list still comes back when the pull request reader throws', async () => {
   const subs = { ...subsFor(ROWS, { summaries: { a: 'A waits on you.' } }), pulls: async () => { throw new Error('gh is broken'); } };
   assert.equal(await listSubSessionsWithPulls({}, subs, NOW), listSubSessions({}, subsFor(ROWS, { summaries: { a: 'A waits on you.' } }), NOW));
+});
+
+// A chip session the owner moved into a group has no parent, so only the chip record links it back. Both groups are in project P, and g3 is in Q.
+const GROUPS = [{ id: 'g1', project: 'P' }, { id: 'g2', project: 'P' }, { id: 'g3', project: 'Q' }];
+const CHIPPED = [
+  row('main', null, { group: 'g1' }), row('maker', 'main', { group: 'g1' }), row('mid', 'main', { group: 'g1' }), row('stray', null, { group: 'g1' }),
+  row('kid', null, { group: 'g2' }), row('away', null, { group: 'g3' }), row('old', null, { group: 'g1', archived: true }),
+  row('chat', null, { group: 'g1', groupSession: true }), row('run', null, { group: 'g1', routine: true }),
+  row('under-old', 'old', { group: 'g1', skip: null }),
+];
+const chipFamily = (chip, target, rows = CHIPPED) => inChipFamily(subsFor(rows, { self: 'kid', chip }), GROUPS, target);
+
+test('a chip session may send, with no card, to its maker, the session its chip opened under and the maker\'s live parent, whatever its own links say', () => {
+  const chip = { maker: 'maker', nestUnder: 'mid' };
+  for (const to of ['maker', 'mid', 'main']) assert.equal(chipFamily(chip, to), true, to);
+  for (const to of ['stray', 'kid', 'nobody', undefined, { id: 'maker' }]) assert.equal(chipFamily(chip, to), false, String(to));
+  assert.equal(chipFamily(null, 'maker'), false, 'a session no chip started has no maker');
+  assert.equal(inOwnTree(subsFor(CHIPPED, { self: 'kid', chip }), 'maker', { self: false }), false, 'inOwnTree is unchanged, so a rename or move still asks');
+});
+
+test('the chip family is refused when the target is archived, another project, a group\'s or section\'s chat or a routine run, and a maker under an archived parent counts only itself', () => {
+  for (const [chip, target] of [[{ maker: 'old' }, 'old'], [{ maker: 'away' }, 'away'], [{ maker: 'chat' }, 'chat'], [{ maker: 'run' }, 'run'], [{ maker: 'maker', nestUnder: 'old' }, 'old']]) {
+    assert.equal(chipFamily(chip, target), false, target);
+  }
+  assert.equal(chipFamily({ maker: 'under-old' }, 'under-old'), true);
+  assert.equal(chipFamily({ maker: 'under-old' }, 'old'), false, 'the archived parent');
 });

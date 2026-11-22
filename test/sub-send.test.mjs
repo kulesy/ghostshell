@@ -111,7 +111,7 @@ test('a send within the sender\'s own tree goes with no card, from the parent do
   }
 });
 
-test('a send outside the sender\'s own tree asks first, in every mode, with a card that names the recipient, and nothing is sent until it is approved', async () => {
+test('a send outside the sender\'s own tree asks first, in every mode, with a card that names the recipient, is denied to the CLI as queued at once, and is delivered only when approved', async () => {
   const { s, token } = await ready();
   assert.equal((await post(s, token, '/api/sessions/top/mode', { mode: 'bypassPermissions' })).status, 200);
   const viewer = listen(s, token, 'top');
@@ -120,13 +120,16 @@ test('a send outside the sender\'s own tree asks first, in every mode, with a ca
     await sendTo(s, token, 'top', 'ask to send to loose');
     await until(() => viewer.events.some(e => e.type === 'approval'));
     const [card] = viewer.events.filter(e => e.type === 'approval').map(e => e.data);
-    assert.deepEqual([card.tool, card.always, card.summary], ['mcp__capcom__send_session', false, 'to "Loose": Please rebase']);
-    assert.equal(cliCalls(s).some(c => c.requestId === 'perm-send'), false, 'the CLI is not answered until the owner decides');
-    assert.equal((await post(s, token, '/api/sessions/top/approve', { requestId: 'perm-send', decision: 'always' })).status, 200);
+    assert.deepEqual([card.tool, card.always, card.queued, card.summary], ['mcp__capcom__send_session', false, true, 'to "Loose": Please rebase']);
     await until(() => cliCalls(s).some(c => c.requestId === 'perm-send'));
-    const answer = cliCalls(s).find(c => c.requestId === 'perm-send');
-    assert.equal(answer.response, 'allow');
-    assert.equal(answer.rules, undefined, 'Always allow keeps no rule');
+    assert.equal(cliCalls(s).find(c => c.requestId === 'perm-send').response, 'deny', 'the CLI is answered at once, so the turn is not held');
+    assert.equal(resumed(s, 'loose').length, 0, 'nothing is sent until the owner approves');
+    assert.equal((await post(s, token, '/api/sessions/top/approve', { requestId: 'perm-send', decision: 'always' })).status, 200);
+    await until(() => resumed(s, 'loose').length === 1 && delivered(s).length === 2);
+    assert.equal(cliCalls(s).filter(c => c.requestId === 'perm-send').length, 1, 'the CLI is not answered twice');
+    const texts = delivered(s).map(c => c.user);
+    assert.ok(texts.includes('<session-message from="top" from-name="Top (another session)">\nPlease rebase\n</session-message>'), 'the receiver reads it as from the sender');
+    assert.ok(texts.some(t => /^<session-message from="ghostshell" from-name="GhostShell">\nThe owner approved your queued message to "Loose": Please rebase\. Delivered to "Loose" \[loose\]\./.test(t)), 'the sender is told by GhostShell');
   } finally {
     viewer.close();
   }

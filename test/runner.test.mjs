@@ -1028,6 +1028,7 @@ const groupCli = dir => {
     cli,
     starts: () => noted().filter(e => e.started),
     answers: () => noted().filter(m => m.type === 'control_response').map(m => m.response).filter(r => r.request_id),
+    users: () => noted().filter(m => m.type === 'user').map(m => m.message.content),
   };
 };
 
@@ -1243,7 +1244,7 @@ test('a tool call from an ordinary chat is refused by the tool server as unknown
 });
 
 const SUB_SEND = 'mcp__capcom__send_session';
-const subsOf = (rows = [{ id: 'kid', title: 'Review - dialogs' }, { id: 'stranger', title: 'Elsewhere', parent: null }]) => () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: rows.map(r => ({ parent: 'me', ...r })) }), pending: () => [], summary: () => null });
+const subsOf = (rows = [{ id: 'kid', title: 'Review - dialogs' }, { id: 'stranger', title: 'Elsewhere', parent: null }]) => () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: rows.map(r => ({ parent: 'me', ...r })) }), pending: () => [], summary: () => null, send: () => 'idle' });
 
 test('an ordinary chat that has sub sessions asks before every send to one, a group chat asks for it in its own list, one with no sub sessions is given no rule, and Chrome\'s stays beside it', async t => {
   const rules = async (id, options) => {
@@ -1275,11 +1276,11 @@ test('in an ordinary chat a send to its own tree goes with no card and a send ou
     const [card] = chat.status().pending;
     assert.deepEqual([card.tool, card.always, card.summary], [SUB_SEND, false, 'to "Elsewhere": Please rebase and push'], mode);
     const sends = () => recorded.answers().filter(a => a.request_id === 'ask-send_session');
-    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-list_sub_sessions', 'allow'], ['ask-read_sub_session', 'allow'], ['ask-send_session', 'allow']], mode);
+    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-list_sub_sessions', 'allow'], ['ask-read_sub_session', 'allow'], ['ask-send_session', 'allow'], ['ask-send_session', 'deny']], mode);
+    assert.equal(sends()[1].response.updatedPermissions, undefined);
     chat.answer('ask-send_session', 'always');
-    await slow(() => sends().length === 2);
-    const answer = sends()[1].response;
-    assert.deepEqual([answer.behavior, answer.updatedPermissions], ['allow', undefined], 'Always allow keeps no rule for it');
+    await slow(() => chat.status().pending.length === 0);
+    assert.equal(sends().length, 2, 'the answer to a queued send goes to its sender as a note, and the CLI is not answered again');
   }
 });
 
@@ -1321,10 +1322,10 @@ test('in a group chat a send always shows a card too, in any mode, naming the re
     const { chat, recorded } = groupChat(t, { group: {}, subs: subsOf(), mode, id: `11111111-2222-4333-8444-00000000008${modes.indexOf(mode)}` });
     chat.send('ask read_sub_session', []);
     chat.send(`ask send_session ${JSON.stringify({ session_id: 'kid', message: 'Please rebase' })}`, []);
-    await slow(() => chat.status().pending.length === 2);
+    await slow(() => chat.status().pending.length === 2 && recorded.answers().some(a => a.request_id === 'ask-send_session'));
     const card = chat.status().pending.find(p => p.tool === SUB_SEND);
     assert.deepEqual([card.always, card.summary], [false, 'to "Review - dialogs": Please rebase'], mode);
-    assert.equal(recorded.answers().some(a => a.request_id.startsWith('ask-')), false, mode);
+    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-send_session', 'deny']], 'only the send is queued, the read still waits');
   }
 });
 
@@ -1596,4 +1597,108 @@ test('the title namer and the folder probe start with the environment they are g
   assert.deepEqual(named, ['second']);
   await listCommands(fs.mkdtempSync(path.join(dir, 'f-')), cli, { env });
   assert.deepEqual(fs.readFileSync(seen, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)), ['/accounts/second', '/accounts/second', '/accounts/second']);
+});
+
+// A send that asks does not hold the CLI: it is denied as queued at once and the card keeps the message until the owner answers.
+const queuedOf = (t, rows = [{ id: 'stranger', title: 'Elsewhere', parent: null }], options = {}) => {
+  const sent = [];
+  const subs = () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows }), pending: () => [], summary: () => null, send: (row, text) => { sent.push([row.id, text]); return 'idle'; } });
+  return { sent, ...groupChat(t, { subs, ...options }) };
+};
+const STRANGER_SEND = `ask send_session ${JSON.stringify({ session_id: 'stranger', message: 'Please rebase\nand push' })}`;
+const answerTo = (recorded, id) => recorded.answers().filter(a => a.request_id === id).map(a => a.response);
+const noteTo = (recorded, from = 'ghostshell') => recorded.users().filter(u => u.startsWith(`<session-message from="${from}" from-name="GhostShell">`));
+
+test('a send that asks is denied to the CLI at once as queued and not delivered, so other tools in the turn go on, while another tool\'s card still waits for the owner', async t => {
+  const { chat, recorded, sent } = queuedOf(t, undefined, { id: '11111111-2222-4333-8444-000000000101' });
+  chat.send('builtin Write {}', []);
+  await slow(() => chat.status().pending.length === 1);
+  chat.send(STRANGER_SEND, []);
+  await slow(() => answerTo(recorded, 'ask-send_session').length === 1);
+  const [reply] = answerTo(recorded, 'ask-send_session');
+  assert.equal(reply.behavior, 'deny');
+  assert.match(reply.message, /^Pending approval: this message is queued and NOT delivered yet\. Do not send it again\..*delivered.*dropped.*GhostShell note in this chat.*restart.*drops it with no note\.$/);
+  assert.deepEqual(chat.status().pending.map(p => [p.tool, !!p.queued]), [['Write', false], [SUB_SEND, true]]);
+  assert.equal(chat.state, 'waiting');
+  assert.deepEqual(answerTo(recorded, 'builtin-Write'), [], 'the Write card is not answered until the owner decides');
+  assert.equal(chat.answer('builtin-Write', 'allow'), true);
+  await slow(() => answerTo(recorded, 'builtin-Write').length === 1);
+  assert.equal(answerTo(recorded, 'builtin-Write')[0].behavior, 'allow');
+  assert.deepEqual(sent, [], 'nothing is delivered before the owner approves');
+});
+
+test('approving a queued send delivers it through send_session, tells the sender in a note from GhostShell, and answers the CLI no second time', async t => {
+  const { chat, recorded, sent } = queuedOf(t, undefined, { id: '11111111-2222-4333-8444-000000000102' });
+  chat.send(STRANGER_SEND, []);
+  await slow(() => chat.status().pending.length === 1 && answerTo(recorded, 'ask-send_session').length === 1);
+  assert.equal(chat.answer('ask-send_session', 'allow'), true);
+  assert.equal(chat.answer('ask-send_session', 'allow'), false, 'a card answers once');
+  await slow(() => noteTo(recorded).length === 1);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0][0], 'stranger');
+  assert.match(sent[0][1], /^<session-message from="me" from-name="Me \(another session\)">\nPlease rebase\nand push\n<\/session-message>$/);
+  assert.match(noteTo(recorded)[0], /\nThe owner approved your queued message to "Elsewhere": Please rebase and push\. Delivered to "Elsewhere" \[stranger\]\./);
+  assert.equal(answerTo(recorded, 'ask-send_session').length, 1);
+  assert.equal(chat.status().pending.length, 0);
+});
+
+test('denying a queued send drops it and tells the sender, and a send refused at delivery is reported as not delivered', async t => {
+  const rows = [{ id: 'stranger', title: 'Elsewhere', parent: null }];
+  const { chat, recorded, sent } = queuedOf(t, rows, { id: '11111111-2222-4333-8444-000000000103' });
+  chat.send(STRANGER_SEND, []);
+  await slow(() => chat.status().pending.length === 1);
+  chat.answer('ask-send_session', 'deny');
+  await slow(() => noteTo(recorded).length === 1);
+  assert.match(noteTo(recorded)[0], /\nThe owner denied your queued message to "Elsewhere": Please rebase and push\. It was dropped and not delivered\./);
+  assert.deepEqual(sent, []);
+  chat.send(STRANGER_SEND, []);
+  await slow(() => chat.status().pending.length === 1);
+  rows[0].archived = true;
+  chat.answer('ask-send_session', 'allow');
+  await slow(() => noteTo(recorded).length === 2);
+  assert.match(noteTo(recorded)[1], /\nThe owner approved your queued message to "Elsewhere": Please rebase and push\. It was not delivered\. Refused: "Elsewhere" \[stranger\] is archived\./);
+  assert.deepEqual(sent, []);
+});
+
+test('an interrupt denies the cards of a turn but leaves a queued send, and a process that exits leaves it too, with the chat still waiting', async t => {
+  const { chat, recorded } = queuedOf(t, undefined, { id: '11111111-2222-4333-8444-000000000104' });
+  chat.send(STRANGER_SEND, []);
+  chat.send('builtin Write {}', []);
+  await slow(() => chat.status().pending.length === 2 && answerTo(recorded, 'ask-send_session').length === 1);
+  chat.interrupt();
+  await slow(() => answerTo(recorded, 'builtin-Write').length === 1);
+  assert.equal(answerTo(recorded, 'builtin-Write')[0].behavior, 'deny');
+  assert.deepEqual(chat.status().pending.map(p => p.tool), [SUB_SEND]);
+  chat.send('builtin Edit {}', []);
+  await slow(() => chat.status().pending.length === 2);
+  chat.stop();
+  await slow(() => !chat.proc);
+  assert.deepEqual(chat.status().pending.map(p => p.tool), [SUB_SEND], 'the card of the turn goes with the process and the queued send stays');
+  assert.equal(chat.state, 'waiting');
+  chat.answer('ask-send_session', 'deny');
+  await slow(() => noteTo(recorded).length === 1);
+  assert.equal(chat.status().pending.length, 0);
+});
+
+test('a chip session sends to the session that made its chip, the one the chip opened under and the maker\'s family root with no card, though its layout parents are null, and any other send, rename or move still asks', async t => {
+  const rows = [
+    { id: 'main', title: 'Main', parent: null, group: 'g1' },
+    { id: 'maker', title: 'Maker', parent: 'main', group: 'g1' },
+    { id: 'mid', title: 'Mid', parent: 'main', group: 'g1' },
+    { id: 'stray', title: 'Stray', parent: null, group: 'g1' },
+  ];
+  const subs = () => ({ lookup: () => ({ self: { id: 'me', title: 'Me', group: 'g2' }, rows }), pending: () => [], summary: () => null, send: () => 'idle', chipOf: id => (id === 'me' ? { maker: 'maker', nestUnder: 'mid' } : null) });
+  const { chat, recorded } = groupChat(t, { subs, groups: () => [{ id: 'g1', project: 'P' }, { id: 'g2', project: 'P' }], id: '11111111-2222-4333-8444-000000000105' });
+  for (const to of ['maker', 'mid', 'main']) {
+    chat.send(`ask send_session ${JSON.stringify({ session_id: to, message: 'hi' })}`, []);
+    await slow(() => answerTo(recorded, 'ask-send_session').length === ['maker', 'mid', 'main'].indexOf(to) + 1);
+  }
+  assert.deepEqual(answerTo(recorded, 'ask-send_session').map(r => r.behavior), ['allow', 'allow', 'allow']);
+  assert.equal(chat.status().pending.length, 0);
+  chat.send(`ask send_session ${JSON.stringify({ session_id: 'stray', message: 'hi' })}`, []);
+  chat.send(`ask set_session_title ${JSON.stringify({ session_id: 'maker', title: 'x' })}`, []);
+  chat.send(`ask move_session_to_group ${JSON.stringify({ session_id: 'maker', group: 'g1' })}`, []);
+  await slow(() => chat.status().pending.length === 3);
+  assert.deepEqual(answerTo(recorded, 'ask-send_session').map(r => r.behavior), ['allow', 'allow', 'allow', 'deny'], 'only the send is queued');
+  assert.deepEqual(answerTo(recorded, 'ask-set_session_title').concat(answerTo(recorded, 'ask-move_session_to_group')), []);
 });

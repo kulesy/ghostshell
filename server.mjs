@@ -541,6 +541,11 @@ function subCtx(sessionId) {
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
+    // The chip that started this session, as the session that made it and the one it opened under, whatever the layout says now.
+    chipOf(id) {
+      const chip = chips.list().findLast(c => c.status === 'started' && c.startedId === id && c.sessionId);
+      return chip ? { maker: chip.sessionId, nestUnder: chip.nestUnder || null } : null;
+    },
     pullLinks: pullLinks.get,
     summary: (id, cwd) => summaries.get(id, cwd),
     pulls: async rows => (await pullsFor(rows)).lists,
