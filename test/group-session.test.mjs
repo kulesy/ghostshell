@@ -245,7 +245,7 @@ test('a group\'s chat can send to a session outside the group, is refused an arc
   assert.match(delivered(s).find(c => c.user.includes('Comments addressed.')).user, /^<session-message from="a" from-name="Member A \(another session\)">/);
 });
 
-test('a send from a group\'s chat shows a card naming the member, with no Always allow, and the CLI is not answered until the owner decides', async () => {
+test('a send from a group\'s chat shows a card naming the member, with no Always allow, and the CLI is told at once that it is queued', async () => {
   const { s, token } = await booked({ sessions: [...SESSIONS, { id: 'kid', title: 'Own PR 4546', group: 'cg-work', ago: 4 }] });
   await sendTo(s, token, WORK, 'begin a session');
   const viewer = listen(s, token, WORK);
@@ -255,7 +255,8 @@ test('a send from a group\'s chat shows a card naming the member, with no Always
     await until(() => viewer.events.some(e => e.type === 'approval'));
     const [card] = viewer.events.filter(e => e.type === 'approval').map(e => e.data);
     assert.deepEqual([card.tool, card.always, card.summary], ['mcp__capcom__send_session', false, 'to "Own PR 4546": Please rebase']);
-    assert.equal(cliCalls(s).some(c => c.requestId === 'perm-send'), false);
+    await until(() => cliCalls(s).some(c => c.requestId === 'perm-send'));
+    assert.equal(cliCalls(s).find(c => c.requestId === 'perm-send').response, 'deny');
   } finally {
     viewer.close();
   }

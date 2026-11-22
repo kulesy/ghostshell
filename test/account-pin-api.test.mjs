@@ -332,7 +332,7 @@ test('a move inside the caller\'s tree that would change the session\'s account 
   const c = await open({ sessions: [{ id: 'top', title: 'Top', ago: 5 }, { id: 'kid', title: 'Kid', ago: 6, parent: 'top', group: 'cg-b' }, { id: 'solo', title: 'Solo', ago: 7 }] });
   assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
   assert.equal(await moveAsk(c, 'top', { session_id: 'top', group: 'Work' }), 'move "Top" [top] to "Work" [cg-a], which runs it on the active account, now Main, and the 1 session under it can change account too', 'the session under it can follow');
-  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'allowed', 'main to main with nothing under it');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'move "Solo" [solo] to "Work" [cg-a]', 'main to main with nothing under it, so no account to name, but Work is in a project and Solo is on Home, so it asks');
   assert.equal(await moveAsk(c, 'top', { session_id: 'kid', group: 'Work' }), 'move "Kid" [kid] to "Work" [cg-a], which runs it on the active account, now Main', 'out of a pinned group');
   assert.equal(await moveAsk(c, 'kid', { session_id: 'kid', group: 'Loose' }), 'allowed', 'second to second');
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Loose' }), 'move "Solo" [solo] to "Loose" [cg-b], which runs it on Second', 'into a pinned group');
@@ -614,5 +614,5 @@ test('a move that gains or drops an overflow asks the owner and names it', async
   assert.equal(await moveAsk(c, 'plain', { session_id: 'plain', group: 'Loose' }), 'move "Plain" [plain] to "Loose" [cg-b], which runs it on Second, with Main taking over while that account is out of usage', 'a move that gains one');
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'move "Solo" [solo] to "Work" [cg-a], which runs it on Second, with no overflow account', 'a move that drops one');
   await pin(c, 'session', 'solo', 'second');
-  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'allowed', 'its own pin decides, wherever it goes');
+  assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'move "Solo" [solo] to "Work" [cg-a]', 'its own pin decides the account, so none is named, but the move changes project, so it asks');
 });

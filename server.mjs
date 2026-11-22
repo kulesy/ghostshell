@@ -30,7 +30,7 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
-import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, useAccounts } from './lib/runner.mjs';
+import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, busyCount, wroteSince, useAccounts } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
 import { makeTitler } from './lib/titler.mjs';
@@ -512,10 +512,20 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
 // What a chat is waiting on for the owner's say-so.
 const pendingOf = id => getChat(id)?.status().pending ?? [];
 
+// Whether another app is running the session, so a process of ours would be a second one on its transcript. A chat of ours with a process is not that.
+// A stopped chat of ours that is kept for a queued send reads as its state in the index, which hides a transcript another app is writing, so that one is judged by the transcript itself:
+// written since the chat stopped, and in the last two minutes.
+function runningElsewhere(id, row) {
+  const chat = getChat(id);
+  if (chat?.proc) return false;
+  if (chat?.stoppedAt) return wroteSince(chat, indexTranscripts(cfg.projectsDir).get(id)?.mtime ?? 0);
+  return row?.state === 'active';
+}
+
 // The same path as a message typed into the session: its chat is resumed if it has no process, and queued behind a running turn. Answers the state it found.
 function sendToSession(row, text) {
   const chat = getChat(row.id);
-  if (!chat?.proc && row.state === 'active') return 'elsewhere';
+  if (runningElsewhere(row.id, row)) return 'elsewhere';
   const was = chat?.state ?? 'idle';
   // A pinned account that is signed out refuses the start. The tool tells the model in words, and nothing is queued.
   try {
@@ -541,6 +551,29 @@ function subCtx(sessionId) {
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
+    // Whether a note may start this session's chat: not while the session is archived or another app is running it, the same two checks a send to it meets.
+    canWake(id) {
+      const row = this.lookup({ archived: true }).rows.find(r => r.id === id);
+      return !row || (!row.archived && !runningElsewhere(id, row));
+    },
+    // Whether a move into `group` (a name or an id) puts the session in another project. One that cannot be worked out counts as a change, so the owner is asked.
+    moveProject(id, group) {
+      try {
+        const picked = typeof group === 'string' ? groupNamed(group, groupList(), '').group : null;
+        const row = typeof id === 'string' && this.lookup({ archived: true }).rows.find(r => r.id === id);
+        if (!picked || !row) return { changes: true };
+        const groups = layout.read().groups;
+        const projectOf = gid => groups.find(g => g.id === gid)?.project ?? null;
+        return { changes: projectOf(row.group) !== (picked.project ?? null) };
+      } catch {
+        return { changes: true };
+      }
+    },
+    // The chip that started this session, as the session that made it and the one it opened under, whatever the layout says now.
+    chipOf(id) {
+      const chip = chips.list().findLast(c => c.status === 'started' && c.startedId === id && c.sessionId);
+      return chip ? { maker: chip.sessionId, nestUnder: chip.nestUnder || null } : null;
+    },
     pullLinks: pullLinks.get,
     summary: (id, cwd) => summaries.get(id, cwd),
     pulls: async rows => (await pullsFor(rows)).lists,
@@ -549,7 +582,7 @@ function subCtx(sessionId) {
     // Resolves with how it went. 'done' says how many sub sessions went with it, and a refusal says whether the session itself stood in the way and how many below it did.
     archive(id) {
       const root = editableRow(id);
-      const elsewhere = r => !getChat(r.id)?.proc && r.state === 'active';
+      const elsewhere = r => runningElsewhere(r.id, r);
       const away = belowNow(id, { archived: false }).filter(r => !r.archived && elsewhere(r)).length;
       if (away || elsewhere(root)) return { was: 'elsewhere', self: elsewhere(root), subs: away };
       try {
@@ -1015,7 +1048,7 @@ async function heardUsage(id, text, chat) {
   const reset = resetOf(await askPlan(id, chat).catch(() => null));
   if (reset) accountLogins.outUntil(id, reset);
   // The answer took a moment, so the chat may have been sent to since, which already moved it off `id`. A turn is never cut, and a chat with a job or an approval waiting keeps its process.
-  if (chat.account !== id || chat.state !== 'idle' || chat.pending.size) return;
+  if (chat.account !== id || chat.state !== 'idle' || chat.holding()) return;
   const now = accountOfChat(chat);
   if (now.blocked || now.spilled !== id || !accountLogins.isUsable(now.id)) return;
   chat.retire(true);
@@ -1901,8 +1934,8 @@ const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.sta
 const updates = makeUpdate({
   root: cfg.updateRoot,
   locked: () => lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
-  // The chats the restart helper waits for are the ones mid-turn, whether they are working or waiting on an approval.
-  busy: () => Object.values(activeStates()).filter(state => state !== 'idle').length,
+  // The chats the restart helper waits for are the ones mid-turn, whether they are working or waiting on an approval. A queued send is no part of a turn, and the restart does not wait for it.
+  busy: busyCount,
   log: path.join(cfg.stateDir, 'restart.log'),
 });
 
@@ -1964,7 +1997,7 @@ const askPlans = () => Promise.all(accounts.list().map(a => askPlan(a.id, null))
 
 // Why a chat stays on the account it started under after a switch, and that it moves once that ends.
 function keptWords(chat, wanted) {
-  const [what, ends] = chat.pending.size ? ['waiting on an approval', 'it is answered'] : chat.state !== 'idle' ? ['still in a turn', 'the turn ends'] : ['still running a job', 'the job ends'];
+  const [what, ends] = chat.holding() ? ['waiting on an approval', 'it is answered'] : chat.state !== 'idle' ? ['still in a turn', 'the turn ends'] : ['still running a job', 'the job ends'];
   return `That chat is ${what} on ${accounts.find(chat.account)?.name ?? 'the other account'}. It moves to ${accounts.find(wanted)?.name ?? accounts.active.name} once ${ends}.`;
 }
 
