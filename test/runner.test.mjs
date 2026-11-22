@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
-import { activeStates, chatFor, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useAccounts } from '../lib/runner.mjs';
+import { activeStates, chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useAccounts } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -1019,6 +1019,7 @@ const groupCli = dir => {
     "  if (verb === 'ask') out({ type: 'control_request', request_id: `ask-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: JSON.parse(rest.join(' ') || '{}'), permission_suggestions: rule } });",
     "  if (verb === 'builtin') out({ type: 'control_request', request_id: `builtin-${tool}`, request: { subtype: 'can_use_tool', tool_name: tool, input: JSON.parse(rest.join(' ') || '{}'), permission_suggestions: rule } });",
     "  if (verb === 'call') out({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(rest.join(' ') || '{}') } } } });",
+    "  if (verb === 'result') out({ type: 'result', subtype: 'success', is_error: false });",
     "  if (verb === 'tools') out({ type: 'control_request', request_id: 'tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
     '});',
     '',
@@ -1674,10 +1675,53 @@ test('an interrupt denies the cards of a turn but leaves a queued send, and a pr
   chat.stop();
   await slow(() => !chat.proc);
   assert.deepEqual(chat.status().pending.map(p => p.tool), [SUB_SEND], 'the card of the turn goes with the process and the queued send stays');
-  assert.equal(chat.state, 'waiting');
+  assert.deepEqual([chat.state, chat.status().state], ['idle', 'waiting'], 'the chat is idle, and still shows that it needs the owner');
   chat.answer('ask-send_session', 'deny');
   await slow(() => noteTo(recorded).length === 1);
   assert.equal(chat.status().pending.length, 0);
+});
+
+test('a turn that ends with only a queued send ends normally and the chat goes idle, though the state it reports is waiting, and the page is told of both', async t => {
+  const id = '11111111-2222-4333-8444-000000000106';
+  const { chat, recorded } = queuedOf(t, undefined, { id });
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+  chat.send(STRANGER_SEND, []);
+  await slow(() => chat.status().pending.length === 1);
+  assert.deepEqual([chat.state, chat.status().state], ['working', 'working'], 'a queued send does not stop the turn');
+  chat.send('result', []);
+  await slow(() => chat.state === 'idle');
+  assert.equal(heard.some(e => e.type === 'turn-end' && !e.data.error), true, 'the turn ended');
+  assert.deepEqual([chat.status().state, activeStates()[id]], ['waiting', 'waiting']);
+  assert.deepEqual(heard.filter(e => e.type === 'state').map(e => e.data.state).slice(-2), ['idle', 'waiting'], 'the page clears the turn, then hears the chat still needs the owner');
+  assert.equal(chat.holding(), 0);
+  chat.interrupt();
+  assert.equal(chat.interrupted, false, 'no turn is running, so nothing is excused');
+  chat.answer('ask-send_session', 'deny');
+  await slow(() => noteTo(recorded).length === 1);
+});
+
+test('a process that exits with only a queued send left reports no error, and a sweep stops its process but keeps the chat', async t => {
+  const id = '11111111-2222-4333-8444-000000000107';
+  const { chat, recorded } = queuedOf(t, undefined, { id });
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+  chat.send(STRANGER_SEND, []);
+  await slow(() => chat.status().pending.length === 1);
+  chat.send('result', []);
+  await slow(() => chat.state === 'idle');
+  const ended = heard.filter(e => e.type === 'turn-end').length;
+  chat.listeners.clear();
+  await wait(5);
+  sweep(0);
+  await slow(() => !chat.proc);
+  sweep(0);
+  assert.equal(getChat(id), chat, 'the chat holds a queued send, so it is not forgotten');
+  assert.equal(chat.lastError, '');
+  assert.equal(heard.filter(e => e.type === 'turn-end').length, ended, 'the exit ends no turn that was over');
+  assert.equal(chat.status().state, 'waiting');
+  chat.answer('ask-send_session', 'deny');
+  await slow(() => noteTo(recorded).length === 1);
 });
 
 test('a chip session sends to the session that made its chip, the one the chip opened under and the maker\'s family root with no card, though its layout parents are null, and any other send, rename or move still asks', async t => {

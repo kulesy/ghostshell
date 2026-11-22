@@ -1020,7 +1020,7 @@ async function heardUsage(id, text, chat) {
   const reset = resetOf(await askPlan(id, chat).catch(() => null));
   if (reset) accountLogins.outUntil(id, reset);
   // The answer took a moment, so the chat may have been sent to since, which already moved it off `id`. A turn is never cut, and a chat with a job or an approval waiting keeps its process.
-  if (chat.account !== id || chat.state !== 'idle' || chat.pending.size) return;
+  if (chat.account !== id || chat.state !== 'idle' || chat.holding()) return;
   const now = accountOfChat(chat);
   if (now.blocked || now.spilled !== id || !accountLogins.isUsable(now.id)) return;
   chat.retire(true);
@@ -1969,7 +1969,7 @@ const askPlans = () => Promise.all(accounts.list().map(a => askPlan(a.id, null))
 
 // Why a chat stays on the account it started under after a switch, and that it moves once that ends.
 function keptWords(chat, wanted) {
-  const [what, ends] = chat.pending.size ? ['waiting on an approval', 'it is answered'] : chat.state !== 'idle' ? ['still in a turn', 'the turn ends'] : ['still running a job', 'the job ends'];
+  const [what, ends] = chat.holding() ? ['waiting on an approval', 'it is answered'] : chat.state !== 'idle' ? ['still in a turn', 'the turn ends'] : ['still running a job', 'the job ends'];
   return `That chat is ${what} on ${accounts.find(chat.account)?.name ?? 'the other account'}. It moves to ${accounts.find(wanted)?.name ?? accounts.active.name} once ${ends}.`;
 }
 
