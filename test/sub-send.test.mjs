@@ -129,7 +129,7 @@ test('a send outside the sender\'s own tree asks first, in every mode, with a ca
     assert.equal(cliCalls(s).filter(c => c.requestId === 'perm-send').length, 1, 'the CLI is not answered twice');
     const texts = delivered(s).map(c => c.user);
     assert.ok(texts.includes('<session-message from="top" from-name="Top (another session)">\nPlease rebase\n</session-message>'), 'the receiver reads it as from the sender');
-    assert.ok(texts.some(t => /^<session-message from="ghostshell" from-name="GhostShell">\nThe owner approved your queued message to "Loose": Please rebase\. Delivered to "Loose" \[loose\]\./.test(t)), 'the sender is told by GhostShell');
+    assert.ok(texts.some(t => /^<session-message from="ghostshell" from-name="GhostShell">\nThe owner approved your queued message to session loose\. It was delivered\.\n<\/session-message>$/.test(t)), 'the sender is told by GhostShell');
   } finally {
     viewer.close();
   }
