@@ -2,7 +2,7 @@
 import { api } from './api.js';
 import { chevron } from './form-parts.js';
 import { useDocumentTitle } from './hooks.js';
-import { html, useEffect, useRef, useState } from './html.js';
+import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 
 const CHOICES = [
   { value: 'family', name: 'Its own family', fallback: true, words: 'Its parent, the sessions beside it and the ones below it. A steered session can start turns only in its own family, including any in Bypass.' },
@@ -30,7 +30,7 @@ export function SettingsPane() {
   }, []);
 
   // A radio that was chosen and then refused is no longer the checked one, so the focus goes back to the one that is, once the disabled ones are enabled again.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (saving || !refocus.current) return;
     refocus.current = false;
     group.current?.querySelector('input:checked')?.focus();
@@ -49,9 +49,9 @@ export function SettingsPane() {
       setShown(got.sendReach);
       setStatus('Saved.');
     } catch (err) {
-      refocus.current = !!group.current?.contains(document.activeElement);
       // The server may have saved it and the answer been lost, so it is asked what it holds.
       const held = await api('api/settings').then(got => got.sendReach, () => saved);
+      refocus.current = !!group.current?.contains(document.activeElement);
       setSaved(held);
       setShown(held);
       setProblem(err.message);
