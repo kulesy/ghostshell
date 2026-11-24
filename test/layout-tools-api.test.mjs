@@ -261,6 +261,13 @@ test('a routine run the owner nested is in its family\'s project for a move, not
   assert.deepEqual([await moveBy(s, token, 'run', { session_id: 'run', group: 'In side' }), await moveBy(s, token, 'run', { session_id: 'run', group: 'Home' })], ['card', 'allow']);
 });
 
+test('a routine run whose parent is archived is listed under Routines again, and is in its routine\'s project for a move', async () => {
+  const sessions = [{ id: 'top', title: 'Top', ago: 5, archived: true }, { id: 'run', title: 'Nightly', routine: 'nightly' }];
+  const { s, token } = await ready({ sessions, groups: IN_PROJECTS, chips: [], layout: { ...RUNS, parents: { run: 'top' } } });
+  assert.deepEqual((await get(s, token, '/api/sessions')).body().routines.map(g => g.latest.id), ['run']);
+  assert.deepEqual([await moveBy(s, token, 'run', { session_id: 'run', group: 'In side' }), await moveBy(s, token, 'run', { session_id: 'run', group: 'Home' })], ['allow', 'card']);
+});
+
 test('a session GhostShell started that opens with a routine\'s words is in no routine\'s project, so its move into that project shows a card', async () => {
   const { s, token } = await ready({ sessions: [{ id: 'trap', title: '<scheduled-task name="nightly">\nDo it.', source: 'capcom' }], groups: IN_PROJECTS, chips: [], layout: RUNS });
   assert.deepEqual([await moveBy(s, token, 'trap', { session_id: 'trap', group: 'In side' }), await moveBy(s, token, 'trap', { session_id: 'trap', group: 'Home' })], ['card', 'allow']);

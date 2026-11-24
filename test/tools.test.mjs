@@ -532,6 +532,8 @@ test('a routine run opens a chip under the main session of its routine\'s projec
   assert.equal(ok.isError, undefined, ok.content[0].text);
   assert.deepEqual(mapped.chips.list().map(c => [c.parent, c.sessionId]), [['main', 'run']]);
   const placed = at => FAMILY_ROWS.map(r => (r.id === 'run' ? { ...r, ...at } : r));
+  const left = ctxFor({ nightly: 'p-1' }, placed({ parent: 'old' }));
+  assert.equal(spawnWith(left, { parent: 'main' }).isError, undefined, 'a run whose parent is archived is in its routine\'s project');
   const refused = [
     [mapped, 'far', /another project/], [mapped, 'home', /another project/], [mapped, 'kid', /not in this session's family/], [mapped, 'run', /routine run/],
     [ctxFor({ other: 'p-1' }), 'main', /another project/], [ctxFor({}), 'home', /not in this session's family/],

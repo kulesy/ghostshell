@@ -565,9 +565,10 @@ function subCtx(sessionId) {
     moveProject(id, group) {
       try {
         const picked = typeof group === 'string' ? groupNamed(group, groupList(), '').group : null;
-        const row = typeof id === 'string' && this.lookup({ archived: true }).rows.find(r => r.id === id);
+        const { rows } = this.lookup({ archived: true });
+        const row = rows.find(r => r.id === id);
         if (!picked || !row) return { changes: true };
-        return { changes: projectOf(this, layout.read().groups, row) !== (picked.project ?? null) };
+        return { changes: projectOf(this, layout.read().groups, rows, row) !== (picked.project ?? null) };
       } catch {
         return { changes: true };
       }
