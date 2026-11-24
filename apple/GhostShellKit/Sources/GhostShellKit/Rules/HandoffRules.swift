@@ -11,10 +11,11 @@ public enum HandoffRules {
 
     public static let coldLabel = "Handoff saved"
 
-    public static func lines(for row: SessionRow?) -> [Line] {
+    public static func lines(for row: SessionRow?, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> [Line] {
         guard let row else { return [] }
         var lines: [Line] = []
-        if row.cold { lines.append(Line(text: "Handoff saved, your next message starts a fresh session from it.")) }
+        let at = row.coldAt.map { " at \(ChatTime.sentAt($0, now: now, calendar: calendar, locale: locale))" } ?? ""
+        if row.cold { lines.append(Line(text: "Handoff saved\(at), your next message starts a fresh session from it.")) }
         if let from = row.continues { lines.append(Line(text: "This session carries on from an earlier one.", opens: from, label: "Open the earlier session")) }
         if let to = row.continuedIn { lines.append(Line(text: "This work carries on in a fresh session.", opens: to, label: "Open it")) }
         return lines

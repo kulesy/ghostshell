@@ -112,7 +112,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 1.71 | Polling and optimistic place, nest, archive | direct | `public/app.js:129` | `apple/GhostShellKit/Sources/GhostShellScreens/Organise/OrganiseModel.swift:8` | - | - | - |
 | 1.72 | Reload bar after an update | unsupported | `public/ui/reload.js:1` | `apple/GhostShell/GhostShellApp.swift:29` | - | - | Platform limit: the Mac app's code ships in its own build, so a server update leaves nothing on the Mac to reload. The Update banner covers the server, see Banners |
 | 1.73 | Toast region and stacked toasts | missing | `public/ui/toast.js:142` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:45` | - | - | No general toast layer; Mac has an alert for errors only |
-| 1.74 | Session row: ring for a saved handoff, with "Handoff saved" in the hover tip and the screen-reader label | direct | `public/ui/sessions-list.js:60` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarTheme.swift:15` | - | - | Shown when no other mark is. Not shot, since the ring needs a session with a saved handoff |
+| 1.74 | Session row: ring for a saved handoff, with "Handoff saved" in the hover tip and the screen-reader label | direct | `public/ui/sessions-list.js:60` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarTheme.swift:15` | - | - | Shown when no other mark is. Shot by the `handoff` journey |
 
 ## 2. Organise
 

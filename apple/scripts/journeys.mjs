@@ -43,6 +43,11 @@ export const JOURNEYS = [
     { id: 'prompt', do: { fill: { field: 'Prompt text', text: 'Write the weekly digest from the merged pull requests.' } } },
     { id: 'save', do: { press: 'Save' }, expect: { text: 'Weekly digest' } },
   ] },
+  { id: 'handoff', stub: 'chat', steps: [
+    { id: 'open', do: { open: 'cold' }, expect: { text: 'your next message starts a fresh session from it' } },
+    { id: 'type', do: { type: 'Start with the type check' } },
+    { id: 'send', do: { key: 'Enter' }, expect: { text: ['I have read the handoff', 'This session carries on from an earlier one.'] } },
+  ] },
   { id: 'search', stub: 'chat', steps: [
     { id: 'query', do: { search: 'flaky' }, expect: { results: 1 } },
     { id: 'choose', do: { choose: 0 }, expect: { text: 'Done. I added' } },

@@ -316,11 +316,14 @@ function terminalRoute(route, body, res, requests) {
 }
 
 // With `decisions`, an approve call is accepted: the prompt leaves the chat's `pending` and the open streams hear `approval-resolved`, as the real server sends it.
-// A send then ends its turn on those streams, so the page fetches the reply. Without it the route is missing, so a decision fails with a 404 and the card keeps its buttons.
+// A send then ends its turn on those streams, so the page fetches the reply. One more chat has a saved handoff, so a send to it moves to a fresh one. Without it the route is missing, so a decision fails with a 404 and the card keeps its buttons.
 export async function startChatStub({ decisions = false } = {}) {
-  const all = chats();
+  const all = { ...chats(), ...(decisions && { cold: { title: 'Audit the nightly build', items: [
+    user('Which build steps can run side by side?', 75),
+    reply('h1', 'The type check and the two test suites can. The bundle step needs the type check first.', 74),
+  ] } }) };
   const streams = new Map();
-  const rows = Object.entries(all).map(([id, chat], i) => ({ id, title: chat.title, dot: null, state: 'idle', sortAt: Date.now() - i * 60_000 }));
+  const rows = Object.entries(all).map(([id, chat], i) => ({ id, title: chat.title, dot: null, state: 'idle', sortAt: Date.now() - i * 60_000, ...(id === 'cold' && { cold: true, coldAt: Date.now() - 22 * 60_000 }) }));
   const timers = [];
   // What the app sent, for the checks: sends, stops, picker changes, uploads and new sessions.
   const calls = { send: [], stop: [], pick: [], upload: [], created: [], approve: [] };
@@ -374,6 +377,11 @@ export async function startChatStub({ decisions = false } = {}) {
         const sent = body();
         calls.send.push({ id: m[1], ...sent });
         if (/reject/.test(sent.text || '')) return json(res, 400, { error: 'That message is too long for this session.' });
+        if (m[1] === 'cold') {
+          all.fresh = { title: chat.title, items: [user(sent.text, 0.1), reply('f1', 'I have read the handoff, so I will carry on from there.', 0)] };
+          rows.splice(rows.findIndex(r => r.id === 'cold'), 1, { id: 'fresh', title: chat.title, dot: null, state: 'idle', sortAt: Date.now(), continues: 'cold' });
+          return json(res, 200, idleStatus({ movedTo: 'fresh' }));
+        }
         chat.items.push(user(sent.text || '(attachments)', 0.1), reply(`r${chat.items.length}`, 'Got it.', 0));
         for (const open of decisions ? streams.get(m[1]) ?? [] : []) send(open, 'turn-end', {});
         return json(res, 200, idleStatus());

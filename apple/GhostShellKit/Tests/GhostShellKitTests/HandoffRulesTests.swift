@@ -7,12 +7,14 @@ final class HandoffRulesTests: XCTestCase {
     }
 
     func testARowReadsTheHandoffFieldsAndLeavesThemOutWhenAbsent() throws {
-        let cold = try row(#"{"id":"a","cold":true,"continues":"b","continuedIn":"c"}"#)
+        let cold = try row(#"{"id":"a","cold":true,"coldAt":1790000000000,"continues":"b","continuedIn":"c"}"#)
         XCTAssertTrue(cold.cold)
+        XCTAssertEqual(cold.coldAt, Date(timeIntervalSince1970: 1_790_000_000))
         XCTAssertEqual(cold.continues, "b")
         XCTAssertEqual(cold.continuedIn, "c")
-        let plain = try row(#"{"id":"a","cold":"yes","continues":4}"#)
+        let plain = try row(#"{"id":"a","cold":"yes","coldAt":"soon","continues":4}"#)
         XCTAssertFalse(plain.cold)
+        XCTAssertNil(plain.coldAt)
         XCTAssertNil(plain.continues)
         XCTAssertNil(plain.continuedIn)
     }
@@ -21,6 +23,8 @@ final class HandoffRulesTests: XCTestCase {
         XCTAssertEqual(HandoffRules.lines(for: nil), [])
         XCTAssertEqual(HandoffRules.lines(for: SessionRow(id: "a")), [])
         XCTAssertEqual(HandoffRules.lines(for: SessionRow(id: "a", cold: true)).map(\.text), ["Handoff saved, your next message starts a fresh session from it."])
+        let at = Date(timeIntervalSince1970: 1_790_000_000)
+        XCTAssertEqual(HandoffRules.lines(for: SessionRow(id: "a", cold: true, coldAt: at), now: at).map(\.text), ["Handoff saved at \(ChatTime.sentAt(at, now: at)), your next message starts a fresh session from it."])
         let from = HandoffRules.lines(for: SessionRow(id: "a", continues: "b"))
         XCTAssertEqual(from.first?.opens, "b")
         XCTAssertEqual(from.first?.label, "Open the earlier session")
