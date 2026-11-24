@@ -19,7 +19,7 @@ import { makeGroupUpdates, makeUpdateStore, pullsOf, scaled } from './lib/group-
 import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, refusal, workFolder } from './lib/groups.mjs';
 import { MAX_TITLE, makeLayout, nameOf } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
-import { pendingLines } from './lib/subs.mjs';
+import { pendingLines, projectOf } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
 import { makePulls } from './lib/pulls.mjs';
 import { archivedText, makeCommentWatch, scaled as scaledComments } from './lib/pr-comments.mjs';
@@ -152,6 +152,10 @@ const accountStates = () => ({ list: accounts.list(), signedOut: a => accountLog
 let lastReadable = null;
 const pinsOf = own => (own.problem ? lastReadable ?? own : (lastReadable = own));
 
+// A session GhostShell started (`mine`, its entry in started.json) has its routine there alone, since its first message is text anyone can word as a
+// routine's. Any other has what `read` finds.
+const routineFrom = (mine, read) => (mine ? mine.routine || null : read());
+
 // `index` is the one buildIndex is making, so its rows, layout and links are used as they stand and nothing is read twice.
 function accountData(index) {
   const own = pinsOf(index?.own ?? layout.read());
@@ -163,14 +167,11 @@ function accountData(index) {
   const routines = byId(stored);
   const groups = byId(own.groups);
   const projects = byId(own.projects);
-  // A session Capcom started has its routine in started.json alone, since its first message is text anyone can word as a routine's. Any other
-  // takes the one the index shows, or its transcript's head, which can vanish between the lookup and the read.
-  const routineOf = (id, t) => {
-    const mine = started().get(id);
-    if (mine) return mine.routine || null;
+  // Read from the index, or from the transcript's head, which can vanish between the lookup and the read.
+  const routineOf = (id, t) => routineFrom(started().get(id), () => {
     if (index?.rows.has(id)) return index.rows.get(id).routine;
     try { return readHead(t, uploads.dir).routine; } catch { return null; }
-  };
+  });
   return {
     own,
     active: accounts.active.id,
@@ -295,7 +296,7 @@ function buildIndex({ archived = false } = {}) {
   for (const r of desk.sessions) {
     const t = files.get(r.id);
     if (!t) continue;
-    rows.set(r.id, { ...r, source: 'desktop', lastActivityAt: Math.max(Date.parse(r.lastActivityAt) || r.lastActivityAt || 0, t.mtime), sortAt: Math.max(r.sortKey, edgeOf(r.id)), state: stateOf(r.id, t.mtime) });
+    rows.set(r.id, { ...r, routine: routineFrom(started.get(r.id), () => r.routine), source: 'desktop', lastActivityAt: Math.max(Date.parse(r.lastActivityAt) || r.lastActivityAt || 0, t.mtime), sortAt: Math.max(r.sortKey, edgeOf(r.id)), state: stateOf(r.id, t.mtime) });
   }
   const cutoff = now - cfg.otherDays * 86400_000;
   // A deleted group's chat is kept in `retired` and stays a group's session, so it is out of every list and keeps the group chat's protections.
@@ -308,8 +309,8 @@ function buildIndex({ archived = false } = {}) {
     const head = readHead(t, uploads.dir);
     // NOTE: [15 Oct 2026] EK - A routine's prompt can run past the 64 KB head that readHead reads, so a run Capcom started keeps
     // its routine in started.json, and shows the title it was started with. Without it a long prompt lists outside Routines.
-    const routine = head.routine || started.get(t.id)?.routine || null;
-    rows.set(t.id, { id: t.id, title: ((routine || head.scheduled) && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || UNTITLED, cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
+    const routine = routineFrom(started.get(t.id), () => head.routine);
+    rows.set(t.id, { id: t.id, title: ((routine || head.routine || head.scheduled) && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || UNTITLED, cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
       archived: false, lastActivityAt: t.mtime, sortAt: Math.max(t.mtime, edgeOf(t.id)), createdAt: started.get(t.id)?.at ?? 0, routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
   }
   // A session started moments ago may not have written its file yet; after that, no file means it is gone. A booked parent has no file
@@ -566,9 +567,7 @@ function subCtx(sessionId) {
         const picked = typeof group === 'string' ? groupNamed(group, groupList(), '').group : null;
         const row = typeof id === 'string' && this.lookup({ archived: true }).rows.find(r => r.id === id);
         if (!picked || !row) return { changes: true };
-        const groups = layout.read().groups;
-        const projectOf = gid => groups.find(g => g.id === gid)?.project ?? null;
-        return { changes: projectOf(row.group) !== (picked.project ?? null) };
+        return { changes: projectOf(this, layout.read().groups, row) !== (picked.project ?? null) };
       } catch {
         return { changes: true };
       }
