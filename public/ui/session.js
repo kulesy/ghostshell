@@ -1,6 +1,6 @@
 // One open chat: the transcript, the live event stream and every action on them. It is plain data and functions, so
 // the components only draw what is in its store and call what it returns.
-import { accountList } from './account-list.js';
+import { accountList } from './account-store.js';
 import { api } from './api.js';
 import { mergeContext } from './context-rules.js';
 import { pinsOnStart } from './group-rules.js';
