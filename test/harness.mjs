@@ -141,7 +141,7 @@ const freePort = () => new Promise(resolve => {
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
 // 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool>, and a message that opens with a <session-message> tag ends its turn.
-// It writes the file a handoff ask names (see the `ask` lines below), and names the session as begun-by-the-fake on the seed of a session that carries on another's work. The log has the folder it started in, and the reply to each such request as `mcp`.
+// It writes the file a handoff ask names (see the `ask` lines below), and names the session as begun-by-the-fake, and ends the turn, on the first message of a session whose system prompt says it carries on another's work. The log has the folder it started in, and the reply to each such request as `mcp`.
 // `autoTitle` turns on naming sessions from their first turn, which is off in the tests unless they ask, since the fake CLI would be asked as well.
 // `env` is added to the server's environment.
 // A session is { id, title, folder, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
@@ -331,8 +331,9 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     `      fs.writeFileSync(ask[1], handoffFlag('handoff-empty') ? '' : handoffFlag('handoff-text') ? fs.readFileSync(path.join(${JSON.stringify(home)}, 'handoff-text'), 'utf8') : 'Fake handoff.\\n');`,
     "    }",
     `    if (ask && handoffFlag('handoff-write')) say({ type: 'control_request', request_id: 'perm-handoff', request: { subtype: 'can_use_tool', tool_name: 'Write', input: { file_path: fs.readFileSync(path.join(${JSON.stringify(home)}, 'handoff-write'), 'utf8').trim() || ask[1], content: 'x' } } });`,
-    "    if (said.includes('You carry on the work of session')) { say({ type: 'system', subtype: 'init', session_id: 'begun-by-the-fake', model: 'stub' }); begun = true; }",
-    "    if (said.startsWith('<session-message') && !(ask && handoffFlag('handoff-write'))) say(ask && handoffFlag('handoff-error') ? { type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' } : { type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
+    "    const carriesOn = !begun && process.argv.some(a => a.includes('You carry on the work of session'));",
+    "    if (carriesOn) { say({ type: 'system', subtype: 'init', session_id: 'begun-by-the-fake', model: 'stub' }); begun = true; }",
+    "    if ((said.startsWith('<session-message') || carriesOn) && !(ask && handoffFlag('handoff-write'))) say(ask && handoffFlag('handoff-error') ? { type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' } : { type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
     "    if (m.message.content === 'ask to run a write') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'touch x' } } });",
     "    if (m.message.content === 'ask a question') say({ type: 'control_request', request_id: 'perm-ask', request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Which branch should it use?', header: 'Branch', multiSelect: false, options: [{ label: 'main', description: 'The default' }, { label: 'dev', description: 'The next one' }] }] } } });",

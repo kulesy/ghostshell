@@ -560,11 +560,11 @@ function settingsFor(id, row) {
 
 // `group`, `parent`, `routine` and `account` are where the session will land and the pin it is given, which decide its account before it has an id.
 // A pin on a signed-out account throws the 409 and starts nothing.
-// `seed` is the note a session that carries on another's work opens with, and the handoff it reads, as { text, file }.
+// `seed` is what a session that carries on another's work is told in its system prompt, and the handoff it may read, as { text, file }.
 async function newSession({ cwd, seed = null, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, oneOff, group = null, parent = null, account = null }) {
   const s = desktopSettings({ cwd });
   const upfront = accountForNew({ pin: account, routine, group, parent });
-  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: [seed?.text, withMentions(files, text)].filter(Boolean).join('\n\n'), reads: seed?.file, images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, forms, subs: subCtx, groups: groupList, accounts: accountPairs });
+  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), instructions: seed?.text, reads: seed?.file, images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, forms, subs: subCtx, groups: groupList, accounts: accountPairs });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {

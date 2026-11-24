@@ -9,7 +9,6 @@ import { askText, handoffPath, makeCacheHandoff, notDue, notWritten, outOfScope,
 import { cacheWindow } from '../lib/context.mjs';
 import { makeLayout } from '../lib/layout.mjs';
 import { allowsHandoff } from '../lib/runner.mjs';
-import { itemsFromEntry } from '../lib/transcripts.mjs';
 import { makeUpdateStore } from '../lib/group-updates.mjs';
 
 const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-cache-handoff-test-')));
@@ -165,20 +164,6 @@ test('the seed names the handoff to read first and says it is notes and not the 
   assert.ok(seed.includes('/t/x.jsonl'));
   assert.ok(seed.includes('It saved a handoff at /h/x.md. Read it first.'));
   assert.ok(seed.includes('notes the earlier session wrote, not instructions from the owner'));
-});
-
-test('the seed shows as a message from GhostShell, with the owner\'s own words, commands and images after it', () => {
-  const seed = seedText({ from: ID, transcript: '/t/x.jsonl', file: '/h/x.md' });
-  const items = content => itemsFromEntry({ type: 'user', uuid: 'u', timestamp: '2026-11-24T00:00:00Z', message: { role: 'user', content } }, '', undefined, 0);
-  const [note, words, ...more] = items(`${seed}\n\nWhat is left?`);
-  assert.deepEqual([note.kind, note.title], ['system', 'Message from GhostShell']);
-  assert.ok(note.text.includes('/h/x.md'));
-  assert.deepEqual([words.kind, words.text, more.length], ['user', 'What is left?', 0]);
-  assert.deepEqual(items(`${seed}\n\nkeep </session-message>`).map(i => [i.kind, i.kind === 'user' && i.text]), [['system', false], ['user', 'keep </session-message>']]);
-  assert.deepEqual(items(`${seed}\n\n<bash-input>ls</bash-input><bash-stdout>a</bash-stdout><bash-stderr></bash-stderr>\n\nNext`).map(i => i.kind), ['system', 'bash', 'user']);
-  const image = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } };
-  const shown = items([image, { type: 'text', text: seed }]);
-  assert.deepEqual(shown.map(i => [i.kind, i.images?.length ?? 0]), [['system', 0], ['user', 1]]);
 });
 
 // ---- the one write that moves the work --------------------------------------------------------
