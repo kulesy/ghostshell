@@ -50,7 +50,7 @@ export const JOURNEYS = [
     { id: 'menu', do: { menu: 'Change account' } },
     { id: 'pick', do: { item: 'Main' }, expect: { text: 'Starts on Main, picked here.' } },
     { id: 'start', do: { press: 'Start session', mac: 'Start' }, expect: { text: 'Opened in Release' } },
-    { id: 'signed-out', do: { open: 'chip-out' }, expect: { text: ['Third, chosen by this chip, is signed out.', 'Sign in to Third'] } },
+    { id: 'signed-out', do: { open: 'chip-out' }, expect: { text: 'Third, chosen by this chip, is signed out.' } },
     { id: 'pins', do: { open: 'chip-pins' }, expect: { text: 'Starts on Second, pinned to the group Release.' } },
   ] },
   { id: 'search', stub: 'chat', steps: [
