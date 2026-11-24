@@ -246,6 +246,8 @@ struct ComposerHost: View {
             HandoffStrip(chat: chat)
             ComposerView(model: ComposerModel.of(chat, moved: { [app] in app.navigator.openSession($0) }) { [app] in await app.refreshIndex() }, autofocus: true)
         }
+        // The composer's own priority reaches only this stack, and the chat's column needs it too.
+        .layoutPriority(1)
     }
 }
 
