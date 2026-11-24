@@ -529,6 +529,8 @@ test('on the smallest phone a swiped row keeps its fold and its menu on screen, 
     await pause(page, 100);
   };
 
+  // The settle only plays with no reduced-motion preference, and a runner may have one set.
+  await page.call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await page.resize(320, 640);
   await page.until(`${boss}.querySelectorAll(':scope > :is(.fold, .more)').length === 3`);
   const rest = await buttons();
