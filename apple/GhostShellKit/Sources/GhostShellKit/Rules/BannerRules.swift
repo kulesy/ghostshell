@@ -62,6 +62,19 @@ public func loginCard(_ login: LoginNotice?, now: Date = Date(), calendar: Calen
     return card
 }
 
+/// What a waiting restart says: the running chats it waits to finish and the idle chats whose background work it waits to end. `busy` counts both.
+func restartingWords(_ update: UpdateNotice) -> String {
+    let turns = max(0, update.busy - update.jobs.count)
+    var parts: [String] = []
+    if turns > 0 { parts.append("\(plural(turns, "running chat", "running chats")) \(turns == 1 ? "finishes" : "finish")") }
+    if !update.jobs.isEmpty {
+        let quoted = update.jobs.map { "“\($0)”" }
+        let named = quoted.count <= 2 ? quoted.joined(separator: " and ") : "\(quoted[0]), \(quoted[1]) and \(plural(quoted.count - 2, "more chat", "more chats"))"
+        parts.append("the background work in \(named) ends")
+    }
+    return parts.isEmpty ? "Restarting now." : "Restarting once \(parts.joined(separator: " and "))."
+}
+
 public func updateCard(_ update: UpdateNotice?) -> BannerCard? {
     guard let update, update.show else { return nil }
     let pulled = update.kind == .pulled
@@ -70,7 +83,7 @@ public func updateCard(_ update: UpdateNotice?) -> BannerCard? {
     let idleLabel = pulled ? "Restart" : update.restart ? "Update and restart" : "Update"
     let progress: String = switch stage {
     case .updating: "Updating."
-    case .restarting: update.busy > 0 ? "Restarting once \(plural(update.busy, "running chat", "running chats")) \(update.busy == 1 ? "finishes" : "finish")." : "Restarting now."
+    case .restarting: restartingWords(update)
     default: update.blocked
     }
     return BannerCard(
@@ -145,6 +158,7 @@ public func keptWhileRestarting(_ banners: Banners) -> Banners {
     guard banners.update?.stage == .restarting else { return banners }
     var kept = banners
     kept.update?.busy = 0
+    kept.update?.jobs = []
     kept.update?.force = false
     return kept
 }

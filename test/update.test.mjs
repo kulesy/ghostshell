@@ -55,9 +55,9 @@ const SATURDAY = new Date(2026, 10, 7, 8, 0);
 const MONDAY_EARLY = new Date(2026, 10, 2, 8, 0);
 
 function rig(over = {}) {
-  const r = { ...repos(), restarts: [], busy: 0, locked: false, at: SATURDAY, uptime: 3600, ...over };
+  const r = { ...repos(), restarts: [], busy: 0, jobs: [], locked: false, at: SATURDAY, uptime: 3600, ...over };
   r.update = makeUpdate({
-    root: r.live, restart: (root, minutes) => { r.restarts.push([root, minutes]); return Promise.resolve(''); }, locked: () => r.locked, busy: () => r.busy, now: () => r.at, uptime: () => r.uptime, graceMs: r.graceMs ?? 60_000, log: r.log,
+    root: r.live, restart: (root, minutes) => { r.restarts.push([root, minutes]); return Promise.resolve(''); }, locked: () => r.locked, busy: () => r.busy, jobs: () => r.jobs, now: () => r.at, uptime: () => r.uptime, graceMs: r.graceMs ?? 60_000, log: r.log,
     ...(r.git && { git: r.git(r.live) }),
   });
   return r;
@@ -511,6 +511,21 @@ test('a failed read of server.mjs is tried again on the next check instead of le
   assert.deepEqual(r.update.state(), { show: false });
   await r.update.check();
   assert.equal(r.update.state().restart, true);
+});
+
+test('the titles of the chats held by a background job are listed with the count, cleaned to one line, and are empty once a force goes', async () => {
+  const r = rig();
+  r.busy = 3;
+  r.jobs = ['Deploy', `Line one\nLine two ${'x'.repeat(80)}`];
+  r.merge('Change the server (#2)', { 'lib/a.mjs': 'export const a = 2;\n' });
+  await r.update.check();
+  const idle = r.update.state();
+  assert.deepEqual([idle.busy, idle.jobs], [3, ['Deploy', `Line one Line two ${'x'.repeat(41)}…`]]);
+  await r.update.update();
+  assert.deepEqual(r.update.state().jobs, idle.jobs, 'a waiting restart lists them too');
+  r.locked = true;
+  await r.update.update({ force: true });
+  assert.deepEqual([r.update.state().busy, r.update.state().jobs], [0, []]);
 });
 
 test('a force while idle restarts at once, with no wait, and then reports it is going', async () => {

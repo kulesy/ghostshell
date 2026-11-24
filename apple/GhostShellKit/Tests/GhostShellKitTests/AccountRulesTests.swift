@@ -145,6 +145,11 @@ final class AccountRulesTests: XCTestCase {
         XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1,"busy":1}"#)?.progress, "Restarting once 1 running chat finishes.")
         XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1,"busy":3}"#)?.progress, "Restarting once 3 running chats finish.")
         XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1,"busy":0}"#)?.progress, "Restarting now.")
+        XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1,"busy":1,"jobs":["Deploy"]}"#)?.progress, "Restarting once the background work in “Deploy” ends.")
+        XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1,"busy":2,"jobs":["A","B"]}"#)?.progress, "Restarting once the background work in “A” and “B” ends.")
+        XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1,"busy":3,"jobs":["A","B","C"]}"#)?.progress, "Restarting once the background work in “A”, “B” and 1 more chat ends.")
+        XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1,"busy":4,"jobs":["A","B","C","D"]}"#)?.progress, "Restarting once the background work in “A”, “B” and 2 more chats ends.")
+        XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1,"busy":3,"jobs":["A"]}"#)?.progress, "Restarting once 2 running chats finish and the background work in “A” ends.")
         XCTAssertEqual(card(#"{"show":true,"stage":"restarting","count":1}"#)?.action, BannerAction(label: "Restarting", busy: true))
         XCTAssertEqual(card(#"{"show":true,"count":1,"force":true}"#)?.force, "Force restart")
         XCTAssertEqual(card(#"{"show":true,"count":1,"problem":"Pull failed"}"#)?.problem, "Pull failed")
@@ -217,9 +222,10 @@ final class AccountRulesTests: XCTestCase {
     }
 
     func testKeptWhileRestarting() {
-        let restarting: Banners = decode(#"{"update":{"show":true,"stage":"restarting","busy":3,"force":true,"count":1}}"#)
+        let restarting: Banners = decode(#"{"update":{"show":true,"stage":"restarting","busy":3,"jobs":["A"],"force":true,"count":1}}"#)
         let kept = keptWhileRestarting(restarting)
         XCTAssertEqual(kept.update?.busy, 0)
+        XCTAssertEqual(kept.update?.jobs, [])
         XCTAssertEqual(kept.update?.force, false)
         XCTAssertEqual(updateCard(kept.update)?.progress, "Restarting now.")
         XCTAssertNil(updateCard(kept.update)?.force)

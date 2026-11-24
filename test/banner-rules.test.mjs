@@ -72,6 +72,19 @@ test('a pulled checkout says it waits for a restart and offers Restart', () => {
   assert.deepEqual([view.title, view.text, view.action.label], ['Pulled, waiting for a restart', 'Restarting GhostShell once no chat is running.', 'Restart']);
 });
 
+test('a restart names the chats whose background work it waits for, with the running chats first when both hold it', () => {
+  const said = (busy, jobs) => updateBanner(update({ stage: 'restarting', busy, jobs })).progress;
+  assert.equal(said(1, ['Deploy']), 'Restarting once the background work in “Deploy” ends.');
+  assert.equal(said(2, ['A', 'B']), 'Restarting once the background work in “A” and “B” ends.');
+  assert.equal(said(3, ['A', 'B', 'C']), 'Restarting once the background work in “A”, “B” and 1 more chat ends.');
+  assert.equal(said(5, ['A', 'B', 'C', 'D']), 'Restarting once 1 running chat finishes and the background work in “A”, “B” and 2 more chats ends.');
+  assert.equal(said(3, ['A']), 'Restarting once 2 running chats finish and the background work in “A” ends.');
+  assert.equal(said(2, []), 'Restarting once 2 running chats finish.');
+  assert.equal(said(2, undefined), 'Restarting once 2 running chats finish.', 'an older server sends no jobs');
+  assert.equal(said(0, []), 'Restarting now.');
+  assert.equal(forceQuestion(update({ busy: 2, jobs: ['A'] })), forceQuestion(update({ busy: 2 })), 'a force asks the same with jobs');
+});
+
 test('a restart says how many running chats it waits for, and then that it is restarting', () => {
   const said = busy => updateBanner(update({ stage: 'restarting', busy }));
   assert.equal(said(2).progress, 'Restarting once 2 running chats finish.');
@@ -104,8 +117,8 @@ test('the page polls fast while a sign-in waits or a restart is under way, and s
 });
 
 test('a failed read while restarting keeps the banner and drops the count of chats, since the server is gone', () => {
-  const before = { login: { stage: 'idle' }, update: { stage: 'restarting', busy: 2, show: true } };
-  assert.deepEqual(keptWhileRestarting(before).update, { stage: 'restarting', busy: 0, force: false, show: true });
+  const before = { login: { stage: 'idle' }, update: { stage: 'restarting', busy: 2, jobs: ['A'], show: true } };
+  assert.deepEqual(keptWhileRestarting(before).update, { stage: 'restarting', busy: 0, jobs: [], force: false, show: true });
   const idle = { update: { stage: 'idle', busy: 0 } };
   assert.equal(keptWhileRestarting(idle), idle);
   assert.equal(keptWhileRestarting(null), null);

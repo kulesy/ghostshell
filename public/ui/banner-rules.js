@@ -25,6 +25,16 @@ export function daysLeft(ms, now = Date.now()) {
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
+// `busy` counts the running chats and the idle chats whose background work holds the restart, and `jobs` is the titles of the second kind.
+// The Mac and iPhone apps say the same words in BannerRules.swift.
+function restartingWords({ busy, jobs = [] }) {
+  const turns = Math.max(0, busy - jobs.length);
+  const quoted = jobs.map(t => `“${t}”`);
+  const named = quoted.length <= 2 ? quoted.join(' and ') : `${quoted[0]}, ${quoted[1]} and ${plural(quoted.length - 2, 'more chat', 'more chats')}`;
+  const parts = [turns > 0 && `${plural(turns, 'running chat', 'running chats')} ${turns === 1 ? 'finishes' : 'finish'}`, jobs.length > 0 && `the background work in ${named} ends`].filter(Boolean);
+  return parts.length ? `Restarting once ${parts.join(' and ')}.` : 'Restarting now.';
+}
+
 // The sign-in banner for the server's `login`, or null when there is none to show. `action` is the one button, which is busy while
 // the CLI waits on the Mac, since the approval cannot move to the phone.
 export function loginBanner(login, now = Date.now()) {
@@ -61,8 +71,7 @@ export function updateBanner(update) {
   const shown = (update.changes ?? []).slice(0, LISTED);
   const label = pulled ? 'Restart' : update.restart ? 'Update and restart' : 'Update';
   const progress = stage === 'updating' ? 'Updating.'
-    : stage === 'restarting' ? (update.busy > 0 ? `Restarting once ${plural(update.busy, 'running chat', 'running chats')} ${update.busy === 1 ? 'finishes' : 'finish'}.` : 'Restarting now.')
-      : update.blocked;
+    : stage === 'restarting' ? restartingWords(update) : update.blocked;
   return {
     id: 'banner-update',
     tone: null,
@@ -93,5 +102,5 @@ export const pollMs = banners => (banners?.login?.stage === 'waiting' || ['updat
 
 // The server is down for a moment while it restarts, so a failed read keeps the banner and says only that it is restarting.
 export function keptWhileRestarting(banners) {
-  return banners?.update?.stage === 'restarting' ? { ...banners, update: { ...banners.update, busy: 0, force: false } } : banners;
+  return banners?.update?.stage === 'restarting' ? { ...banners, update: { ...banners.update, busy: 0, jobs: [], force: false } } : banners;
 }
