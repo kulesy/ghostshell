@@ -27,7 +27,8 @@ export function ChipAccountActions({ line, card, accounts, tool, onPick, onProbl
       await loadAccounts(true);
     } catch (e) { onProblem(e.message); }
   };
-  return html`${line.state === 'signedOut' ? html`<${Button} action=${{ label: `Sign in to ${line.name}`, variant: 'outline' }} onClick=${signIn} />` : null}
+  const waiting = accounts?.find(a => a.id === line.id)?.stage === 'waiting';
+  return html`${line.state === 'signedOut' ? html`<${Button} action=${{ label: waiting ? 'Waiting for the Mac' : `Sign in to ${line.name}`, busy: waiting, variant: 'outline' }} onClick=${signIn} />` : null}
     <button class="btn" type="button" data-variant="ghost" data-chip="account" data-tool=${tool} aria-haspopup="menu" aria-expanded=${!!shown} aria-controls=${shown ? layerId(shown.id) : null} ...${opener(pop)}>Change account</button>
     <${Menu} menu=${shown && { ...shown, label: 'Account', items }} onClose=${() => setShown(null)} />`;
 }

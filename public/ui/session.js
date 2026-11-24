@@ -114,16 +114,19 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     }
   }
 
-  // A chip's account line goes stale when an account signs in or out or is renamed or removed, so the cards are asked for again.
+  // A chip's account line goes stale when an account signs in or out or is renamed or removed, or a pin moves, so the cards are asked for again.
   const accountsKey = () => JSON.stringify(accountList.get().accounts?.map(a => [a.id, a.name, a.signedOut, a.active]));
   let accountsSeen = '';
-  async function onAccounts() {
-    const now = accountsKey();
-    if (now === accountsSeen) return;
-    accountsSeen = now;
+  async function reloadChips() {
     if (!state().loaded || !state().items.some(i => /__spawn_task$/.test(i.name || ''))) return;
     const chips = await loadChips();
     if (!closed && chips) store.set(chips);
+  }
+  function onAccounts() {
+    const now = accountsKey();
+    if (now === accountsSeen) return;
+    accountsSeen = now;
+    reloadChips();
   }
   let unwatch = () => {};
 
@@ -503,7 +506,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   const fileUrl = path => `api/sessions/${enc(id)}/file?path=${enc(path)}`;
 
   return {
-    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, loadMcp, reloadMcp, retry,
+    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, loadMcp, reloadMcp, retry, reloadChips,
     send, prompt, stop, decide, dismissHold, chip, setMode, pick, repin, setFolder, startNew, notice, imageUrl, fileUrl,
   };
 }

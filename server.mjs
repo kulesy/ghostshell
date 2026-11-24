@@ -697,22 +697,22 @@ function withOpensIn(chip, row, rowOf = findRow) {
 const chipGroupSession = (chip, sessionId, rowOf = findRow) => rowOf(chip?.sessionId || sessionId)?.groupSession || rowOf(sessionId)?.groupSession;
 
 // Where a chip's session lands: `group` and `parent` are what newSession is given. The card and Start both ask this, so they cannot name different places.
-// A parent that can no longer hold sessions throws what familyRoot throws.
-function chipLanding(chip, sessionId, rowOf = findRow) {
+// A parent that can no longer hold sessions throws what familyRoot throws. `live` gives the live index, built by the caller at most once for many chips.
+function chipLanding(chip, sessionId, rowOf = findRow, live) {
   const makerId = chip?.sessionId || sessionId;
   const groupId = chipGroupSession(chip, sessionId, rowOf);
   const named = chip?.group;
-  const chosen = chip?.parent && !named && !groupId ? familyRoot(chip.parent).root : null;
+  const chosen = chip?.parent && !named && !groupId ? familyRoot(chip.parent, live?.()).root : null;
   const nestUnder = chosen || (named ? null : liveHeadOf(rowOf(makerId), rowOf));
   return { groupId, named, nestUnder, makerId, group: named || groupId || null, parent: named || groupId ? null : nestUnder || makerId };
 }
 
 // What an open chip's card says about the account, with more than one account listed: what the pins of the place it opens in give, with no account on the chip.
 // It carries ids, names and words only. A chip whose place cannot be worked out gets none, and Start then answers as it does for that place.
-function chipAccountCard(chip, sessionId, rowOf = findRow, d = accountData()) {
+function chipAccountCard(chip, sessionId, rowOf = findRow, d = accountData(), live) {
   if (accounts.list().length < 2) return null;
   try {
-    const { group, parent } = chipLanding(chip, sessionId, rowOf);
+    const { group, parent } = chipLanding(chip, sessionId, rowOf, live);
     const { got, blocked } = settle({ group, parent }, d);
     // Whoever holds the pin, which a pin reached through the session it opens under still names, so the card says the group or project and not that session.
     const from = got.from === 'active' ? 'active' : got.pin?.kind ?? got.from;
@@ -726,8 +726,8 @@ function chipAccountCard(chip, sessionId, rowOf = findRow, d = accountData()) {
 }
 
 // An open chip with its card's account words. A chip that is started or dismissed has none.
-function withAccountCard(chip, rowOf = findRow, d) {
-  const card = chip.status === 'open' && chipAccountCard(chip, chip.sessionId, rowOf, d);
+function withAccountCard(chip, rowOf = findRow, d, live) {
+  const card = chip.status === 'open' && chipAccountCard(chip, chip.sessionId, rowOf, d, live);
   return card ? { ...chip, accountCard: card } : chip;
 }
 
@@ -746,7 +746,8 @@ async function readChipAccount(body, landing) {
 // follows the pins and is never filled in with the account they give, so the session holds no pin and keeps what its group or project gives it later.
 // Nothing awaits between this and newSession, which settles the same place again, so the two cannot differ.
 function chipAccountPick(known, body, landing) {
-  const refused = (status, error) => ({ refused: { status, error, ...(known && { chip: withAccountCard(withOpensIn(known, findRow(known.sessionId))) }) } });
+  // An older page or the Swift app takes a reply with a chip as settled, so only a request that posted a confirmation gets the chip back.
+  const refused = (status, error) => ({ refused: { status, error, ...(known && Object.hasOwn(body, 'confirmAccount') && { chip: withAccountCard(withOpensIn(known, findRow(known.sessionId))) }) } });
   const posted = Object.hasOwn(body, 'account');
   // With one account listed there is no choice to confirm, so a chip's stored account (from before one was removed) is not asked about.
   if (known?.account && !posted && accounts.list().length > 1) return refused(400, 'This chip names an account. Check it on the card, then press Start again.');
@@ -2357,8 +2358,10 @@ async function api(req, res, u) {
     const rowOf = rowId => index.rows.get(rowId) || index.groupSessions.get(rowId) || null;
     const d = accountData(index);
     // A card with no stored chip (Desktop's, or one the transcript draws) gets the default for the session it was made in.
-    const accountDefault = chipAccountCard(null, id, rowOf, d);
-    return send(res, 200, { chips: chips.forSession(id).map(c => withAccountCard(withOpensIn(c, rowOf(id), rowOf), rowOf, d)), ...(accountDefault && { accountDefault }) });
+    let liveIndex;
+    const live = () => liveIndex ??= buildIndex();
+    const accountDefault = chipAccountCard(null, id, rowOf, d, live);
+    return send(res, 200, { chips: chips.forSession(id).map(c => withAccountCard(withOpensIn(c, rowOf(id), rowOf), rowOf, d, live)), ...(accountDefault && { accountDefault }) });
   }
   // The pictures of the whole chat as items with refs and no bytes, for the viewer to count and step through.
   if (req.method === 'GET' && action === 'images' && !parts[4]) {

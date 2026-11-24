@@ -1,5 +1,5 @@
 // The chat pane: header, transcript and the dock under it. It owns one chat controller for as long as it is on screen.
-import { supportsAccounts, supportsPins } from './account-rules.js';
+import { pinsKey, supportsAccounts, supportsPins } from './account-rules.js';
 import { BlockedNotice, SpillNotice, SwitchAndContinue } from './accounts.js';
 import { Approvals } from './approvals.js';
 import { ArchiveButton } from './chat-archive.js';
@@ -176,6 +176,14 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
   useLayoutEffect(() => {
     ctrl.open();
     return ctrl.close;
+  }, [ctrl]);
+  useEffect(() => {
+    if (ctrl.draft) return undefined;
+    let seen = pinsKey(sessionIndex.get().ix);
+    return sessionIndex.subscribe(() => {
+      const now = pinsKey(sessionIndex.get().ix);
+      if (now !== seen) { seen = now; ctrl.reloadChips(); }
+    });
   }, [ctrl]);
   const startIn = useStore(sessionIndex, s => draftGroup(s.ix, group ?? besideDraft(s.ix, beside)?.group));
   const folder = useStore(sessionIndex, s => (parent && rootOf(s.ix, parent)?.cwd) || besideDraft(s.ix, beside)?.cwd || HOME);

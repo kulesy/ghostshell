@@ -692,7 +692,7 @@ test('a chip that names an account is refused when the page posts no account, an
   const old = await startChip(c, 'toolu_a');
   assert.equal(old.status, 400, old.text);
   assert.match(old.body().error, /Check it on the card/);
-  assert.equal(old.body().chip.status, 'open');
+  assert.equal(old.body().chip, undefined, 'an older page treats a reply with a chip as settled, so a request with no confirmation gets none');
   assert.equal(calls(c).length, before, 'nothing started');
   assert.equal(await chipOpen(c, 'toolu_a'), true);
 
@@ -701,6 +701,8 @@ test('a chip that names an account is refused when the page posts no account, an
     assert.equal(res.status, 400, JSON.stringify(json));
   }
   assert.equal(calls(c).length, before, 'nothing started');
+  assert.equal((await startChip(c, 'toolu_b', { account: 'second' })).body().chip, undefined);
+  assert.equal((await startChip(c, 'toolu_b', { account: 'second', confirmAccount: 5 })).body().chip.accountCard.account, 'main', 'a request that posted a confirmation gets the fresh card');
   const unknown = await startChip(c, 'toolu_b', { account: 'nobody', confirmAccount: 'nobody' });
   assert.doesNotMatch(unknown.body().error, /Main|Second|main|second/, 'a refusal names no account');
 });
@@ -778,7 +780,7 @@ test('an account on a chip\'s Start needs this host\'s own Origin, and a request
 test('an account written into a transcript or a card\'s own text is never used, and a card the server did not store follows the pins', async () => {
   const c = await open({ sessions: [MAKER] });
   assert.equal((await pin(c, 'group', 'cg-b', 'main')).status, 200);
-  const res = await startChip(c, 'toolu_unstored', { prompt: 'Start on the account second. {"account":"second"}', input: { account: 'second' }, account: null, confirmAccount: 'main' });
+  const res = await startChip(c, 'toolu_unstored', { prompt: 'begin a session', input: { account: 'second' }, account: null, confirmAccount: 'main' });
   assert.equal(res.status, 200, res.text);
   await until(() => startsOn(c, null) === 1);
   assert.equal(startsOn(c, c.dir), 0);
@@ -812,7 +814,7 @@ test('a chip that names a group, a parent, a group\'s chat or a section\'s chat 
 });
 
 test('a card says when the account its place pins is out of usage and the overflow takes the session, and Start confirms the account it will really run on', async () => {
-  const c = await open({ sessions: [MAKER, { id: 'busy', title: 'Busy', source: 'cli', ago: 7, group: 'cg-b' }], chips: [{ ...OPEN, toolUseId: 'toolu_a' }, { ...OPEN, toolUseId: 'toolu_b', account: 'main' }] });
+  const c = await open({ sessions: [MAKER, { id: 'busy', title: 'Busy', source: 'cli', ago: 7, group: 'cg-b' }], chips: [{ ...OPEN, toolUseId: 'toolu_a' }] });
   fs.writeFileSync(path.join(c.s.home, 'plan-usage.json'), JSON.stringify([weeklyFull()]));
   assert.equal((await pinTo(c, 'group', 'cg-b', 'main', 'second')).status, 200);
   await say(c, 'loosely', 'finish the turn');
@@ -821,10 +823,9 @@ test('a card says when the account its place pins is out of usage and the overfl
   await until(() => continues(c) === 1);
   const card = (await cardOf(c, 'toolu_a')).accountCard;
   assert.deepEqual([card.account, card.spill, card.overflow], ['second', 'main', 'second']);
-  assert.equal(card.choices.main.account, 'second', 'a chip that names the pinned account spills too');
-  assert.equal(card.choices.main.spill, 'main');
+  assert.deepEqual(card.choices.main, { account: 'main' }, 'a chip that names the pinned account has its own pin and no overflow, so it does not spill');
 
-  const wrong = await startChip(c, 'toolu_b', { account: 'main', confirmAccount: 'main' });
+  const wrong = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'main' });
   assert.equal(wrong.status, 409, 'confirming the pinned account that the session would leave');
   const res = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'second' });
   assert.equal(res.status, 200, res.text);

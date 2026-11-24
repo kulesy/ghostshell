@@ -1,7 +1,7 @@
 // What the Accounts pane and the banners about accounts say, as rules that need no page, so node can test them. Times are the page's own clock.
 import { endWords, SOON } from './banner-rules.js';
 import { pinsOnStart } from './group-rules.js';
-import { findRow, rootOf } from './tree.js';
+import { everyRow, findRow, rootOf } from './tree.js';
 
 export const supportsAccounts = ix => !!ix?.features?.accounts;
 
@@ -67,6 +67,9 @@ export function chromeBanner(chrome) {
 }
 
 export const supportsPins = ix => !!ix?.features?.accountPins;
+
+// Every pin the list shows, as one string that changes when a pin does, so a chip card drawn from the pins is asked for again.
+export const pinsKey = ix => (ix ? JSON.stringify([ix.groups.map(g => [g.id, g.account, g.overflow]), (ix.projects ?? []).map(p => [p.id, p.account, p.overflow]), everyRow(ix).filter(r => r.accountPin).map(r => [r.id, r.accountPin, r.accountOverflow])]) : '');
 
 // A pick shows when the server pins and there is a choice to make, or when something is already pinned, so a single-account page is as it was.
 export const offersPick = (ix, accounts, pinned) => supportsPins(ix) && (!!pinned || (accounts?.length ?? 0) > 1);

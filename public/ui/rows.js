@@ -110,6 +110,8 @@ function ChipCard({ t, chip, cwd, onChip, fallback }) {
   const card = status === 'open' ? chip?.accountCard || (chip ? null : fallback) : null;
   const line = chipAccount({ card, accounts, named: chip?.account ?? null, pick });
   useEffect(() => { if (card) loadAccounts(); }, [!!card]);
+  const signing = line?.state === 'signedOut' ? accounts?.find(a => a.id === line.id) : null;
+  const failure = signing?.stage === 'failed' ? signing.problem || '' : '';
   const act = async action => {
     setBusy(action);
     setProblem('');
@@ -131,7 +133,7 @@ function ChipCard({ t, chip, cwd, onChip, fallback }) {
     <pre class="tool-io chip-prompt">${pre(clip(i.prompt || '', 8))}</pre>
     <p class="chip-folder">Starts in ${tilde(folder, HOME) || 'the session folder'}${model ? ` on ${modelName(model)}` : ''}${effort ? ` at ${effortName(effort)} effort` : ''}</p>
     ${chip?.opensIn ? html`<p class="chip-folder chip-opens">${chip.opensIn}</p>` : null}
-    ${line ? html`<${ChipAccountLine} line=${line} problem=${problem} />` : null}
+    ${line ? html`<${ChipAccountLine} line=${line} problem=${problem || failure} />` : null}
     <div class="chip-actions">${actions}</div></li>`;
 }
 

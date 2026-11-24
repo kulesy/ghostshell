@@ -585,3 +585,17 @@ test('no tool takes an account, a pin or an overflow as input except spawn_task,
   assert.match(shown, /1 chip/);
   assert.doesNotMatch(shown, /Work|acct-1|account/i, 'list_chips is silent about the account');
 });
+
+test('a group session that cannot start because its pin is signed out tells the model a bare failure with no account name', async () => {
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const blocked = Object.assign(new Error('This group (Work) is pinned to Second, which is signed out. Sign it in first.'), { status: 409, blocked: { reason: 'signedOut' } });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blocked-start-'));
+    const reply = await asked('start_group_session', { cwd: dir, prompt: 'x' }, { stateDir: '/tmp/state', name: 'Work', lookup: () => ({ name: 'Work', members: [] }), start: async () => { throw blocked; } });
+    assert.equal(reply.result.isError, true);
+    assert.doesNotMatch(reply.result.content[0].text, /Second|Work|pinned|signed out/);
+  } finally {
+    console.error = quiet;
+  }
+});
