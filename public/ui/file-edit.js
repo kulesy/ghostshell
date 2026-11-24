@@ -151,14 +151,16 @@ function useKeyboardFit(box) {
     const view = window.visualViewport;
     if (!panel || !view) return undefined;
     let width = 0;
-    let panned = 0;
+    let panned = null;
     let settling = 0;
+    // On a short screen the pin takes the rows above the box away, and the text moves up with them.
+    const lead = () => el.getBoundingClientRect().top - panel.getBoundingClientRect().top + parseFloat(getComputedStyle(el).paddingTop);
     const covered = () => view.scale <= 1 && (window.innerHeight - view.height > 1 || view.offsetTop > 0);
     const unpin = () => {
       panel.removeAttribute('data-keyboard');
       for (const name of ['--vv-top', '--vv-right', '--vv-width', '--vv-height']) panel.style.removeProperty(name);
       width = 0;
-      panned = 0;
+      panned = null;
     };
     // iOS leaves the box scrolled past its end when it grows back. Written any sooner, this put the next tap's caret on another line.
     // See https://github.com/kulesy/ghostshell/issues/65.
@@ -173,13 +175,15 @@ function useKeyboardFit(box) {
       const focused = document.activeElement === el;
       if (!covered() || (!focused && !panel.hasAttribute('data-keyboard'))) { unpin(); settle(); if (!focused) stop(); return; }
       if (!width) width = panel.offsetWidth;
+      const first = panned === null;
+      const before = first ? lead() : 0;
       panel.style.setProperty('--vv-top', `${view.offsetTop}px`);
       panel.style.setProperty('--vv-right', `${Math.max(0, window.innerWidth - view.offsetLeft - view.width)}px`);
       panel.style.setProperty('--vv-width', `${Math.min(width, view.width)}px`);
       panel.style.setProperty('--vv-height', `${view.height}px`);
       panel.setAttribute('data-keyboard', '');
       // After the pin, because the box can only scroll this far once the panel has shrunk.
-      el.scrollTop += view.offsetTop - panned;
+      el.scrollTop += view.offsetTop - (first ? before - lead() : panned);
       panned = view.offsetTop;
     };
     const watch = () => { view.addEventListener('resize', fit); view.addEventListener('scroll', fit); addEventListener('resize', refit); };

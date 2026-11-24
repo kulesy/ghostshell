@@ -396,6 +396,27 @@ test('on a phone on its side with the keyboard up, the rows above the text give 
   assert.deepEqual(page.problems, []);
 });
 
+test('on a phone on its side, the line tapped stays where iOS showed it as the rows above the text go', { skip, timeout }, async t => {
+  const page = await appPage(t, { phone: true });
+  await open(page, 'long', { phone: true });
+  await page.resize(667, 320);
+  await fakeKeyboard(page, { height: 'innerHeight', offsetTop: 0 });
+  await page.tap(button('Edit file'));
+  await page.until(`document.activeElement === document.querySelector('.file-editor')`);
+  const measure = () => page.evaluate(`(() => {
+    const box = document.querySelector('.file-editor');
+    return box.getBoundingClientRect().top + parseFloat(getComputedStyle(box).paddingTop) - box.scrollTop - keyboard.offsetTop;
+  })()`);
+  await page.evaluate(`document.querySelector('.file-editor').scrollTop = 200`);
+  const closed = await measure();
+  await page.evaluate(`Object.assign(keyboard, { height: 100, offsetTop: 150 }); keyboard.dispatchEvent(new Event('resize'))`);
+  await page.until(`document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  assert.equal(await measure(), closed - 150);
+  await page.evaluate(`dispatchEvent(new Event('resize'))`);
+  assert.equal(await measure(), closed - 150, 'a resize while the keyboard is up leaves the text where it was');
+  assert.deepEqual(page.problems, []);
+});
+
 test('on a phone, 390 and 320 px wide, the buttons are on screen and the text box does not zoom the page', { skip, timeout }, async t => {
   const page = await appPage(t, { phone: true });
   await open(page, 'phone', { phone: true });
