@@ -1,6 +1,6 @@
 # Pin a session, group, project or routine to one Claude account
 
-- Status: Accepted, amended 2026-11-09
+- Status: Accepted, amended 2026-11-24
 - Deciders: Eli
 - Date: 2026-11-04
 - Tags: accounts, cli, layout, routines, usage, banners
@@ -31,6 +31,8 @@ The accounts already live side by side, each in its own config folder, and a ses
 Chosen option: "Pins in the existing stores, resolved by one pure rule when a process starts", because a pin then moves, renames and disappears with the thing it belongs to, and a process start is already the one moment an account can change.
 
 **Amended 2026-11-09.** Falling back to another account is allowed when the owner opts in. A pin can name an overflow account, and work moves to it while the pinned account is out of usage (see [Let a pin name an overflow account](20261109-spill-pinned-work-to-an-overflow-account.md)). A pin with no overflow still never falls back, and a signed-out pinned account still blocks.
+
+**Amended 2026-11-24.** A chip can name an account, and the owner confirms it by pressing Start (see [issue 233](https://github.com/kulesy/ghostshell/issues/233)). Read "Who can do what" and "Out of scope" below with this in mind. The chip's account is a suggestion for a session that does not exist yet. It is never a pin, it is stored on the chip only, and the session starts on whichever account the card showed. The card names the account and where it comes from, and its Change account menu lets the owner follow the pins or pick another account before Start. The chip's account wins over the pins of the place it opens in because the card says so, and says what it replaces, before anything starts. That is the owner's decision, so one press of Start confirms it.
 
 ### Where a pin lives
 
@@ -89,7 +91,9 @@ The extension signs in to one Claude account, so a session reaches Chrome only o
 
 ### Who can do what
 
-The pin routes sit behind the password and the strict origin check. So does `POST /api/new` when its body names an account or a group. They take an id for the target and an id for the account, and GhostShell checks both against its own lists. A pin to a signed-out account is refused, as a switch to one is. An agent in a chat gets no tool to set a pin. Its `move_session_to_group` tool can change a session's account by moving it into or out of a pinned group, so a move that changes the account gets an approval card that names the new account. So does a move that gains or drops a pin while the account stays the same, since a later switch would part the two, and a move of a session with sessions under it, since those can follow it or be relinked off a pin. Any other move, a rename and an archive stay card-free, and a move whose target cannot be worked out asks. The layout writes on the page that place a session keep the global origin check, which refuses a cross-site POST. The routes touch no token and return no email.
+The pin routes sit behind the password and the strict origin check. So does `POST /api/new` when its body names an account or a group. They take an id for the target and an id for the account, and GhostShell checks both against its own lists. A pin to a signed-out account is refused, as a switch to one is. An agent in a chat gets no tool to set a pin. Its `spawn_task` tool can name an account for a chip, only when more than one account is listed, by id or by name. A name that matches no account, or two, is refused in one fixed sentence that names no account. No tool reads a chip's account back, and no tool reads or sets the pin of an existing session, its own included. Its `move_session_to_group` tool can change a session's account by moving it into or out of a pinned group, so a move that changes the account gets an approval card that names the new account. So does a move that gains or drops a pin while the account stays the same, since a later switch would part the two, and a move of a session with sessions under it, since those can follow it or be relinked off a pin. Any other move, a rename and an archive stay card-free, and a move whose target cannot be worked out asks. The layout writes on the page that place a session keep the global origin check, which refuses a cross-site POST. The routes touch no token and return no email.
+
+`POST /api/chips/start` takes the account from the card and nothing else. The body says `account` (an id, or null to follow the pins) and `confirmAccount`, the account the card showed. Both need the strict origin check. The server works out the account the session would really start on, after any spill, and answers 409 when that differs from `confirmAccount`, when the pin blocks the start, or when the account is signed out or no longer listed, the active one included. A chip that stores an account and a request with no `account` key gets 400, so a stored account never starts a session unseen. The tool input in the transcript is never used. A null account with no pins starts as it did, and the inherited account is never posted or stored as a pin.
 
 ### Consequences
 
@@ -104,7 +108,7 @@ The pin routes sit behind the password and the strict origin check. So does `POS
 
 ### Out of scope
 
-- An MCP tool to read or set a pin. The UI covers the need, and it keeps an agent from moving itself onto another subscription.
+- An MCP tool to read or set a pin, or to read the account of a chip or a session. The UI covers the need, and it keeps an agent from moving itself onto another subscription. The one tool that names an account, `spawn_task`, only suggests one for a session that does not exist yet.
 - Desktop's own sign-in, which the `claude://resume` hand-off still uses.
 - Moving a running turn to another account.
 
@@ -126,6 +130,13 @@ The pin routes sit behind the password and the strict origin check. So does `POS
 - ✅ Work keeps running through a signed-out account.
 - ❌ It spends a subscription nobody chose for that work, without saying so.
 
+### Name an account on a chip
+
+- ✅ A task can say which subscription it wants, and the owner sees it before it runs.
+- ❌ A tool that wrote a pin straight onto the new session would let an agent choose its own subscription without the owner seeing it.
+- ❌ A chip account the page posted without a card line would let the stored chip start a session unseen.
+- ❌ A chip that only followed the pins would leave the one task that needs a second subscription to ask in prose.
+
 ## Links
 
 - Builds on [Keep two Claude accounts signed in and switch GhostShell between them](20261102-switch-claude-accounts.md), whose folders and switch behaviour a pin reuses
@@ -133,3 +144,4 @@ The pin routes sit behind the password and the strict origin check. So does `POS
 - Builds on [Show plan usage in the context popover from the CLI's own figures](20261031-plan-usage-from-the-cli.md), whose popover now follows the session's account
 - Builds on [GhostShell is the only home for routines](20261025-ghostshell-is-the-only-home-for-routines.md), whose runs can now hold a pin
 - Amended by [Let a pin name an overflow account that takes its work while the pinned one is out of usage](20261109-spill-pinned-work-to-an-overflow-account.md), which lets the owner choose a fallback on the pin
+- Amended by [issue 233](https://github.com/kulesy/ghostshell/issues/233), which lets a chip name an account that the owner confirms on the card
