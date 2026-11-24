@@ -3890,6 +3890,11 @@ html.viewing, html.viewing body { overflow: hidden; }
   touch-action: none;
 }
 
+@media (max-height: 500px) {
+  .session[data-panel] > .panel[data-keyboard] :is(.panel-head, .file-head, .file-hint) { display: none; }
+  .session[data-panel] > .panel[data-keyboard] .file-editor { padding-block: 0.25rem; }
+}
+
 .panel-resize {
   position: absolute;
   inset-block: 0;

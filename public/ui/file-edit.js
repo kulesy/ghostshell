@@ -138,6 +138,9 @@ export function EditNotes() {
     ${unstored ? html`<p class="file-hint" role="status">This browser would not keep a draft of your text, so save or copy it before you leave.</p>` : null}`;
 }
 
+// How long after the keyboard goes the box is put back to its end.
+const SETTLE_MS = 200;
+
 // iOS covers the layout viewport with the keyboard and pans the page to the caret, which carries Save and Cancel off the screen. While the
 // box is focused and the keyboard is up, the panel is pinned to the area the visual viewport shows, and the pan iOS makes to reach the caret
 // scrolls the box instead. It lets go once the keyboard is gone.
@@ -149,6 +152,7 @@ function useKeyboardFit(box) {
     if (!panel || !view) return undefined;
     let width = 0;
     let panned = 0;
+    let settling = 0;
     const covered = () => view.scale <= 1 && (window.innerHeight - view.height > 1 || view.offsetTop > 0);
     const unpin = () => {
       panel.removeAttribute('data-keyboard');
@@ -156,9 +160,18 @@ function useKeyboardFit(box) {
       width = 0;
       panned = 0;
     };
+    // iOS leaves the box scrolled past its end when it grows back. Written any sooner, this put the next tap's caret on another line.
+    // See https://github.com/kulesy/ghostshell/issues/65.
+    const settle = () => {
+      clearTimeout(settling);
+      settling = setTimeout(() => {
+        const end = el.scrollHeight - el.clientHeight;
+        if (!panel.hasAttribute('data-keyboard') && el.scrollTop > end) el.scrollTop = end;
+      }, SETTLE_MS);
+    };
     const fit = () => {
       const focused = document.activeElement === el;
-      if (!covered() || (!focused && !panel.hasAttribute('data-keyboard'))) { unpin(); if (!focused) stop(); return; }
+      if (!covered() || (!focused && !panel.hasAttribute('data-keyboard'))) { unpin(); settle(); if (!focused) stop(); return; }
       if (!width) width = panel.offsetWidth;
       panel.style.setProperty('--vv-top', `${view.offsetTop}px`);
       panel.style.setProperty('--vv-right', `${Math.max(0, window.innerWidth - view.offsetLeft - view.width)}px`);
@@ -173,13 +186,18 @@ function useKeyboardFit(box) {
     const stop = () => { view.removeEventListener('resize', fit); view.removeEventListener('scroll', fit); removeEventListener('resize', refit); };
     const refit = () => { const kept = panned; unpin(); panned = kept; fit(); };
     // The keyboard can still be on its way out when the box loses focus, so the pin goes when the viewport says it is gone, not before.
-    const onFocus = () => { watch(); fit(); };
+    const onFocus = () => { watch(); fit(); clearTimeout(settling); };
+    // iOS pans the page under the pinned panel when a drag starts outside the box, whatever `touch-action` says. Two fingers may still zoom.
+    const hold = ev => { if (panel.hasAttribute('data-keyboard') && ev.touches.length === 1 && !el.contains(ev.target)) ev.preventDefault(); };
     el.addEventListener('focus', onFocus);
     el.addEventListener('blur', fit);
+    panel.addEventListener('touchmove', hold, { passive: false });
     if (document.activeElement === el) onFocus();
     return () => {
       el.removeEventListener('focus', onFocus);
       el.removeEventListener('blur', fit);
+      panel.removeEventListener('touchmove', hold);
+      clearTimeout(settling);
       stop();
       unpin();
     };

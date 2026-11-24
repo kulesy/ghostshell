@@ -94,6 +94,13 @@ async function typeOver(page, text) {
   await page.insert(text);
 }
 
+// Stands in for the visual viewport the keyboard shrinks, as `keyboard` in the page. `height` can name a page value.
+const fakeKeyboard = (page, { height, offsetTop }) => page.evaluate(`(() => {
+  const view = Object.assign(new EventTarget(), { height: ${height}, width: innerWidth, offsetTop: ${offsetTop}, offsetLeft: 0, scale: 1 });
+  Object.defineProperty(window, 'visualViewport', { value: view, configurable: true });
+  window.keyboard = view;
+})()`);
+
 const toasts = page => page.evaluate(`[...document.querySelectorAll('[data-sonner-toast]')].map(t => t.textContent)`);
 const boxValue = page => page.evaluate(`document.querySelector('.file-editor').value`);
 const discard = async page => {
@@ -263,11 +270,7 @@ test('closing the panel with its own X while a file is half edited says the edit
 test('on a phone with the keyboard up, the panel is pinned to what the visual viewport shows so Save and Cancel stay on screen, and it lets go when the keyboard goes', { skip, timeout }, async t => {
   const page = await appPage(t, { phone: true });
   await open(page, 'draft', { phone: true });
-  await page.evaluate(`(() => {
-    const view = Object.assign(new EventTarget(), { height: 300, width: innerWidth, offsetTop: 40, offsetLeft: 0, scale: 1 });
-    Object.defineProperty(window, 'visualViewport', { value: view, configurable: true });
-    window.keyboard = view;
-  })()`);
+  await fakeKeyboard(page, { height: 300, offsetTop: 40 });
   await page.tap(button('Edit file'));
   await page.until(`document.querySelector('.panel').hasAttribute('data-keyboard')`);
   const where = () => page.evaluate(`(() => {
@@ -290,11 +293,7 @@ test('on a phone with the keyboard up, the panel is pinned to what the visual vi
 test('on a phone, the pan iOS makes to reach the caret scrolls the text box by the same amount once, and a rotation neither repeats it nor leaves the panel wider than the screen', { skip, timeout }, async t => {
   const page = await appPage(t, { phone: true });
   await open(page, 'long', { phone: true });
-  await page.evaluate(`(() => {
-    const view = Object.assign(new EventTarget(), { height: 300, width: innerWidth, offsetTop: 40, offsetLeft: 0, scale: 1 });
-    Object.defineProperty(window, 'visualViewport', { value: view, configurable: true });
-    window.keyboard = view;
-  })()`);
+  await fakeKeyboard(page, { height: 300, offsetTop: 40 });
   await page.tap(button('Edit file'));
   await page.until(`document.querySelector('.panel').hasAttribute('data-keyboard')`);
   await new Promise(resolve => setTimeout(resolve, 150));
@@ -320,17 +319,80 @@ test('on a phone, the pan iOS makes to reach the caret scrolls the text box by t
 test('on a phone, a file that only overflows once the keyboard is up still scrolls to the caret', { skip, timeout }, async t => {
   const page = await appPage(t, { phone: true });
   await open(page, 'fits', { phone: true });
-  await page.evaluate(`(() => {
-    const view = Object.assign(new EventTarget(), { height: innerHeight, width: innerWidth, offsetTop: 0, offsetLeft: 0, scale: 1 });
-    Object.defineProperty(window, 'visualViewport', { value: view, configurable: true });
-    window.keyboard = view;
-  })()`);
+  await fakeKeyboard(page, { height: 'innerHeight', offsetTop: 0 });
   await page.tap(button('Edit file'));
   await page.until(`document.activeElement === document.querySelector('.file-editor')`);
   const box = `document.querySelector('.file-editor')`;
   assert.equal(await page.evaluate(`${box}.scrollHeight <= ${box}.clientHeight`), true, 'the text fits before the keyboard opens');
   await page.evaluate(`keyboard.offsetTop = 100; keyboard.height = 300; keyboard.dispatchEvent(new Event('resize'))`);
   assert.equal(await page.evaluate(`${box}.scrollTop`), 100);
+  assert.deepEqual(page.problems, []);
+});
+
+// Chromium clamps `scrollTop` itself, so the box is given a `scrollTop` of its own to stand in for the one iOS leaves past the end.
+test('on a phone, a box iOS leaves scrolled past its end is put back once the keyboard has been gone a moment, and not when the next tap has the box', { skip, timeout }, async t => {
+  const page = await appPage(t, { phone: true });
+  await open(page, 'long', { phone: true });
+  await fakeKeyboard(page, { height: 300, offsetTop: 40 });
+  await page.tap(button('Edit file'));
+  await page.until(`document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  const past = 100_000;
+  const close = () => page.evaluate(`(() => {
+    const box = document.querySelector('.file-editor');
+    let top = ${past};
+    Object.defineProperty(box, 'scrollTop', { get: () => top, set: to => { top = to; }, configurable: true });
+    box.blur();
+    keyboard.offsetTop = 0;
+    keyboard.height = innerHeight;
+    keyboard.dispatchEvent(new Event('resize'));
+    return box.scrollTop;
+  })()`);
+  assert.equal(await close(), past, 'nothing is written as the keyboard goes');
+  await page.until(`(box => box.scrollTop === box.scrollHeight - box.clientHeight)(document.querySelector('.file-editor'))`);
+  await page.evaluate(`document.querySelector('.file-editor').focus({ preventScroll: true })`);
+  await page.evaluate(`keyboard.height = 300; keyboard.dispatchEvent(new Event('resize'))`);
+  await close();
+  await page.evaluate(`document.querySelector('.file-editor').focus({ preventScroll: true })`);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  assert.equal(await page.evaluate(`document.querySelector('.file-editor').scrollTop`), past, 'a box the next tap has focused is left alone');
+  assert.deepEqual(page.problems, []);
+});
+
+test('on a phone with the keyboard up, a one finger drag on the filename row is held, and a drag in the box, a pinch and a drag with no keyboard are not', { skip, timeout }, async t => {
+  const page = await appPage(t, { phone: true });
+  await open(page, 'long', { phone: true });
+  await fakeKeyboard(page, { height: 300, offsetTop: 40 });
+  await page.tap(button('Edit file'));
+  await page.until(`document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  const held = (selector, fingers = 1) => page.evaluate(`(target => {
+    const touches = Array.from({ length: ${fingers} }, (_, identifier) => new Touch({ identifier, target, clientX: 20, clientY: 20 }));
+    return !target.dispatchEvent(new TouchEvent('touchmove', { touches, bubbles: true, cancelable: true }));
+  })(document.querySelector('${selector}'))`);
+  assert.equal(await held('.file-name'), true);
+  assert.equal(await held('.panel-tabs'), true);
+  assert.equal(await held('.file-editor'), false);
+  assert.equal(await held('.file-name', 2), false);
+  await page.evaluate(`document.querySelector('.file-editor').blur(); keyboard.offsetTop = 0; keyboard.height = innerHeight; keyboard.dispatchEvent(new Event('resize'))`);
+  await page.until(`!document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  assert.equal(await held('.file-name'), false);
+  assert.deepEqual(page.problems, []);
+});
+
+test('on a phone on its side with the keyboard up, the rows above the text give it their room, and come back when the keyboard goes', { skip, timeout }, async t => {
+  const page = await appPage(t, { phone: true });
+  await open(page, 'long', { phone: true });
+  await page.resize(667, 320);
+  await fakeKeyboard(page, { height: 120, offsetTop: 0 });
+  await page.tap(button('Edit file'));
+  await page.until(`document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  const measure = () => page.evaluate(`Object.fromEntries(['.panel-head', '.file-head', '.file-editor'].map(s => [s, document.querySelector(s).getBoundingClientRect().height]))`);
+  const up = await measure();
+  assert.deepEqual([up['.panel-head'], up['.file-head']], [0, 0]);
+  assert.ok(up['.file-editor'] >= 110, JSON.stringify(up));
+  await page.evaluate(`document.querySelector('.file-editor').blur(); keyboard.height = innerHeight; keyboard.dispatchEvent(new Event('resize'))`);
+  await page.until(`!document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  const down = await measure();
+  assert.ok(down['.panel-head'] > 0 && down['.file-head'] > 0, JSON.stringify(down));
   assert.deepEqual(page.problems, []);
 });
 
