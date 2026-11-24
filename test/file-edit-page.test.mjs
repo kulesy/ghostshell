@@ -414,6 +414,14 @@ test('on a phone on its side, the line tapped stays where iOS showed it as the r
   assert.equal(await measure(), closed - 150);
   await page.evaluate(`dispatchEvent(new Event('resize'))`);
   assert.equal(await measure(), closed - 150, 'a resize while the keyboard is up leaves the text where it was');
+
+  await page.evaluate(`document.querySelector('.file-editor').blur(); Object.assign(keyboard, { height: innerHeight, offsetTop: 0 }); keyboard.dispatchEvent(new Event('resize'))`);
+  await page.until(`!document.querySelector('.panel').hasAttribute('data-keyboard')`);
+  await page.evaluate(`document.querySelector('.file-editor').focus({ preventScroll: true }); document.querySelector('.file-editor').scrollTop = 17`);
+  const again = await measure();
+  await page.evaluate(`keyboard.height = 100; keyboard.dispatchEvent(new Event('resize'))`);
+  await page.evaluate(`keyboard.offsetTop = 150; keyboard.dispatchEvent(new Event('scroll'))`);
+  assert.equal(await measure(), again - 150, 'the same when the pan comes after the resize');
   assert.deepEqual(page.problems, []);
 });
 

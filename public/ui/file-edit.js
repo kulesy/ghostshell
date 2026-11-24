@@ -183,8 +183,10 @@ function useKeyboardFit(box) {
       panel.style.setProperty('--vv-height', `${view.height}px`);
       panel.setAttribute('data-keyboard', '');
       // After the pin, because the box can only scroll this far once the panel has shrunk.
-      el.scrollTop += view.offsetTop - (first ? before - lead() : panned);
-      panned = view.offsetTop;
+      const top = el.scrollTop + view.offsetTop - (first ? before - lead() : panned);
+      el.scrollTop = top;
+      // iOS can report the pan after the resize, so what a box at its top could not scroll back comes off the pan.
+      panned = view.offsetTop - Math.min(0, top);
     };
     const watch = () => { view.addEventListener('resize', fit); view.addEventListener('scroll', fit); addEventListener('resize', refit); };
     const stop = () => { view.removeEventListener('resize', fit); view.removeEventListener('scroll', fit); removeEventListener('resize', refit); };
