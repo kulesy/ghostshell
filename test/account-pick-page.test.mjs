@@ -628,11 +628,11 @@ test('a card for a chip that names an account says the chip chose it, and the pi
   assert.deepEqual(page.problems, []);
 });
 
-test('a chip that names an account other than its group\'s pin says it replaces the pin, and one Start confirms it', { skip, timeout }, async t => {
+test('a chip that names an account other than its group\'s pin says it does not follow the pin, and one Start confirms it', { skip, timeout }, async t => {
   const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a', account: 'main' }] });
   assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
   const page = await openCard(t, c);
-  assert.deepEqual((await cardOf(page)).lines, ['Starts on Main, chosen by this chip.', 'This replaces the pin to Second on the group Loose. The session has no overflow account.']);
+  assert.deepEqual((await cardOf(page)).lines, ['Starts on Main, chosen by this chip.', 'It does not follow the pin to Second on the group Loose. It has no overflow account.']);
   await chipShots(page, 'chip-replaces');
   await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
   await page.click('.chip-card [data-chip=start]');
@@ -648,7 +648,7 @@ test('a signed out account stops Start and offers Sign in, which asks the server
   const c = await plainOpen({ out: true, chips: [{ ...CHIP, toolUseId: 'toolu_a', account: 'second' }] });
   const page = await openCard(t, c);
   const card = await cardOf(page);
-  assert.deepEqual([card.lines, card.state, card.start, card.buttons], [['Second is signed out. Sign it in, or pick another account.'], 'signedOut', { disabled: true }, ['Start session', 'Sign in to Second', 'Change account', 'Dismiss']]);
+  assert.deepEqual([card.lines, card.state, card.start, card.buttons], [['Second, chosen by this chip, is signed out. Sign it in, or pick another account.'], 'signedOut', { disabled: true }, ['Start session', 'Sign in to Second', 'Change account', 'Dismiss']]);
   await chipShots(page, 'chip-signed-out');
   await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
   await page.evaluate(`[...document.querySelectorAll('.chip-card .btn')].find(b => b.textContent === 'Sign in to Second').click()`);

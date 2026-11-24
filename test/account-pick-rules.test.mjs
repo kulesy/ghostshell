@@ -321,7 +321,7 @@ test('the owner\'s pick wins over the chip, and the chip wins over the pins', ()
 
 test('a chip that names an account other than its place\'s pin says it replaces the pin, and a chip that names the pinned account does not', () => {
   const replaced = chipAccount({ card: { ...GROUP, overflow: 'main' }, accounts: [MAIN, SECOND], named: 'main' });
-  assert.equal(replaced.replaces, 'This replaces the pin to Second on the group Loose and its overflow to Main. The session has no overflow account.');
+  assert.equal(replaced.replaces, 'It does not follow the pin to Second on the group Loose, or its overflow to Main. It has no overflow account.');
   assert.equal(replaced.ok, true);
   assert.equal(chipAccount({ card: GROUP, accounts: [MAIN, SECOND], named: 'second' }).replaces, '');
   assert.equal(chipAccount({ card: ACTIVE, accounts: [MAIN, SECOND], named: 'second' }).replaces, '', 'the active account is not a pin');
@@ -343,7 +343,7 @@ test('a pin the account spilled off says which account it runs on and when the p
 
 test('a signed out account stops Start, and a removed one stops it with no sign-in state', () => {
   const out = chipAccount({ card: ACTIVE, accounts: [MAIN, { ...SECOND, signedOut: true }], named: 'second' });
-  assert.deepEqual([out.state, out.ok, out.id, out.line], ['signedOut', false, 'second', 'Second is signed out. Sign it in, or pick another account.']);
+  assert.deepEqual([out.state, out.ok, out.id, out.line], ['signedOut', false, 'second', 'Second, chosen by this chip, is signed out. Sign it in, or pick another account.']);
   const active = chipAccount({ card: ACTIVE, accounts: [{ ...MAIN, signedOut: true }, SECOND] });
   assert.deepEqual([active.state, active.ok], ['signedOut', false]);
   const named = chipAccount({ card: ACTIVE, accounts: [MAIN, SECOND], named: 'gone' });

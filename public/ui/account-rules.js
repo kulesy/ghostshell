@@ -244,12 +244,12 @@ export function chipAccount({ card, accounts, named = null, pick }) {
   const how = by === 'pick' ? 'picked here' : by === 'chip' ? 'chosen by this chip' : card.from === 'active' ? 'the active account' : `pinned to ${placeWords(card)}`;
   const pinned = card.from !== 'active' && (card.spill ?? card.account);
   const replaces = want && pinned && pinned !== want
-    ? `This replaces the pin to ${accountName(accounts, pinned) || 'an account that is no longer listed'} on ${placeWords(card)}${card.overflow ? ` and its overflow to ${accountName(accounts, card.overflow) || 'an account that is no longer listed'}` : ''}. The session has no overflow account.`
+    ? `It does not follow the pin to ${accountName(accounts, pinned) || 'an account that is no longer listed'} on ${placeWords(card)}${card.overflow ? `, or its overflow to ${accountName(accounts, card.overflow) || 'an account that is no longer listed'}` : ''}. It has no overflow account.`
     : '';
   const base = { by, want, replaces, post: { account: want ?? null, confirmAccount: id } };
   if (!account) return { ...base, state: 'removed', ok: false, name: '', line: want ? 'The account this chip names is no longer listed. Pick another.' : card.blocked?.message || 'The pin it opens under is to an account that is no longer listed. Pick another.' };
   const line = spill ? `Starts on ${account.name}. ${spill}, ${how}, is out of usage, so it starts on ${account.name} until ${spill} resets.` : `Starts on ${account.name}, ${how}.`;
-  if (account.signedOut) return { ...base, state: 'signedOut', ok: false, id, name: account.name, line: `${account.name} is signed out. Sign it in, or pick another account.` };
+  if (account.signedOut) return { ...base, state: 'signedOut', ok: false, id, name: account.name, line: `${account.name}, ${how}, is signed out. Sign it in, or pick another account.` };
   return { ...base, state: 'ok', ok: true, id, name: account.name, line };
 }
 
