@@ -56,12 +56,14 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
     /// The account the session runs on, and the account it is pinned to when it holds its own pin.
     public var account: String?
     public var accountPin: String?
+    /// Where a pinned session goes when its pinned account is out of usage.
+    public var accountOverflow: String?
     public var children: [SessionRow]
     /// When the open turn began by this device's clock, present while a turn runs. The server sends how long it has run, so this is that long ago.
     public var turnStart: Date?
 
     private enum Key: String, CodingKey {
-        case id, title, cwd, branch, state, dot, lastActivityAt, sortAt, pinned, archived, group, parent, routine, source, account, accountPin, children, turnMs
+        case id, title, cwd, branch, state, dot, lastActivityAt, sortAt, pinned, archived, group, parent, routine, source, account, accountPin, accountOverflow, children, turnMs
     }
 
     /// Only the id is required. Anything else the server leaves out or words differently reads as empty.
@@ -83,17 +85,18 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
         source = try? c.decode(String.self, forKey: .source)
         account = try? c.decode(String.self, forKey: .account)
         accountPin = try? c.decode(String.self, forKey: .accountPin)
+        accountOverflow = try? c.decode(String.self, forKey: .accountOverflow)
         children = lossy(c, .children)
         turnStart = (try? c.decode(Double.self, forKey: .turnMs)).map { Self.turnStart(ms: $0) }
     }
 
     public init(id: String, title: String = "", cwd: String = "", branch: String = "", state: SessionState = .idle, dot: SessionDot? = nil,
                 lastActivityAt: Date? = nil, sortAt: Date? = nil, pinned: Bool = false, archived: Bool = false, group: String? = nil,
-                parent: String? = nil, routine: String? = nil, source: String? = nil, account: String? = nil, accountPin: String? = nil, children: [SessionRow] = [], turnStart: Date? = nil) {
+                parent: String? = nil, routine: String? = nil, source: String? = nil, account: String? = nil, accountPin: String? = nil, accountOverflow: String? = nil, children: [SessionRow] = [], turnStart: Date? = nil) {
         (self.id, self.title, self.cwd, self.branch, self.state, self.dot) = (id, title, cwd, branch, state, dot)
         (self.lastActivityAt, self.sortAt, self.pinned, self.archived) = (lastActivityAt, sortAt, pinned, archived)
         (self.group, self.parent, self.routine, self.source, self.children, self.turnStart) = (group, parent, routine, source, children, turnStart)
-        (self.account, self.accountPin) = (account, accountPin)
+        (self.account, self.accountPin, self.accountOverflow) = (account, accountPin, accountOverflow)
     }
 
     // The server sends how long the turn has run, so the start moves with every poll. Whole seconds keep two polls of one turn equal, and the feed skips an equal index.
@@ -124,8 +127,11 @@ public struct SessionGroup: Hashable, Sendable, Identifiable, Decodable {
     public var sessions: [SessionRow]
     /// The group's own chat, when it has one. Deleting the group stops it if it is running.
     public var session: SessionRow?
+    /// The account the group pins its sessions to, and where they go when it is out of usage.
+    public var account: String?
+    public var overflow: String?
 
-    private enum Key: String, CodingKey { case id, name, project, sessions, session }
+    private enum Key: String, CodingKey { case id, name, project, sessions, session, account, overflow }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         id = try c.decode(String.self, forKey: .id)
@@ -133,10 +139,13 @@ public struct SessionGroup: Hashable, Sendable, Identifiable, Decodable {
         project = try? c.decode(String.self, forKey: .project)
         sessions = lossy(c, .sessions)
         session = try? c.decode(SessionRow.self, forKey: .session)
+        account = try? c.decode(String.self, forKey: .account)
+        overflow = try? c.decode(String.self, forKey: .overflow)
     }
 
-    public init(id: String, name: String, project: String? = nil, sessions: [SessionRow] = [], session: SessionRow? = nil) {
+    public init(id: String, name: String, project: String? = nil, sessions: [SessionRow] = [], session: SessionRow? = nil, account: String? = nil, overflow: String? = nil) {
         (self.id, self.name, self.project, self.sessions, self.session) = (id, name, project, sessions, session)
+        (self.account, self.overflow) = (account, overflow)
     }
 }
 
@@ -156,7 +165,9 @@ public struct SectionEntry: Hashable, Sendable, Identifiable, Decodable {
 public struct SessionProject: Hashable, Sendable, Identifiable, Decodable {
     public var id: String
     public var name: String
-    public init(id: String, name: String) { (self.id, self.name) = (id, name) }
+    public var account: String?
+    public var overflow: String?
+    public init(id: String, name: String, account: String? = nil, overflow: String? = nil) { (self.id, self.name, self.account, self.overflow) = (id, name, account, overflow) }
 }
 
 /// Which edits and reads the server takes, so the app offers only those, as the page does. A flag the server does not send reads as false.

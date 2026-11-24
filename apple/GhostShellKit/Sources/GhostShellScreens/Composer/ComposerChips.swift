@@ -60,7 +60,7 @@ struct ComposerChips: View {
 }
 
 /// Lays the chips out left to right and starts a new line when the next one does not fit.
-private struct ChipFlow: Layout {
+struct ChipFlow: Layout {
     let spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
