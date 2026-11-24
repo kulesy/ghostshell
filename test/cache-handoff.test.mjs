@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { askText, handoffPath, makeCacheHandoff, notDue, notWritten, outOfScope, scaled, seedText, thresholdOf, TIMING } from '../lib/cache-handoff.mjs';
+import { askText, handoffPath, makeCacheHandoff, notDue, notWritten, outOfScope, scaled, seedable, seedText, thresholdOf, TIMING } from '../lib/cache-handoff.mjs';
 import { cacheWindow } from '../lib/context.mjs';
 import { makeLayout } from '../lib/layout.mjs';
 import { allowsHandoff } from '../lib/runner.mjs';
@@ -169,6 +169,14 @@ test('the seed carries the handoff in, or only its path when it is too long, and
   assert.equal(long.includes('Next: ship it.'), false);
 });
 
+test('a handoff goes in the seed unless it is long or has an @ in it, which the CLI could take as a file to load', () => {
+  const file = path.join(fresh('seed'), 'x.md');
+  for (const [text, want] of [['Next: ship it.', 'Next: ship it.'], ['x'.repeat(64 * 1024), 'x'.repeat(64 * 1024)], ['x'.repeat(64 * 1024 + 1), null], ['See @/etc/hosts', null]]) {
+    fs.writeFileSync(file, text);
+    assert.equal(seedable(file), want, text.slice(0, 20));
+  }
+});
+
 // ---- the one write that moves the work --------------------------------------------------------
 
 test('a handover gives the new session the old one\'s title, place and account pin, moves its children and archives it alone with its pin gone', () => {
@@ -192,16 +200,18 @@ test('a handover gives the new session the old one\'s title, place and account p
   assert.equal(now.assignments.old, group, 'the old session keeps its place in the archive');
 });
 
-test('a pinned session hands its pin to the new one, and a nested one hands over its parent and leaves the place to its family', () => {
+test('a session hands over its pin or its group together with its parent, which is a chat with no row when a group started it', () => {
   const pinned = makeLayout(fresh('layout'));
   pinned.pin('old', true);
   pinned.handOver('old', 'new', { title: 'T' });
   assert.deepEqual(pinned.read().pinned, ['new']);
-  const nested = makeLayout(fresh('layout'));
-  nested.handOver('old', 'new', { title: 'T', parent: 'head' });
-  assert.equal(nested.read().parents.new, 'head');
-  assert.deepEqual(nested.read().pinned, []);
-  assert.equal(nested.read().assignments.new, undefined);
+  pinned.handOver('new', 'newer', { title: 'T', parent: 'pinned-chat' });
+  assert.deepEqual([pinned.read().pinned, pinned.read().parents.newer], [['newer'], 'pinned-chat']);
+  const grouped = makeLayout(fresh('layout'));
+  const group = grouped.addGroup('G', null).id;
+  grouped.move('old', group);
+  grouped.handOver('old', 'new', { title: 'T', parent: 'group-chat' });
+  assert.deepEqual([grouped.read().assignments.new, grouped.read().parents.new], [group, 'group-chat']);
 });
 
 // ---- the quiet write for one path -------------------------------------------------------------
@@ -233,18 +243,18 @@ test('the ask\'s Write and the Read before it are allowed for its file alone, an
 
 function rig({ facts = {}, reply = replyAgo(52), tokens = 150_000, ask } = {}) {
   const folder = fresh('rig');
-  const state = { now: NOW, asked: [] };
+  const state = { now: NOW, asked: [], reply, tokens };
   const logFile = path.join(folder, 'log.jsonl');
   const home = path.join(folder, 'home');
   const handoffs = makeCacheHandoff({
     now: () => state.now,
-    tokens: () => tokens,
+    tokens: () => state.tokens,
     home: () => home,
     store: makeUpdateStore(folder, 'entries.json'),
     logFile,
     log: () => {},
     facts: () => ({ ...ok, sortAt: 100, activeAt: 90, ...facts }),
-    reply: () => reply,
+    reply: () => state.reply,
     ask: ask ?? ((id, text, file) => { state.asked.push({ id, text, file }); }),
   });
   const events = () => (fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : []);
@@ -362,6 +372,37 @@ test('a message to the session while the ask is out voids it, and one after the 
   saved.handoffs.sent(ID);
   assert.equal(saved.handoffs.cold(ID), null);
   assert.deepEqual(saved.events().map(e => e.event), ['ask', 'written', 'cleared']);
+});
+
+test('a session another app carried on is no longer cold and gets its place back, and so does one whose ask failed', async () => {
+  for (const [name, failed, carry] of [['saved', false, () => ({ ...replyAgo(0), at: NOW + 60_000 })], ['failed', true, () => ({ ...replyAgo(0), at: NOW + 60_000 })], ['compacted', false, () => ({ compacted: true })]]) {
+    const { handoffs, state, events } = rig();
+    handoffs.turnEnded(ID, NOW - 45 * MINUTE);
+    await handoffs.tick();
+    fs.mkdirSync(path.dirname(state.asked[0].file), { recursive: true });
+    fs.writeFileSync(state.asked[0].file, 'Notes.');
+    state.now = NOW + 1000;
+    state.reply = { ...replyAgo(0), at: NOW + 900 };
+    handoffs.askEnded(ID, { failed });
+    await handoffs.tick();
+    assert.ok(handoffs.kept(ID), `${name}: the ask's own reply does not count`);
+    state.reply = carry();
+    state.tokens = 0;
+    assert.equal(handoffs.carriedOn(ID), true, name);
+    await handoffs.tick();
+    assert.deepEqual([handoffs.cold(ID), handoffs.kept(ID)], [null, null], name);
+    assert.equal(events().at(-1).reason, 'another app carried the session on', name);
+  }
+});
+
+test('a message to a session whose ask failed gives it its place back', async () => {
+  const { handoffs } = rig();
+  handoffs.turnEnded(ID, NOW - 45 * MINUTE);
+  await handoffs.tick();
+  handoffs.askEnded(ID, { failed: true });
+  assert.ok(handoffs.kept(ID));
+  handoffs.sent(ID);
+  assert.equal(handoffs.kept(ID), null);
 });
 
 test('an ask that was out at a restart is failed, and a handoff that is saved stays', async () => {

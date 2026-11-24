@@ -147,6 +147,28 @@ test('a group\'s chat and a chat with sub sessions are given the form tool too',
   assert.ok(names(handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { subs: () => [] })).includes('show_form'));
 });
 
+test('chips handed over belong to the session that carries on, and the earlier session\'s chat still finds the ones it made', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-chips-'));
+  try {
+    const chips = makeChips(dir);
+    chips.put({ toolUseId: 'open', sessionId: 'old', status: 'open' });
+    chips.put({ toolUseId: 'begun', sessionId: 'old', startedId: 'a', status: 'started' });
+    chips.put({ toolUseId: 'under', sessionId: 'sub', parent: 'old', nestUnder: 'old', startedId: 'b', status: 'started' });
+    chips.put({ toolUseId: 'other', sessionId: 'sub', parent: 'boss', status: 'open' });
+    chips.handOver('old', 'new');
+    chips.handOver('new', 'newer');
+    const after = makeChips(dir);
+    assert.deepEqual(after.get('open'), { toolUseId: 'open', sessionId: 'newer', madeIn: 'old', status: 'open' });
+    assert.deepEqual([...after.links()], [['a', 'newer'], ['b', 'newer']]);
+    assert.deepEqual([...after.startedBy()], [['a', 'newer'], ['b', 'sub']]);
+    assert.deepEqual(after.get('other'), { toolUseId: 'other', sessionId: 'sub', parent: 'boss', status: 'open' });
+    assert.deepEqual(after.forSession('old').map(c => c.toolUseId), ['open', 'begun']);
+    assert.deepEqual(after.forSession('newer').map(c => c.toolUseId), ['open', 'begun']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a chip that records nestUnder maps its session there, an old chip to its maker, and startedBy lists the maker of every started chip', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-chips-'));
   try {

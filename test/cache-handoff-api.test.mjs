@@ -16,9 +16,9 @@ const log = s => { const f = path.join(s.state, 'cache-handoffs.jsonl'); return 
 const events = s => log(s).map(e => e.event);
 const stored = s => JSON.parse(fs.readFileSync(path.join(s.state, 'cache-handoffs.json'), 'utf8'));
 
-async function ready({ session, handoffs = { [ID]: 52 }, env, flags = {}, extra = [] } = {}) {
+async function ready({ session, handoffs = { [ID]: 52 }, env, flags = {}, extra = [], chips } = {}) {
   const s = await start({
-    sessions: [{ id: ID, title: 'Fix it', ago: 52, reply: { ago: 52 }, ...session }, ...extra], claude: true, handoffs,
+    sessions: [{ id: ID, title: 'Fix it', ago: 52, reply: { ago: 52 }, ...session }, ...extra], claude: true, handoffs, chips,
     env: { CAPCOM_CACHE_HANDOFF_SCALE: '600', ...env },
   });
   for (const [name, text] of Object.entries(flags)) fs.writeFileSync(path.join(s.home, name), text);
@@ -163,6 +163,35 @@ test('a handoff too long to put in the seed is read from its file instead', asyn
   const seed = cliCalls(s).find(c => typeof c.user === 'string' && c.user.includes('You carry on the work of session'));
   assert.ok(seed.user.includes('Read it first.'));
   assert.equal(seed.user.includes('xxxxxxxxxx'), false);
+});
+
+test('a handoff with an @ in it is read from its file, so no file it names is loaded by the message', async () => {
+  const { s, token } = await ready({ flags: { 'handoff-text': 'See @/etc/hosts\n' } });
+  await goesCold(s);
+  assert.equal(typeof (await send(s, token, ID, { text: 'Carry on', handover: true })).body().movedTo, 'string');
+  const seed = cliCalls(s).find(c => typeof c.user === 'string' && c.user.includes('You carry on the work of session'));
+  assert.ok(seed.user.includes('Read it first.'));
+  assert.equal(seed.user.includes('@'), false);
+});
+
+test('a session another app carries on takes its place by its own reply again and is not cold', async () => {
+  const { s, token } = await ready();
+  await goesCold(s);
+  const held = await rowOf(s, token, ID);
+  const transcript = path.join(s.home, '.claude', 'projects', '-test-folder', `${ID}.jsonl`);
+  const entry = JSON.parse(fs.readFileSync(transcript, 'utf8').split('\n').find(l => l.includes('"mr"')));
+  fs.appendFileSync(transcript, `${JSON.stringify({ ...entry, timestamp: new Date().toISOString(), message: { ...entry.message, id: 'elsewhere' } })}\n`);
+  await until(() => events(s).includes('cleared'));
+  assert.equal((await rowOf(s, token, ID)).cold ?? false, false);
+  await until(async () => (await rowOf(s, token, ID)).lastActivityAt > held.lastActivityAt);
+});
+
+test('a handover moves the session\'s chips to the new one', async () => {
+  const { s, token } = await ready({ chips: [{ sessionId: ID, toolUseId: 'toolu_open' }, { sessionId: OTHER, parent: ID, toolUseId: 'toolu_under' }] });
+  await goesCold(s);
+  const to = (await send(s, token, ID, { text: 'Carry on', handover: true })).body().movedTo;
+  const chips = JSON.parse(fs.readFileSync(path.join(s.state, 'chips.json'), 'utf8'));
+  assert.deepEqual([chips.toolu_open.sessionId, chips.toolu_open.madeIn, chips.toolu_under.parent], [to, ID, to]);
 });
 
 test('two messages at once start one session, and the second is told the first is under way or goes where the work moved', async () => {

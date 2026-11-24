@@ -40,7 +40,7 @@ import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { makeForms } from './lib/forms.mjs';
 import { lockHolder } from './lib/restart.mjs';
-import { SEED_INLINE_BYTES, makeCacheHandoff, notWritten, scaled as scaledHandoff, seedText, thresholdOf } from './lib/cache-handoff.mjs';
+import { makeCacheHandoff, notWritten, scaled as scaledHandoff, seedable, seedText, thresholdOf } from './lib/cache-handoff.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins, resetOf } from './lib/account-logins.mjs';
@@ -736,10 +736,11 @@ function placeStarted(id, home, { unlink = false } = {}) {
 const liveHeadOf = (row, rowOf = findRow) => (row?.parent && !rowOf(row.parent)?.archived ? row.parent : null);
 
 // Where a chip's session opens, worded for its card from the group's name now. `row` is the session that made the chip. A section's chat
-// and a routine run, which never holds sessions, have nothing to say. A list of chips passes `rowOf` over one index.
+// and a routine run, which never holds sessions, have nothing to say. The card of a handed over chip is in the earlier session's chat, so it names `row`. A list of chips passes `rowOf` over one index.
 function withOpensIn(chip, row, rowOf = findRow) {
   const groups = groupList();
   const nameOf = id => groups.find(g => g.id === id)?.name;
+  const here = chip.madeIn ? `“${row?.title}”` : 'this session';
   const opensIn = (() => {
     if (chip.group) return nameOf(chip.group) ? `Opens in ${nameOf(chip.group)}` : 'Its group has been deleted';
     if (chip.parent) {
@@ -756,21 +757,21 @@ function withOpensIn(chip, row, rowOf = findRow) {
     if (row.archived && !(chip.status === 'started' && beside)) return nameOf(row.group) ? `Opens in ${nameOf(row.group)}` : null;
     if (beside) {
       const parent = rowOf(beside)?.title;
-      const where = parent ? `Opens beside this session, under “${parent}”` : 'Opens beside this session';
+      const where = parent ? `Opens beside ${here}, under “${parent}”` : `Opens beside ${here}`;
       return nameOf(row.group) ? `${where}, in ${nameOf(row.group)}` : where;
     }
-    return nameOf(row.group) ? `Opens under this session, in ${nameOf(row.group)}` : 'Opens under this session';
+    return nameOf(row.group) ? `Opens under ${here}, in ${nameOf(row.group)}` : `Opens under ${here}`;
   })();
   return opensIn ? { ...chip, opensIn } : chip;
 }
 
 // The group's or section's own chat that a chip's maker is, from the stored maker or the session the card was drawn in.
-const chipGroupSession = (chip, sessionId, rowOf = findRow) => rowOf(chip?.sessionId || sessionId)?.groupSession || rowOf(sessionId)?.groupSession;
+const chipGroupSession = (chip, sessionId, rowOf = findRow) => rowOf(chip?.sessionId || heirOf(sessionId))?.groupSession || rowOf(sessionId)?.groupSession;
 
 // Where a chip's session lands: `group` and `parent` are what newSession is given. The card and Start both ask this, so they cannot name different places.
 // A parent that can no longer hold sessions throws what familyRoot throws. `live` gives the live index, built by the caller at most once for many chips.
 function chipLanding(chip, sessionId, rowOf = findRow, live) {
-  const makerId = chip?.sessionId || sessionId;
+  const makerId = chip?.sessionId || heirOf(sessionId);
   const groupId = chipGroupSession(chip, sessionId, rowOf);
   const named = chip?.group;
   const chosen = chip?.parent && !named && !groupId ? familyRoot(chip.parent, live?.()).root : null;
@@ -1121,13 +1122,12 @@ function unarchive(id) {
 async function handOverSend({ id, row, cold, body, images, files, documents }) {
   if (!handoffs.begin(id)) throw refuse(409, 'That session is already being handed over.');
   try {
-    if (handoffReply(id)?.at > cold.coldAt) { handoffs.notMoved(id, 'another app wrote in the session after the handoff'); return null; }
+    if (handoffs.carriedOn(id)) { handoffs.notMoved(id, 'another app wrote in the session after the handoff'); return null; }
     const gone = notWritten(cold.path, cold.askedAt);
     if (gone) { handoffs.notMoved(id, `the handoff cannot be used: ${gone}`); return null; }
     const file = transcriptFor(id)?.file ?? '';
-    const handoff = fs.statSync(cold.path).size <= SEED_INLINE_BYTES ? fs.readFileSync(cold.path, 'utf8') : null;
     const held = terminal.held(id);
-    const text = [seedText({ from: id, transcript: file, file: cold.path, handoff }), held, body.text || ''].filter(t => t.trim()).join('\n\n');
+    const text = [seedText({ from: id, transcript: file, file: cold.path, handoff: seedable(cold.path) }), held, body.text || ''].filter(t => t.trim()).join('\n\n');
     const chat = getChat(id);
     const s = settingsFor(id, row);
     const own = linksNow();
@@ -1147,6 +1147,11 @@ async function handOverSend({ id, row, cold, body, images, files, documents }) {
       placed = false;
       console.error(`Could not place ${to} where ${id} was: ${e.message}`);
     }
+    try {
+      if (placed) chips.handOver(id, to);
+    } catch (e) {
+      console.error(`Could not hand the chips of ${id} to ${to}: ${e.message}`);
+    }
     handoffs.moved(id, to);
     if (held) terminal.release(id);
     uploads.record(to, files);
@@ -1155,6 +1160,12 @@ async function handOverSend({ id, row, cold, body, images, files, documents }) {
   } finally {
     handoffs.end(id);
   }
+}
+
+// The session that carries on an archived one's work, or the session itself.
+function heirOf(id) {
+  const to = findRow(id)?.archived && handoffs.entries()[id]?.movedTo;
+  return to && findRow(to) ? heirOf(to) : id;
 }
 
 const workingChat = id => {
@@ -2389,9 +2400,11 @@ async function api(req, res, u) {
     const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, model: postedModel, effort: postedEffort } = body;
     if (!sessionId || !toolUseId) return send(res, 400, { error: 'Which chip?' });
     const known = chips.get(toolUseId);
-    const maker = () => findRow(known?.sessionId || sessionId);
+    const makerId = known?.sessionId || heirOf(sessionId);
+    const maker = () => findRow(makerId);
+    const made = { sessionId: makerId, ...(makerId !== sessionId && !known && { madeIn: sessionId }) };
     if (known && known.status !== 'open') return send(res, 409, { error: `That chip was already ${known.status}.`, chip: withOpensIn(known, maker()) });
-    if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: withOpensIn(chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }), maker()) });
+    if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: withOpensIn(chips.put({ ...known, toolUseId, ...made, title, status: 'dismissed' }), maker()) });
     // An account on the request picks the subscription the session spends, so it needs this host's own Origin, as /api/new does.
     if ((Object.hasOwn(body, 'account') || Object.hasOwn(body, 'confirmAccount')) && !strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
     const text = known?.prompt || prompt;
@@ -2443,7 +2456,7 @@ async function api(req, res, u) {
     // A group deleted while the session started leaves it loose, never nested where the chip did not ask for it.
     if (named) placeStarted(id, named, { unlink: true }) || placeStarted(id, null, { unlink: true });
     else if (groupId) placeStarted(id, groupId);
-    const started = chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), ...(nestUnder && { nestUnder }), status: 'started', startedId: id });
+    const started = chips.put({ ...known, toolUseId, ...made, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), ...(nestUnder && { nestUnder }), status: 'started', startedId: id });
     return send(res, 200, { id, chip: withOpensIn(started, findRow(started.sessionId)) });
   }
   const booking = /^\/api\/groups\/([\w-]+)\/session$/.exec(u.pathname);
@@ -2475,7 +2488,7 @@ async function api(req, res, u) {
     let liveIndex;
     const live = () => liveIndex ??= buildIndex();
     const accountDefault = chipAccountCard(null, id, rowOf, d, live);
-    return send(res, 200, { chips: chips.forSession(id).map(c => withAccountCard(withOpensIn(c, rowOf(id), rowOf), rowOf, d, live)), ...(accountDefault && { accountDefault }) });
+    return send(res, 200, { chips: chips.forSession(id).map(c => withAccountCard(withOpensIn(c, rowOf(c.sessionId), rowOf), rowOf, d, live)), ...(accountDefault && { accountDefault }) });
   }
   if (req.method === 'GET' && action === 'forms') return send(res, 200, { forms: forms.forSession(id) });
   // The pictures of the whole chat as items with refs and no bytes, for the viewer to count and step through.
