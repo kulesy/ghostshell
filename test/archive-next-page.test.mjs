@@ -539,9 +539,16 @@ test('on the smallest phone a swiped row keeps its fold and its menu on screen, 
   const y = await page.evaluate(`${boss}.getBoundingClientRect().y + 20`);
   for (const x of [200, 100, 70]) await touch('touchMove', x, y);
   await pause(page, 150);
+  await page.evaluate(`(() => {
+    const li = ${boss};
+    window.settling = [];
+    new MutationObserver(() => {
+      if (li.dataset.swipe?.includes('back')) window.settling.push([...li.querySelectorAll(':scope > :is(.fold, .more)')].map(el => el.getBoundingClientRect().left));
+    }).observe(li, { attributeFilter: ['data-swipe'] });
+  })()`);
   await touch('touchEnd');
-  assert.match(await page.evaluate(`${boss}.dataset.swipe`), /back/);
-  assert.deepEqual(await buttons(), rest, 'the buttons stay put while the row settles');
+  await page.until(`window.settling.length > 0`);
+  assert.deepEqual(await page.evaluate(`window.settling[0]`), rest.map(b => b.left), 'the buttons stay put while the row settles');
   await page.tap('a.row[data-id="boss"] ~ .fold');
   await page.until(`${boss}.querySelector(':scope > .fold').getAttribute('aria-expanded') === 'false'`);
 
@@ -549,5 +556,31 @@ test('on the smallest phone a swiped row keeps its fold and its menu on screen, 
   await drag([50, 56, 90, 130]);
   assert.ok((await buttons())[0].left > rest[0].left + 70, 'on a wider phone the buttons move with the row');
   await touch('touchEnd');
+  assert.deepEqual(page.problems, []);
+});
+
+test('on the smallest phone a running row swiped past its archive point keeps its time clear of its buttons', { skip, timeout }, async t => {
+  const s = await start({ sessions: FAMILY, groups: GROUPS, claude: true });
+  await startedRunning(s, 'boss');
+  const page = await appPage(t, s, '#/', { phone: true });
+  const boss = `document.querySelector('a.row[data-id="boss"]').parentElement`;
+  const touch = (type, x, y) => page.call('Input.dispatchTouchEvent', { type, touchPoints: x === undefined ? [] : [{ x, y }] });
+  await page.resize(320, 640);
+  await page.until(`!!${boss}.querySelector('.row-run')`, 10000);
+  const y = await page.evaluate(`${boss}.getBoundingClientRect().y + 20`);
+  await touch('touchStart', 40, y);
+  for (const x of [50, 56, 90, 130, 200, 300]) await touch('touchMove', x, y);
+  await pause(page, 100);
+  assert.match(await page.evaluate(`${boss}.dataset.swipe`), /right armed/);
+  const { text, button } = await page.evaluate(`(() => {
+    const run = ${boss}.querySelector('.row-run');
+    const range = document.createRange();
+    range.selectNodeContents(run);
+    const drawn = range.getBoundingClientRect().right;
+    const clipped = getComputedStyle(run).overflowX === 'visible' ? drawn : Math.min(drawn, run.getBoundingClientRect().right);
+    return { text: clipped, button: Math.min(...[...${boss}.querySelectorAll(':scope > :is(.fold, .more)')].map(el => el.getBoundingClientRect().left)) };
+  })()`);
+  assert.ok(text <= button, `the time ends at ${text} and the first button starts at ${button}`);
+  await touch('touchCancel');
   assert.deepEqual(page.problems, []);
 });

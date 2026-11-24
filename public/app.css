@@ -1471,13 +1471,14 @@ a.row[data-id], [data-slot="command-item"][data-archived] { touch-action: pan-y 
     --swipe-room: min(var(--swipe, 0px), 100% - 7rem);
     width: calc(100% - var(--swipe-room));
     margin-left: var(--swipe-room);
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
     border-start-end-radius: 0;
     border-end-end-radius: 0;
   }
 
   [data-swipe~="right"]:is([data-swipe~="back"], [data-swipe~="out"]) > .row { transition-property: transform, margin-left, width; }
 
-  [data-swipe~="right"] > .row > .row-meta { overflow: hidden; }
+  [data-swipe~="right"] > .row > :is(.row-nest, .row-run, .row-meta) { min-width: 0; overflow: hidden; }
 
   [data-swipe~="right"]:not([data-swipe~="out"], [data-swipe~="collapse"]) > :is(.row, .more, .fold) { transform: none; }
 }
