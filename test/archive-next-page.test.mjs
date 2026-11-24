@@ -511,3 +511,43 @@ test('on a phone a swipe in the list archives the row and opens nothing', { skip
   assert.equal(await page.evaluate(`!!document.querySelector('.chat-head')`), false);
   assert.deepEqual(page.problems, []);
 });
+
+test('on the smallest phone a swiped row keeps its fold and its menu on screen, and they answer during and after the swipe', { skip, timeout }, async t => {
+  const s = await start({ sessions: FAMILY, groups: GROUPS, claude: true });
+  const page = await appPage(t, s, '#/', { phone: true });
+  const boss = `document.querySelector('a.row[data-id="boss"]').parentElement`;
+  const buttons = () => page.evaluate(`[...${boss}.querySelectorAll(':scope > :is(.fold, .more)')].map(el => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return { left: r.left, on: r.left >= 0 && r.right <= innerWidth && el.contains(hit) };
+  })`);
+  const touch = (type, x, y) => page.call('Input.dispatchTouchEvent', { type, touchPoints: x === undefined ? [] : [{ x, y }] });
+  const drag = async xs => {
+    const y = await page.evaluate(`${boss}.getBoundingClientRect().y + 20`);
+    await touch('touchStart', 40, y);
+    for (const x of xs) await touch('touchMove', x, y);
+    await pause(page, 100);
+  };
+
+  await page.resize(320, 640);
+  await page.until(`${boss}.querySelectorAll(':scope > :is(.fold, .more)').length === 3`);
+  const rest = await buttons();
+  assert.ok(rest.every(b => b.on), 'the buttons are on screen at rest');
+  await drag([50, 56, 90, 130, 200, 300]);
+  assert.match(await page.evaluate(`${boss}.dataset.swipe`), /right armed/);
+  assert.deepEqual(await buttons(), rest, 'the buttons stay where they were');
+  const y = await page.evaluate(`${boss}.getBoundingClientRect().y + 20`);
+  for (const x of [200, 100, 70]) await touch('touchMove', x, y);
+  await pause(page, 150);
+  await touch('touchEnd');
+  assert.match(await page.evaluate(`${boss}.dataset.swipe`), /back/);
+  assert.deepEqual(await buttons(), rest, 'the buttons stay put while the row settles');
+  await page.tap('a.row[data-id="boss"] ~ .fold');
+  await page.until(`${boss}.querySelector(':scope > .fold').getAttribute('aria-expanded') === 'false'`);
+
+  await page.resize(390, 844);
+  await drag([50, 56, 90, 130]);
+  assert.ok((await buttons())[0].left > rest[0].left + 70, 'on a wider phone the buttons move with the row');
+  await touch('touchEnd');
+  assert.deepEqual(page.problems, []);
+});

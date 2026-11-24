@@ -1466,6 +1466,22 @@ a.row[data-id], [data-slot="command-item"][data-archived] { touch-action: pan-y 
 
 [data-swipe~="out"] > :is(.row, .more, .fold, [data-slot="command-item"]) { transition: transform 160ms cubic-bezier(0.25, 1, 0.5, 1); }
 
+@media (max-width: 339px) {
+  [data-swipe~="right"] > .row {
+    --swipe-room: min(var(--swipe, 0px), 100% - 7rem);
+    width: calc(100% - var(--swipe-room));
+    margin-left: var(--swipe-room);
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  [data-swipe~="right"]:is([data-swipe~="back"], [data-swipe~="out"]) > .row { transition-property: transform, margin-left, width; }
+
+  [data-swipe~="right"] > .row > .row-meta { overflow: hidden; }
+
+  [data-swipe~="right"]:not([data-swipe~="out"], [data-swipe~="collapse"]) > :is(.row, .more, .fold) { transform: none; }
+}
+
 [data-swipe~="collapse"] {
   overflow: hidden;
   transition: height 160ms cubic-bezier(0.25, 1, 0.5, 1), margin-bottom 160ms cubic-bezier(0.25, 1, 0.5, 1);

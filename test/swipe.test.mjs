@@ -33,7 +33,7 @@ async function mount({ leaves = () => true, reduced = false, active } = {}) {
   globalThis.requestAnimationFrame = fn => setTimeout(fn, 16);
   globalThis.document = Object.assign(target(), { body: { classList: { contains: () => dragging.on } } });
   globalThis.window = target();
-  const host = { dataset: {}, offsetHeight: 48, style: { setProperty(name, value) { this[name] = value; }, removeProperty(name) { delete this[name]; } } };
+  const host = { dataset: {}, offsetHeight: 48, getBoundingClientRect: () => ({ width: WIDTH, height: 48 }), style: { setProperty(name, value) { this[name] = value; }, removeProperty(name) { delete this[name]; } } };
   const row = { parentElement: host, dataset: { id: 'r1' }, getBoundingClientRect: () => ({ width: WIDTH, height: 48 }) };
   const box = target();
   const swiped = [];
@@ -240,6 +240,21 @@ test('the click a touch sends after a swipe is swallowed for a moment, and a tap
   mock.timers.tick(250);
   assert.equal(t.clicked(), false);
   t.stop();
+});
+
+test('on the smallest pages a press beside the row straight after a swipe hears its click, and on a wider one it does not', async () => {
+  for (const [width, swallowed] of [[320, false], [339, false], [340, true], [400, true]]) {
+    const t = await mount();
+    globalThis.innerWidth = width;
+    t.down(100, 100);
+    t.move(112, 100);
+    t.move(150, 100);
+    t.up(150, 100);
+    t.down(280, 100, 'touch', () => null);
+    assert.equal(t.clicked(), swallowed, `at ${width}`);
+    t.stop();
+    mock.timers.reset();
+  }
 });
 
 test('stopping takes the listeners off, and a swipe in progress leaves the host clean', async () => {
