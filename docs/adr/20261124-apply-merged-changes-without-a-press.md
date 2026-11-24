@@ -35,7 +35,7 @@ Chosen option: "The server waits for the quiet moment itself", because it costs 
 The server checks for merged changes every 30 minutes, as before. After a check finds some, it looks every 5 seconds for a moment when all of these hold:
 
 1. `autoUpdate` is on, which is the default, and launchd runs this server. A server started by hand or from a test never applies anything. The server asks launchd at each check until it answers yes, and then remembers.
-2. The checkout is on `main`, has no uncommitted change to a tracked file, and has no commit that `origin/main` lacks. Otherwise nothing merges, nothing restarts, and the banner gives the reason.
+2. The checkout is on `main`, has no uncommitted change to a tracked file, has no commit that `origin/main` lacks, and has never been at a commit that is still waiting on `origin/main`. The last one is read from the checkout's own reflog, so it needs no state file: a reset by hand to an earlier commit counts, and a pull, a merge or a restart does not. Otherwise nothing merges, nothing restarts, and the banner gives the reason.
 3. No update or restart is already under way.
 
 A page-only change is then merged. A change that needs a restart also waits until all of these hold, so it never merges early and leaves new page files in front of the old server:
@@ -53,6 +53,7 @@ It then fetches and checks again, and tests every condition against that result 
 2. The server must have been up for 30 minutes before it restarts itself. A server that keeps restarting for any reason never adds a restart of its own, and a fault in the comparison could cause at most two restarts an hour.
 3. A restart is asked for only when the checkout holds the commit it is for, so the new server starts on that commit and finds nothing waiting.
 4. The helper's lock allows one restart at a time, and it refuses a server that has been up for less than 60 seconds.
+5. A checkout moved back from a commit on `main` is held, so the server never merges a commit again that the owner rolled back by hand. A press of Update is the way forward, and it clears the hold because the commit is then no longer waiting.
 
 ### What it trusts
 
@@ -64,7 +65,8 @@ With the setting on, a commit on `origin/main` runs on the Mac as the owner with
 - ✅ Sign-ins and routine retries are held for at most 5 minutes in 30.
 - ✅ With the setting off, the banner works as it did.
 - ❌ A chat that waits on an answer counts as running, so one left waiting holds every release until it is answered or Force restart is confirmed.
-- ❌ A commit that stops the server from starting goes live with no one watching, and has to be fixed by hand on the Mac.
+- ❌ A commit that stops the server from starting goes live with no one watching, and has to be rolled back by hand on the Mac. The checkout then stays on the earlier commit, with the reason in the banner, until Update is pressed. That holds after a fix lands on `main` too.
+- ❌ A checkout that was briefly on another branch or detached, at a commit that later landed on `main`, is held the same way. Update clears it.
 - ❌ Two changes that need a restart within 30 minutes of each other go live up to 30 minutes apart.
 - ❌ It does not build the Mac app. `npm run apple:install` still follows a Swift change.
 

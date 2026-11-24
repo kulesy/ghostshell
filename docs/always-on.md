@@ -76,6 +76,8 @@ With `autoUpdate` on, which is the default, the server applies waiting changes i
 3. It then fetches again, tests all of this on the new result, merges, and runs `npm run restart -- --wait <minutes>` with at most 5 minutes. It never passes `--now` or `--take-over`, so Force restart stays yours.
 4. Each 30 minute check allows one attempt. A failed merge, a helper that could not start and a helper that gave up are tried again after the next check, and the banner shows the reason meanwhile.
 
+To roll back a bad merge, reset the checkout to the good commit and restart. The checkout stays there, with the reason in the banner, until Update is pressed. That holds after a fix lands on `main` too, so press Update to move forward again.
+
 Set `autoUpdate` to `false` in `config.local.json` to turn it off, as [Configuration](configuration.md#autoupdate) says. [The decision record](adr/20261124-apply-merged-changes-without-a-press.md) has the reasons and what it trusts.
 
 A change that needs a restart also offers Force restart beside the main button. It asks first, naming how many running chats it will cut, then pulls if anything is waiting and runs `npm run restart -- --now --take-over`. That also works while an Update is waiting for chats: the waiting helper is told to go now. It ignores the quiet window and the wait for chats, and it still refuses when the server started less than 60 seconds ago.

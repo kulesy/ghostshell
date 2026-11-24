@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { APPLY_UPTIME_S, CHANGED_REASON, importedAt, inQuietWindow, makeUpdate, needsRestart, parseSubject, QUIET_REASON, repoUrl, REREAD_EVERY_MS, restartRefused, waitMinutes } from '../lib/update.mjs';
+import { APPLY_UPTIME_S, CHANGED_REASON, importedAt, inQuietWindow, makeUpdate, MOVED_BACK_REASON, needsRestart, parseSubject, QUIET_REASON, repoUrl, REREAD_EVERY_MS, restartRefused, waitMinutes } from '../lib/update.mjs';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-update-test-'));
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' } });
@@ -993,4 +993,59 @@ test('a press behaves as before with the setting on: it restarts a checkout with
   assert.equal(r.update.state().problem, FIXES.local.problem);
   assert.deepEqual(await r.update.update(), {});
   assert.deepEqual(r.restarts, [[r.live, 30]]);
+});
+
+// The owner's rollback: the bad commit was merged, then `git reset --hard` moved the checkout back and the server was restarted.
+function rolledBack(over) {
+  const r = go(over);
+  r.merge('Change the server (#2)', SERVER);
+  git(r.live, 'pull', '-q', '--ff-only');
+  git(r.live, 'reset', '-q', '--hard', 'HEAD~1');
+  return r;
+}
+
+test('a checkout moved back by hand from a commit on main is held, merges nothing, restarts nothing and says why', async () => {
+  const calls = [];
+  const r = rolledBack({ git: recorded(calls) });
+  const before = head(r);
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r), r.restarts.length, ran(calls, 'merge')], [before, 0, 0]);
+  assert.deepEqual([r.update.state().kind, r.update.state().problem], ['update', MOVED_BACK_REASON]);
+  assert.equal(r.said, undefined);
+});
+
+test('a checkout moved back stays held when another commit lands on main, and a press of Update moves it forward and clears the hold', async () => {
+  const r = rolledBack();
+  r.merge('Change the server again (#3)', { 'lib/a.mjs': 'export const a = 3;\n' });
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r) !== originHead(r), r.restarts.length, r.update.state().problem], [true, 0, MOVED_BACK_REASON]);
+  assert.deepEqual(await r.update.update(), {});
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().problem], [true, 1, '']);
+  r.merge('Change the server a third time (#4)', { 'lib/a.mjs': 'export const a = 4;\n' });
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().problem], [true, 2, '']);
+});
+
+test('ordinary automatic merges, a pull and a commit pushed from the checkout are never held as moved back', async () => {
+  const r = go();
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.scheduled();
+  await many(r, 10);
+  r.merge('Change the server again (#3)', { 'lib/a.mjs': 'export const a = 3;\n' });
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().problem], [true, 2, '']);
+  put(r.live, 'docs/a.md', 'from the checkout\n');
+  git(r.live, 'commit', '-q', '-am', 'Edit on the Mac');
+  git(r.live, 'push', '-q', 'origin', 'main');
+  git(r.author, 'pull', '-q', '--ff-only');
+  r.merge('Move the button (#4)', PAGE);
+  git(r.live, 'pull', '-q', '--ff-only');
+  r.merge('Change the server a third time (#5)', { 'lib/a.mjs': 'export const a = 5;\n' });
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().problem], [true, 3, '']);
 });
