@@ -355,7 +355,7 @@ private struct ChipCard: View {
     var body: some View {
         let input = call.input
         VStack(alignment: .leading, spacing: 4) {
-            Text("Suggested task").font(ChatStyle.small).fontWeight(.medium).foregroundStyle(ChatStyle.muted)
+            Text(verbatim: GroupRules.chipKind(tool: call.name)).font(ChatStyle.small).fontWeight(.medium).foregroundStyle(ChatStyle.muted)
             Text(verbatim: input["title"]?.string ?? "Untitled task").font(ChatStyle.body).fontWeight(.semibold)
             if let tldr = input["tldr"]?.string, !tldr.isEmpty { Text(verbatim: tldr).font(ChatStyle.body).foregroundStyle(ChatStyle.muted) }
             if let prompt = input["prompt"]?.string, !prompt.isEmpty { ToolIO(text: ChatText.clip(prompt, lines: 8), maxHeight: 144).padding(.top, 4) }

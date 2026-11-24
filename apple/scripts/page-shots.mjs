@@ -231,6 +231,12 @@ const fileScreen = (link, shown, wait = 600) => async (page, ctx) => {
 };
 
 const SCREENS = {
+  chips: [
+    ['chip-named', chatScreen('chip-named', 'on Opus 5.5 at High effort')],
+    ['chip-out', chatScreen('chip-out', 'on Sonnet 5.5')],
+    ['chip-pins', chatScreen('chip-pins', 'Starts in ~/Projects/site')],
+    ['chip-desktop', chatScreen('chip-desktop', 'Suggested task from Desktop')],
+  ],
   chat: [
     ['01-sign-in', async (page, ctx) => { await page.goto(`${ctx.address}/login`); await sleep(800); }],
     ['02-sidebar', (page, ctx) => ctx.go('#/')],

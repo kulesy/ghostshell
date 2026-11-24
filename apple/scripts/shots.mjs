@@ -28,7 +28,7 @@ const option = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] ?? ''
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(option('--out') || path.join(here, '..', 'screenshots'));
 const FLOW = option('--flow')?.split(',');
-const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups', 'terminal', 'composer', 'journeys'];
+const FLOWS = ['main', 'marks', 'chats', 'widgets', 'accounts', 'approvals', 'organise', 'routines', 'files', 'groups', 'terminal', 'composer', 'chips', 'journeys'];
 if (argv.includes('--flow') && (!FLOW[0] || FLOW.some(flow => !FLOWS.includes(flow)))) {
   console.error(`${FLOW[0] ? `Unknown --flow ${FLOW.join(',')}.` : '--flow needs a value.'} The flows are: ${FLOWS.join(', ')}.`);
   process.exit(2);
@@ -1866,6 +1866,35 @@ async function terminalFlow(bundle, appearance) {
   }
 }
 
+// The suggested-task card: where and on what it starts, for a card naming a model and an effort, a model alone, neither, and one from Desktop in a folder long enough to wrap.
+async function chipsFlow(bundle, appearance) {
+  const stub = await startChipStub();
+  console.log(`\n== ${appearance}: suggested task cards`);
+  const app = new App(bundle, { address: stub.address, appearance, tag: '13' });
+  try {
+    await app.launch();
+    app.type('whatever');
+    app.submit();
+    check(await until('rows', () => app.rows() === stub.rows.length), 'the chip stub lists its chats');
+    for (const [id, line, desktop] of [
+      ['chip-named', 'Starts in ~/Projects/site on Opus 5.5 at High effort'],
+      ['chip-out', 'Starts in ~/Projects/site on Sonnet 5.5'],
+      ['chip-pins', 'Starts in ~/Projects/site'],
+      ['chip-desktop', 'Starts in ~/Projects/site/.claude/worktrees/upload-retry on Opus 5.5 at Extra effort', true],
+    ]) {
+      app.chooseRow(rowOf(stub, id));
+      const lines = () => app.texts().split('\n');
+      if (!check(await until(id, () => lines().includes(line), 20), `${id} says "${line}"`)) console.log(app.texts());
+      check(lines().includes('Suggested task from Desktop') === !!desktop && lines().includes('Suggested task') === !desktop, `${id} ${desktop ? 'says' : 'does not say'} it is from Desktop`);
+      await sleep(800);
+      await app.both(id);
+    }
+  } finally {
+    await app.quit();
+    stub.stop();
+  }
+}
+
 // MARK: Journeys
 
 // The stub for each journey's `stub`: where the app signs in, when its sidebar is ready, and how a chat id becomes a row.
@@ -2049,6 +2078,7 @@ try {
     if (flows.includes('groups')) await groupsFlow(bundle, appearance);
     if (flows.includes('terminal')) await terminalFlow(bundle, appearance);
     if (flows.includes('composer')) await composerFlow(bundle, appearance);
+    if (flows.includes('chips')) await chipsFlow(bundle, appearance);
     if (flows.includes('journeys') && appearance === 'light') await journeysFlow(bundle, appearance);
   }
   // watch() has already failed a check for each app that came forward.

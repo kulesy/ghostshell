@@ -14,6 +14,9 @@ final class ChipStore {
     /// The owner's pick on each card, kept for as long as the chat is open.
     private(set) var picks: [String: ChipPick] = [:]
     private(set) var signingIn: Set<String> = []
+    /// The server's home folder, which the card writes as ~.
+    private(set) var home = startFolder
+    @ObservationIgnored private var homeAsked = false
     @ObservationIgnored private var accountsKey: String?
     @ObservationIgnored private var accountsAt = Date.distantPast
     @ObservationIgnored private var asking = false
@@ -35,6 +38,14 @@ final class ChipStore {
         }
         checked.insert(toolID)
         await reload()
+    }
+
+    /// Reads the server's home, which is the first of its folders. A failed read is tried again by the next card that shows.
+    func loadHome() async {
+        guard !homeAsked else { return }
+        homeAsked = true
+        guard let found = (try? await client.folders())?.first else { return homeAsked = false }
+        home = found
     }
 
     private func reload() async {
@@ -128,7 +139,13 @@ struct ChipActions: View {
         let failure = signing?.stage == .failed ? signing?.problem ?? "" : ""
         let problem = store.problems[call.id] ?? (failure.isEmpty ? nil : failure)
         VStack(alignment: .leading, spacing: 6) {
-            if !folder.isEmpty { Text(verbatim: "Starts in \(folder)").font(ChatStyle.monoSmall).foregroundStyle(.secondary) }
+            Text(verbatim: GroupRules.chipStartsIn(folder: folder, home: store.home, model: GroupRules.chipValue(record: record?.model, input: call.input["model"]?.string),
+                                                   effort: GroupRules.chipValue(record: record?.effort, input: call.input["effort"]?.string)))
+                .font(ChatStyle.monoSmall)
+                .foregroundStyle(Color.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("chip-starts-in")
             switch record?.status {
             case .started?:
                 HStack(spacing: 8) {
@@ -165,6 +182,7 @@ struct ChipActions: View {
         }
         .padding(.top, 6)
         .task(id: call.id) { await store.load(call.id) }
+        .task { await store.loadHome() }
         .task(id: card != nil) { if card != nil { await store.loadAccounts() } }
         .task(id: line?.state == .signedOut ? (signing?.stage == .waiting ? 2 : 5) : 0) {
             let seconds = line?.state == .signedOut ? (signing?.stage == .waiting ? 2 : 5) : 0

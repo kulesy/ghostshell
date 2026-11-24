@@ -77,7 +77,7 @@ jobs:
       # --no-chat: the real Haiku chat needs a signed-in claude, which a runner never has.
       # NOTE: [18 Nov 2026] EK - The runner's macOS 27.0.1 crashes SwiftUI in the groups flow,
       # and marks and organise fail checks there, so those run on a Mac until the image reaches 27.2. See apple/README.md.
-      - run: npm run apple:shot -- --no-chat --flow main,widgets,approvals,routines,files,accounts --out "$RUNNER_TEMP/shots/mac"
+      - run: npm run apple:shot -- --no-chat --flow main,widgets,approvals,routines,files,accounts,chips --out "$RUNNER_TEMP/shots/mac"
       - if: always() && inputs.flows != ''
         continue-on-error: true
         env:
