@@ -16,6 +16,7 @@ import { findChromium, notFound } from '../../test/browser.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
 import { makePng } from './png.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
+import { startChipStub } from './chip-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
 import { JOURNEYS, shotName, verbOf } from './journeys.mjs';
 import { routinesStub } from './routines-fixtures.mjs';
@@ -166,6 +167,11 @@ const SETS = {
   async files() {
     const stub = await startFilesStub();
     const proxy = await startProxy(stub.address, { answer: p => (p === '/api/banners' ? {} : undefined), patch: forList() });
+    return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
+  },
+  async chips() {
+    const stub = await startChipStub();
+    const proxy = await startProxy(stub.address, { answer: p => (p === '/api/banners' ? {} : undefined), patch: forList(FEATURES) });
     return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
   },
   async groups() {
@@ -408,7 +414,7 @@ async function runSet(browser, name, width, scheme) {
 // MARK: Journeys
 
 const STEP_TIMEOUT = 8_000;
-const JOURNEY_STUBS = { chat: () => SETS.chat({ journey: true }), files: () => SETS.files(), routines: () => SETS.routines({ accept: true }) };
+const JOURNEY_STUBS = { chat: () => SETS.chat({ journey: true }), files: () => SETS.files(), routines: () => SETS.routines({ accept: true }), chip: () => SETS.chips() };
 const visible = (page, text) => page.getByText(text).locator('visible=true');
 
 // Each verb of apple/scripts/journeys.mjs as the page's real input: a click or a key a person would press.
@@ -431,6 +437,8 @@ const VERBS = {
   search: async (page, text) => { await page.locator('button.find').click({ timeout: STEP_TIMEOUT }); await page.keyboard.type(text); },
   choose: (page, n) => page.locator('[role=option]').nth(n).click({ timeout: STEP_TIMEOUT }),
   route: (page, name) => page.locator(`a[href="#/${name}"]`).locator('visible=true').first().click({ timeout: STEP_TIMEOUT }),
+  menu: (page, name) => page.getByRole('button', { name, exact: true }).locator('visible=true').first().click({ timeout: STEP_TIMEOUT }),
+  item: (page, name) => page.locator('[role^=menuitem]').filter({ has: page.locator('.menu-text', { hasText: new RegExp(`^${name}$`) }) }).first().click({ timeout: STEP_TIMEOUT }),
   fill: async (page, { field, text }) => {
     const box = page.getByLabel(field, { exact: true });
     await box.click({ timeout: STEP_TIMEOUT });

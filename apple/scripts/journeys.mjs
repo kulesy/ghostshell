@@ -10,10 +10,12 @@
 //   { link: '<link text>' }                   follow a link in the chat
 //   { search: '<text>' }                      open the sidebar's search and type into it
 //   { choose: <n> }                           choose the nth result (from 0) of the search
+//   { menu: '<button>' }                      open the menu a button holds, leaving it open
+//   { item: '<name>' }                        choose an item of the open menu by its name
 //   { route: 'routines' }                     open a page from the sidebar footer
 //   { fill: { field: '<label>', text } }      set a form field
 // `expect` is what both apps should show after the step: { text } (a string, or a list that must all show), { gone } or { results } (how many
-// search results). `stub` is the throwaway server both runners start for the journey: 'chat', 'files' or 'routines'.
+// search results). `stub` is the throwaway server both runners start for the journey: 'chat', 'files', 'routines' or 'chip'.
 export const JOURNEYS = [
   { id: 'chat', stub: 'chat', steps: [
     { id: 'open', do: { open: 'composer' }, expect: { text: 'I renamed it in 4 files' } },
@@ -42,6 +44,14 @@ export const JOURNEYS = [
     { id: 'schedule', do: { fill: { field: 'Schedule', text: '0 8 * * 1' } } },
     { id: 'prompt', do: { fill: { field: 'Prompt text', text: 'Write the weekly digest from the merged pull requests.' } } },
     { id: 'save', do: { press: 'Save' }, expect: { text: 'Weekly digest' } },
+  ] },
+  { id: 'chip-account', stub: 'chip', steps: [
+    { id: 'open', do: { open: 'chip-named' }, expect: { text: 'Starts on Second, chosen by this chip.' } },
+    { id: 'menu', do: { menu: 'Change account' } },
+    { id: 'pick', do: { item: 'Main' }, expect: { text: 'Starts on Main, picked here.' } },
+    { id: 'start', do: { press: 'Start session', mac: 'Start' }, expect: { text: 'Opened in Release' } },
+    { id: 'signed-out', do: { open: 'chip-out' }, expect: { text: ['Third, chosen by this chip, is signed out.', 'Sign in to Third'] } },
+    { id: 'pins', do: { open: 'chip-pins' }, expect: { text: 'Starts on Second, pinned to the group Release.' } },
   ] },
   { id: 'search', stub: 'chat', steps: [
     { id: 'query', do: { search: 'flaky' }, expect: { results: 1 } },

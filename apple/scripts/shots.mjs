@@ -17,6 +17,7 @@ import { startChatStub } from './chat-fixtures.mjs';
 import { listen } from '../../test/speakers.mjs';
 import { makePng } from './png.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
+import { startChipStub } from './chip-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
 import { JOURNEYS, shotName, verbOf } from './journeys.mjs';
 import { routinesStub } from './routines-fixtures.mjs';
@@ -1856,7 +1857,7 @@ async function journeyStub(kind) {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     return { address: `http://localhost:${server.address().port}`, ready: app => app.headings() >= 4, stop: () => { server.closeAllConnections(); server.close(); } };
   }
-  const stub = kind === 'files' ? await startFilesStub() : await startChatStub({ decisions: true });
+  const stub = kind === 'chip' ? await startChipStub() : kind === 'files' ? await startFilesStub() : await startChatStub({ decisions: true });
   return { address: stub.address, ready: app => app.rows() === stub.rows.length, rowOf: id => rowOf(stub, id), stop: () => stub.stop() };
 }
 
@@ -1903,6 +1904,15 @@ const MAC_VERBS = {
   choose: async (app, stub, n) => { if (!app.chooseRow(n + app.rows() - results(app))) throw new Error(`the sidebar has no result ${n}`); },
   route: async (app, stub, name) => { if (!app.press(name[0].toUpperCase() + name.slice(1))) throw new Error(`no ${name} link in the sidebar footer`); },
   // A field is found by its label, or by its place among the form's text fields. The prompt is the form's text area.
+  // A menu button is a menu button, a pop-up button or a plain button by how the window draws it, so it is found by name in all three.
+  menu: async (app, stub, name) => {
+    const button = app.find(node => ['AXMenuButton', 'AXPopUpButton', 'AXButton'].includes(node.role) && [app.label(node), node.title, node.desc].includes(name));
+    if (!button || !app.act(button)) throw new Error(`no ${name} menu button (the window offers: ${offered(app)})`);
+  },
+  item: async (app, stub, name) => {
+    const entry = app.waitFor(node => node.role === 'AXMenuItem' && node.title?.startsWith(name));
+    if (!entry || !app.act(entry)) throw new Error(`the open menu has no ${name} item`);
+  },
   fill: async (app, stub, { field, text }) => {
     const fields = app.findAll(node => node.role === 'AXTextField' && node.path.length > 4);
     const box = field === 'Prompt text' ? app.findAll(node => node.role === 'AXTextArea').at(-1)
