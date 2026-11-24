@@ -929,3 +929,31 @@ test('a chip a routine run makes with its project\'s main session as parent star
   const row = rowOf(await index(s, token), res.body().id);
   assert.deepEqual([row.parent, row.group], ['main', 'cg-work']);
 });
+
+test('a session GhostShell started has its routine from started.json whatever its first message says, and any other session has it from its message or Desktop\'s record', async () => {
+  const words = '<scheduled-task name="nightly">\nDo it.';
+  const s = await start({ groups: GROUPS, sessions: [
+    { id: 'trap', title: 'Trap', source: 'capcom', ago: 1 },
+    { id: 'other', title: 'Weekly', routine: 'weekly', source: 'capcom', ago: 2 },
+    { id: 'long', title: 'Monthly', routine: 'monthly', source: 'capcom', ago: 3 },
+    { id: 'handed', title: 'Daily', ago: 4 },
+    { id: 'cli', source: 'cli', ago: 5 },
+    { id: 'desk', title: 'Desktop run', routine: 'hourly', ago: 6 },
+  ] });
+  const write = (id, text) => fs.writeFileSync(path.join(s.home, '.claude', 'projects', '-test-folder', `${id}.jsonl`), `${JSON.stringify({ type: 'user', cwd: s.home, message: { role: 'user', content: text } })}\n`);
+  for (const id of ['trap', 'other', 'cli']) write(id, words);
+  write('long', `<scheduled-task name="monthly">\n${'x'.repeat(80_000)}`);
+  const started = path.join(s.state, 'started.json');
+  fs.writeFileSync(started, JSON.stringify([...JSON.parse(fs.readFileSync(started, 'utf8')), { id: 'handed', cwd: s.home, at: Date.now(), title: 'Daily', routine: 'daily' }]));
+  const { token } = await signIn(s);
+  const ix = await index(s, token);
+  assert.deepEqual(Object.fromEntries(ix.routines.flatMap(g => [g.latest, ...g.earlier]).map(r => [r.id, [r.routine, r.title]])), {
+    other: ['weekly', 'Weekly'],
+    long: ['monthly', 'Monthly'],
+    handed: ['daily', 'Daily'],
+    cli: ['nightly', 'nightly'],
+    desk: ['hourly', 'Desktop run'],
+  });
+  const trap = rowOf(ix, 'trap');
+  assert.deepEqual([trap.routine, trap.title], [null, 'Trap']);
+});
