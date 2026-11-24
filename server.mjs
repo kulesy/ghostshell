@@ -715,7 +715,9 @@ function chipAccountCard(chip, sessionId, rowOf = findRow, d = accountData()) {
     const { group, parent } = chipLanding(chip, sessionId, rowOf);
     const { got, blocked } = settle({ group, parent }, d);
     const fromName = got.from === 'active' ? '' : d.nameOf(got.from, got.via);
-    return { account: got.account, from: got.from, ...(fromName && { fromName }), ...(got.spilled && { spill: got.spilled }), ...(got.overflow && { overflow: got.overflow }), ...(blocked && { blocked: withWords(blocked) }) };
+    // What each listed account would give if the chip named it, so a pick that spills is worded before Start and confirmed as it will run.
+    const choices = Object.fromEntries(accounts.list().map(a => { const r = settle({ pin: a.id, group, parent }, d).got; return [a.id, { account: r.account, ...(r.spilled && { spill: r.spilled }) }]; }));
+    return { account: got.account, from: got.from, ...(fromName && { fromName }), ...(got.spilled && { spill: got.spilled }), ...(got.overflow && { overflow: got.overflow }), ...(blocked && { blocked: withWords(blocked) }), choices };
   } catch {
     return null;
   }
