@@ -4,7 +4,7 @@ This ledger tracks how closely the Mac app matches the web page. The web page un
 
 - **Pair run.** `npm run apple:parity` lays each Mac shot beside its web shot. The `parity` job in the `Swift app` workflow runs it after the Mac shots and keeps the side-by-side images as the `parity-pairs` artifact. `apple/scripts/parity-pairs.json` maps the shot names that differ, and `apple/README.md` says how to read a run.
 - **Built.** 21 Nov 2026 from commit d19857db, with one side-by-side pass. The Pass log at the end says what it covered.
-- **Rows.** 371: direct 239, translated 3, partial 59, missing 49, unsupported 8, extra 12, manual 1.
+- **Rows.** 371: direct 238, translated 3, partial 60, missing 49, unsupported 8, extra 12, manual 1.
 
 ## Statuses
 
@@ -194,7 +194,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 3.35 | Edit summary +added -removed | direct | `public/ui/approvals.js:57` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:392` | 10-tool-tiles | files/10-tool-tiles | - |
 | 3.36 | Bash tool card: command, output, Copy command | direct | `public/ui/bash.js:36` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:483` | 12-term-chat | chat/term-chat | - |
 | 3.37 | Bash card: Run again | direct | `public/ui/bash.js:44` | `apple/GhostShellKit/Sources/GhostShellScreens/Terminal/TerminalPanel.swift:234` | 12-term-after-run | chat/term-chat | - |
-| 3.38 | Suggested task card | direct | `public/ui/rows.js:114` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:358` | j-chip-account-1-open | - | The card also names the account the session starts on, with a Change account menu and Sign in, as the page does (journey `chip-account`, https://github.com/kulesy/ghostshell/issues/233). |
+| 3.38 | Suggested task card | partial | `public/ui/rows.js:114` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:358` | j-chip-account-1-open | - | The card also names the account the session starts on, with a Change account menu and Sign in, as the page does (journey `chip-account`, https://github.com/kulesy/ghostshell/issues/233). It leaves out the model, the effort and "from Desktop". See 3.38a |
 | 3.39 | Suggested task: Open, Start, Dismiss, Started, error | direct | https://github.com/kulesy/ghostshell/pull/73 | `apple/GhostShellKit/Sources/GhostShellScreens/Groups/ChipActions.swift:78` | j-chip-account-1-open | - | The card also names the account the session starts on, with a Change account menu and Sign in, as the page does (journey `chip-account`, https://github.com/kulesy/ghostshell/issues/233). |
 | 3.40 | Subagents list above the composer | partial | `public/ui/subagents.js:58` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatHeader.swift:131` | 6-chat-rich | chat/03-chat-rich | Mac lists them in a popover from the header button. See 3.40a |
 | 3.41 | Subagent card: steps and reply | missing | `public/ui/subagents.js:35` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatLive.swift:96` | - | - | Mac row shows state only, no steps or reply |
@@ -510,6 +510,7 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 | 3.26a | gap | 7-composer-quote | The Mac quotes a whole message from its menu. The page quotes the selected text, with a Quote button beside the selection or Cmd+quote, so a part of a message can be quoted. |
 | 3.31a | gap, minor | 6-chat-streaming | The Thought row on the Mac has a chevron and lighter text. |
 | 3.32a | gap, minor | 6-chat-streaming | While a reply streams, the Mac shows a system spinner. The page shows its three-dot chaser and the animated shell mark. No PR chose the spinner, and the shell mark is the page's own content, not a control. |
+| 3.38a | gap | - | The page's card names the chip's model and effort after the folder ("Starts in ~/Projects/site on Opus 5.5 at High effort") and says "Suggested task from Desktop" on a Desktop chip. The Mac card shows the folder alone and "Suggested task". No PR or PBI chose to leave them out. |
 | 3.40a | gap | 6-chat-rich | The page lists subagents as cards in a side panel tab, and each card opens. The Mac lists them as lines in a popover from the header button, with no card to open. https://github.com/kulesy/ghostshell/issues/176#issuecomment-6977301668 listed the old Mac strip as a gap, not a choice. |
 | 3.54a | gap, minor | - | The Mac adds an icon and the server's error text (`ChatThreadView.swift:45`). The page shows the words and Try again only. |
 | 4.1a | question | 7-widgets | The Mac code draws the page's ring (`ComposerView.swift:104`), and its text view sets no focus ring type, so a system ring may draw as well. Check in a key window whether one ring or two show. |
