@@ -43,6 +43,15 @@ async function viewerPage(t) {
   return page;
 }
 
+// Two taps 100ms apart by the touches' own times, so a slow machine cannot stretch them past the viewer's double tap.
+async function doubleTap(page, selector) {
+  const point = await page.evaluate(`(() => { const r = document.querySelector('${selector}').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  const start = Date.now() / 1000;
+  for (const [type, ms] of [['touchStart', 0], ['touchEnd', 40], ['touchStart', 100], ['touchEnd', 140]]) {
+    await page.call('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchStart' ? [point] : [], timestamp: start + ms / 1000 });
+  }
+}
+
 test('a tap on the picture has its click cancelled and leaves the viewer open at fit', { skip, timeout }, async t => {
   const page = await viewerPage(t);
   await page.tap('.viewer-img');
@@ -54,8 +63,7 @@ test('a tap on the picture has its click cancelled and leaves the viewer open at
 
 test('a double tap still zooms the picture, with the page left at its own size', { skip, timeout }, async t => {
   const page = await viewerPage(t);
-  await page.tap('.viewer-img');
-  await page.tap('.viewer-img');
+  await doubleTap(page, '.viewer-img');
   await page.until(`${SIZE} === 'zoom'`);
   assert.equal(await page.evaluate('visualViewport.scale'), 1);
   assert.deepEqual(page.problems, []);
