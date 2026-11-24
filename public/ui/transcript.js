@@ -1,4 +1,5 @@
 import { md } from '../md.mjs';
+import { isForm } from './ask-form-rules.js';
 import { BangRuns } from './bash.js';
 import { closeFile, openFile } from './file-view.js';
 import { duration, tokenCount } from './format.js';
@@ -91,8 +92,8 @@ function Live({ ctrl, box, pin, fileUrl }) {
 export function Transcript({ ctrl, quoting }) {
   const box = useRef(null);
   const fromBottom = useRef(0);
-  const { items, chips, accountDefault, sending, hasEarlier, loadingEarlier, loaded, failed, jump, earlierSeq, session, fileLinks, terminal } = useFields(
-    ctrl.store, 'items', 'chips', 'accountDefault', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'failed', 'jump', 'earlierSeq', 'session', 'fileLinks', 'terminal',
+  const { items, chips, forms, accountDefault, sending, hasEarlier, loadingEarlier, loaded, failed, jump, earlierSeq, session, fileLinks, terminal } = useFields(
+    ctrl.store, 'items', 'chips', 'forms', 'accountDefault', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'failed', 'jump', 'earlierSeq', 'session', 'fileLinks', 'terminal',
   );
   // Until the server says it serves linked files, a path in a reply stays text.
   const fileUrl = fileLinks ? ctrl.fileUrl : null;
@@ -198,7 +199,7 @@ export function Transcript({ ctrl, quoting }) {
       ${view === 'failed' ? html`<div class="load-state" role="alert"><p>Could not open this chat.</p><button class="btn" data-variant="outline" type="button" onClick=${ctrl.retry}>Try again</button></div>` : null}
       <button class="btn earlier" data-variant="outline" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
       <ol class="items" id="items">
-        ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} fallback=${isChip(i) ? accountDefault : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} term=${ctrl.term} terminal=${terminal} today=${today} />`)}
+        ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} form=${isForm(i) ? forms.get(i.id) : undefined} onForm=${ctrl.form} cwd=${isChip(i) ? session?.cwd : undefined} fallback=${isChip(i) ? accountDefault : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} term=${ctrl.term} terminal=${terminal} today=${today} />`)}
         ${ctrl.term ? html`<${BangRuns} ctrl=${ctrl} items=${items} hasEarlier=${hasEarlier} />` : null}
         ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, files: m.files, sending: true }} onImage=${viewImage} />`)}
       </ol>

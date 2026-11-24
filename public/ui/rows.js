@@ -1,5 +1,7 @@
 // The rows of the transcript. Each is memoised, so a row draws again only when its own item changes.
 import { md } from '../md.mjs';
+import { isForm } from './ask-form-rules.js';
+import { AskForm } from './ask-form.js';
 import { BashItem } from './bash.js';
 import { HOME } from './env.js';
 import { clip, duration, lf, modelLabel, pre, preview, sentAt, serverLabel, tilde, toolLabel } from './format.js';
@@ -173,7 +175,7 @@ function Quoted({ quote }) {
 }
 
 // Row never reads `today`. It is here so a new day redraws the rows, whose times `sentAt` works out against the date.
-const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.fallback === b.fallback && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
+const sameRow = (a, b) => a.chip === b.chip && a.form === b.form && a.onForm === b.onForm && a.cwd === b.cwd && a.fallback === b.fallback && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
   && a.term === b.term && a.terminal === b.terminal && a.today === b.today
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
 
@@ -182,7 +184,7 @@ const timeOf = i => sentAt(i.at) || undefined;
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
-export const Row = memo(function Row({ item: i, chip, cwd, fallback, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl, term, terminal }) {
+export const Row = memo(function Row({ item: i, chip, form, onForm, cwd, fallback, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl, term, terminal }) {
   if (i.kind === 'user') {
     const { quotes, text } = splitQuotes(i.text);
     return html`<li class=${`msg user${i.sending ? ' sending' : ''}`} data-time=${timeOf(i)}>${i.images?.length || i.files?.length ? html`<${Thumbs} images=${i.images} files=${i.files} url=${imageUrl} onOpen=${onImage} />` : null}${quotes.map((q, n) => html`<${Quoted} key=${n} quote=${q} />`)}${text ? html`<div class="bubble">${lf(text)}</div>` : null}</li>`;
@@ -192,6 +194,7 @@ export const Row = memo(function Row({ item: i, chip, cwd, fallback, onChip, ima
     if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} fallback=${fallback} onChip=${onChip} />`;
     if (/__mark_chapter$/.test(i.name)) return html`<li class="chapter"><span>${i.input?.title || 'Chapter'}</span></li>`;
     if (/__show_widget$/.test(i.name) && i.input?.widget_code) return html`<${Widget} t=${i} onPrompt=${onPrompt} />`;
+    if (isForm(i) && form) return html`<${AskForm} form=${form} onForm=${onForm} />`;
     if (/__dismiss_task$/.test(i.name)) return html`<li hidden></li>`;
     return html`<${ToolRow} t=${i} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} />`;
   }

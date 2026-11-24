@@ -173,6 +173,38 @@ Build the text from what the user chose, and write it as their own message (`Com
 
 Never set `location` or `location.href`. The frame would leave your page, and GhostShell closes the widget and shows a note in its place.
 
+## Asking for answers with a form
+
+When you need several answers from the user at once, call `show_form` instead of writing a widget. GhostShell draws the form from the questions you send and puts the answers in the user's next message, so end your turn after the call and wait for it.
+
+- Use `show_form` for two or more answers of different kinds, such as a choice, a date and a short note.
+- Use `AskUserQuestion` for one choice that you need before you can go on.
+- Use a widget to show something. A widget cannot collect a form, because a send from inside its frame needs a click in the frame and GhostShell cannot tell which questions it asked.
+
+Call `show_form` with a `title` of up to 120 characters and one to ten `questions`. Each question has a `type`, a `question` of up to 300 characters and, if the answer can be left out, `optional: true`. The types are:
+
+- `choice`: pick one of two to ten `options`. Each option has a `label` and, if useful, a `description`. Each label must be different.
+- `choices`: pick any number of the same kind of `options`.
+- `text`: a short typed answer, with an optional `placeholder`.
+- `date`: a day, with optional `min` and `max` written as `YYYY-MM-DD`.
+- `slider`: a number from `min` to `max`, with an optional `step` (1 if you leave it out), `start` (`min` if you leave it out) and `unit`.
+
+Every choice question also gets a box for the user's own answer, so do not add an "Other" option. Answers are limited to 500 characters.
+
+```json
+{
+  "title": "Plan the release",
+  "questions": [
+    { "type": "choice", "question": "Which branch should ship?", "options": [{ "label": "main" }, { "label": "next", "description": "The one with the new editor" }] },
+    { "type": "date", "question": "Ship on which day?", "min": "2026-12-01", "max": "2026-12-31" },
+    { "type": "slider", "question": "How many testers?", "min": 1, "max": 20, "start": 5, "unit": "people", "optional": true },
+    { "type": "text", "question": "Anything the notes should say?", "optional": true }
+  ]
+}
+```
+
+A form that fails the checks comes back as an error that says which question to fix. Call `show_form` again with the fix. When the user answers, their message lists each question with the answer. When they skip, it says so, and you should carry on without the answers.
+
 ## The tool arguments
 
 Call `widget_guide` once per chat. Call `show_widget` with its arguments in this order:

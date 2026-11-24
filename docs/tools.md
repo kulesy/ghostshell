@@ -93,6 +93,14 @@ The frame carries Desktop's variable names, SVG classes and colour ramps (with G
 
 `sendPrompt` sends a message at once on a click inside the widget and asks you first for anything else, and links always ask first. `widget_guide` tells the model how to write one, once per chat, and its `loading_messages` show in a placeholder while it writes.
 
+## Forms
+
+The `show_form` tool asks you several questions at once. Each question is a single choice, a multiple choice, a short text, a date or a slider, and every choice question has a box for your own answer. The page draws the form from the questions it was sent, so model-written code never runs in it. A date must be a real day within the range the form gives. A question marked optional can be left blank.
+
+Send answers sends one message with your answers, and Skip sends a message that says you skipped. Either one settles the form, which then shows as Answered or Skipped, on every device and after a reload. A form takes one send, so a second click or a second device cannot send it again. Enter in a field does not send it. The turn ends when Claude calls the tool, and your message starts the next one.
+
+A form you have started but not sent holds back the page's automatic reload after an update. `AskUserQuestion` is the better tool for one question Claude needs before it can go on, and it stays as it was. The Mac app shows a form call as an ordinary tool row for now, and `docs/parity.md` tracks the gap.
+
 ## Questions
 
 `AskUserQuestion` shows as option buttons, plus a box for your own answer.

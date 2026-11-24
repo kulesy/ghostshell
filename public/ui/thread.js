@@ -1,5 +1,6 @@
 // The transcript as a list of display items. These are plain functions on plain data: items are never changed in
 // place, so a row can tell by identity whether it needs to draw again.
+import { isForm } from './ask-form-rules.js';
 import { chromeTool, fullToolLabel, plural } from './format.js';
 import { joinBash } from './terminal-rules.js';
 
@@ -171,10 +172,12 @@ export function summarize(rows) {
   };
 }
 
-// Chips, chapters, widgets and questions render as themselves and end a run; every other tool call joins it, and so does thinking.
+// Chips, chapters, widgets, forms and questions render as themselves and end a run; every other tool call joins it, and so does thinking.
+// A form that failed or was denied has nothing to draw, so it joins the run like any other failed call.
 export function groupable(i) {
   if (i.kind === 'thinking') return true;
   if (i.kind !== 'tool' || i.name === 'AskUserQuestion' || /__(spawn_task|dismiss_task|mark_chapter)$/.test(i.name)) return false;
+  if (isForm(i)) return i.status === 'failed' || i.status === 'denied';
   return !(/__show_widget$/.test(i.name) && i.input?.widget_code);
 }
 

@@ -8,7 +8,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-06 | [List sessions from transcripts and Desktop's records, read only](20261006-read-only-session-list.md) | Accepted, amended 2026-10-21 and 2026-10-22 |
 | 2026-10-07 | [Offer Claude in Chrome as a guarded per-chat switch](20261007-claude-in-chrome-guarded-switch.md) | Superseded by [Claude in Chrome on by default](20261015-claude-in-chrome-on-by-default.md) |
 | 2026-10-07 | [Build Capcom on Node's standard library and plain browser files](20261007-no-dependencies-no-build-step.md) | Partly superseded by [Preact with htm for the front end](20261015-preact-htm-front-end.md) and [a native Swift app](20261107-native-swift-app-keeps-the-node-server.md) |
-| 2026-10-07 | [Serve Desktop-style tools from Capcom's own MCP server](20261007-own-mcp-server-for-desktop-style-tools.md) | Accepted, amended 2026-10-19, 2026-10-23, 2026-10-27 and 2026-10-28 |
+| 2026-10-07 | [Serve Desktop-style tools from Capcom's own MCP server](20261007-own-mcp-server-for-desktop-style-tools.md) | Accepted, amended 2026-10-19, 2026-10-23, 2026-10-27, 2026-10-28 and 2026-11-24 |
 | 2026-10-07 | [Protect Capcom with a password, a local-only bind and a private network](20261007-password-sign-in-and-local-bind.md) | Accepted, amended 2026-10-15, 2026-10-16 and 2026-11-07 |
 | 2026-10-08 | [Start sessions with the settings Claude Desktop would use](20261008-settings-follow-claude-desktop.md) | Accepted |
 | 2026-10-13 | [Publish Capcom as a public repository under the MIT licence](20261013-public-repo-under-mit.md) | Accepted |
@@ -61,3 +61,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-11-07 | [Replace the page with a native Swift app, and keep the Node server](20261107-native-swift-app-keeps-the-node-server.md) | Accepted |
 | 2026-11-09 | [Let a pin name an overflow account that takes its work while the pinned one is out of usage](20261109-spill-pinned-work-to-an-overflow-account.md) | Accepted |
 | 2026-11-11 | [Reload one MCP server in a running chat by switching it off and on](20261111-reload-an-mcp-server-with-toggle.md) | Accepted |
+| 2026-11-24 | [Let the page draw Claude's ask forms from questions sent as data](20261124-page-draws-ask-forms.md) | Accepted |

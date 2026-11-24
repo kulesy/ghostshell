@@ -156,7 +156,8 @@ const freePort = () => new Promise(resolve => {
 // Local Storage, with the ids of the sessions it marks `unread` and the minutes ago it `acked` each id, and writes a key only for what it is given. `marks` is
 // Capcom's marks.json, with the minutes ago for each id under `edges`, `seen`, `unread` and `errors`. `chips` are the chips in chips.json, each
 // { sessionId, startedId, status } with the other fields as they are, a `toolUseId` made up when it has none, and `status` open unless it is given.
-function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks, chips }) {
+// `forms` are the forms in forms.json, the same way, each { toolUseId, sessionId, title, questions } with `status` open unless it is given.
+function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks, chips, forms }) {
   const desktop = path.join(home, 'Library', 'Application Support', 'Claude');
   const records = path.join(desktop, 'claude-code-sessions', 'account', 'org');
   const transcripts = path.join(home, '.claude', 'projects', '-test-folder');
@@ -188,6 +189,10 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
   if (chips) {
     const made = chips.map((c, i) => ({ toolUseId: `toolu_${i}`, status: 'open', ...c }));
     fs.writeFileSync(path.join(state, 'chips.json'), JSON.stringify(Object.fromEntries(made.map(c => [c.toolUseId, c]))));
+  }
+  if (forms) {
+    const made = forms.map(f => ({ status: 'open', at: Date.now(), ...f }));
+    fs.writeFileSync(path.join(state, 'forms.json'), JSON.stringify(Object.fromEntries(made.map(f => [f.toolUseId, f]))));
   }
   const started = [];
   sessions.forEach(({ id, title = '', folder, archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said = [] }) => {
