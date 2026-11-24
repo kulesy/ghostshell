@@ -50,7 +50,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-28 | [Give sessions tools to find, archive, rename and move sessions, and read chips](20261028-layout-tools-for-sessions.md) | Accepted, amended 2026-11-06 |
 | 2026-10-30 | [Keep a one-off scheduled session in its own list, not as a routine pinned to a date](20261030-a-one-off-is-its-own-list.md) | Accepted |
 | 2026-10-31 | [Show plan usage in the context popover from the CLI's own figures](20261031-plan-usage-from-the-cli.md) | Accepted |
-| 2026-11-02 | [Show banners in the sidebar for Claude's sign-in ending and for merged changes waiting](20261102-banners-for-sign-in-and-updates.md) | Accepted |
+| 2026-11-02 | [Show banners in the sidebar for Claude's sign-in ending and for merged changes waiting](20261102-banners-for-sign-in-and-updates.md) | Accepted, amended 2026-11-24 |
 | 2026-11-02 | [Keep a draft for each session, and let quotes follow you between chats](20261102-a-draft-for-each-session.md) | Accepted |
 | 2026-11-02 | [Drag a selection of sessions as one, and act on it from a menu](20261102-drag-and-act-on-a-selection.md) | Accepted |
 | 2026-11-02 | [Keep two Claude accounts signed in and switch GhostShell between them](20261102-switch-claude-accounts.md) | Accepted, amended 2026-11-04 and 2026-11-09 |
@@ -61,3 +61,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-11-07 | [Replace the page with a native Swift app, and keep the Node server](20261107-native-swift-app-keeps-the-node-server.md) | Accepted |
 | 2026-11-09 | [Let a pin name an overflow account that takes its work while the pinned one is out of usage](20261109-spill-pinned-work-to-an-overflow-account.md) | Accepted |
 | 2026-11-11 | [Reload one MCP server in a running chat by switching it off and on](20261111-reload-an-mcp-server-with-toggle.md) | Accepted |
+| 2026-11-24 | [Let the server apply merged changes itself when no chat is running](20261124-apply-merged-changes-without-a-press.md) | Accepted |

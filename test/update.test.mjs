@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CHANGED_REASON, importedAt, inQuietWindow, makeUpdate, needsRestart, parseSubject, QUIET_REASON, repoUrl, REREAD_EVERY_MS, restartRefused, waitMinutes } from '../lib/update.mjs';
+import { APPLY_UPTIME_S, CHANGED_REASON, importedAt, inQuietWindow, makeUpdate, MOVED_BACK_REASON, needsRestart, parseSubject, QUIET_REASON, repoUrl, REREAD_EVERY_MS, restartRefused, waitMinutes } from '../lib/update.mjs';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-update-test-'));
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' } });
@@ -57,7 +57,8 @@ const MONDAY_EARLY = new Date(2026, 10, 2, 8, 0);
 function rig(over = {}) {
   const r = { ...repos(), restarts: [], busy: 0, locked: false, at: SATURDAY, uptime: 3600, ...over };
   r.update = makeUpdate({
-    root: r.live, restart: (root, minutes) => { r.restarts.push([root, minutes]); return Promise.resolve(''); }, locked: () => r.locked, busy: () => r.busy, now: () => r.at, uptime: () => r.uptime, graceMs: r.graceMs ?? 60_000, log: r.log,
+    root: r.live, restart: (root, minutes) => { r.restarts.push([root, minutes]); return Promise.resolve(r.helper ?? ''); }, locked: () => r.locked, busy: () => r.busy, now: () => r.at, uptime: () => r.uptime, graceMs: r.graceMs ?? 60_000, log: r.log,
+    auto: r.auto, service: r.service, signingIn: () => r.signing === true, announce: text => (r.said ??= []).push(text),
     ...(r.git && { git: r.git(r.live) }),
   });
   return r;
@@ -626,4 +627,425 @@ test('no force is offered while an update is under way, and none is possible wit
   assert.equal(r.update.state().stage, 'updating');
   assert.equal(r.update.state().force, false);
   await pending;
+});
+
+// The automatic path. `go` is a rig with the setting on, launchd running the server and no restart under way.
+const SERVER = { 'lib/a.mjs': 'export const a = 2;\n' };
+const PAGE = { 'public/app.js': 'export const app = 2;\n' };
+const go = (over = {}) => rig({ auto: true, service: async () => true, graceMs: 0, ...over });
+const many = async (r, times = 20) => { for (let i = 0; i < times; i++) await r.update.apply(); };
+const FIXES = {
+  dirty: { problem: 'This checkout has uncommitted changes.', break: r => put(r.live, 'docs/a.md', 'edited\n'), fix: r => git(r.live, 'checkout', '--', 'docs/a.md') },
+  off: { problem: 'This checkout is not on main.', break: r => git(r.live, 'checkout', '-q', '-b', 'topic'), fix: r => git(r.live, 'checkout', '-q', 'main') },
+  local: {
+    problem: 'This checkout has diverged from main.',
+    break: r => { put(r.live, 'public/mine.js', 'mine\n'); git(r.live, 'add', '-A'); git(r.live, 'commit', '-q', '-m', 'Local work'); },
+    fix: r => git(r.live, 'reset', '-q', '--hard', 'HEAD~1'),
+  },
+};
+
+test('with the setting off, or a server launchd does not run, nothing is applied and the banner is as before', async () => {
+  for (const over of [{ auto: false, service: async () => true }, { auto: true, service: async () => false }, { auto: false }]) {
+    const calls = [];
+    const r = rig({ git: recorded(calls), graceMs: 0, ...over });
+    r.merge('Change the server (#2)', SERVER);
+    await r.update.check();
+    FIXES.dirty.break(r);
+    await r.update.check();
+    calls.length = 0;
+    await many(r);
+    assert.deepEqual([calls.length, r.restarts.length, r.update.state().problem, r.update.state().kind], [0, 0, '', 'update']);
+  }
+});
+
+test('the server is asked again at each check until it says launchd runs it', async () => {
+  let says = false;
+  const r = go({ service: async () => says });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.check();
+  await many(r, 3);
+  assert.equal(r.restarts.length, 0);
+  says = true;
+  await r.update.check();
+  await r.update.apply();
+  assert.equal(r.restarts.length, 1);
+  says = false;
+  FIXES.dirty.break(r);
+  await r.update.scheduled();
+  assert.equal(r.update.state().problem, FIXES.dirty.problem, 'once it said yes it is remembered');
+});
+
+test('a server change is merged and the helper asked once with at most 5 minutes, when nothing holds it', async () => {
+  const r = go();
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.check();
+  await many(r);
+  assert.equal(head(r), originHead(r));
+  assert.equal(r.restarts.length, 1);
+  assert.equal(r.restarts[0][0], r.live);
+  assert.ok(Number.isInteger(r.restarts[0][1]) && r.restarts[0][1] > 0 && r.restarts[0][1] <= 5, `minutes ${r.restarts[0][1]}`);
+  assert.deepEqual(r.said, ['Merged the changes into the checkout.', 'Asked for a restart.']);
+});
+
+test('a restart waits while a chat runs, with nothing merged and no git, and goes when they finish', async () => {
+  const calls = [];
+  const r = go({ git: recorded(calls), busy: 2 });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.check();
+  const before = head(r);
+  calls.length = 0;
+  await many(r, 100);
+  assert.deepEqual([calls.length, head(r), r.restarts.length], [0, before, 0]);
+  r.busy = 0;
+  await r.update.apply();
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length], [true, 1]);
+});
+
+test('a restart waits out the quiet window with nothing merged, a page-only change is merged in it, and the wait stops short of 07:00', async () => {
+  const calls = [];
+  const r = go({ git: recorded(calls), at: MONDAY_EARLY });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.check();
+  const before = head(r);
+  calls.length = 0;
+  await many(r, 50);
+  assert.deepEqual([calls.length, head(r), r.restarts.length], [0, before, 0]);
+  r.at = new Date(2026, 10, 2, 9, 45);
+  await r.update.apply();
+  assert.equal(r.restarts.length, 1);
+
+  const page = go({ at: MONDAY_EARLY, busy: 3 });
+  page.merge('Move the button (#2)', PAGE);
+  await page.update.check();
+  await page.update.apply();
+  assert.deepEqual([head(page) === originHead(page), page.restarts.length], [true, 0]);
+
+  const late = go({ at: new Date(2026, 10, 2, 6, 57) });
+  late.merge('Change the server (#2)', SERVER);
+  await late.update.check();
+  await late.update.apply();
+  assert.deepEqual(late.restarts, [[late.live, 2]], 'the helper is not asked to wait past 07:00');
+  const last = go({ at: new Date(2026, 10, 2, 6, 59) });
+  last.merge('Change the server (#2)', SERVER);
+  await last.update.check();
+  await last.update.apply();
+  assert.equal(last.restarts.length, 0, 'the last minute cannot be waited out');
+});
+
+test('a checkout that is dirty, off main or has a commit of its own moves nothing, says why, and clears once it is fixed', async () => {
+  for (const [name, fixes] of Object.entries(FIXES)) {
+    for (const pulled of [false, true]) {
+      const calls = [];
+      const r = go({ git: recorded(calls) });
+      r.merge('Change the server (#2)', SERVER);
+      if (pulled) git(r.live, 'pull', '-q', '--ff-only');
+      fixes.break(r);
+      const before = head(r);
+      await r.update.check();
+      const label = `${name} ${pulled ? 'pulled' : 'update'}`;
+      assert.equal(r.update.state().kind, pulled ? 'pulled' : 'update', label);
+      assert.equal(r.update.state().problem, fixes.problem, label);
+      calls.length = 0;
+      await many(r, 5);
+      assert.deepEqual([head(r), r.restarts.length, calls.length], [before, 0, 0], label);
+      fixes.fix(r);
+      await r.update.check({ fetch: false });
+      assert.equal(r.update.state().problem, '', label);
+      await r.update.apply();
+      assert.equal(r.restarts.length, 1, label);
+    }
+  }
+  const page = go();
+  page.merge('Move the button (#2)', PAGE);
+  FIXES.dirty.break(page);
+  await page.update.check();
+  await many(page, 5);
+  assert.notEqual(head(page), originHead(page), 'a page-only merge also waits for a clean checkout');
+});
+
+test('a change to the checkout after the last look is caught right before it merges', async () => {
+  let reads = 0;
+  const r = go({ git: root => args => {
+    if (args[1] === '--abbrev-ref' && ++reads === 3) FIXES.dirty.break(r);
+    return recorded([])(root)(args);
+  } });
+  r.merge('Move the button (#2)', PAGE);
+  await r.update.check();
+  const before = head(r);
+  await r.update.apply();
+  assert.equal(head(r), before);
+  assert.equal(r.update.state().problem, FIXES.dirty.problem);
+});
+
+test('the page poll reads the checkout without taking a lock', async () => {
+  const calls = [];
+  const r = go({ git: recorded(calls) });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.check();
+  calls.length = 0;
+  r.at = new Date(r.at.getTime() + REREAD_EVERY_MS);
+  await r.update.refresh();
+  const statuses = calls.filter(args => args.includes('status'));
+  assert.ok(statuses.length > 0 && statuses.every(args => args[0] === '--no-optional-locks'));
+});
+
+test('a server under 30 minutes old restarts nothing, and a page-only change does not wait for it', async () => {
+  const r = go({ uptime: APPLY_UPTIME_S - 1 });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.check();
+  const before = head(r);
+  await many(r, 5);
+  assert.deepEqual([head(r), r.restarts.length], [before, 0]);
+  r.uptime = APPLY_UPTIME_S;
+  await r.update.apply();
+  assert.equal(r.restarts.length, 1);
+
+  const page = go({ uptime: 5 });
+  page.merge('Move the button (#2)', PAGE);
+  await page.update.check();
+  await page.update.apply();
+  assert.equal(head(page), originHead(page));
+});
+
+test('a sign-in waiting on the Mac holds a restart and not a page-only merge', async () => {
+  const r = go({ signing: true });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.check();
+  const before = head(r);
+  await many(r, 5);
+  assert.deepEqual([head(r), r.restarts.length], [before, 0]);
+  r.signing = false;
+  await r.update.apply();
+  assert.equal(r.restarts.length, 1);
+
+  const page = go({ signing: true });
+  page.merge('Move the button (#2)', PAGE);
+  await page.update.check();
+  await page.update.apply();
+  assert.equal(head(page), originHead(page));
+});
+
+test('a restart already under way holds the attempt', async () => {
+  const r = go({ locked: true });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.check();
+  const before = head(r);
+  await many(r, 5);
+  assert.deepEqual([head(r), r.restarts.length], [before, 0]);
+  r.locked = false;
+  await r.update.apply();
+  assert.equal(r.restarts.length, 1);
+});
+
+test('each scheduled check allows one attempt, so a helper that gave up is asked again only after the next one', async () => {
+  const r = go();
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.equal(r.restarts.length, 1);
+  assert.equal(r.update.state().kind, 'pulled', 'the helper gave up and the checkout stays merged');
+  await r.update.refresh();
+  await many(r, 10);
+  assert.equal(r.restarts.length, 1, 'a page poll does not start a round');
+  await r.update.update();
+  assert.equal(r.restarts.length, 2, 'a press is the owner and is not limited');
+  await many(r, 10);
+  assert.equal(r.restarts.length, 2, 'a press does not start a round');
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.equal(r.restarts.length, 3);
+});
+
+test('a chat that starts during the fetch merges nothing, costs no further fetch, and does not use up the round', async () => {
+  const calls = [];
+  const r = go({ git: root => args => {
+    const done = recorded(calls)(root)(args);
+    if (args[0] === 'fetch' && r.chatDuringFetch) r.busy = 1;
+    return done;
+  } });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.scheduled();
+  r.chatDuringFetch = true;
+  const before = head(r);
+  await many(r, 50);
+  assert.deepEqual([head(r), r.restarts.length, ran(calls, 'fetch')], [before, 0, 2]);
+  r.chatDuringFetch = false;
+  r.busy = 0;
+  await r.update.apply();
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, ran(calls, 'fetch')], [true, 1, 3]);
+});
+
+test('a page-only change that the fetch turns into a restart merges nothing while a chat runs', async () => {
+  const calls = [];
+  const r = go({ git: recorded(calls) });
+  r.merge('Move the button (#2)', PAGE);
+  await r.update.check();
+  assert.equal(r.update.state().restart, false);
+  r.busy = 1;
+  r.merge('Change the server (#3)', SERVER);
+  const before = head(r);
+  await many(r, 30);
+  assert.deepEqual([head(r), r.restarts.length, ran(calls, 'fetch')], [before, 0, 2]);
+  r.busy = 0;
+  await r.update.apply();
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length], [true, 1]);
+});
+
+test('after the merge, a window that has started or a chat that has begun stops the restart, and the next look finishes it in the same round', async () => {
+  for (const change of [r => { r.at = MONDAY_EARLY; }, r => { r.busy = 1; }, r => { r.signing = true; }]) {
+    const r = go({ git: root => args => {
+      const done = recorded([])(root)(args);
+      if (args[0] === 'merge') change(r);
+      return done;
+    } });
+    r.merge('Change the server (#2)', SERVER);
+    await r.update.scheduled();
+    await many(r, 10);
+    assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().kind], [true, 0, 'pulled']);
+    r.at = SATURDAY;
+    r.busy = 0;
+    r.signing = false;
+    await r.update.apply();
+    assert.equal(r.restarts.length, 1);
+  }
+});
+
+test('a failed merge is shown, not tried again until the next check, and a hold shows over it', async () => {
+  const calls = [];
+  let breaks = true;
+  const r = go({ git: root => args => (breaks && args[0] === 'merge' ? (calls.push(args), Promise.reject(new Error('refused'))) : recorded(calls)(root)(args)) });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([r.update.state().problem, ran(calls, 'merge'), r.restarts.length], ['Could not move main forward.', 1, 0]);
+  assert.match(r.said.at(-1), /Could not move main forward/);
+  FIXES.dirty.break(r);
+  await r.update.check({ fetch: false });
+  assert.equal(r.update.state().problem, FIXES.dirty.problem);
+  FIXES.dirty.fix(r);
+  await r.update.check({ fetch: false });
+  assert.equal(r.update.state().problem, 'Could not move main forward.');
+  breaks = false;
+  await many(r, 10);
+  assert.equal(r.restarts.length, 0, 'the same round');
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([r.update.state().problem, r.restarts.length], ['', 1]);
+});
+
+test('a helper that could not start is shown, asked for once a round, and a press clears it', async () => {
+  const r = go({ helper: 'Could not start the restart helper.' });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([r.update.state().problem, r.restarts.length], ['Could not start the restart helper.', 1]);
+  r.helper = '';
+  await r.update.update();
+  assert.deepEqual([r.update.state().problem, r.restarts.length], ['', 2]);
+});
+
+test('with nothing to update, or a read that fails, nothing is shown as a failure and the round is used', async () => {
+  const calls = [];
+  let down = false;
+  const r = go({ git: root => args => (down && args[0] === 'rev-list' ? Promise.reject(new Error('bad')) : recorded(calls)(root)(args)) });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.scheduled();
+  down = true;
+  await many(r, 10);
+  assert.deepEqual([r.update.state().problem, ran(calls, 'fetch'), r.restarts.length], ['', 2, 0]);
+  down = false;
+  await many(r, 10);
+  assert.deepEqual([ran(calls, 'fetch'), r.restarts.length], [2, 0], 'a failed read burns the round');
+});
+
+test('apply never rejects, never leaves the update marked as working, and stores a failure once', async () => {
+  let throws = false;
+  let statuses = 0;
+  const r = go({ git: root => args => {
+    if (throws && args.includes('status') && ++statuses === 2) return Promise.reject(new Error('boom'));
+    return recorded([])(root)(args);
+  } });
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.scheduled();
+  throws = true;
+  await assert.doesNotReject(r.update.apply());
+  assert.deepEqual([r.update.state().stage, r.update.state().problem], ['idle', 'Could not read this checkout.']);
+  await many(r, 5);
+  assert.equal(r.said.filter(t => /stopped/.test(t)).length, 1);
+
+  const b = go();
+  b.merge('Change the server (#2)', SERVER);
+  await b.update.check();
+  let broken = true;
+  Object.defineProperty(b, 'busy', { get() { if (broken) throw new Error('boom'); return 0; } });
+  await assert.doesNotReject(b.update.apply());
+  broken = false;
+  await many(b, 5);
+  assert.deepEqual([b.update.state().stage, b.restarts.length, b.said.filter(t => /stopped/.test(t)).length], ['idle', 0, 1]);
+});
+
+test('a press behaves as before with the setting on: it restarts a checkout with a commit of its own when nothing needs merging', async () => {
+  const r = go();
+  r.merge('Change the server (#2)', SERVER);
+  git(r.live, 'pull', '-q', '--ff-only');
+  FIXES.local.break(r);
+  await r.update.check();
+  assert.equal(r.update.state().problem, FIXES.local.problem);
+  assert.deepEqual(await r.update.update(), {});
+  assert.deepEqual(r.restarts, [[r.live, 30]]);
+});
+
+// The owner's rollback: the bad commit was merged, then `git reset --hard` moved the checkout back and the server was restarted.
+function rolledBack(over) {
+  const r = go(over);
+  r.merge('Change the server (#2)', SERVER);
+  git(r.live, 'pull', '-q', '--ff-only');
+  git(r.live, 'reset', '-q', '--hard', 'HEAD~1');
+  return r;
+}
+
+test('a checkout moved back by hand from a commit on main is held, merges nothing, restarts nothing and says why', async () => {
+  const calls = [];
+  const r = rolledBack({ git: recorded(calls) });
+  const before = head(r);
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r), r.restarts.length, ran(calls, 'merge')], [before, 0, 0]);
+  assert.deepEqual([r.update.state().kind, r.update.state().problem], ['update', MOVED_BACK_REASON]);
+  assert.equal(r.said, undefined);
+});
+
+test('a checkout moved back stays held when another commit lands on main, and a press of Update moves it forward and clears the hold', async () => {
+  const r = rolledBack();
+  r.merge('Change the server again (#3)', { 'lib/a.mjs': 'export const a = 3;\n' });
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r) !== originHead(r), r.restarts.length, r.update.state().problem], [true, 0, MOVED_BACK_REASON]);
+  assert.deepEqual(await r.update.update(), {});
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().problem], [true, 1, '']);
+  r.merge('Change the server a third time (#4)', { 'lib/a.mjs': 'export const a = 4;\n' });
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().problem], [true, 2, '']);
+});
+
+test('ordinary automatic merges, a pull and a commit pushed from the checkout are never held as moved back', async () => {
+  const r = go();
+  r.merge('Change the server (#2)', SERVER);
+  await r.update.scheduled();
+  await many(r, 10);
+  r.merge('Change the server again (#3)', { 'lib/a.mjs': 'export const a = 3;\n' });
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().problem], [true, 2, '']);
+  put(r.live, 'docs/a.md', 'from the checkout\n');
+  git(r.live, 'commit', '-q', '-am', 'Edit on the Mac');
+  git(r.live, 'push', '-q', 'origin', 'main');
+  git(r.author, 'pull', '-q', '--ff-only');
+  r.merge('Move the button (#4)', PAGE);
+  git(r.live, 'pull', '-q', '--ff-only');
+  r.merge('Change the server a third time (#5)', { 'lib/a.mjs': 'export const a = 5;\n' });
+  await r.update.scheduled();
+  await many(r, 10);
+  assert.deepEqual([head(r) === originHead(r), r.restarts.length, r.update.state().problem], [true, 3, '']);
 });
