@@ -616,7 +616,7 @@ test('a card for a chip that names an account says the chip chose it, and the pi
     await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
   };
   await chipShots(page, 'chip-menu', reopen);
-  await page.evaluate(`document.querySelector('${MENU}')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await page.press('Escape');
   await page.until(`!document.querySelector('${MENU}')`);
   await reopen();
   await choose(page, MENU, 'Main');
