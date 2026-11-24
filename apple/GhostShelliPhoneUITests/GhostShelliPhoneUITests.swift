@@ -976,6 +976,41 @@ final class GhostShelliPhoneUITests: XCTestCase {
         shot("groups-8-details")
     }
 
+    // MARK: The account on a suggested task
+
+    private func openChipChat(_ title: String) -> XCUIApplication {
+        let app = launch(stub: "chip")
+        signIn(app, expecting: title)
+        open(app, title, expecting: "I have written it up as a task you can start from here.")
+        return app
+    }
+
+    func testASuggestedTaskNamesItsAccountAndTakesAPick() throws {
+        let app = openChipChat("Suggest a task on a named account")
+        XCTAssertTrue(contains(app, "Starts on Second, chosen by this chip.").waitForExistence(timeout: 15), "The card names the account\n\(app.debugDescription)")
+        sleep(1)
+        shot("chip-account-1-named")
+        let change = app.buttons["Change account"].firstMatch
+        for name in ["Start", "Change account", "Dismiss"] { assertTouchable(app.buttons[name].firstMatch, name) }
+        change.tap()
+        let main = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Main'")).firstMatch
+        XCTAssertTrue(main.waitForExistence(timeout: 5), "The menu lists the accounts\n\(app.debugDescription)")
+        shot("chip-account-2-menu")
+        main.tap()
+        XCTAssertTrue(contains(app, "Starts on Main, picked here.").waitForExistence(timeout: 5), "The pick wins over the chip\n\(app.debugDescription)")
+        sleep(1)
+        shot("chip-account-3-picked")
+    }
+
+    func testASuggestedTaskOnASignedOutAccountCannotStart() throws {
+        let app = openChipChat("Suggest a task on a signed out account")
+        XCTAssertTrue(contains(app, "Third, chosen by this chip, is signed out.").waitForExistence(timeout: 15), "The card says the account is signed out\n\(app.debugDescription)")
+        XCTAssertFalse(app.buttons["Start"].firstMatch.isEnabled, "Start stays off")
+        assertTouchable(app.buttons["Sign in to Third"].firstMatch, "Sign in to Third")
+        sleep(1)
+        shot("chip-account-4-signed-out")
+    }
+
     // MARK: Routines and scheduled sessions
 
     // These sign in to the routines stub, which records each write and applies it to its own lists, so nothing real is made, run or deleted.

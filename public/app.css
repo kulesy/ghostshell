@@ -2013,6 +2013,8 @@ body.dragging .rows .more { opacity: 0; }
     animation-range: calc(100% - 6rem) 100%;
     animation-fill-mode: both;
   }
+
+  .transcript:has(.chip-card .menu) { -webkit-mask-image: none; mask-image: none; }
 }
 
 .btn.scroll-end {

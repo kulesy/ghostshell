@@ -106,6 +106,47 @@ public enum ChipStatus: Hashable, Sendable, ServerWord {
     }
 }
 
+/// What an open chip's card says about the account, which the server works out for the place the chip opens in. `choices` holds what each listed account would give.
+public struct ChipAccountCard: Hashable, Sendable, Decodable {
+    public struct Choice: Hashable, Sendable, Decodable {
+        public var account: String?
+        public var spill: String?
+        public init(account: String? = nil, spill: String? = nil) { (self.account, self.spill) = (account, spill) }
+        private enum Key: String, CodingKey { case account, spill }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: Key.self)
+            account = c.value(.account)
+            spill = c.value(.spill)
+        }
+    }
+
+    public var account: String?
+    /// Where the account comes from: `active`, `session`, `group`, `project` or another word the server sends.
+    public var from: String
+    public var fromName: String?
+    public var spill: String?
+    public var overflow: String?
+    /// The server's words for a pin that cannot start a session, when it sends them.
+    public var blocked: String?
+    public var choices: [String: Choice]
+
+    private enum Key: String, CodingKey { case account, from, fromName, spill, overflow, blocked, choices }
+    private enum BlockedKey: String, CodingKey { case message }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Key.self)
+        account = c.value(.account)
+        from = c.value(.from) ?? "active"
+        fromName = c.value(.fromName)
+        spill = c.value(.spill)
+        overflow = c.value(.overflow)
+        blocked = (try? c.nestedContainer(keyedBy: BlockedKey.self, forKey: .blocked)).flatMap { $0.value(.message) }
+        choices = c.value(.choices) ?? [:]
+    }
+    public init(account: String?, from: String = "active", fromName: String? = nil, spill: String? = nil, overflow: String? = nil, blocked: String? = nil, choices: [String: Choice] = [:]) {
+        (self.account, self.from, self.fromName, self.spill, self.overflow, self.blocked, self.choices) = (account, from, fromName, spill, overflow, blocked, choices)
+    }
+}
+
 /// A "start a session" card a chat made, and what became of it.
 public struct ChipRecord: Hashable, Sendable, Decodable {
     public var toolUseId: String
@@ -121,8 +162,12 @@ public struct ChipRecord: Hashable, Sendable, Decodable {
     public var model: String?
     public var effort: String?
     public var prompt: String
+    /// The account the chip names, which the card follows before the pins. Never read from the tool's input.
+    public var account: String?
+    /// Present on an open chip when the server lists more than one account.
+    public var accountCard: ChipAccountCard?
 
-    private enum Key: String, CodingKey { case toolUseId, sessionId, title, tldr, status, startedId, opensIn, group, cwd, model, effort, prompt }
+    private enum Key: String, CodingKey { case toolUseId, sessionId, title, tldr, status, startedId, opensIn, group, cwd, model, effort, prompt, account, accountCard }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         toolUseId = try c.decode(String.self, forKey: .toolUseId)
@@ -137,9 +182,12 @@ public struct ChipRecord: Hashable, Sendable, Decodable {
         model = c.value(.model)
         effort = c.value(.effort)
         prompt = c.value(.prompt) ?? ""
+        account = c.value(.account)
+        accountCard = c.value(.accountCard)
     }
     public init(toolUseId: String, sessionId: String = "", title: String = "", tldr: String = "", status: ChipStatus = .open, startedId: String? = nil, opensIn: String? = nil,
-                group: String? = nil, cwd: String? = nil, model: String? = nil, effort: String? = nil, prompt: String = "") {
+                group: String? = nil, cwd: String? = nil, model: String? = nil, effort: String? = nil, prompt: String = "", account: String? = nil, accountCard: ChipAccountCard? = nil) {
+        (self.account, self.accountCard) = (account, accountCard)
         (self.toolUseId, self.sessionId, self.title, self.tldr, self.status, self.startedId) = (toolUseId, sessionId, title, tldr, status, startedId)
         (self.opensIn, self.group, self.cwd, self.model, self.effort, self.prompt) = (opensIn, group, cwd, model, effort, prompt)
     }
@@ -157,6 +205,20 @@ public struct ChipResult: Hashable, Sendable, Decodable {
     }
 }
 
+/// The chips of a chat, and the account words for a chip the server has not stored, which is open and starts where its chat's place says.
+public struct ChipList: Hashable, Sendable {
+    public var chips: [ChipRecord]
+    public var accountDefault: ChipAccountCard?
+    public init(chips: [ChipRecord] = [], accountDefault: ChipAccountCard? = nil) { (self.chips, self.accountDefault) = (chips, accountDefault) }
+}
+
+/// What a card's Start posts for the account: `account` is the one the card named (nil follows the pins and is sent as null), `confirmAccount` the one it showed.
+public struct ChipAccountPost: Hashable, Sendable {
+    public var account: String?
+    public var confirmAccount: String
+    public init(account: String?, confirmAccount: String) { (self.account, self.confirmAccount) = (account, confirmAccount) }
+}
+
 /// The fields of a chip the web page sends back with Start or Dismiss. `cwd` is the folder the card named, if any, and `folder` the folder it showed, which the server checks.
 public struct ChipRequest: Hashable, Sendable {
     public var sessionID: String
@@ -168,10 +230,12 @@ public struct ChipRequest: Hashable, Sendable {
     public var folder: String
     public var model: String?
     public var effort: String?
+    /// Only Start of a card that showed an account line sends it.
+    public var account: ChipAccountPost?
 
-    public init(sessionID: String, toolUseID: String, title: String, tldr: String, prompt: String, cwd: String?, folder: String, model: String? = nil, effort: String? = nil) {
+    public init(sessionID: String, toolUseID: String, title: String, tldr: String, prompt: String, cwd: String?, folder: String, model: String? = nil, effort: String? = nil, account: ChipAccountPost? = nil) {
         (self.sessionID, self.toolUseID, self.title, self.tldr, self.prompt, self.cwd, self.folder) = (sessionID, toolUseID, title, tldr, prompt, cwd, folder)
-        (self.model, self.effort) = (model, effort)
+        (self.model, self.effort, self.account) = (model, effort, account)
     }
 }
 
@@ -187,14 +251,39 @@ private struct SummariesReply: Decodable, Sendable {
 
 private struct ChipsReply: Decodable, Sendable {
     var chips: [ChipRecord]
-    private enum Key: String, CodingKey { case chips }
-    init(from decoder: Decoder) throws { chips = try decoder.container(keyedBy: Key.self).list(.chips) }
+    var accountDefault: ChipAccountCard?
+    private enum Key: String, CodingKey { case chips, accountDefault }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Key.self)
+        chips = c.list(.chips)
+        accountDefault = c.value(.accountDefault)
+    }
 }
 
 private struct BookedSession: Decodable, Sendable { var id: String }
 private struct ChipBody: Encodable, Sendable {
     var sessionId, toolUseId, title, tldr, prompt, confirmCwd: String
     var cwd, model, effort: String?
+    var account: ChipAccountPost?
+
+    private enum Key: String, CodingKey { case sessionId, toolUseId, title, tldr, prompt, confirmCwd, cwd, model, effort, account, confirmAccount }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encode(sessionId, forKey: .sessionId)
+        try c.encode(toolUseId, forKey: .toolUseId)
+        try c.encode(title, forKey: .title)
+        try c.encode(tldr, forKey: .tldr)
+        try c.encode(prompt, forKey: .prompt)
+        try c.encode(confirmCwd, forKey: .confirmCwd)
+        try c.encodeIfPresent(cwd, forKey: .cwd)
+        try c.encodeIfPresent(model, forKey: .model)
+        try c.encodeIfPresent(effort, forKey: .effort)
+        if let account {
+            // A null account follows the pins, and the server tells it from a missing one, so the key is always sent.
+            if let named = account.account { try c.encode(named, forKey: .account) } else { try c.encodeNil(forKey: .account) }
+            try c.encode(account.confirmAccount, forKey: .confirmAccount)
+        }
+    }
 }
 private struct ReplyBody: Encodable, Sendable { var text: String }
 
@@ -226,9 +315,11 @@ extension GhostShellClient {
         return answer
     }
 
-    public func chips(sessionID: String) async throws -> [ChipRecord] {
+    public func chips(sessionID: String) async throws -> [ChipRecord] { try await chipList(sessionID: sessionID).chips }
+
+    public func chipList(sessionID: String) async throws -> ChipList {
         let reply: ChipsReply = try await get("api/sessions/\(try pathID(sessionID))/chips")
-        return reply.chips
+        return ChipList(chips: reply.chips, accountDefault: reply.accountDefault)
     }
 
     /// Starts the session a chip offers. A refusal with "already started" or "already dismissed" means another screen settled it first.
@@ -245,6 +336,6 @@ extension GhostShellClient {
 
     private func body(_ chip: ChipRequest) throws -> ChipBody {
         ChipBody(sessionId: try pathID(chip.sessionID), toolUseId: chip.toolUseID, title: chip.title, tldr: chip.tldr, prompt: chip.prompt, confirmCwd: chip.folder,
-                 cwd: chip.cwd, model: chip.model, effort: chip.effort)
+                 cwd: chip.cwd, model: chip.model, effort: chip.effort, account: chip.account)
     }
 }

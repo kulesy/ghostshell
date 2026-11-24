@@ -293,7 +293,7 @@ public enum OrganiseRules {
 
     public static func accountName(_ accounts: [Account], _ id: String?) -> String { accounts.first { $0.id == id }?.name ?? "" }
 
-    private static func chromeOnName(_ accounts: [Account], _ a: Account) -> String { a.chromeOn.map { accountName(accounts, $0) } ?? "" }
+    public static func chromeOnName(_ accounts: [Account], _ a: Account) -> String { a.chromeOn.map { accountName(accounts, $0) } ?? "" }
 
     /// The page's pick: shown when the server pins and there is a choice to make, or something is already pinned.
     public static func offersAccountPick(_ features: SessionFeatures?, _ accounts: [Account]?, pin: String?) -> Bool {

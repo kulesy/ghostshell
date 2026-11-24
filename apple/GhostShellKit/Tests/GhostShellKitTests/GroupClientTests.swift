@@ -128,6 +128,43 @@ final class GroupClientTests: XCTestCase {
         XCTAssertEqual(sentRequest.url?.path, "/api/chips/dismiss")
     }
 
+    func testChipListDecodesTheAccountCardAndTheDefault() async throws {
+        Echo.reset { _ in (200, #"{"chips":[{"toolUseId":"t1","status":"open","account":"second","accountCard":{"account":"main","from":"group","fromName":"Loose","spill":"second","overflow":"main","blocked":{"reason":"signed-out","message":"Words."},"choices":{"main":{"account":"main"},"second":{"account":"main","spill":"second"}}}},{"toolUseId":"t2","status":"open"}],"accountDefault":{"account":"main","from":"active","choices":{}}}"#) }
+        let list = try await client().chipList(sessionID: "s")
+        let card = try XCTUnwrap(list.chips.first?.accountCard)
+        XCTAssertEqual(list.chips.first?.account, "second")
+        XCTAssertEqual([card.account, card.from, card.fromName, card.spill, card.overflow, card.blocked], ["main", "group", "Loose", "second", "main", "Words."])
+        XCTAssertEqual(card.choices["second"], ChipAccountCard.Choice(account: "main", spill: "second"))
+        XCTAssertNil(list.chips.last?.accountCard)
+        XCTAssertEqual(list.accountDefault?.from, "active")
+    }
+
+    func testAServerThatSendsNoAccountWordsReadsAsNone() async throws {
+        Echo.reset { _ in (200, #"{"chips":[{"toolUseId":"t1","status":"open"}]}"#) }
+        let list = try await client().chipList(sessionID: "s")
+        XCTAssertNil(list.chips.first?.accountCard)
+        XCTAssertNil(list.accountDefault)
+    }
+
+    func testStartPostsTheAccountTheCardShowedAndNullForThePins() async throws {
+        Echo.reset { _ in (200, #"{"id":"n1","chip":{"toolUseId":"t1","status":"started","startedId":"n1"}}"#) }
+        var request = ChipRequest(sessionID: "s", toolUseID: "t1", title: "T", tldr: "x", prompt: "do it", cwd: nil, folder: "/work", account: ChipAccountPost(account: "second", confirmAccount: "main"))
+        _ = try await client().startChip(request)
+        var json = try sent().json
+        XCTAssertEqual(json["account"] as? String, "second")
+        XCTAssertEqual(json["confirmAccount"] as? String, "main")
+        request.account = ChipAccountPost(account: nil, confirmAccount: "main")
+        _ = try await client().startChip(request)
+        json = try sent().json
+        XCTAssertTrue(json.keys.contains("account"), "a null account is sent, never left out")
+        XCTAssertTrue(json["account"] is NSNull)
+        XCTAssertEqual(json["confirmAccount"] as? String, "main")
+        request.account = nil
+        _ = try await client().startChip(request)
+        json = try sent().json
+        XCTAssertFalse(json.keys.contains("account") || json.keys.contains("confirmAccount"), "a card with no account line posts neither")
+    }
+
     func testAChipAlreadySettledIsARefusalWithTheWords() async throws {
         Echo.reset { _ in (409, #"{"error":"That chip was already started.","chip":{"toolUseId":"t1","status":"started"}}"#) }
         let request = ChipRequest(sessionID: "s", toolUseID: "t1", title: "", tldr: "", prompt: "", cwd: nil, folder: "/w")

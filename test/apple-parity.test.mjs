@@ -55,8 +55,8 @@ test('the ledger header counts match the statuses in its rows', () => {
   assert.deepEqual(Object.fromEntries(header[2].split(', ').map(s => s.split(' ')).map(([k, v]) => [k, Number(v)])), counts);
 });
 
-const VERBS = ['open', 'type', 'key', 'press', 'pick', 'link', 'search', 'choose', 'route', 'fill'];
-const STUBS = ['chat', 'files', 'routines'];
+const VERBS = ['open', 'type', 'key', 'press', 'pick', 'link', 'search', 'choose', 'route', 'fill', 'menu', 'item'];
+const STUBS = ['chat', 'files', 'routines', 'chip'];
 
 test('the journey list is well formed, with shots named from 1 and no name used twice', () => {
   assert.ok(JOURNEYS.length >= 6 && JOURNEYS.length <= 8);
