@@ -629,6 +629,24 @@ test('a card for a chip that names an account says the chip chose it, and the pi
   assert.deepEqual(page.problems, []);
 });
 
+test('a card\'s account menu that reaches past the transcript\'s bottom edge shows every item', { skip, timeout }, async t => {
+  const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a' }] });
+  const page = await openCard(t, c);
+  await page.resize(960, 430);
+  await page.click(MENU_BUTTON);
+  await page.until(`document.querySelector('${MENU}')?.dataset.state === 'open'`);
+  // A hit test ignores a mask, so the mask is read as well.
+  const state = await page.evaluate(`(() => {
+    const menu = document.querySelector('${MENU}');
+    const list = document.querySelector('.transcript');
+    const reached = el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); };
+    return { past: menu.getBoundingClientRect().bottom > list.getBoundingClientRect().bottom, mask: getComputedStyle(list).maskImage, reached: [...menu.querySelectorAll('[role^=menuitem]')].map(reached) };
+  })()`);
+  assert.deepEqual(state, { past: true, mask: 'none', reached: [true, true, true] });
+  await shot(page, 'chip-menu-short');
+  assert.deepEqual(page.problems, []);
+});
+
 test('a chip that names an account other than its group\'s pin says it does not follow the pin, and one Start confirms it', { skip, timeout }, async t => {
   const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a', account: 'main' }] });
   assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
