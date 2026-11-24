@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { as, cliCalls, listen, request, restart, signIn, start, until as waitFor } from './harness.mjs';
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
@@ -529,4 +530,168 @@ test('the routine route is a signed-in POST that refuses an unknown project or r
   assert.equal((await move({ id: 'weekly-recap', project: null })).status, 200);
   assert.equal(onDisk(s).routineProjects, undefined);
   assert.equal((await move({ id: 'long-gone', project: null })).status, 200, 'a link left by a deleted routine can still be cleared');
+});
+
+// The owner's setting for how far send_session goes with no card. Alpha and Beta are in different projects, and Me, Mate and the chat of Alpha are in Alpha.
+const ALPHA = '5c2e8a41-7d3b-4e6f-8a90-1b2c3d4e5f60';
+const REACH_GROUPS = [{ id: 'cg-alpha', name: 'Alpha', project: 'cp-side', session: ALPHA }, { id: 'cg-beta', name: 'Beta', project: 'cp-lab' }];
+const REACH_SESSIONS = [
+  { id: 'me', title: 'Me', group: 'cg-alpha', ago: 5 }, { id: 'mate', title: 'Mate', group: 'cg-alpha', ago: 6 }, { id: 'far', title: 'Far', group: 'cg-beta', ago: 7 },
+  { id: 'nest', title: 'Nest', ago: 8 }, { id: 'gone', title: 'Gone', group: 'cg-alpha', archived: true, ago: 20 }, { id: 'kid', title: 'Kid', parent: 'me', group: 'cg-alpha', ago: 4 },
+];
+const reachReady = async mine => ready({ sessions: REACH_SESSIONS, groups: REACH_GROUPS, chips: [], ...mine });
+const settings = (s, token, json, headers = { origin: s.origin }) => request(s, 'POST', '/api/settings', { headers: { ...as(token), ...headers }, json });
+const setReach = async (s, token, sendReach) => assert.equal((await settings(s, token, { sendReach })).status, 200);
+const sendPerms = s => cliCalls(s).filter(c => c.requestId === 'perm-send_session');
+const reachFile = s => path.join(s.state, 'send-reach.json');
+const counts = s => (fs.existsSync(reachFile(s)) ? JSON.parse(fs.readFileSync(reachFile(s), 'utf8')).sent : {});
+// Asks as `from` to send to `to`, as an owner message does, and says whether it went with no card ('free') or was queued behind one ('card').
+async function askSend(s, token, from, to, extra = {}) {
+  const had = sendPerms(s).length;
+  await sendTo(s, token, from, `ask to use send_session ${JSON.stringify({ session_id: to, message: 'hello', ...extra })}`);
+  await until(() => sendPerms(s).length > had);
+  return sendPerms(s).at(-1).response === 'allow' ? 'free' : 'card';
+}
+const delivered = s => cliCalls(s).filter(c => typeof c.user === 'string' && c.user.startsWith('<session-message'));
+
+test('the settings route gives family until it is set, sets any of the three, refuses anything else, and a read never writes', async () => {
+  const { s, token } = await reachReady();
+  assert.deepEqual((await get(s, token, '/api/settings')).body(), { sendReach: 'family' });
+  assert.equal((await get(s, token, '/api/sessions')).body().features.sendReach, true);
+  assert.equal(fs.existsSync(reachFile(s)), false, 'reading writes nothing');
+  for (const bad of ['', 'ANY', 'all', 5, null, ['any'], { a: 1 }, true]) assert.equal((await settings(s, token, { sendReach: bad })).status, 400, JSON.stringify(bad));
+  assert.equal((await settings(s, token, {})).status, 400);
+  assert.equal(fs.existsSync(reachFile(s)), false, 'a refused value writes nothing');
+  for (const value of ['any', 'project', 'family']) {
+    const set = await settings(s, token, { sendReach: value });
+    assert.deepEqual([set.status, set.body()], [200, { sendReach: value }]);
+    assert.deepEqual((await get(s, token, '/api/settings')).body(), { sendReach: value });
+  }
+  assert.equal(fs.statSync(reachFile(s)).mode & 0o777, 0o600);
+  assert.equal((await post(s, token, '/api/settings/x', { sendReach: 'any' })).status, 404);
+  for (const method of ['PUT', 'DELETE']) assert.equal((await request(s, method, '/api/settings', { headers: { ...as(token), origin: s.origin }, json: { sendReach: 'any' } })).status, 404, method);
+});
+
+test('the settings route refuses a write with no Origin, another origin or a cross-site fetch, and any request that is signed out, and none of them changes the setting', async () => {
+  const { s, token } = await reachReady();
+  await setReach(s, token, 'project');
+  for (const headers of [{}, { origin: 'http://elsewhere.test' }, { origin: s.origin, 'sec-fetch-site': 'cross-site' }, { origin: s.origin, 'sec-fetch-site': 'same-site' }]) {
+    assert.equal((await settings(s, token, { sendReach: 'any' }, headers)).status, 403, JSON.stringify(headers));
+  }
+  assert.equal((await request(s, 'POST', '/api/settings', { headers: { origin: s.origin }, json: { sendReach: 'any' } })).status, 401);
+  assert.equal((await request(s, 'GET', '/api/settings')).status, 401);
+  assert.deepEqual((await get(s, token, '/api/settings')).body(), { sendReach: 'project' });
+});
+
+test('the setting survives a restart, and a corrupt file is moved aside and reads as family', async () => {
+  const first = await reachReady();
+  await setReach(first.s, first.token, 'any');
+  const again = await restart(first.s);
+  const { token } = await signIn(again);
+  assert.deepEqual((await get(again, token, '/api/settings')).body(), { sendReach: 'any' });
+  fs.writeFileSync(reachFile(again), 'not json');
+  const third = await restart(again);
+  const signed = await signIn(third);
+  assert.deepEqual((await get(third, signed.token, '/api/settings')).body(), { sendReach: 'family' });
+  assert.equal(fs.readdirSync(third.state).some(n => n.startsWith('send-reach.json.bad-')), true);
+});
+
+test('by default every send outside the family asks, one within it goes, and an approved card delivers and counts for nothing', async () => {
+  const { s, token } = await reachReady();
+  assert.equal(await askSend(s, token, 'me', 'kid'), 'free', 'a sub session');
+  for (const to of ['mate', 'far', 'nest', ALPHA]) assert.equal(await askSend(s, token, 'me', to), 'card', to);
+  assert.equal(fs.existsSync(reachFile(s)), false, 'nothing was counted');
+  assert.equal((await post(s, token, '/api/sessions/me/approve', { requestId: 'perm-send_session', decision: 'allow' })).status, 200);
+  await until(() => delivered(s).length === 1);
+  assert.equal(fs.existsSync(reachFile(s)), false, 'an approved card is not counted');
+});
+
+test('on project a send goes with no card to the same project, its group\'s chat included, and Home, another project, a section\'s chat and an archived session ask, whatever the input says', async () => {
+  const { s, token } = await reachReady();
+  await setReach(s, token, 'project');
+  const pinned = (await post(s, token, '/api/groups/pinned/session')).body().id;
+  assert.equal(await askSend(s, token, 'me', 'mate'), 'free');
+  assert.equal(await askSend(s, token, 'me', ALPHA), 'free', 'the chat of Alpha, which is in its project');
+  const spoof = { project: 'cp-side', group: 'cg-alpha', sendReach: 'any', reach: 'any', family: true };
+  for (const to of ['far', 'nest', pinned, 'gone']) assert.equal(await askSend(s, token, 'me', to, spoof), 'card', to);
+  assert.equal(await askSend(s, token, 'nest', 'me'), 'card', 'Home to a project');
+  assert.equal(await askSend(s, token, 'far', 'mate'), 'card', 'one project to another');
+});
+
+test('on any a send from an ordinary chat goes with no card to any session that is not archived, and a group\'s or section\'s chat still asks for every send', async () => {
+  const { s, token } = await reachReady();
+  await setReach(s, token, 'any');
+  const pinned = (await post(s, token, '/api/groups/pinned/session')).body().id;
+  for (const to of ['mate', 'far', 'nest', ALPHA, pinned]) assert.equal(await askSend(s, token, 'me', to), 'free', to);
+  assert.equal(await askSend(s, token, 'me', 'gone'), 'card', 'archived');
+  assert.equal(await askSend(s, token, 'me', 'me'), 'card', 'itself');
+  assert.equal(await askSend(s, token, 'me', 'nobody'), 'card', 'not a session');
+  for (const from of [ALPHA, pinned]) for (const to of ['mate', 'far', 'kid']) assert.equal(await askSend(s, token, from, to), 'card', `${from} to ${to}`);
+});
+
+test('under any a rename, a move, an archive and an unarchive outside the tree still show a card, and the layout is untouched', async () => {
+  const { s, token } = await reachReady();
+  await setReach(s, token, 'any');
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const viewer = listen(s, token, 'me');
+  try {
+    await until(() => viewer.events.length);
+    for (const [tool, input] of [['set_session_title', { session_id: 'far', title: 'x' }], ['move_session_to_group', { session_id: 'far', group: 'cg-alpha' }], ['archive_session', { session_id: 'far' }], ['unarchive_session', { session_id: 'gone' }]]) {
+      const had = viewer.events.filter(e => e.type === 'approval').length;
+      await sendTo(s, token, 'me', `ask to use ${tool} ${JSON.stringify(input)}`);
+      await until(() => viewer.events.filter(e => e.type === 'approval').length > had);
+      assert.equal(viewer.events.filter(e => e.type === 'approval').at(-1).data.tool, `mcp__capcom__${tool}`);
+    }
+  } finally {
+    viewer.close();
+  }
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+});
+
+test('going back to family applies to the next send with no restart', async () => {
+  const { s, token } = await reachReady();
+  await setReach(s, token, 'any');
+  assert.equal(await askSend(s, token, 'me', 'far'), 'free');
+  await setReach(s, token, 'family');
+  assert.equal(await askSend(s, token, 'me', 'far'), 'card');
+  await setReach(s, token, 'any');
+  assert.equal(await askSend(s, token, 'me', 'far'), 'free');
+});
+
+test('a send with no card counts for its sender and is persisted, and only the owner\'s own message to that session clears it, not a peer\'s message, an approved card or the owner writing elsewhere', async () => {
+  const { s, token } = await reachReady();
+  await setReach(s, token, 'any');
+  assert.equal(await askSend(s, token, 'me', 'far'), 'free');
+  assert.equal(await askSend(s, token, 'far', 'mate'), 'free');
+  assert.deepEqual(counts(s), { me: 1, far: 1 }, 'each send counts for its own sender');
+  assert.match(textOf(await callTool(s, token, 'nest', 'send_session', { session_id: 'me', message: 'Peer.' })), /^(Delivered|Queued)/);
+  await until(() => delivered(s).length === 1);
+  assert.deepEqual(counts(s), { me: 1, far: 1 }, 'a peer message to me cleared nothing');
+  await setReach(s, token, 'family');
+  assert.equal(await askSend(s, token, 'nest', 'me'), 'card');
+  assert.equal((await post(s, token, '/api/sessions/nest/approve', { requestId: 'perm-send_session', decision: 'allow' })).status, 200);
+  assert.deepEqual(counts(s), { me: 1, far: 1 }, 'an approved card to me cleared nothing');
+  await sendTo(s, token, 'mate', 'begin a session');
+  assert.deepEqual(counts(s), { me: 1, far: 1 }, 'the owner writing to another session cleared nothing');
+  const again = await restart(s);
+  assert.deepEqual(counts(again), { me: 1, far: 1 }, 'a restart keeps the counts');
+  const signed = await signIn(again);
+  await sendTo(again, signed.token, 'me', 'finish the turn');
+  assert.deepEqual(counts(again), { far: 1 }, 'the owner\'s message to me cleared its count and no one else\'s');
+});
+
+test('a session already at the limit goes free again once the owner writes to it, which is the reset the limit relies on', async () => {
+  const { s, token } = await reachReady();
+  await setReach(s, token, 'any');
+  fs.writeFileSync(reachFile(s), JSON.stringify({ reach: 'any', sent: { me: 10, far: 10 } }));
+  const again = await restart(s);
+  const signed = await signIn(again);
+  assert.equal(await askSend(again, signed.token, 'me', 'mate'), 'free', 'the owner\'s message that asked cleared its 10');
+  assert.deepEqual(counts(again), { me: 1, far: 10 }, 'another session\'s count is its own');
+});
+
+test('the owner\'s message route is the only place that clears a sender\'s count', () => {
+  const source = fs.readFileSync(fileURLToPath(new URL('../server.mjs', import.meta.url)), 'utf8');
+  assert.equal(source.match(/sendReach\.ownerSpoke\(/g).length, 1);
+  assert.match(source, /if \(row\.groupSession\) groupUpdates\.ownerSpoke\(id\);\n\s*sendReach\.ownerSpoke\(id\);/);
 });

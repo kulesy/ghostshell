@@ -101,8 +101,8 @@ function boot(udid) {
 
 // MARK: Servers
 
-// The chat stub does not know the accounts, banners or passkeys routes, and answers an approval with 404. This sits in front of it, answers those,
-// forwards the rest, and keeps what the tests need to read: the widget sends and the approval decisions.
+// The chat stub does not know the accounts, banners, passkeys or settings routes, and answers an approval with 404. This sits in front of it, answers those,
+// forwards the rest, and keeps what the tests need to read: the widget sends, the approval decisions and the settings posts.
 // `empty` serves no accounts and no passkeys, for the empty states.
 function startFixtures(stub, { empty = false } = {}) {
   const day = 86_400_000;
@@ -128,6 +128,9 @@ function startFixtures(stub, { empty = false } = {}) {
   ] };
   if (empty) { accounts.accounts = []; passkeys.passkeys = []; }
   const decisions = [];
+  // The settings choice decides which sessions can message each other with no card, so only this stub is ever written, and `settingsCalls` is what the test reads back.
+  const settings = { sendReach: 'family' };
+  const settingsCalls = [];
   // The passkey calls the app made, each `{ route, body }`. A native passkey is never really made, so adding one answers with the list plus a new row and keeps nothing.
   const passkeyCalls = [];
   const json = (res, body, status = 200) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
@@ -140,6 +143,17 @@ function startFixtures(stub, { empty = false } = {}) {
     if (pathname === '/__terminal') return json(res, stub.requests);
     if (pathname === '/__decisions') return json(res, decisions);
     if (pathname === '/__passkeys') return json(res, passkeyCalls);
+    if (pathname === '/__settings') return json(res, settingsCalls);
+    if (pathname === '/api/settings') {
+      if (req.method === 'GET') return req.resume(), json(res, settings);
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        try { settingsCalls.push(JSON.parse(body)); settings.sendReach = settingsCalls.at(-1).sendReach; } catch { settingsCalls.push({ bad: body }); }
+        json(res, settings);
+      });
+      return;
+    }
     if (pathname === '/api/accounts' || pathname === '/api/accounts/plan') return req.resume(), json(res, accounts);
     if (pathname === '/api/banners') return req.resume(), json(res, {});
     if (pathname === '/api/passkeys' && req.method === 'GET') return req.resume(), json(res, passkeys);

@@ -41,7 +41,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
 const FEATURES = { groupSessions: true, sectionSessions: true, groupEdits: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true,
-  pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true };
+  pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true, sendReach: true };
 // The shape the real server's list always has, which the page reads without checking. The chat and files stubs send only `ungrouped`.
 const LIST = { station: 'stub', projects: [], pinned: [], routines: [], started: [], other: [], sections: [], groups: [] };
 const json = (res, body, status = 200) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
@@ -150,7 +150,7 @@ const SETS = {
     const stub = await startChatStub({ decisions: journey });
     const fixtures = accountsFixture();
     const proxy = await startProxy(stub.address, {
-      answer: p => (p === '/api/accounts' || p === '/api/accounts/plan' ? fixtures.accounts : p === '/api/banners' ? {} : p === '/api/passkeys' ? fixtures.passkeys : undefined),
+      answer: p => (p === '/api/accounts' || p === '/api/accounts/plan' ? fixtures.accounts : p === '/api/banners' ? {} : p === '/api/passkeys' ? fixtures.passkeys : p === '/api/settings' ? { sendReach: 'family' } : undefined),
       patch: forList(FEATURES, journey),
     });
     return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
@@ -247,6 +247,7 @@ const SCREENS = {
       await page.locator('.accounts-body').evaluate(el => { el.scrollTop = el.scrollHeight; });
     }],
     ['10-passkeys', async (page, ctx) => { await ctx.go('#/passkeys'); await page.getByText('MacBook Pro, Safari').first().waitFor(); }],
+    ['10b-settings', async (page, ctx) => { await ctx.go('#/settings'); await page.locator('input[name=send-reach]:checked').waitFor(); }],
     ['11-account-menu', async (page, ctx) => { await ctx.go('#/'); await page.locator('.foot-account').click(); await page.locator('[role=menu]').waitFor(); }],
     ['chat-empty', async (page, ctx) => { await ctx.go('#/s/empty'); await sleep(800); }],
     ['chat-streaming', chatScreen('stream', 'Go on, I am ready', () => sleep(4000))],

@@ -4,7 +4,7 @@ This ledger tracks how closely the Mac app matches the web page. The web page un
 
 - **Pair run.** `npm run apple:parity` lays each Mac shot beside its web shot. The `parity` job in the `Swift app` workflow runs it after the Mac shots and keeps the side-by-side images as the `parity-pairs` artifact. `apple/scripts/parity-pairs.json` maps the shot names that differ, and `apple/README.md` says how to read a run.
 - **Built.** 21 Nov 2026 from commit d19857db, with one side-by-side pass. The Pass log at the end says what it covered.
-- **Rows.** 371: direct 238, translated 3, partial 60, missing 49, unsupported 8, extra 12, manual 1.
+- **Rows.** 379: direct 244, translated 3, partial 62, missing 49, unsupported 8, extra 12, manual 1.
 
 ## Statuses
 
@@ -86,15 +86,15 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 1.45 | Sidebar empty state "No sessions found / Press N to start one" | direct | `public/ui/sessions-list.js:290` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarNotices.swift:17` | 2-list-empty | empty/list-empty | Same words. The key hint is Cmd+N (1.5b) |
 | 1.46 | Project empty state "No groups yet" with New group button | partial | `public/ui/sessions-list.js:285` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarList.swift:76` | 5-empty-project | - | Text only; no New group button, hint points to the + menu |
 | 1.47 | Sidebar loading state | partial | `public/index.html:119` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarList.swift:32` | 1-loading | - | See 1.47a |
-| 1.48 | Sidebar load error "Could not load sessions" | partial | `public/ui/sessions-list.js:1387` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:102` | 3-unreachable | - | See 1.48a |
+| 1.48 | Sidebar load error "Could not load sessions" | partial | `public/ui/sessions-list.js:1387` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:104` | 3-unreachable | - | See 1.48a |
 | 1.49 | Sidebar problem line | direct | `public/ui/sessions-list.js:363` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarHeader.swift:45` | 1-cannot-reach | - | - |
 | 1.50 | Footer: Routines and Scheduled links with current highlight | direct | `public/index.html:122` | `apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutineSlots.swift:4` | 9-sidebar-routines | routines/sidebar-routines | Page has footer links; Mac uses per-project header buttons |
 | 1.51 | Footer: account menu button | direct | `public/ui/sessions-list.js:1134` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:23` | 1-toolbar-notifications-on | chat/11-account-menu | - |
 | 1.52 | Account menu: Accounts | partial | `public/ui/sessions-list.js:5` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:53` | 6-accounts | chat/11-account-menu | See 1.52a |
 | 1.53 | Account menu: Passkeys | direct | `public/ui/sessions-list.js:1134` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:54` | 6-passkeys | chat/11-account-menu | - |
-| 1.54 | Account menu: Sign out | direct | `public/ui/sessions-list.js:1129` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:57` | 1-signed-out | chat/11-account-menu | - |
+| 1.54 | Account menu: Sign out | direct | `public/ui/sessions-list.js:1129` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:59` | 1-signed-out | chat/11-account-menu | - |
 | 1.55 | Account menu: Notifications | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationToggle.swift:13` | 1-toolbar-notifications-on | - | Mac-only extra, kept by decision in https://github.com/kulesy/ghostshell/issues/177 |
-| 1.56 | Multi-select pick bar: "N selected", Move, Archive, Clear | partial | `public/ui/sessions-list.js:1393` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:70` | 8-multi-selection | organise/organise-select | Mac bar has Archive, Actions menu and Done; Move sits inside Actions |
+| 1.56 | Multi-select pick bar: "N selected", Move, Archive, Clear | partial | `public/ui/sessions-list.js:1393` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:72` | 8-multi-selection | organise/organise-select | Mac bar has Archive, Actions menu and Done; Move sits inside Actions |
 | 1.57 | Select with Cmd or Ctrl click, Shift click and Shift+arrow range | partial | `public/ui/pick.js:15` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarList.swift:35` | 8-multi-selection | organise/organise-select | List selection gives Cmd and Shift click and arrow range; not verified against the page's rules |
 | 1.58 | Escape clears the selection | missing | `public/ui/sessions-list.js:1069` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarList.swift:66` | - | - | No Escape handler found; Done button clears it |
 | 1.59 | Arrow-key walk with Left and Right folding | partial | `public/ui/sessions-list.js:318` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarList.swift:35` | - | - | Native List arrows; Left and Right folding not found in code |
@@ -130,7 +130,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 2.11 | Row menu: Move routine to project | missing | `public/ui/routines.js:91` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Routines/RoutinesScreen.swift:32` | - | - | Added by https://github.com/kulesy/ghostshell/pull/156; Mac routine menu has Run now, Edit, Delete only |
 | 2.12 | Selection menu: Move to, Nest under, Move out, Archive N, Clear selection | direct | `public/ui/sessions-list.js:948` | `apple/GhostShellKit/Sources/GhostShellScreens/Organise/OrganiseMenus.swift:90` | 8-multi-selection | organise/organise-select | - |
 | 2.13 | Selection menu: New parent session | missing | `public/ui/parent-form.js:22` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Organise/OrganiseMenus.swift:90` | - | - | Added by https://github.com/kulesy/ghostshell/pull/20; no ParentForm on the Mac |
-| 2.14 | New parent form: where it goes, Create, Cancel | missing | `public/ui/parent-form.js:29` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:70` | - | - | Would sit beside SidebarSelectBar |
+| 2.14 | New parent form: where it goes, Create, Cancel | missing | `public/ui/parent-form.js:29` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:72` | - | - | Would sit beside SidebarSelectBar |
 | 2.15 | Group menu: Rename | direct | `public/ui/sessions-list.js:17` | `apple/GhostShellKit/Sources/GhostShellScreens/Organise/OrganiseMenus.swift:13` | 8-rename-field | groups/organise-sheet-rename-session | - |
 | 2.16 | Group menu: New session | missing | `public/ui/sessions-list.js:127` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Organise/OrganiseMenus.swift:148` | - | - | Not in the Mac group menu |
 | 2.17 | Group menu: Move up and Move down | direct | `public/ui/sessions-list.js:1233` | `apple/GhostShellKit/Sources/GhostShellScreens/Organise/OrganiseMenus.swift:164` | - | - | - |
@@ -442,7 +442,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 
 | # | Item | Status | Reference | Target | Mac shot | Page shot | Notes |
 |---|---|---|---|---|---|---|---|
-| 13.1 | Notifications settings window | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:15` | - | - | Mac-only; the page has no settings |
+| 13.1 | Notifications settings window | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:15` | - | - | Mac-only; the page's Settings pane holds a different setting (13.11 to 13.17) |
 | 13.2 | Notify toggles: Needs you, Finishes, Fails | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:21` | - | - | Mac-only |
 | 13.3 | Which sessions: all or pinned, include routine runs | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:30` | - | - | Mac-only |
 | 13.4 | Dock badge with waiting count | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:36` | - | - | Mac-only |
@@ -451,6 +451,14 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 13.7 | Push alerts to the phone | missing | https://github.com/kulesy/ghostshell/issues/95 | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Notifications/AlertPoster.swift:5` | - | - | Open PBI; iPhone path |
 | 13.8 | Chrome extension reminder | direct | https://github.com/kulesy/ghostshell/pull/47 | `apple/GhostShellKit/Sources/GhostShellKit/Rules/BannerRules.swift:108` | 6-banners | banners/6-banners | - |
 | 13.9 | Persisted state: view, folds, drafts, panel size | partial | `public/ui/storage.js:2` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarState.swift:6` | 5-fold-kept | - | Panel width is not kept; no resize on the Mac |
+| 13.10 | Account menu: Settings, shown only when the server has it | partial | `public/ui/sessions-list.js:1135` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:56` | 6-settings | chat/11-account-menu | See 13.10a |
+| 13.11 | Settings header and back | direct | `public/ui/settings.js:65` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:33` | 6-settings | chat/10b-settings | No Back on the Mac (1.4a). See 13.11a |
+| 13.12 | Messages between sessions: title and lead | direct | `public/ui/settings.js:72` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:15` | 6-settings | chat/10b-settings | See 13.12a and 13.12b |
+| 13.13 | Three choices in order: Its own family, Its own project, Any session, each with its words | direct | `public/ui/settings.js:74` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:39` | 6-settings | chat/10b-settings | Radio ring drawn inline; each row is a button with the selected trait, since SwiftUI has no radio trait. See 13.13a |
+| 13.14 | Default badge on Its own family | direct | `public/ui/settings.js:76` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:52` | 6-settings | chat/10b-settings | - |
+| 13.15 | Note under the choices | direct | `public/ui/settings.js:79` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:26` | 6-settings | chat/10b-settings | - |
+| 13.16 | Pick a choice: shown at once, Saving, Saved., reverts on a refusal | partial | `public/ui/settings.js:40` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsState.swift:23` | 6-settings-saved | - | The page has no saved shot. Against a stub server only; no shot sets a real server. See 13.16a to 13.16d |
+| 13.17 | Settings loading and load failure | direct | `public/ui/settings.js:81` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:28` | - | - | Covered by SettingsTests, not a shot. See 13.16b and 13.17a |
 
 ## 14. Groups
 
@@ -540,6 +548,16 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 | 11.29b | gap, minor | j-routines-1-route to j-routines-6-save | The sidebar's Scheduled row "Rotate the keys" cuts off differently. The Mac keeps the title and cuts the error ("...is not th..."). The page cuts the title ("Rotate the k...") and shows the error in full. |
 | 11.40a | question | j-routines-6-save | After Save, the page shows the toast "Added “Weekly digest”." and the Mac shot shows no note. The Mac code sets the same note (`RoutineFormScreen.swift:310`) and `NoteBar` shows it for 6 seconds, so the Mac shot may come after it has gone. Check with a Mac shot taken straight after Save. |
 | 12.10a | gap | - | With no password set, the page serves a setup page that says so and says what to run. The Mac sign-in shows "The server answered with an error (503). Try again." From code, not a run. |
+| 13.10a | gap, minor | 6-settings | While its pane is open the page marks Settings in the Account menu and highlights the footer's Account button. The Mac and iPhone mark neither, as with Accounts and Passkeys (1.52, 1.53). |
+| 13.11a | convention | 6-settings | The Mac header is 52 tall in the toolbar, the page's 40. macOS HIG, Toolbars. The iPhone has a navigation bar back button. iOS HIG, Navigation bars. |
+| 13.12a | gap, minor | 6-settings | Mac text is 16, 14 and 13; the page's at desktop width is 15, 13.1 and 12.2. Mac and iPhone lines are tighter (Mac lead 18 against 20). |
+| 13.12b | gap, minor | - | In a wide window the page centres the column and the Mac keeps it left (`FlatColumn.swift:119`). From code. |
+| 13.13a | gap, minor | 6-settings | The page fills unchosen radios, grey in dark and white in light. The Mac and iPhone draw an empty ring. |
+| 13.16a | gap, minor | - | The page's radios are one tab stop with arrow keys, and focus returns to the held choice after a refusal. Mac rows are separate buttons. From code. |
+| 13.16b | gap, minor | - | A failed save or load is red text on the page, and a warning triangle with ordinary text in the apps. From code. |
+| 13.16c | gap, minor | - | The page announces Saving, Saved. and failures. The apps announce Saved. only. From code. |
+| 13.16d | question | - | While saving, the page fades only the unchosen radios. The apps disable whole rows, which may dim the words. |
+| 13.17a | gap, minor | - | "Loading settings" is 15 on the page (16 on a phone) and 14 in the apps. From code. |
 | 14.3a | gap | 11-view | Below 680pt the Mac group screen switches between Chat and Sub sessions with a segmented control at the top. The page keeps the panel beside the chat at 704 and wider and covers the chat with it below that, opened from a header button. The Mac's wide panel is a fixed 320 and the page's can be resized. |
 
 ## Pass log
@@ -570,3 +588,5 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 - Nobody chose these, so they are gaps now: 1.7, 1.14, 1.15, 1.20, 1.21, 1.48, 1.52, 2.26, 2.27, 3.26, 3.40, 4.23, 7.8, 8.13 and 14.3 are `partial`, and 1.8, 1.22, 1.63 and 12.10 are `missing`. 1.47, 3.32, 7.17 and 11.15 move from `direct` to `partial`. 1.47 shows placeholder rows where the page shows text, and the conventions 3.32a, 7.17a and 11.15a swapped in custom controls, not system ones. Each has a gap entry under Differences, with 7.8b as the new one for 7.8.
 - These now match the page and are `direct`: 1.45, 3.8, 3.25, 3.54, 7.18, 10.12, 10.14 and 11.21. https://github.com/kulesy/ghostshell/pull/192 brought 10.12 to the page's dialog, so convention 10.12a is gone. Minor gaps 3.54a, 10.12b and 10.14a record what still differs on three of them.
 - 4.1a is a question now: the Mac draws the page's ring, and a system ring may draw as well. 3.25a asks whether a Mac selection crosses paragraphs.
+
+**24 Nov 2026, https://github.com/kulesy/ghostshell/issues/240.** Rows 13.10 to 13.17 added for the Settings pane on the Mac and iPhone. The four `6-settings` pairs and the iPhone 10c and 10d shots were laid against the page on 25 Nov 2026. Saving, failed and loading are from code. The iPhone's unchosen ring has no shot since it changed.

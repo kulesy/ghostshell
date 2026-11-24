@@ -345,7 +345,7 @@ class App {
     const box = this.waitFor(field);
     return !!box && this.set(box, 'AXFocused', true) && this.set(box, 'AXValue', text);
   }
-  // The account button in the sidebar footer opens a menu with Accounts, Passkeys, the notification switch and Sign out.
+  // The account button in the sidebar footer opens a menu with Accounts, Passkeys, Settings, the notification switch and Sign out.
   notifications() {
     const button = this.find(node => node.role === 'AXMenuButton' && [node.title, node.desc].some(name => ['Account', 'account'].includes(name)));
     if (!button || !this.act(button)) return '';
@@ -997,7 +997,7 @@ async function mainFlow(bundle, appearance, withChat) {
     check(app.notifications() === 'On', 'the account menu\'s notification switch starts on');
     const account = app.accountMenuItems();
     console.log('account menu:', account.join(' | '));
-    check(['Accounts', 'Passkeys', 'Notifications', 'Sign out'].every((name, i) => account[i]?.startsWith(name)), 'the account menu lists Accounts, Passkeys, Notifications and Sign out in that order');
+    check(['Accounts', 'Passkeys', 'Settings', 'Notifications', 'Sign out'].every((name, i) => account[i]?.startsWith(name)), 'the account menu lists Accounts, Passkeys, Settings, Notifications and Sign out in that order');
     await app.both('toolbar-notifications-on');
     app.toggleNotifications();
     check(await until('bell off', () => app.notifications() === 'Off'), 'choosing the notification switch turns notifications off');
@@ -1272,8 +1272,9 @@ async function marks(bundle, appearance) {
 // The accounts, banners, context meter and passkeys all need a server that is out of usage, mid-update and so on, which a scratch server can't be.
 // A stub answers them, and records every call so the Force restart question can be shown to POST nothing until it is confirmed.
 // Never point these buttons at a real server: update and force restart run `npm run restart`, and a sign-in opens a browser on this Mac.
+// The Settings choice is the same: it decides which sessions can message each other with no card, so only this stub ever gets the POST.
 async function accountsFlow(bundle, appearance) {
-  console.log(`\n== ${appearance}: accounts, banners, context meter, passkeys`);
+  console.log(`\n== ${appearance}: accounts, banners, context meter, passkeys, settings`);
   const now = Date.now();
   const day = 86_400_000;
   const rows = ['Fix the flaky upload test', 'Write the release notes', 'Tidy the sidebar']
@@ -1312,6 +1313,7 @@ async function accountsFlow(bundle, appearance) {
     { id: 'pk-1', device: 'MacBook Pro, Safari', rpId: 'localhost', created: new Date(now - 40 * day).toISOString(), used: new Date(now - 2 * day).toISOString() },
     { id: 'pk-2', device: 'iPhone, Safari', rpId: 'localhost', created: new Date(now - 9 * day).toISOString() },
   ] };
+  const settings = { sendReach: 'family' };
   const calls = [];
   const send = (res, body) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
   const stub = http.createServer((req, res) => {
@@ -1326,9 +1328,13 @@ async function accountsFlow(bundle, appearance) {
       if (pathname === '/api/banners') return send(res, banners);
       if (pathname === '/api/banners/force-restart') return send(res, { ...banners, update: { ...update, stage: 'restarting' } });
       if (pathname === '/api/passkeys') return send(res, passkeys);
+      if (pathname === '/api/settings') {
+        if (req.method === 'POST') settings.sendReach = JSON.parse(Buffer.concat(chunks).toString() || '{}').sendReach;
+        return send(res, settings);
+      }
       if (pathname.endsWith('/context')) return send(res, context(JSON.parse(Buffer.concat(chunks).toString() || '{}').detail));
       if (pathname.endsWith('/plan')) return send(res, { limits });
-      return send(res, { ungrouped: rows });
+      return send(res, { ungrouped: rows, features: { sendReach: true } });
     });
   });
   const app = await appOn(stub, bundle, appearance, '6');
@@ -1367,6 +1373,17 @@ async function accountsFlow(bundle, appearance) {
     check(app.menu('View', 'Passkeys'), 'the View menu has Passkeys');
     check(await until('passkeys', () => sees('MacBook Pro, Safari') && sees('iPhone, Safari'), 15), 'the Passkeys screen lists each passkey');
     await app.both('passkeys');
+
+    // Settings has no View menu item, so it opens from the account menu. Opening it and looking at it posts nothing.
+    check(app.accountMenuItems().slice(0, 3).join().match(/Accounts.*Passkeys.*Settings/), 'the account menu lists Settings after Passkeys');
+    check(app.pick(['Account', 'account'], 'Settings'), 'the account menu opens Settings');
+    check(await until('settings', () => sees('Choose which messages a session can send without asking you.') && ['Its own family', 'Its own project', 'Any session'].every(name => app.findAll(node => node.role === 'AXButton' && app.label(node)?.startsWith(name)).length > 0), 15), 'the Settings screen shows the three choices');
+    check(!calls.includes('/api/settings'), 'loading Settings posts nothing');
+    await app.both('settings');
+    check(app.press('Its own project', { prefix: true }), 'the Its own project row can be pressed');
+    check(await until('saved', () => sees('Saved.'), 10), 'choosing a row saves it and says so');
+    check(calls.filter(call => call === '/api/settings').length === 1 && settings.sendReach === 'project', 'the choice is posted once, to the stub');
+    await app.both('settings-saved');
 
     app.chooseFirstRow();
     check(await until('meter', () => app.hasButton('Context: 84,000 of 200,000 tokens, 42% used'), 15), 'choosing a session shows the context meter');

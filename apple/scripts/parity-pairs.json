@@ -9,6 +9,7 @@
   {"mac": "6-accounts-empty", "page": "accounts-empty"},
   {"mac": "6-passkeys", "page": "6-passkeys"},
   {"mac": "6-passkeys-empty", "page": "passkeys-empty"},
+  {"mac": "6-settings", "page": "10b-settings"},
   {"mac": "6-banners", "page": "6-banners"},
   {"mac": "6-force-question", "page": "6-force-question"},
   {"mac": "6-chat-empty", "page": "chat-empty"},

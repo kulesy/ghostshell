@@ -44,7 +44,7 @@ struct SidebarFooter: View {
     }
 }
 
-/// The circle-user button: Accounts, Passkeys, the notification switch and Sign out, which the Mac's toolbar held before.
+/// The circle-user button: Accounts, Passkeys, Settings, the notification switch and Sign out, which the Mac's toolbar held before.
 private struct AccountMenu: View {
     @Environment(AppModel.self) private var model
 
@@ -52,6 +52,8 @@ private struct AccountMenu: View {
         Menu {
             Button("Accounts", systemImage: "person.2") { model.navigator.show { AccountsScreen() } }
             Button("Passkeys", systemImage: "key") { model.navigator.show { PasskeysScreen() } }
+            // Only a server that has the setting offers it, as the page's menu does.
+            if model.index?.features?.sendReach == true { Button("Settings", systemImage: "slider.horizontal.3") { model.navigator.show { SettingsScreen() } } }
             NotificationToggle()
             Divider()
             Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") { Task { await model.signOut() } }

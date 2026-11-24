@@ -340,7 +340,7 @@ export async function startChatStub({ decisions = false } = {}) {
         if (raw.toString().includes('password=wrong-password')) return void res.writeHead(401, { 'Content-Type': 'text/html' }).end('That password did not match.');
         return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
       }
-      if (url.pathname === '/api/sessions') return json(res, 200, { ungrouped: rows });
+      if (url.pathname === '/api/sessions') return json(res, 200, { ungrouped: rows, features: { sendReach: true } });
       if (url.pathname === '/api/uploads') {
         if (req.method === 'GET') return json(res, 200, { maxBytes: 20_000_000, maxFiles: 5 });
         const name = decodeURIComponent(String(req.headers['x-file-name'] || 'file'));

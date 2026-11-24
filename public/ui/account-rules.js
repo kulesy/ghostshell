@@ -4,6 +4,7 @@ import { pinsOnStart } from './group-rules.js';
 import { everyRow, findRow, rootOf } from './tree.js';
 
 export const supportsAccounts = ix => !!ix?.features?.accounts;
+export const supportsSendReach = ix => !!ix?.features?.sendReach;
 
 export const signInLine = a => (a.signedOut ? 'Signed out' : a.endsAt ? `Signed in until ${endWords(a.endsAt)}` : 'Signed in');
 
