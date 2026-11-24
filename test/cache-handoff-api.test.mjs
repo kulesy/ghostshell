@@ -96,15 +96,13 @@ test('a message to the session while the ask is out voids it', async () => {
   assert.equal(stored(s)[ID], undefined);
 });
 
-test('the ask\'s Write is allowed for its own file without a card, and a Write to any other path waits for one', async () => {
+test('the ask\'s Write is allowed for its own file, and any other tool call in its turn is refused without a card', async () => {
   const own = await ready({ flags: { 'handoff-write': '' } });
   await until(() => cliCalls(own.s).some(c => c.requestId === 'perm-handoff' && c.response === 'allow'));
   const other = await ready({ flags: { 'handoff-write': path.join('/', 'tmp', 'elsewhere.md') } });
-  await until(() => asked(other.s).length === 1);
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  assert.equal(cliCalls(other.s).some(c => c.requestId === 'perm-handoff'), false, 'no answer is given without the owner');
+  await until(() => cliCalls(other.s).some(c => c.requestId === 'perm-handoff' && c.response === 'deny'));
   const answered = await request(other.s, 'POST', `/api/sessions/${ID}/approve`, { headers: as(other.token), json: { requestId: 'perm-handoff', decision: 'deny' } });
-  assert.equal(answered.status, 200, 'the card was waiting');
+  assert.notEqual(answered.status, 200, 'no card was waiting');
 });
 
 test('a restart while the ask is out fails it, and a saved handoff survives a restart', async () => {
