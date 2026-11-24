@@ -40,7 +40,7 @@ import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { makeForms } from './lib/forms.mjs';
 import { lockHolder } from './lib/restart.mjs';
-import { makeCacheHandoff, notWritten, scaled as scaledHandoff, seedable, seedText, thresholdOf } from './lib/cache-handoff.mjs';
+import { makeCacheHandoff, notWritten, scaled as scaledHandoff, seedText, thresholdOf } from './lib/cache-handoff.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins, resetOf } from './lib/account-logins.mjs';
@@ -560,10 +560,11 @@ function settingsFor(id, row) {
 
 // `group`, `parent`, `routine` and `account` are where the session will land and the pin it is given, which decide its account before it has an id.
 // A pin on a signed-out account throws the 409 and starts nothing.
-async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, oneOff, group = null, parent = null, account = null }) {
+// `seed` is the note a session that carries on another's work opens with, and the handoff it reads, as { text, file }.
+async function newSession({ cwd, seed = null, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, oneOff, group = null, parent = null, account = null }) {
   const s = desktopSettings({ cwd });
   const upfront = accountForNew({ pin: account, routine, group, parent });
-  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, forms, subs: subCtx, groups: groupList, accounts: accountPairs });
+  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: [seed?.text, withMentions(files, text)].filter(Boolean).join('\n\n'), reads: seed?.file, images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, forms, subs: subCtx, groups: groupList, accounts: accountPairs });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
@@ -1127,7 +1128,8 @@ async function handOverSend({ id, row, cold, body, images, files, documents }) {
     if (gone) { handoffs.notMoved(id, `the handoff cannot be used: ${gone}`); return null; }
     const file = transcriptFor(id)?.file ?? '';
     const held = terminal.held(id);
-    const text = [seedText({ from: id, transcript: file, file: cold.path, handoff: seedable(cold.path) }), held, body.text || ''].filter(t => t.trim()).join('\n\n');
+    const seed = { text: seedText({ from: id, transcript: file, file: cold.path }), file: cold.path };
+    const text = [held, body.text || ''].filter(t => t.trim()).join('\n\n');
     const chat = getChat(id);
     const s = settingsFor(id, row);
     const own = linksNow();
@@ -1135,7 +1137,7 @@ async function handOverSend({ id, row, cold, body, images, files, documents }) {
     const children = [...buildIndex({ archived: true }).rows.keys()].filter(k => own(k) === id);
     let to;
     try {
-      to = await newSession({ cwd: row.cwd, text, images, documents, files, mode: MODES.includes(body.mode) ? body.mode : chat?.mode ?? s.mode, model: chat?.model ?? s.model, effort: chat?.effort ?? s.effort, fast: chat?.fast ?? s.fast, title: row.title, group: row.group, parent: typeof parent === 'string' ? parent : null, account: layout.read().accounts[id] ?? null });
+      to = await newSession({ cwd: row.cwd, seed, text, images, documents, files, mode: MODES.includes(body.mode) ? body.mode : chat?.mode ?? s.mode, model: chat?.model ?? s.model, effort: chat?.effort ?? s.effort, fast: chat?.fast ?? s.fast, title: row.title, group: row.group, parent: typeof parent === 'string' ? parent : null, account: layout.read().accounts[id] ?? null });
     } catch (e) {
       handoffs.notMoved(id, `the new session did not start: ${e.message}`);
       throw e;

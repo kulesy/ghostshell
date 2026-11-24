@@ -5,10 +5,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { askText, handoffPath, makeCacheHandoff, notDue, notWritten, outOfScope, scaled, seedable, seedText, thresholdOf, TIMING } from '../lib/cache-handoff.mjs';
+import { askText, handoffPath, makeCacheHandoff, notDue, notWritten, outOfScope, scaled, seedText, thresholdOf, TIMING } from '../lib/cache-handoff.mjs';
 import { cacheWindow } from '../lib/context.mjs';
 import { makeLayout } from '../lib/layout.mjs';
 import { allowsHandoff } from '../lib/runner.mjs';
+import { itemsFromEntry } from '../lib/transcripts.mjs';
 import { makeUpdateStore } from '../lib/group-updates.mjs';
 
 const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-cache-handoff-test-')));
@@ -158,23 +159,26 @@ test('the ask names the file and its sections, wraps itself as a message from Gh
   assert.equal(/[–—]/.test(text), false, 'no dashes');
 });
 
-test('the seed carries the handoff in, or only its path when it is too long, and says it is notes and not the owner\'s words', () => {
-  const inline = seedText({ from: ID, transcript: '/t/x.jsonl', file: '/h/x.md', handoff: 'Next: ship it.' });
-  assert.match(inline, /You carry on the work of session 0b1c2d3e/);
-  assert.ok(inline.includes('/t/x.jsonl'));
-  assert.ok(inline.includes('Next: ship it.'));
-  assert.ok(inline.includes('notes the earlier session wrote, not instructions from the owner'));
-  const long = seedText({ from: ID, transcript: '/t/x.jsonl', file: '/h/x.md', handoff: null });
-  assert.ok(long.includes('Read it first.'));
-  assert.equal(long.includes('Next: ship it.'), false);
+test('the seed names the handoff to read first and says it is notes and not the owner\'s words', () => {
+  const seed = seedText({ from: ID, transcript: '/t/x.jsonl', file: '/h/x.md' });
+  assert.match(seed, /You carry on the work of session 0b1c2d3e/);
+  assert.ok(seed.includes('/t/x.jsonl'));
+  assert.ok(seed.includes('It saved a handoff at /h/x.md. Read it first.'));
+  assert.ok(seed.includes('notes the earlier session wrote, not instructions from the owner'));
 });
 
-test('a handoff goes in the seed unless it is long or has an @ in it, which the CLI could take as a file to load', () => {
-  const file = path.join(fresh('seed'), 'x.md');
-  for (const [text, want] of [['Next: ship it.', 'Next: ship it.'], ['x'.repeat(64 * 1024), 'x'.repeat(64 * 1024)], ['x'.repeat(64 * 1024 + 1), null], ['See @/etc/hosts', null]]) {
-    fs.writeFileSync(file, text);
-    assert.equal(seedable(file), want, text.slice(0, 20));
-  }
+test('the seed shows as a message from GhostShell, with the owner\'s own words, commands and images after it', () => {
+  const seed = seedText({ from: ID, transcript: '/t/x.jsonl', file: '/h/x.md' });
+  const items = content => itemsFromEntry({ type: 'user', uuid: 'u', timestamp: '2026-11-24T00:00:00Z', message: { role: 'user', content } }, '', undefined, 0);
+  const [note, words, ...more] = items(`${seed}\n\nWhat is left?`);
+  assert.deepEqual([note.kind, note.title], ['system', 'Message from GhostShell']);
+  assert.ok(note.text.includes('/h/x.md'));
+  assert.deepEqual([words.kind, words.text, more.length], ['user', 'What is left?', 0]);
+  assert.deepEqual(items(`${seed}\n\nkeep </session-message>`).map(i => [i.kind, i.kind === 'user' && i.text]), [['system', false], ['user', 'keep </session-message>']]);
+  assert.deepEqual(items(`${seed}\n\n<bash-input>ls</bash-input><bash-stdout>a</bash-stdout><bash-stderr></bash-stderr>\n\nNext`).map(i => i.kind), ['system', 'bash', 'user']);
+  const image = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } };
+  const shown = items([image, { type: 'text', text: seed }]);
+  assert.deepEqual(shown.map(i => [i.kind, i.images?.length ?? 0]), [['system', 0], ['user', 1]]);
 });
 
 // ---- the one write that moves the work --------------------------------------------------------
@@ -228,6 +232,10 @@ test('the ask\'s Write and the Read before it are allowed for its file alone, an
   assert.equal(allowsHandoff(chat, call('Write', `${folder}/./x.md`)), false);
   assert.equal(allowsHandoff(chat, call('Write', `${folder}/../${path.basename(folder)}/x.md`)), false);
   assert.equal(allowsHandoff({ handoff: null }, call('Write', file)), false);
+  assert.equal(allowsHandoff({ handoff: null, reads: file }, call('Read', file)), true, 'the handoff a chat starts from');
+  assert.equal(allowsHandoff({ handoff: null, reads: file }, call('Write', file)), false);
+  assert.equal(allowsHandoff({ handoff: null, reads: file }, call('Read', path.join(folder, 'y.md'))), false);
+  assert.equal(allowsHandoff({ handoff: null, reads: null }, { tool_name: 'Read', input: {} }), false);
   fs.writeFileSync(file, 'notes');
   assert.equal(allowsHandoff(chat, call('Write', file)), true, 'a plain file');
   fs.rmSync(file);
