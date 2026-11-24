@@ -47,14 +47,14 @@ struct ComposerView: View {
     }
 
     #if os(iOS)
-    private static let sidePadding: CGFloat = 8
+    fileprivate static let sidePadding: CGFloat = 8
     private static let bottomPadding: CGFloat = 12
-    private static let dock = AnyShapeStyle(.bar)
+    fileprivate static let dock = AnyShapeStyle(.bar)
     private static let hintInk = AnyShapeStyle(.tertiary)
     #else
-    private static let sidePadding = ChatStyle.threadInset
+    fileprivate static let sidePadding = ChatStyle.threadInset
     private static let bottomPadding = 0.5 * GhostMetrics.current.rem
-    private static let dock = ChatStyle.dock
+    fileprivate static let dock = ChatStyle.dock
     private static let hintInk = ChatStyle.muted
     #endif
 
@@ -242,7 +242,7 @@ struct ComposerHost: View {
     let chat: ChatContext
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 0) {
             HandoffStrip(chat: chat)
             ComposerView(model: ComposerModel.of(chat, moved: { [app] in app.navigator.openSession($0) }) { [app] in await app.refreshIndex() }, autofocus: true)
         }
@@ -283,12 +283,17 @@ struct HandoffStrip: View {
     var body: some View {
         let row = app.index.flatMap { OrganiseRules.find($0, chat.sessionID) }
         ForEach(HandoffRules.lines(for: row), id: \.text) { line in
-            HStack(spacing: 6) {
-                Text(verbatim: line.text).foregroundStyle(.secondary)
-                if let id = line.opens, let label = line.label { Button(label) { app.navigator.openSession(id) }.buttonStyle(.borderless) }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(verbatim: line.text).foregroundStyle(ChatStyle.muted)
+                if let id = line.opens, let label = line.label {
+                    Button { app.navigator.openSession(id) } label: { Text(label).underline().foregroundStyle(ChatStyle.text) }.buttonStyle(.plain).phoneField()
+                }
             }
-            .font(ChatStyle.small)
-            .padding(.horizontal, 12)
+            .font(.geist(13 * GhostMetrics.current.scale, relativeTo: .caption))
+            .frame(maxWidth: ChatStyle.column, alignment: .leading)
+            .padding(.horizontal, ComposerView.sidePadding).padding(.top, 4)
+            .frame(maxWidth: .infinity)
+            .background(ComposerView.dock)
         }
     }
 }

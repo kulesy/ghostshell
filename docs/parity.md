@@ -244,7 +244,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 4.23 | New session screen: which folder it starts in | partial | `public/ui/chat.js:20` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/NewSessionScreen.swift:59` | 7-new-session | - | See 4.23a |
 | 4.24 | Start-with-pin or account choice on a new session | partial | `public/ui/group-rules.js:137` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/NewSessionScreen.swift:39` | 7-new-session | - | Not verified |
 | 4.25 | Composer draft survives sessions | direct | `public/ui/draft.js:2` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/ComposerStore.swift:41` | 1-composer-relaunched | - | - |
-| 4.26 | Line by the prompt box for a saved handoff, and a send that moves to the fresh session | partial | `public/ui/handoff.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/ComposerView.swift:276` | - | - | The cold line, the line on the fresh session and the move on send are there. The line on the earlier session is not. See 4.26a |
+| 4.26 | Line by the prompt box for a saved handoff, and a send that moves to the fresh session | partial | `public/ui/handoff.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/ComposerView.swift:279` | - | - | The cold line, the line on the fresh session and the move on send are there. The line on the earlier session is not. See 4.26a |
 
 ## 5. Approvals
 
