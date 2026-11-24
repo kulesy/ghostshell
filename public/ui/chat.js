@@ -204,7 +204,7 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
       <${Holds} ctrl=${ctrl} />
       <${BlockedNotice} ctrl=${ctrl} />
       <${SpillNotice} ctrl=${ctrl} />
-      <${HandoffNotice} ctrl=${ctrl} />
+      ${meta ? null : html`<${HandoffNotice} ctrl=${ctrl} />`}
       <${Notice} ctrl=${ctrl} />
       <${Composer} ctrl=${ctrl} />
     </div>
