@@ -44,7 +44,7 @@ public struct SettingsScreen: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: chosen ? "largecircle.fill.circle" : "circle")
                     .font(.system(size: macOr(16, 20)))
-                    .foregroundStyle(chosen ? Color.ghost.primary : Color.ghost.input)
+                    .foregroundStyle(chosen ? Color.ghost.primary : Color.ghost.mutedForeground)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
