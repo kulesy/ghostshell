@@ -46,7 +46,7 @@ GhostShell never starts a turn in a parent to pass status up. A parent's model l
 
 ### Messages between sessions
 
-An owner-only setting decides which `send_session` calls go with no card. You choose it on the page: the sidebar's Account button, then Settings, then Messages between sessions. It has three values, and a send that none of them covers asks, as item 1 says ([issue 240](https://github.com/kulesy/ghostshell/issues/240)).
+An owner-only setting decides which `send_session` calls go with no card. You choose it on the page, in the Mac app or on the iPhone: the sidebar's Account button, then Settings, then Messages between sessions. The Account menu shows Settings only when the server sends `features.sendReach`. The watch has no accounts screen, so it has no Settings. It has three values, and a send that none of them covers asks, as item 1 says ([issue 240](https://github.com/kulesy/ghostshell/issues/240)).
 
 - **`family`**, shown as Its own family, is the default. Only a send within the sender's tree or chip family goes with no card.
 - **`project`**, shown as Its own project, adds a send from an ordinary chat to a session in the sender's own project. Home counts as a project of its own, so two sessions on Home reach each other. A group's own chat counts as a member of its group's project. A section's chat, a group that is gone and an archived session are never reached.

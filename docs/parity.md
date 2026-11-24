@@ -4,7 +4,7 @@ This ledger tracks how closely the Mac app matches the web page. The web page un
 
 - **Pair run.** `npm run apple:parity` lays each Mac shot beside its web shot. The `parity` job in the `Swift app` workflow runs it after the Mac shots and keeps the side-by-side images as the `parity-pairs` artifact. `apple/scripts/parity-pairs.json` maps the shot names that differ, and `apple/README.md` says how to read a run.
 - **Built.** 21 Nov 2026 from commit d19857db, with one side-by-side pass. The Pass log at the end says what it covered.
-- **Rows.** 371: direct 238, translated 3, partial 60, missing 49, unsupported 8, extra 12, manual 1.
+- **Rows.** 379: direct 245, translated 3, partial 61, missing 49, unsupported 8, extra 12, manual 1.
 
 ## Statuses
 
@@ -442,7 +442,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 
 | # | Item | Status | Reference | Target | Mac shot | Page shot | Notes |
 |---|---|---|---|---|---|---|---|
-| 13.1 | Notifications settings window | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:15` | - | - | Mac-only; the page has no settings |
+| 13.1 | Notifications settings window | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:15` | - | - | Mac-only; the page's Settings pane holds a different setting (13.11 to 13.17) |
 | 13.2 | Notify toggles: Needs you, Finishes, Fails | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:21` | - | - | Mac-only |
 | 13.3 | Which sessions: all or pinned, include routine runs | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:30` | - | - | Mac-only |
 | 13.4 | Dock badge with waiting count | extra | https://github.com/kulesy/ghostshell/issues/177#issuecomment-6977576774 | `apple/GhostShellKit/Sources/GhostShellScreens/Notifications/NotificationSettingsView.swift:36` | - | - | Mac-only |
@@ -451,6 +451,14 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 13.7 | Push alerts to the phone | missing | https://github.com/kulesy/ghostshell/issues/95 | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Notifications/AlertPoster.swift:5` | - | - | Open PBI; iPhone path |
 | 13.8 | Chrome extension reminder | direct | https://github.com/kulesy/ghostshell/pull/47 | `apple/GhostShellKit/Sources/GhostShellKit/Rules/BannerRules.swift:108` | 6-banners | banners/6-banners | - |
 | 13.9 | Persisted state: view, folds, drafts, panel size | partial | `public/ui/storage.js:2` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarState.swift:6` | 5-fold-kept | - | Panel width is not kept; no resize on the Mac |
+| 13.10 | Account menu: Settings, shown only when the server has it | partial | `public/ui/sessions-list.js:1135` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarFooter.swift:56` | 6-settings | chat/11-account-menu | See 13.10a |
+| 13.11 | Settings header and back | direct | `public/ui/settings.js:61` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:35` | 6-settings | chat/10b-settings | - |
+| 13.12 | Messages between sessions: title and lead | direct | `public/ui/settings.js:69` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:15` | 6-settings | chat/10b-settings | - |
+| 13.13 | Three choices in order: Its own family, Its own project, Any session, each with its words | direct | `public/ui/settings.js:72` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:39` | 6-settings | chat/10b-settings | Radio ring drawn inline; each row is a button with the selected trait, since SwiftUI has no radio trait |
+| 13.14 | Default badge on Its own family | direct | `public/ui/settings.js:73` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:52` | 6-settings | chat/10b-settings | - |
+| 13.15 | Note under the choices | direct | `public/ui/settings.js:76` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:26` | 6-settings | chat/10b-settings | - |
+| 13.16 | Pick a choice: shown at once, Saving, Saved., reverts on a refusal | direct | `public/ui/settings.js:40` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsState.swift:23` | 6-settings-saved | - | The page has no saved shot. Against a stub server only; no shot sets a real server |
+| 13.17 | Settings loading and load failure | direct | `public/ui/settings.js:78` | `apple/GhostShellKit/Sources/GhostShellScreens/Accounts/SettingsScreen.swift:28` | - | - | Covered by SettingsTests, not a shot |
 
 ## 14. Groups
 
@@ -540,6 +548,7 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 | 11.29b | gap, minor | j-routines-1-route to j-routines-6-save | The sidebar's Scheduled row "Rotate the keys" cuts off differently. The Mac keeps the title and cuts the error ("...is not th..."). The page cuts the title ("Rotate the k...") and shows the error in full. |
 | 11.40a | question | j-routines-6-save | After Save, the page shows the toast "Added “Weekly digest”." and the Mac shot shows no note. The Mac code sets the same note (`RoutineFormScreen.swift:310`) and `NoteBar` shows it for 6 seconds, so the Mac shot may come after it has gone. Check with a Mac shot taken straight after Save. |
 | 12.10a | gap | - | With no password set, the page serves a setup page that says so and says what to run. The Mac sign-in shows "The server answered with an error (503). Try again." From code, not a run. |
+| 13.10a | gap, minor | 6-settings | The page marks Settings as the current item in the Account menu while its pane is open. The Mac's menu marks none, as with Accounts and Passkeys (1.52, 1.53). |
 | 14.3a | gap | 11-view | Below 680pt the Mac group screen switches between Chat and Sub sessions with a segmented control at the top. The page keeps the panel beside the chat at 704 and wider and covers the chat with it below that, opened from a header button. The Mac's wide panel is a fixed 320 and the page's can be resized. |
 
 ## Pass log
@@ -570,3 +579,5 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 - Nobody chose these, so they are gaps now: 1.7, 1.14, 1.15, 1.20, 1.21, 1.48, 1.52, 2.26, 2.27, 3.26, 3.40, 4.23, 7.8, 8.13 and 14.3 are `partial`, and 1.8, 1.22, 1.63 and 12.10 are `missing`. 1.47, 3.32, 7.17 and 11.15 move from `direct` to `partial`. 1.47 shows placeholder rows where the page shows text, and the conventions 3.32a, 7.17a and 11.15a swapped in custom controls, not system ones. Each has a gap entry under Differences, with 7.8b as the new one for 7.8.
 - These now match the page and are `direct`: 1.45, 3.8, 3.25, 3.54, 7.18, 10.12, 10.14 and 11.21. https://github.com/kulesy/ghostshell/pull/192 brought 10.12 to the page's dialog, so convention 10.12a is gone. Minor gaps 3.54a, 10.12b and 10.14a record what still differs on three of them.
 - 4.1a is a question now: the Mac draws the page's ring, and a system ring may draw as well. 3.25a asks whether a Mac selection crosses paragraphs.
+
+**24 Nov 2026, https://github.com/kulesy/ghostshell/issues/240.** Rows 13.10 to 13.17 added for the Settings pane on the Mac and iPhone. Written without a Swift run: the Mac shot `6-settings` and the page shot `10b-settings` have not been laid side by side yet, so the next pair run reads them and confirms or corrects these rows.

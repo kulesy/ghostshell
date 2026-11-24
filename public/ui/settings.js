@@ -50,7 +50,10 @@ export function SettingsPane() {
       setStatus('Saved.');
     } catch (err) {
       refocus.current = !!group.current?.contains(document.activeElement);
-      setShown(saved);
+      // The server may have saved it and the answer been lost, so it is asked what it holds.
+      const held = await api('api/settings').then(got => got.sendReach, () => saved);
+      setSaved(held);
+      setShown(held);
       setProblem(err.message);
     } finally {
       setSaving(false);

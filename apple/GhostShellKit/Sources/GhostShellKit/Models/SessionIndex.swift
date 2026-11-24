@@ -181,8 +181,9 @@ public struct SessionFeatures: Hashable, Sendable, Decodable {
     public var subStatus: Bool
     public var pullStatus: Bool
     public var routineProjects: Bool
+    public var sendReach: Bool
 
-    private enum Key: String, CodingKey { case many, groupEdits, groupRename, accountPins, groupSessions, sectionSessions, subStatus, pullStatus, routineProjects }
+    private enum Key: String, CodingKey { case many, groupEdits, groupRename, accountPins, groupSessions, sectionSessions, subStatus, pullStatus, routineProjects, sendReach }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         many = (try? c.decode(Bool.self, forKey: .many)) ?? false
@@ -194,12 +195,13 @@ public struct SessionFeatures: Hashable, Sendable, Decodable {
         subStatus = (try? c.decode(Bool.self, forKey: .subStatus)) ?? false
         pullStatus = (try? c.decode(Bool.self, forKey: .pullStatus)) ?? false
         routineProjects = (try? c.decode(Bool.self, forKey: .routineProjects)) ?? false
+        sendReach = (try? c.decode(Bool.self, forKey: .sendReach)) ?? false
     }
     public init(many: Bool = false, groupEdits: Bool = false, groupRename: Bool = false, accountPins: Bool = false,
-                groupSessions: Bool = false, sectionSessions: Bool = false, subStatus: Bool = false, pullStatus: Bool = false, routineProjects: Bool = false) {
+                groupSessions: Bool = false, sectionSessions: Bool = false, subStatus: Bool = false, pullStatus: Bool = false, routineProjects: Bool = false, sendReach: Bool = false) {
         (self.many, self.groupEdits, self.groupRename, self.accountPins) = (many, groupEdits, groupRename, accountPins)
         (self.groupSessions, self.sectionSessions, self.subStatus, self.pullStatus) = (groupSessions, sectionSessions, subStatus, pullStatus)
-        self.routineProjects = routineProjects
+        (self.routineProjects, self.sendReach) = (routineProjects, sendReach)
     }
 }
 

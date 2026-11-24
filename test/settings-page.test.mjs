@@ -170,6 +170,15 @@ test('arrow keys pick a choice, the focus stays on that radio through the save, 
   await shot(bad, 'c-settings-save-failed');
 });
 
+test('a save the server kept whose answer was lost shows what the server holds, with the notice', { skip, timeout }, async t => {
+  const c = await open();
+  const page = await openPage(t, c, '#/settings', { before: spy({ put: `await real(url, init); ${refuse}` }) });
+  await page.until(ready, 15_000);
+  await page.click('#settings .send-choice:nth-child(3)');
+  await page.until(`document.querySelector('#settings .notice').textContent !== ''`);
+  assert.deepEqual([await page.evaluate(checked), await reach(c)], ['any', 'any']);
+});
+
 test('a settings load that fails shows the notice and no radio, and writes nothing', { skip, timeout }, async t => {
   const c = await open();
   const page = await openPage(t, c, '#/settings', { before: spy({ get: refuse }) });

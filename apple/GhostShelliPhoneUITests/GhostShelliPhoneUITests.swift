@@ -534,13 +534,13 @@ final class GhostShelliPhoneUITests: XCTestCase {
     }
 
 
-    func testAccountsPasskeysAndSignOut() throws {
+    func testAccountsPasskeysAndSignOut() async throws {
         let app = launch()
         signIn(app)
         app.buttons["Account"].tap()
         XCTAssertTrue(app.buttons["Accounts"].waitForExistence(timeout: 5), app.debugDescription)
-        // The page's Account menu: Accounts, Passkeys, a separator and Sign out, with Sign out plain.
-        let order = ["Accounts", "Passkeys", "Sign out"].map { app.buttons[$0] }
+        // The page's Account menu: Accounts, Passkeys, Settings, a separator and Sign out, with Sign out plain.
+        let order = ["Accounts", "Passkeys", "Settings", "Sign out"].map { app.buttons[$0] }
         for item in order { XCTAssertTrue(item.exists, "Account offers \(item.label)\n\(app.debugDescription)") }
         XCTAssertEqual(order.map(\.frame.minY), order.map(\.frame.minY).sorted(), "Account lists its items in the page's order")
         XCTAssertFalse(app.buttons["Sign Out"].exists, "The page says Sign out")
@@ -571,6 +571,25 @@ final class GhostShelliPhoneUITests: XCTestCase {
         for name in ["Keep", "Remove"] { assertTouchable(app.buttons[name].firstMatch, name) }
         app.buttons["Keep"].tap()
         XCTAssertTrue(remove.waitForExistence(timeout: 5), "Keep puts the Remove button back")
+        back(app)
+        // Settings writes only the fixtures server, because the choice decides which sessions can message each other with no card.
+        app.buttons["Account"].tap()
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(app.staticTexts["Messages between sessions"].waitForExistence(timeout: 15), app.debugDescription)
+        let family = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Its own family'")).firstMatch
+        let project = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Its own project'")).firstMatch
+        XCTAssertTrue(family.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(family.isSelected, "The server's choice is the selected row\n\(app.debugDescription)")
+        for (name, element) in [("Its own family", family), ("Its own project", project)] { assertTouchable(element, name) }
+        let posted = try await get("/__settings")
+        XCTAssertEqual(posted.count, 0, "Opening Settings posts nothing")
+        shot("10c-settings")
+        project.tap()
+        XCTAssertTrue(app.staticTexts["Saved."].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(project.isSelected, "The chosen row is the selected one")
+        let written = try await get("/__settings")
+        XCTAssertEqual(written.map { $0["sendReach"] as? String }, ["project"])
+        shot("10d-settings-saved")
         back(app)
         app.buttons["Account"].tap()
         app.buttons["Sign out"].tap()
