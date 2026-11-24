@@ -4,7 +4,7 @@ This ledger tracks how closely the Mac app matches the web page. The web page un
 
 - **Pair run.** `npm run apple:parity` lays each Mac shot beside its web shot. The `parity` job in the `Swift app` workflow runs it after the Mac shots and keeps the side-by-side images as the `parity-pairs` artifact. `apple/scripts/parity-pairs.json` maps the shot names that differ, and `apple/README.md` says how to read a run.
 - **Built.** 21 Nov 2026 from commit d19857db, with one side-by-side pass. The Pass log at the end says what it covered.
-- **Rows.** 370: direct 236, translated 3, partial 62, missing 48, unsupported 8, extra 12, manual 1.
+- **Rows.** 371: direct 236, translated 3, partial 62, missing 49, unsupported 8, extra 12, manual 1.
 
 ## Statuses
 
@@ -277,6 +277,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 6.7 | Widget closed note ("tried to open another page") | direct | `public/ui/widget.js:209` | `apple/GhostShellKit/Sources/GhostShellScreens/Widgets/WidgetView.swift:31` | - | - | - |
 | 6.8 | Widget loading wait | direct | `public/ui/widget-wait.js:38` | `apple/GhostShellKit/Sources/GhostShellScreens/Widgets/WidgetActivity.swift:12` | - | - | - |
 | 6.9 | Widget icons | direct | `public/ui/widget-frame.js:7` | `apple/GhostShellKit/Sources/GhostShellScreens/Widgets/WidgetIcons.swift:7` | - | - | - |
+| 6.10 | Ask form from `show_form`: choice, text, date and slider questions, Send answers and Skip | missing | `public/ui/ask-form.js:1` | would go near `apple/GhostShellKit/Sources/GhostShellScreens/Approvals/ApprovalCards.swift:200` | - | - | Mac draws the call as an ordinary tool row. Tracked in https://github.com/kulesy/ghostshell/issues/246 |
 
 ## 7. Files viewer
 

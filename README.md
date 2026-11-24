@@ -46,7 +46,7 @@ GhostShell lists the sessions you start in Claude Desktop, the routine runs and 
     <td width="50%" valign="top"><b>Routines on a schedule</b><br>GhostShell runs your routines on their schedules, and you add, edit and delete them on its Routines page. <a href="docs/routines.md">Routines</a></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><b>Desktop-style tools</b><br>Chips (which can name the group their session opens in), widgets and questions from GhostShell&#39;s own MCP server, a chat for each group and each section of the list, and Claude in Chrome. <a href="docs/tools.md">Tools</a></td>
+    <td width="50%" valign="top"><b>Desktop-style tools</b><br>Chips (which can name the group their session opens in), widgets, forms and questions from GhostShell&#39;s own MCP server, a chat for each group and each section of the list, and Claude in Chrome. <a href="docs/tools.md">Tools</a></td>
     <td width="50%" valign="top"><b>On your phone</b><br>Install it as an app on the Mac and the phone. Over https, sign in with a passkey. <a href="docs/remote-access.md">Remote access</a></td>
   </tr>
 </table>
@@ -85,7 +85,7 @@ GhostShell listens on 127.0.0.1 only. Anyone who signs in can run commands as yo
 | [Chat](docs/chat.md) | The prompt box, the model menu, slash commands, live work, tool calls and messages between chats |
 | [Attachments](docs/attachments.md) | Images, files, PDFs and the image viewer |
 | [Session list](docs/session-list.md) | Projects, groups, pins, nesting, search, archiving and the keyboard |
-| [Tools](docs/tools.md) | Chips, chapters, group and section chats, widgets, questions and Claude in Chrome |
+| [Tools](docs/tools.md) | Chips, chapters, group and section chats, widgets, forms, questions and Claude in Chrome |
 | [Terminal](docs/terminal.md) | The terminal panel and `!` commands |
 | [Routines](docs/routines.md) | Running your routines on a schedule, and the Routines page |
 | [Scheduled sessions](docs/scheduled-sessions.md) | A session that starts once at a date and time, and the Scheduled sessions page |

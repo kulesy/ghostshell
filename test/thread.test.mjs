@@ -1,7 +1,7 @@
 // Run with `npm test`. The page's thread logic is plain functions on plain data, so it runs here without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { absorb, activity, display, doingNow, groupStart, prepend, step, summarize } from '../public/ui/thread.js';
+import { absorb, activity, display, doingNow, groupable, groupStart, prepend, step, summarize } from '../public/ui/thread.js';
 
 const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
 const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
@@ -245,4 +245,17 @@ test('where tool ids repeat, a thread opened at any point and loaded earlier, or
       assert.deepEqual(unkeyed(prepend(absorb(absorb(fresh(), middle), last), first).items), unkeyed(whole.items), `opened at ${a} up to ${b}, then appended to and loaded from 0`);
     }
   }
+});
+
+test('a form call stands as its own row and ends a run, unless it failed or was denied', () => {
+  const form = status => tool('mcp__capcom__show_form', { status, input: { title: 'Plan', questions: [] } });
+  const [before, ok, after] = [tool('Bash'), form('ok'), tool('Read')];
+  const rows = display([before, ok, after]);
+  assert.deepEqual(rows.map(r => r.kind), ['group', 'tool', 'group'], 'the form is a row of its own between two runs');
+  assert.equal(rows[1], ok);
+  assert.equal(groupable(form('pending')), false, 'a form still being asked shows its card, and waits for the record');
+  assert.equal(groupable(form('failed')), true);
+  assert.equal(groupable(form('denied')), true);
+  assert.equal(groupable(tool('mcp__capcom__show_widget', { input: { widget_code: '<p></p>' } })), false);
+  assert.equal(groupable(tool('mcp__other__show_form', { status: 'ok' })), false, 'any server\'s show_form is read the same way');
 });

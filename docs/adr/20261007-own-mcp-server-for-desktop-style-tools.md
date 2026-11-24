@@ -1,6 +1,6 @@
 # Serve Desktop-style tools from Capcom's own MCP server
 
-- Status: Accepted, amended 2026-10-19, 2026-10-23, 2026-10-27 and 2026-10-28
+- Status: Accepted, amended 2026-10-19, 2026-10-23, 2026-10-27, 2026-10-28 and 2026-11-24
 - Deciders: Eli
 - Date: 2026-10-07
 - Tags: tools, mcp, chips, widgets, security
@@ -49,6 +49,8 @@ Capcom allows its own tools by exact name, with no approval card.
 
 **Amended 2026-10-28, layout tools.** Every chat given `ctx.subs` also gets six tools: `archive_session`, `unarchive_session`, `set_session_title`, `move_session_to_group`, `list_chips` and `find_sessions`. The four writes run the server's own functions and show a card in every mode with no Always allow, except a rename or move within an ordinary chat's own tree (amended 2026-10-30), and the two reads run with no card (see [Give sessions tools to find, archive, rename and move sessions, and read chips](20261028-layout-tools-for-sessions.md)).
 
+**Amended 2026-11-24, forms.** The server has a tool `show_form`, listed after `show_widget` and allowed without asking like the rest. It shows a form of choice, text, date and slider questions that the page draws from the stored questions, and the answers arrive as the owner's next message (see [Let the page draw Claude's ask forms from questions sent as data](20261124-page-draws-ask-forms.md)).
+
 ### Consequences
 
 - ✅ Chips, chapters and widgets work in Capcom. The owner can also start chips that Desktop sessions made.
@@ -80,3 +82,4 @@ Capcom allows its own tools by exact name, with no approval card.
 - [Capcom is the only client](20261015-capcom-is-the-only-client.md)
 - [Give each group a session of its own](20261023-a-session-for-each-group.md), amended this record 2026-10-23
 - [Roll a session's sub session status up to every parent](20261023-roll-sub-session-status-up.md), amended this record 2026-10-23
+- [Let the page draw Claude's ask forms from questions sent as data](20261124-page-draws-ask-forms.md), amended this record 2026-11-24

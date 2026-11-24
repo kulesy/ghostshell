@@ -10,6 +10,7 @@ import { payload } from './images.js';
 import { createStore } from './store.js';
 import { heardAgents } from './subagent-rules.js';
 import { createTerminal } from './terminal-state.js';
+import { waitingOnForm } from './ask-form-rules.js';
 import { absorb, prepend } from './thread.js';
 
 const enc = encodeURIComponent;
@@ -59,7 +60,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // Until a new session starts, the box holds its settings here; the ones left alone follow the home folder's defaults.
   const touched = draft ? new Set() : null;
   const store = createStore({
-    items: [], orphans: new Map(), chips: new Map(), accountDefault: null, start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
+    items: [], orphans: new Map(), chips: new Map(), forms: new Map(), accountDefault: null, start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: null, model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, agents: null, holdsEnded: endedByChat.get(id) || [],
     group: null, parent: null, folder: HOME, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', refused: null, usageOut: false, starting: false, loadingEarlier: false,
@@ -95,16 +96,25 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     } catch { return null; }
   }
 
+  async function loadForms() {
+    try {
+      const { forms } = await api(`api/sessions/${enc(id)}/forms`);
+      return new Map(forms.map(f => [f.toolUseId, f]));
+    } catch { return null; }
+  }
+
+  const keepForm = f => store.set(s => ({ forms: new Map(s.forms).set(f.toolUseId, f) }));
+
   async function load() {
     try {
       const r = await api(`api/sessions/${enc(id)}/messages`);
       if (closed) return;
       store.set(s => ({ session: r.session || s.session, fileLinks: r.fileLinks === true, terminal: r.terminal === true }));
       const thread = absorb({ items: [], orphans: new Map() }, r.items);
-      const chips = await loadChips();
+      const [chips, forms] = await Promise.all([loadChips(), loadForms()]);
       if (closed) return;
       store.set(s => ({
-        ...thread, ...chips, start: r.start, end: r.end, hasEarlier: r.hasEarlier, loaded: true, failed: false,
+        ...thread, ...chips, ...(forms && { forms }), start: r.start, end: r.end, hasEarlier: r.hasEarlier, loaded: true, failed: false,
         sending: s.sending.filter(m => !thread.items.some(i => sameMessage(i, m))),
       }));
     } catch (e) {
@@ -206,6 +216,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
       if (closed) return;
       // Chips are loaded first so a new chip never shows as open for a moment when it is already settled.
       const chips = r.items.some(i => /__(spawn|dismiss)_task$/.test(i.name || '')) ? await loadChips() : null;
+      const forms = waitingOnForm([...state().items, ...r.items], state().forms) ? await loadForms() : null;
       if (closed) return;
       const over = ended;
       const clearLive = over || r.items.some(i => i.kind === 'assistant');
@@ -215,7 +226,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
         const thread = absorb(r.reset ? { items: [], orphans: new Map() } : s, r.items);
         const saved = s.think?.done && r.items.some(i => i.kind === 'thinking' && i.msgId === s.think.id);
         return {
-          ...thread, ...chips, end: r.end,
+          ...thread, ...chips, ...(forms && { forms }), end: r.end,
           ...(r.reset && { start: r.start, hasEarlier: r.hasEarlier }),
           ...(s.session && names && !sameNames(names, s.session.connectors) && { session: { ...s.session, connectors: names } }),
           sending: s.sending.filter(m => !r.items.some(i => sameMessage(i, m))),
@@ -331,12 +342,14 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // ---- talking to Claude -------------------------------------------------------------------------------
 
   // Sent while Claude works, a message redirects it without stopping: Claude reads it before its next step.
-  // `stay` leaves the chat scrolled where it is, for a message sent from a widget the owner is still using.
-  async function send(text, images, mode, files = [], { stay = false } = {}) {
+  // `stay` leaves the chat scrolled where it is, for a message sent from a widget the owner is still using. `form` is { id, skipped }
+  // for the answers to a form, which the server settles with the send.
+  async function send(text, images, mode, files = [], { stay = false, form } = {}) {
     const message = { text, images, files };
     store.set(s => ({ sending: [...s.sending, message], notice: '', refused: null, usageOut: false, jump: stay ? s.jump : s.jump + 1 }));
     try {
-      const { unarchived, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }) });
+      const { unarchived, form: settled, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }), ...(form && { form }) });
+      if (settled && !closed) keepForm(settled);
       // Each change of fast mode reaches the page over SSE, and a reply can be older than the last one.
       if (!closed) store.set(s => ({ status: { ...status, fast: s.status ? s.status.fast : status.fast } }));
       if (unarchived) refreshIndex();
@@ -344,6 +357,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     } catch (err) {
       // A 409 for a blocked pin shows the notice with its buttons, and the text stays in the box because this returns false.
       const blocked = err.status === 409 ? err.data?.blocked : null;
+      // A 409 for a form settled somewhere else carries its record, so the card shows how it was settled.
+      if (err.status === 409 && err.data?.form && !closed) keepForm(err.data.form);
       if (!closed) store.set(s => ({ sending: s.sending.filter(m => m !== message), ...(blocked ? { refused: blocked } : { notice: `Not sent: ${err.message}` }) }));
       if (blocked && !closed) refreshIndex();
       return false;
@@ -352,6 +367,9 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
 
   // A widget's button sends its text as the owner's message, in the mode the prompt box would use for a plain message.
   const prompt = text => send(text, [], state().status?.mode, [], { stay: true });
+
+  // The answers to a form, or the note that it was skipped, sent the same way. Resolves false when the send failed, so the form keeps its answers.
+  const form = (formId, text, skipped) => send(text, [], state().status?.mode, [], { stay: true, form: { id: formId, skipped } });
 
   async function stop() {
     try { await api(`api/sessions/${enc(id)}/stop`, {}); } catch (e) { notice(e.message); }
@@ -507,6 +525,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
 
   return {
     id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, loadMcp, reloadMcp, retry, reloadChips,
-    send, prompt, stop, decide, dismissHold, chip, setMode, pick, repin, setFolder, startNew, notice, imageUrl, fileUrl,
+    send, prompt, form, stop, decide, dismissHold, chip, setMode, pick, repin, setFolder, startNew, notice, imageUrl, fileUrl,
   };
 }

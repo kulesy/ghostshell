@@ -1,5 +1,6 @@
 // Reloads the open page once the server restarts onto a new commit, which a restart does not reach by itself. See https://github.com/kulesy/ghostshell/issues/168.
 import { approvalsOpen } from './approvals.js';
+import { formsEdited } from './ask-form.js';
 import { Banner } from './banner.js';
 import { Button } from './banners.js';
 import { hasUnsent } from './draft.js';
@@ -16,7 +17,7 @@ export function useReload(ix, open) {
   useEffect(() => {
     const next = noticeCommit(seen.current, ix);
     seen.current = next.seen;
-    const step = reloadStep({ changed: next.changed, unsent: hasUnsent(box.current), approving: approvalsOpen() });
+    const step = reloadStep({ changed: next.changed, unsent: hasUnsent(box.current), approving: approvalsOpen() || formsEdited() });
     if (step === 'now') location.reload();
     else if (step === 'bar') setBar(true);
   }, [ix]);

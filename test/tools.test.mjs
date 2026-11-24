@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EFFORTS, GROUP_READ_NAMES, GROUP_START_NAME, handleMcp, makeChips, TOOL_NAMES } from '../lib/tools.mjs';
+import { makeForms } from '../lib/forms.mjs';
 import {
   ACTIVE_MS, CDNS, HEIGHT_MAX, LINK_MAX, parseGlyphs, PROMPT_MAX,
 } from '../public/ui/widget-frame.js';
@@ -88,6 +89,62 @@ test('the other tools answer as before', () => {
   assert.equal(call('tools/call', { name: 'mark_chapter', arguments: { title: 'x' } }).result.content[0].text, 'Chapter marked.');
   assert.equal(call('tools/call', { name: 'nothing_here', arguments: {} }).result.isError, true);
   assert.equal(call('tools/call', { name: 'nothing_here', arguments: {} }).result.content[0].text, 'GhostShell has no tool called nothing_here.');
+});
+
+const FORM_ARGS = { title: 'Plan', questions: [{ type: 'choice', question: 'Where?', options: [{ label: 'Here' }, { label: 'There' }] }, { type: 'slider', question: 'How many?', min: 0, max: 5 }] };
+const showForm = (args, ctx, id = 'toolu_form') => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'show_form', arguments: args, _meta: id && { 'claudecode/toolUseId': id } } }, ctx).result;
+
+test('the form tool is listed right after the widget tool, allowed without asking, and short enough to send with every request', () => {
+  const names = Object.keys(listed());
+  assert.equal(names[names.indexOf('show_widget') + 1], 'show_form');
+  assert.ok(TOOL_NAMES.includes('mcp__capcom__show_form'));
+  const { inputSchema, description } = listed().show_form;
+  assert.deepEqual(inputSchema.required, ['title', 'questions']);
+  assert.deepEqual(inputSchema.properties.questions.items.properties.type.enum, ['choice', 'choices', 'text', 'date', 'slider']);
+  assert.ok(description.length < 420, 'the description is sent with every request, so it stays short');
+  assert.ok(JSON.stringify(inputSchema).length < 2000, 'and so is the schema');
+  assert.match(description, /end your turn/i);
+});
+
+test('a form call stores the normalised form against its tool use id and tells the model to end its turn', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-forms-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const forms = makeForms(dir);
+  const result = showForm({ ...FORM_ARGS, extra: 1 }, { forms, sessionId: 'sess' });
+  assert.ok(!result.isError);
+  assert.match(result.content[0].text, /^The form is showing in the chat\. End your turn now\. The owner's answers, or a note that they skipped it, arrive as their next message\. They may also reply in their own words\.$/);
+  const stored = forms.get('toolu_form');
+  assert.deepEqual({ ...stored, at: typeof stored.at }, {
+    toolUseId: 'toolu_form', sessionId: 'sess', title: 'Plan', status: 'open', at: 'number',
+    questions: [FORM_ARGS.questions[0], { type: 'slider', question: 'How many?', min: 0, max: 5, step: 1, start: 0 }],
+  });
+});
+
+test('a form call that fails a check is an error the model can read and fix, and stores nothing', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-forms-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const forms = makeForms(dir);
+  const result = showForm({ title: 'Plan', questions: [{ type: 'choice', question: 'Where?', options: [{ label: 'Here' }] }] }, { forms, sessionId: 'sess' });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /Question 1 \("Where\?"\) needs 2 to 10 options\. Fix it and call show_form again\./);
+  assert.deepEqual(forms.forSession('sess'), []);
+});
+
+test('a form call with no tool use id is refused, since the page could not match the form to its row', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-forms-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const forms = makeForms(dir);
+  const result = showForm(FORM_ARGS, { forms, sessionId: 'sess' }, null);
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /no tool use id/);
+  assert.deepEqual(forms.forSession('sess'), []);
+});
+
+test('a group\'s chat and a chat with sub sessions are given the form tool too', () => {
+  const names = reply => reply.result.tools.map(t => t.name);
+  assert.ok(names(inGroup('tools/list', {}, {})).includes('show_form'));
+  assert.ok(names(inGroup('tools/list', {}, { section: { place: false } })).includes('show_form'));
+  assert.ok(names(handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { subs: () => [] })).includes('show_form'));
 });
 
 test('a chip that records nestUnder maps its session there, an old chip to its maker, and startedBy lists the maker of every started chip', () => {

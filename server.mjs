@@ -38,6 +38,7 @@ import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
+import { makeForms } from './lib/forms.mjs';
 import { lockHolder } from './lib/restart.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
@@ -61,6 +62,7 @@ const frozen = frozenFolders([cfg.stateDir, cfg.projectsDir, cfg.desktopDir, ROO
 const auth = makeAuth(cfg.stateDir);
 const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passkeyOrigins, warn: console.error });
 const chips = makeChips(cfg.stateDir);
+const forms = makeForms(cfg.stateDir);
 const layout = makeLayout(cfg.stateDir);
 const marks = makeMarks(cfg.stateDir);
 const routineStore = makeRoutines(cfg.stateDir);
@@ -491,7 +493,7 @@ function settingsFor(id, row) {
 async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, oneOff, group = null, parent = null, account = null }) {
   const s = desktopSettings({ cwd });
   const upfront = accountForNew({ pin: account, routine, group, parent });
-  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx, groups: groupList, accounts: accountPairs });
+  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, forms, subs: subCtx, groups: groupList, accounts: accountPairs });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
@@ -1027,7 +1029,7 @@ function ensureChat(id, row, { mode } = {}) {
   };
   const booked = !groupId && isBooked(id);
   const had = !!getChat(id);
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, accounts: accountPairs, ...group, ...(booked && { fresh: () => !hasTranscript(id) }), subs: subCtx });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, forms, groups: groupList, accounts: accountPairs, ...group, ...(booked && { fresh: () => !hasTranscript(id) }), subs: subCtx });
   dropFastOnRefusal(chat);
   if (booked && !had && cfg.desktopHandoff) afterTurn(chat, () => { if (isBooked(id) && !Object.hasOwn(layout.read().archived, id)) handOff(id); });
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
@@ -2363,6 +2365,7 @@ async function api(req, res, u) {
     const accountDefault = chipAccountCard(null, id, rowOf, d, live);
     return send(res, 200, { chips: chips.forSession(id).map(c => withAccountCard(withOpensIn(c, rowOf(id), rowOf), rowOf, d, live)), ...(accountDefault && { accountDefault }) });
   }
+  if (req.method === 'GET' && action === 'forms') return send(res, 200, { forms: forms.forSession(id) });
   // The pictures of the whole chat as items with refs and no bytes, for the viewer to count and step through.
   if (req.method === 'GET' && action === 'images' && !parts[4]) {
     const before = u.searchParams.get('before');
@@ -2437,18 +2440,31 @@ async function api(req, res, u) {
     if (!body.text?.trim() && !images.length && !files.length) return send(res, 400, { error: 'Nothing to send.' });
     const row = findRow(id);
     if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
+    const { form } = body;
+    if (form !== undefined && !(form && typeof form.id === 'string' && (form.skipped === undefined || typeof form.skipped === 'boolean'))) return send(res, 400, { error: 'A form needs an id and whether it was skipped.' });
+    const record = form && forms.get(form.id);
+    if (form && record?.sessionId !== id) return send(res, 404, { error: 'No form with that id in this chat.' });
+    if (record && record.status !== 'open') return send(res, 409, { error: `That form was already ${record.status}.`, form: record });
     const chat = ensureChat(id, row, { mode: body.mode });
     // The result of a command run with ! that Claude was not to reply to goes in front of the next message, as its own paragraph.
     // A slash command has to stay first to run, so the result waits for the message after it.
     const held = !isSlashCommand(body.text || '') && terminal.held(id);
     const text = withMentions(files, body.text || '');
     // A refused start throws before the held result is released, so it stays held.
-    chat.send(held ? [held, text].filter(t => t.trim()).join('\n\n') : text, images, documents);
+    // The claim comes last and nothing waits between it and the send, so two sends of one form cannot both pass. A send that throws puts the form back.
+    const claimed = form && forms.claim(form.id, id, form.skipped ? 'skipped' : 'answered');
+    if (form && !claimed) return send(res, 409, { error: `That form was already ${forms.get(form.id).status}.`, form: forms.get(form.id) });
+    try {
+      chat.send(held ? [held, text].filter(t => t.trim()).join('\n\n') : text, images, documents);
+    } catch (e) {
+      if (claimed) forms.release(form.id);
+      throw e;
+    }
     if (row.groupSession) groupUpdates.ownerSpoke(id);
     if (held) terminal.release(id);
     uploads.record(id, files);
     const unarchived = row.archived && unarchive(id);
-    return send(res, 200, { ...chat.status(), ...(unarchived && { unarchived }) });
+    return send(res, 200, { ...chat.status(), ...(unarchived && { unarchived }), ...(claimed && { form: claimed }) });
   }
   // A POST because a count of a chat Capcom runs can save a window to windows.json.
   if (action === 'context') {

@@ -1,4 +1,6 @@
 // The cards above the prompt box: what Claude is about to do, and its multiple-choice questions.
+import { choose, typeOther } from './ask-form-rules.js';
+import { Choices } from './ask-form.js';
 import { chromeTool, clip, pre, toolLabel, toolSource } from './format.js';
 import { useStore } from './hooks.js';
 import { html, useEffect, useState } from './html.js';
@@ -109,18 +111,12 @@ function QuestionCard({ p, onDecide }) {
   const [picks, setPicks] = useState(() => qs.map(() => ({ chosen: [], other: '' })));
   const answers = answersFor(qs, picks);
   const change = (qi, fn) => setPicks(all => all.map((pick, n) => (n === qi ? fn(pick, qs[qi]) : pick)));
-  const choose = (qi, o) => change(qi, (pick, q) => (q.multiSelect
-    ? { ...pick, chosen: pick.chosen.includes(o) ? pick.chosen.filter(x => x !== o) : [...pick.chosen, o] }
-    : { chosen: pick.chosen.includes(o) ? [] : [o], other: '' }));
-  const type = (qi, other) => change(qi, (pick, q) => ({ chosen: other && !q.multiSelect ? [] : pick.chosen, other }));
   return html`<article class="approval question" data-id=${p.requestId}>
     <h3><span class="lamp" data-state="waiting" aria-hidden="true"></span>Claude is asking</h3>
     <div class="ask-body">${qs.map((q, qi) => html`<fieldset class="ask" key=${qi} data-q=${qi}>
       <legend>${q.header ? html`<span class="badge ask-head" data-variant="secondary">${q.header}</span>` : null}${q.question}${q.multiSelect ? html` <span class="quiet">(pick any)</span>` : null}</legend>
-      <div class="options">${(q.options || []).map((o, oi) => html`<button class="option" key=${`o${oi}`} type="button" data-q=${qi} data-o=${oi} aria-pressed=${picks[qi].chosen.includes(oi)} disabled=${busy} onClick=${() => choose(qi, oi)}>
-        <strong>${o.label}</strong>${o.description ? html`<span>${o.description}</span>` : null}</button>
-        ${o.preview && picks[qi].chosen.includes(oi) ? html`<pre class="preview">${pre(o.preview)}</pre>` : null}`)}</div>
-      <input class="input other" type="text" data-q=${qi} value=${picks[qi].other} placeholder="Or write your own answer" aria-label="Your own answer" onInput=${e => type(qi, e.target.value)} />
+      <${Choices} q=${qi} options=${q.options || []} chosen=${picks[qi].chosen} other=${picks[qi].other} busy=${busy}
+        onChoose=${o => change(qi, (pick, q) => choose(pick, o, q.multiSelect))} onOther=${text => change(qi, (pick, q) => typeOther(pick, text, q.multiSelect))} />
     </fieldset>`)}</div>
     <div class="approval-actions">
       <button class="btn" type="button" data-decision="answer" disabled=${busy || Object.keys(answers).length !== qs.length} onClick=${() => decide('answer', answers)}>Send answers</button>
