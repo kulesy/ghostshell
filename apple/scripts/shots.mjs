@@ -1326,7 +1326,7 @@ async function accountsFlow(bundle, appearance) {
       if (pathname === '/api/accounts') return send(res, accounts);
       if (pathname === '/api/accounts/plan') return send(res, accounts);
       if (pathname === '/api/banners') return send(res, banners);
-      if (pathname === '/api/banners/force-restart') return send(res, { ...banners, update: { ...update, stage: 'restarting' } });
+      if (pathname === '/api/banners/force-restart') return send(res, { ...banners, update: { ...update, stage: 'restarting', busy: 3, jobs: ['Write the release notes'] } });
       if (pathname === '/api/passkeys') return send(res, passkeys);
       if (pathname === '/api/settings') {
         if (req.method === 'POST') settings.sendReach = JSON.parse(Buffer.concat(chunks).toString() || '{}').sendReach;
@@ -1363,6 +1363,7 @@ async function accountsFlow(bundle, appearance) {
     check(await until('posted', () => calls.filter(call => call === '/api/banners/force-restart').length === 1, 10), 'confirming sends one restart');
     await sleep(1500);
     check(calls.filter(call => call === '/api/banners/force-restart').length === 1, 'the restart is sent once');
+    check(sees('Restarting once 2 running chats finish and the background work in “Write the release notes” ends.'), 'the banner names the chat whose background work it waits for');
     await app.both('restarting');
 
     check(app.menu('View', 'Accounts'), 'the View menu has Accounts');

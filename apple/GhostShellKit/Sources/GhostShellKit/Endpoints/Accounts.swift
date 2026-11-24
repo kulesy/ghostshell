@@ -278,7 +278,9 @@ public struct UpdateNotice: Hashable, Sendable, Decodable {
     public var busy: Int
     public var problem: String
     public var force: Bool
-    private enum Key: String, CodingKey { case show, kind, stage, count, changes, restart, blocked, busy, problem, force }
+    /// The titles of the idle chats whose background work holds the restart. `busy` counts them too, and an older server sends none.
+    public var jobs: [String]
+    private enum Key: String, CodingKey { case show, kind, stage, count, changes, restart, blocked, busy, problem, force, jobs }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
         show = c.value(.show) ?? false
@@ -291,11 +293,13 @@ public struct UpdateNotice: Hashable, Sendable, Decodable {
         busy = c.count(.busy) ?? 0
         problem = c.value(.problem) ?? ""
         force = c.value(.force) ?? false
+        jobs = c.list(.jobs)
     }
     public init(show: Bool = true, kind: UpdateKind? = .update, stage: UpdateStage = .idle, count: Int = 0, changes: [UpdateChange] = [], restart: Bool = false,
-                blocked: String = "", busy: Int = 0, problem: String = "", force: Bool = false) {
+                blocked: String = "", busy: Int = 0, problem: String = "", force: Bool = false, jobs: [String] = []) {
         (self.show, self.kind, self.stage, self.count, self.changes) = (show, kind, stage, count, changes)
         (self.restart, self.blocked, self.busy, self.problem, self.force) = (restart, blocked, busy, problem, force)
+        self.jobs = jobs
     }
 }
 

@@ -30,7 +30,7 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
-import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, busyCount, wroteSince, useAccounts } from './lib/runner.mjs';
+import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, busyCount, jobChats, processChats, wroteSince, useAccounts } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
 import { makeTitler } from './lib/titler.mjs';
@@ -39,7 +39,7 @@ import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { makeForms } from './lib/forms.mjs';
-import { lockHolder } from './lib/restart.mjs';
+import { lockHolder, TOKEN_FILE, TOKEN_HEADER, tokenAllows } from './lib/restart.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeSendReach } from './lib/send-reach.mjs';
@@ -2014,8 +2014,9 @@ const bannersNow = () => ({ login: accountLogins.loginNow(), update: updates.sta
 const updates = makeUpdate({
   root: cfg.updateRoot,
   locked: () => lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
-  // The chats the restart helper waits for are the ones mid-turn, whether they are working or waiting on an approval. A queued send is no part of a turn, and the restart does not wait for it.
+  // The chats the restart helper waits for are the ones mid-turn, working or waiting on an approval, and the idle ones with a background job. A queued send is no part of a turn, and the restart does not wait for it.
   busy: busyCount,
+  jobs: () => jobChats().map(c => findRow(c.id)?.title || UNTITLED),
   log: path.join(cfg.stateDir, 'restart.log'),
 });
 
@@ -2534,10 +2535,17 @@ async function api(req, res, u) {
 // Lets the iPhone app use passkeys for this host (webcredentials). See apple/README.md.
 const associationFile = /^[A-Z0-9]{10}$/.test(cfg.appleTeamId) ? JSON.stringify({ webcredentials: { apps: [`${cfg.appleTeamId}.com.kulesy.ghostshell.iphone`] } }) : null;
 
+// What `npm run restart` reads to see each chat's background jobs. Only a process that can read restart.token in the state folder is answered, and it is always JSON.
+function restartWait(req, res) {
+  if (req.method !== 'GET' || !tokenAllows(req.headers[TOKEN_HEADER], path.join(cfg.stateDir, TOKEN_FILE))) return send(res, 403, { error: 'Not allowed.' });
+  return send(res, 200, { chats: processChats().map(c => ({ pid: c.proc.pid, jobs: c.jobs, title: findRow(c.id)?.title || UNTITLED })) });
+}
+
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://localhost');
   try {
     if (u.pathname === '/healthz') return send(res, 200, 'ok', 'text/plain');
+    if (u.pathname === '/restart-wait') return restartWait(req, res);
     // Before the sign-in check, because Apple's servers fetch it. With no valid team ID the path falls through to the answer any unknown path gets.
     if (associationFile && u.pathname === '/.well-known/apple-app-site-association' && (req.method === 'GET' || req.method === 'HEAD')) return send(res, 200, associationFile, 'application/json');
     const file = asset(u.pathname);

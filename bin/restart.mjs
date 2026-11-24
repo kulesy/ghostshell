@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { cfg } from '../lib/config.mjs';
-import { FALLBACK_LABEL, guard, labelOf, launchdList, listenerPid, lockHolder, MIN_UPTIME_MS, parseArgs, POLL_MS, psRows, runningChats, USAGE } from '../lib/restart.mjs';
+import { dropToken, FALLBACK_LABEL, guard, holdWords, labelOf, launchdList, listenerPid, lockHolder, MIN_UPTIME_MS, parseArgs, POLL_MS, psRows, readWait, runningChats, TOKEN_FILE, USAGE, writeToken } from '../lib/restart.mjs';
 
 if (process.platform !== 'darwin') { console.error('launchd is macOS only.'); process.exit(1); }
 
@@ -14,6 +14,7 @@ if (opts.error) { console.error(`${opts.error}\n${USAGE}`); process.exit(1); }
 
 const logFile = path.join(cfg.stateDir, 'restart.log');
 const lockFile = path.join(cfg.stateDir, 'restart.lock');
+const tokenFile = path.join(cfg.stateDir, TOKEN_FILE);
 const launchctl = process.env.CAPCOM_LAUNCHCTL || 'launchctl';
 const minUptimeMs = Number(process.env.CAPCOM_RESTART_MIN_UPTIME_MS ?? MIN_UPTIME_MS);
 const pollMs = Number(process.env.CAPCOM_RESTART_POLL_MS || POLL_MS);
@@ -74,13 +75,20 @@ else {
   if (opts.now) log(`Restarting without waiting (server pid ${oldPid}).`);
   else {
     const deadline = Date.now() + opts.wait * 60_000;
+    // Only a process that can read this file is answered by the server's /restart-wait, which lists each chat's background jobs.
+    const token = writeToken(tokenFile);
+    process.on('exit', () => dropToken(tokenFile, token));
     let clear = 0;
+    let waitingOn = '';
     log(`Waiting for no chat to be running (server pid ${oldPid}, up to ${opts.wait} minutes).`);
     // Two clear polls in a row, because a chat can go mid-turn between one check and the restart.
     while (clear < 2 && !goNow) {
-      const busy = await runningChats(oldPid);
+      const busy = await runningChats(oldPid, await readWait(cfg.port, token));
       clear = busy.length ? 0 : clear + 1;
-      if (busy.length && Date.now() >= deadline) fail(`Gave up after ${opts.wait} minutes without restarting. Still running: ${busy.map(c => `pid ${c.pid}`).join(', ')}.`);
+      const list = busy.map(holdWords).join(', ');
+      if (list && list !== waitingOn) log(`Waiting for ${list}.`);
+      if (busy.length && Date.now() >= deadline) fail(`Gave up after ${opts.wait} minutes without restarting. Still running: ${list}.`);
+      waitingOn = list;
       if (clear < 2) await sleep(pollMs);
     }
     if (goNow) log('Told to stop waiting, so restarting now.');
@@ -89,6 +97,7 @@ else {
 
 if (oldPid) {
   // The server can have crashed and come back during the wait, and the restart would then end its new chats.
+  // This also proves the answers read above came from the server being restarted.
   if ((await listenerPid(cfg.port)) !== oldPid) fail(`The server on port ${cfg.port} changed while waiting, so nothing was restarted. Run the command again.`);
 }
 const label = opts.label ?? labelOf(await launchdList(launchctl), [oldPid, serverRow?.ppid].filter(Boolean)) ?? FALLBACK_LABEL;

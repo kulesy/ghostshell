@@ -59,7 +59,7 @@ final class AccountModelTests: XCTestCase {
         let b: Banners = try decode("""
         {"login":{"signedOut":false,"endsAt":1788000000000,"stage":"failed","problem":"No browser","visible":true,"account":"Work","accountId":"a1"},
          "update":{"show":true,"kind":"update","stage":"restarting","count":3,"changes":[{"title":"One","url":"https://github.com/x/y/pull/1"},{"title":"Two","url":"javascript:alert(1)"}],
-           "restart":true,"blocked":"","busy":2,"problem":"","force":true},
+           "restart":true,"blocked":"","busy":2,"jobs":["Deploy"],"problem":"","force":true},
          "accounts":{"count":2,"out":{"text":"Out until 5pm","at":1787000000000,"name":"Work","to":{"id":"a2","name":"Home"}},"auto":null},
          "chrome":{"checking":true}}
         """)
@@ -67,6 +67,8 @@ final class AccountModelTests: XCTestCase {
         XCTAssertEqual(b.login?.accountId, "a1")
         XCTAssertEqual(b.update?.stage, .restarting)
         XCTAssertEqual(b.update?.busy, 2)
+        XCTAssertEqual(b.update?.jobs, ["Deploy"])
+        XCTAssertEqual(try decode(#"{"show":true,"busy":1}"#, as: UpdateNotice.self).jobs, [], "an older server sends none")
         XCTAssertEqual(b.update?.changes.first?.url?.absoluteString, "https://github.com/x/y/pull/1")
         XCTAssertNil(b.update?.changes.last?.url, "only an https link is offered")
         XCTAssertEqual(b.accounts?.out?.to?.id, "a2")

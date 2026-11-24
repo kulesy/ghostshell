@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
 import { makeSendReach, SEND_LIMIT } from '../lib/send-reach.mjs';
-import { activeStates, busyCount, chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useAccounts, wroteSince } from '../lib/runner.mjs';
+import { activeStates, busyCount, chatFor, jobChats, processChats, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useAccounts, wroteSince } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -1424,6 +1424,29 @@ test('a process starts with the active account\'s environment and its chat recor
   t.after(() => other.stop());
   assert.equal(other.status().account, 'main');
   assert.deepEqual(startedDirs(dir), ['/accounts/second', null]);
+});
+
+test('a restart waits for an idle chat with a background job, which is listed with its pid, and stops waiting once the job ends', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = accountCli(dir);
+  const chat = chatFor('job-count', { cwd: dir, mode: 'manual', claude: cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  chat.send('start');
+  chat.send('ok');
+  await until(() => chat.state === 'idle');
+  assert.deepEqual([busyCount(), jobChats().length], [0, 0]);
+  chat.send('job');
+  await until(() => chat.jobs === 1 && chat.state === 'idle');
+  assert.deepEqual([busyCount(), jobChats().map(c => c.id)], [1, ['job-count']], 'idle with a job counts once');
+  assert.deepEqual(processChats().filter(c => c.id === 'job-count').map(c => c.proc.pid), [chat.proc.pid]);
+  chat.send('hold');
+  await until(() => chat.state !== 'idle');
+  assert.deepEqual([busyCount(), jobChats().length], [1, 0], 'mid-turn with a job still counts once, and is not listed for its job');
+  chat.send('jobend');
+  await until(() => chat.jobs === 0);
+  chat.proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: 'ok' } }) + '\n');
+  await until(() => chat.state === 'idle');
+  assert.deepEqual([busyCount(), jobChats().length], [0, 0]);
 });
 
 test('a switch stops the idle chats of the other account at once, lets a chat mid-turn finish and stops it as it goes idle, and leaves a chat with a background job until the job ends', async t => {
