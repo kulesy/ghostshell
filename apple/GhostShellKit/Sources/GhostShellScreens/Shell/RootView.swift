@@ -52,6 +52,7 @@ public struct RootView: View {
                 .navigationSplitViewColumnWidth(sidebarWidth)
         } detail: {
             detailPane
+                .environment(\.narrowWindow, windowWidth < 768)
         }
         #if os(macOS)
         .toolbar(removing: .sidebarToggle)
@@ -67,7 +68,6 @@ public struct RootView: View {
         }
         .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
-        .environment(\.narrowWindow, windowWidth < 768)
         #if DEBUG && os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("GSDebugSidebar"))) { note in
             debugSidebar = (note.object as? String).flatMap(Double.init).map { CGFloat($0) }
