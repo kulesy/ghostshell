@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readGroupSession } from '../lib/groups.mjs';
-import { inChipFamily, inOwnTree, listSubSessions, listSubSessionsWithPulls, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
+import { inChipFamily, inOwnTree, inReach, listSubSessions, listSubSessionsWithPulls, pendingLines, readSubSession, sendSession, sendSummary } from '../lib/subs.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
 import { GROUP_READ_NAMES, handleMcp, SUB_READ_NAMES, SEND_NAME, TOOL_NAMES } from '../lib/tools.mjs';
 import { indexTranscripts } from '../lib/transcripts.mjs';
@@ -544,4 +544,47 @@ test('the chip family is refused when the target is archived, another project, a
   }
   assert.equal(chipFamily({ maker: 'under-old' }, 'under-old'), true);
   assert.equal(chipFamily({ maker: 'under-old' }, 'old'), false, 'the archived parent');
+});
+
+// The owner's setting reaches beyond the family. Groups g1 and g2 are in project P, g3 in Q, and `kid` is in g2.
+const REACHED = [
+  row('kid', null, { group: 'g2' }), row('same', null, { group: 'g1' }), row('far', null, { group: 'g3' }), row('home', null), row('old', null, { group: 'g1', archived: true }),
+  row('gchat', null, { groupSession: 'g1' }), row('qchat', null, { groupSession: 'g3' }), row('section', null, { groupSession: 'pinned' }), row('lost', null, { groupSession: 'cg-gone' }),
+  row('run', null, { routine: 'daily' }), row('homerun', null, { routine: 'other' }), row('oldrun', 'old', { routine: 'daily' }),
+];
+const reaches = (reach, target, { self = 'kid', rows = REACHED } = {}) => inReach({ ...subsFor(rows, { self }), routineProject: id => (id === 'daily' ? 'P' : null) }, GROUPS, reach, target);
+
+test('family reaches nothing more, any reaches every listed session but the caller and archived ones, and a caller or target that is not listed asks', () => {
+  for (const to of ['kid', 'same', 'far', 'home', 'gchat', 'section']) assert.equal(reaches('family', to), false, `family ${to}`);
+  for (const bad of [undefined, null, '', 'all', 'ANY', 1, {}, ['any']]) assert.equal(reaches(bad, 'same'), false, String(bad));
+  for (const to of ['same', 'far', 'home', 'gchat', 'qchat', 'section', 'lost', 'run']) assert.equal(reaches('any', to), true, `any ${to}`);
+  for (const to of ['kid', 'old', 'nobody', undefined, null, { id: 'same' }, ['same']]) assert.equal(reaches('any', to), false, `any ${String(to)}`);
+  assert.equal(reaches('any', 'same', { self: 'ghost' }), false, 'a caller that is not listed asks');
+  assert.equal(inReach({ lookup: () => { throw new Error('boom'); } }, GROUPS, 'any', 'same'), false, 'a failure asks');
+});
+
+test('project reaches a session of the caller\'s own project, Home being a project of its own, and a group\'s chat as that group\'s project, never a section\'s chat or a group that is gone', () => {
+  assert.equal(reaches('project', 'same'), true, 'another group of project P');
+  assert.equal(reaches('project', 'far'), false, 'project Q');
+  assert.equal(reaches('project', 'home'), false, 'Home is another project');
+  assert.equal(reaches('project', 'gchat'), true, 'the chat of g1, in P');
+  assert.equal(reaches('project', 'qchat'), false, 'the chat of g3, in Q');
+  assert.equal(reaches('project', 'section'), false);
+  assert.equal(reaches('project', 'lost'), false);
+  assert.equal(reaches('project', 'old'), false, 'archived');
+  assert.equal(reaches('project', 'run'), true, 'a routine run counts in the project its routine is mapped to');
+  assert.equal(reaches('project', 'oldrun'), true, 'and so does one under an archived parent');
+  assert.equal(reaches('project', 'homerun'), false);
+  const homeBound = { self: 'home' };
+  assert.equal(reaches('project', 'homerun', homeBound), true, 'Home reaches Home, a routine run included');
+  assert.equal(reaches('project', 'same', homeBound), false);
+  assert.equal(reaches('project', 'qchat', homeBound), false);
+  const homeGroup = [{ id: 'gh', project: null }, { id: 'gn' }];
+  const rows = [row('me', null, { group: 'gh' }), row('mate', null, { group: 'gn' }), row('chat', null, { groupSession: 'gn' })];
+  for (const to of ['mate', 'chat']) assert.equal(inReach(subsFor(rows, { self: 'me' }), homeGroup, 'project', to), true, `a group with no project is Home: ${to}`);
+});
+
+test('the project comes from the rows and groups, so a target\'s own claims about its place change nothing', () => {
+  const rows = [...REACHED, { ...row('claims', null, { group: 'g3' }), project: 'P', title: 'Session in project P' }];
+  assert.equal(reaches('project', 'claims', { rows }), false);
 });

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
+import { makeSendReach, SEND_LIMIT } from '../lib/send-reach.mjs';
 import { activeStates, busyCount, chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, startChat, sweep, useAccounts, wroteSince } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
@@ -1832,4 +1833,111 @@ test('a move into another project asks even for a chip session beside its maker,
   await slow(() => chat.status().pending.length === 1);
   assert.equal(chat.status().pending[0].tool, 'mcp__capcom__move_session_to_group');
   assert.equal(answerTo(recorded, 'ask-move_session_to_group').length, 1, 'the move to another project waits for the owner');
+});
+
+// The owner's setting for sends outside the family. The server's context hands the runner `reach` and `takeSend`, here over a real store in a temporary folder.
+const REACH_ROWS = [
+  { id: 'mate', title: 'Same project', parent: null, group: 'g1' }, { id: 'far', title: 'Other project', parent: null, group: 'g3' }, { id: 'home', title: 'Home one', parent: null },
+  { id: 'old', title: 'Archived', parent: null, group: 'g1', archived: true }, { id: 'gchat', title: 'A group', parent: null, groupSession: 'g1' }, { id: 'section', title: 'Pinned', parent: null, groupSession: 'pinned' },
+  { id: 'kid', title: 'Kid', parent: 'me', group: 'g1' },
+];
+const REACH_GROUPS = () => [{ id: 'g1', project: 'P' }, { id: 'g3', project: 'Q' }];
+let reachChats = 0;
+function reachOf(t, { reach = 'any', make = {} } = {}) {
+  const store = makeSendReach(fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-reach-runner-')));
+  store.setReach(reach);
+  const subs = () => ({ lookup: () => ({ self: { id: 'me', title: 'Me', group: 'g1' }, rows: REACH_ROWS }), pending: () => [], summary: () => null, send: () => 'idle',
+    reach: () => store.reach(), takeSend: () => store.take('me'), ...make });
+  return { store, subs, ...groupChat(t, { subs, groups: REACH_GROUPS, id: `11111111-2222-4333-8444-0000000003${String(10 + reachChats++)}` }) };
+}
+const sendAsk = (to, extra = {}) => `ask send_session ${JSON.stringify({ session_id: to, message: 'hi', ...extra })}`;
+// Sends one tool call and says whether it went with no card (true) or was queued behind one (false).
+async function wentFree(chat, recorded, text) {
+  const id = `ask-${text.split(' ')[1]}`;
+  const had = answerTo(recorded, id).length;
+  chat.send(text, []);
+  await slow(() => answerTo(recorded, id).length > had);
+  return answerTo(recorded, id).at(-1).behavior === 'allow';
+}
+
+test('with the setting on family, which is the default, a send outside the family asks and the count is never touched', async t => {
+  let taken = 0;
+  const { chat, recorded } = reachOf(t, { reach: 'family', make: { takeSend: () => { taken++; return true; } } });
+  assert.equal(await wentFree(chat, recorded, sendAsk('mate')), false);
+  assert.equal(await wentFree(chat, recorded, sendAsk('kid')), true, 'a send within the tree goes as before');
+  assert.equal(taken, 0);
+});
+
+test('with the setting on any a send to a listed session outside the family goes with no card and counts, a family send does not count, and an archived session, the caller and an unknown id ask', async t => {
+  let taken = 0;
+  const { chat, recorded } = reachOf(t, { make: { takeSend: () => { taken++; return true; } } });
+  for (const to of ['mate', 'far', 'home', 'gchat', 'section']) assert.equal(await wentFree(chat, recorded, sendAsk(to)), true, to);
+  assert.equal(taken, 5);
+  assert.equal(await wentFree(chat, recorded, sendAsk('kid')), true);
+  assert.equal(taken, 5, 'a family send is not counted');
+  for (const to of ['old', 'me', 'nobody']) assert.equal(await wentFree(chat, recorded, sendAsk(to)), false, to);
+  assert.equal(taken, 5, 'a send that was never eligible is not counted');
+});
+
+test('with the setting on project a send goes with no card only to a session of the caller\'s project, a group\'s chat of it included, and any other asks', async t => {
+  const { chat, recorded } = reachOf(t, { reach: 'project' });
+  for (const [to, free] of [['mate', true], ['gchat', true], ['far', false], ['home', false], ['section', false], ['old', false]]) assert.equal(await wentFree(chat, recorded, sendAsk(to)), free, to);
+});
+
+test('the target\'s project is the server\'s, so extra fields in the input that name a project, a group or a setting change nothing', async t => {
+  const { chat, recorded } = reachOf(t, { reach: 'project' });
+  const spoof = { project: 'P', group: 'g1', projectId: 'P', reach: 'any', sendReach: 'any', session_project: 'P', family: true };
+  assert.equal(await wentFree(chat, recorded, sendAsk('far', spoof)), false);
+  assert.equal(await wentFree(chat, recorded, sendAsk('home', spoof)), false);
+  const family = reachOf(t, { reach: 'family' });
+  assert.equal(await wentFree(family.chat, family.recorded, sendAsk('far', spoof)), false, 'and the setting is the store\'s');
+});
+
+test('the 10 sends outside the family go, the 11th and every later one asks, and the count is the sender\'s own', async t => {
+  const { chat, recorded, store } = reachOf(t);
+  for (let i = 0; i < SEND_LIMIT; i++) assert.equal(await wentFree(chat, recorded, sendAsk('mate')), true, `send ${i + 1}`);
+  assert.equal(await wentFree(chat, recorded, sendAsk('mate')), false);
+  assert.equal(await wentFree(chat, recorded, sendAsk('far')), false);
+  assert.equal(await wentFree(chat, recorded, sendAsk('kid')), true, 'the family still goes');
+  assert.equal(store.take('someone-else'), true);
+  store.ownerSpoke('me');
+  assert.equal(await wentFree(chat, recorded, sendAsk('mate')), true, 'the owner\'s message gave it 10 again');
+});
+
+test('going back to family applies to the next send with no restart, and a change to any applies as soon as it is made', async t => {
+  const { chat, recorded, store } = reachOf(t);
+  assert.equal(await wentFree(chat, recorded, sendAsk('mate')), true);
+  store.setReach('family');
+  assert.equal(await wentFree(chat, recorded, sendAsk('mate')), false);
+  store.setReach('any');
+  assert.equal(await wentFree(chat, recorded, sendAsk('mate')), true);
+});
+
+test('a context with no reach or takeSend, or one that throws or says no, leaves the send to ask', async t => {
+  const none = reachOf(t, { make: { reach: undefined, takeSend: undefined } });
+  assert.equal(await wentFree(none.chat, none.recorded, sendAsk('mate')), false, 'a context with neither');
+  const noTake = reachOf(t, { make: { takeSend: undefined } });
+  assert.equal(await wentFree(noTake.chat, noTake.recorded, sendAsk('mate')), false, 'a context with no takeSend');
+  const throws = reachOf(t, { make: { reach: () => { throw new Error('boom'); } } });
+  assert.equal(await wentFree(throws.chat, throws.recorded, sendAsk('mate')), false, 'a reach that throws');
+  const takeThrows = reachOf(t, { make: { takeSend: () => { throw new Error('boom'); } } });
+  assert.equal(await wentFree(takeThrows.chat, takeThrows.recorded, sendAsk('mate')), false, 'a takeSend that throws');
+  for (const take of [() => false, () => undefined, () => 'yes', () => 1]) {
+    const c = reachOf(t, { make: { takeSend: take } });
+    assert.equal(await wentFree(c.chat, c.recorded, sendAsk('mate')), false, String(take));
+  }
+});
+
+test('under any a rename, a move, an archive and an unarchive outside the tree still ask, and a group\'s chat still asks for every send', async t => {
+  const { chat, recorded } = reachOf(t);
+  for (const [tool, input] of [['set_session_title', { session_id: 'mate', title: 'x' }], ['move_session_to_group', { session_id: 'mate', group: 'g1' }], ['archive_session', { session_id: 'mate' }], ['unarchive_session', { session_id: 'old' }]]) {
+    const had = chat.status().pending.length;
+    chat.send(`ask ${tool} ${JSON.stringify(input)}`, []);
+    await slow(() => chat.status().pending.length > had);
+    assert.equal(answerTo(recorded, `ask-${tool}`).length, 0, `${tool} ${input.session_id} waits for the owner`);
+  }
+  let taken = 0;
+  const group = groupChat(t, { group: {}, subs: () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: REACH_ROWS }), pending: () => [], summary: () => null, send: () => 'idle', reach: () => 'any', takeSend: () => { taken++; return true; } }), groups: REACH_GROUPS, id: '11111111-2222-4333-8444-000000000290' });
+  for (const to of ['mate', 'far', 'kid']) assert.equal(await wentFree(group.chat, group.recorded, sendAsk(to)), false, `a group's chat to ${to}`);
+  assert.equal(taken, 0);
 });

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { EFFORTS, GROUP_READ_NAMES, GROUP_START_NAME, handleMcp, makeChips, TOOL_NAMES } from '../lib/tools.mjs';
 import { makeForms } from '../lib/forms.mjs';
 import {
@@ -657,5 +657,35 @@ test('a group session that cannot start because its pin is signed out tells the 
     assert.doesNotMatch(reply.result.content[0].text, /Second|Work|pinned|signed out/);
   } finally {
     console.error = quiet;
+  }
+});
+
+// The owner's setting for sends with no card is the runner's alone. A tool that read or set it could widen its own reach.
+test('no tool reads or sets the send reach: every listed tool called in an ordinary chat and a group\'s never touches reach or takeSend, and none of them names it', async () => {
+  const touched = [];
+  const rows = [{ id: 'me', title: 'Me', parent: null }, { id: 'other', title: 'Other', parent: null }];
+  const subs = {
+    lookup: () => ({ self: rows[0], rows }), pending: () => [], summary: () => null, send: () => 'idle', projects: () => [], routines: () => [],
+    get reach() { touched.push('reach'); throw new Error('a tool read the reach'); },
+    get takeSend() { touched.push('takeSend'); throw new Error('a tool took a send'); },
+    get setReach() { touched.push('setReach'); throw new Error('a tool set the reach'); },
+  };
+  const chips = makeChips(fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-reach-tools-')));
+  const args = { session_id: 'other', message: 'hi', title: 'x', name: 'x', group: 'x', project: 'x', query: 'o', session: 'other', task_id: 'task_x', prompt: 'p', routine: 'x', sendReach: 'any', reach: 'any' };
+  for (const ctx of [{ subs, chips, groups: () => [], cwd: '/tmp/work' }, { subs, chips, groups: () => [], cwd: '/tmp/work', group: { id: 'cg-1', name: 'G', stateDir: '/tmp/state', read: () => [], list: () => [] } }]) {
+    const tools = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, ctx).result.tools;
+    assert.ok(tools.some(t => t.name === 'send_session'));
+    for (const tool of tools) {
+      assert.doesNotMatch(JSON.stringify(tool), /sendReach|takeSend|send-reach|Messages between sessions/i, tool.name);
+      await handleMcp({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: tool.name, arguments: args } }, ctx);
+    }
+  }
+  assert.deepEqual(touched, []);
+});
+
+test('the source of every tool names neither takeSend nor the send reach store, which only the runner and the server\'s context use', () => {
+  const lib = fileURLToPath(new URL('../lib/', import.meta.url));
+  for (const name of fs.readdirSync(lib).filter(n => n.endsWith('.mjs') && !['runner.mjs', 'send-reach.mjs'].includes(n))) {
+    assert.doesNotMatch(fs.readFileSync(path.join(lib, name), 'utf8'), /takeSend|send-reach|sendReach|\.reach\b/, name);
   }
 });

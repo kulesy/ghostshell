@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeAccounts, MAIN, SETTING_KEYS, serviceFor } from '../lib/accounts.mjs';
+import { makeSendReach, SEND_LIMIT } from '../lib/send-reach.mjs';
 
 const fresh = () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-accounts-test-'));
@@ -228,4 +229,124 @@ test('usesChrome reads the .claude.json inside a CLAUDE_CONFIG_DIR when the firs
   assert.equal(a.usesChrome(), false, 'the home file is not the one');
   fs.writeFileSync(path.join(folder, '.claude.json'), JSON.stringify({ hasCompletedClaudeInChromeOnboarding: true }));
   assert.equal(a.usesChrome(), true);
+});
+
+// The owner's setting for how far send_session goes with no card, and each session's count of those sends.
+const reachIn = () => {
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-send-reach-test-'));
+  const warned = [];
+  return { state, warned, file: path.join(state, 'send-reach.json'), make: () => makeSendReach(state, { warn: m => warned.push(m) }) };
+};
+
+test('the send reach is family until the owner sets it, is kept at 0600, survives a reload, and refuses a value that is not one of the three', () => {
+  const r = reachIn();
+  const a = r.make();
+  assert.equal(a.reach(), 'family');
+  assert.equal(fs.existsSync(r.file), false, 'reading the default writes nothing');
+  for (const bad of ['', 'all', 'ANY', 'Family', null, undefined, 1, true, ['any'], { toString: () => 'any' }]) assert.equal(a.setReach(bad), false, String(bad));
+  assert.equal(a.reach(), 'family');
+  assert.equal(a.setReach('any'), true);
+  assert.equal(fs.statSync(r.file).mode & 0o777, 0o600);
+  assert.equal(r.make().reach(), 'any');
+  assert.equal(a.setReach('project'), true);
+  assert.equal(r.make().reach(), 'project');
+});
+
+test('a corrupt, wrongly shaped or unknown send reach file reads as family, and a corrupt one is moved aside with a warning that quotes nothing', () => {
+  const r = reachIn();
+  fs.writeFileSync(r.file, '{"reach": "any", oops');
+  assert.equal(r.make().reach(), 'family');
+  assert.equal(fs.existsSync(r.file), false);
+  assert.equal(fs.readdirSync(r.state).filter(n => n.startsWith('send-reach.json.bad-')).length, 1);
+  assert.deepEqual(r.warned.length, 1);
+  assert.doesNotMatch(r.warned[0], /oops/);
+  fs.writeFileSync(r.file, '[]');
+  assert.equal(r.make().reach(), 'family');
+  fs.writeFileSync(r.file, JSON.stringify({ reach: 'everyone', sent: {} }));
+  assert.equal(r.make().reach(), 'family', 'an unknown value is family');
+  assert.equal(fs.existsSync(r.file), true, 'a file that parses is left where it is');
+});
+
+test('a session may make 10 sends with no card, the 11th asks, other sessions have their own 10, and the owner speaking to a session gives it 10 again', () => {
+  assert.equal(SEND_LIMIT, 10);
+  const r = reachIn();
+  const a = r.make();
+  for (let i = 0; i < SEND_LIMIT; i++) assert.equal(a.take('s1'), true, `send ${i + 1}`);
+  assert.equal(a.take('s1'), false);
+  assert.equal(a.take('s1'), false);
+  assert.equal(a.take('s2'), true, 'a second session has its own count');
+  a.ownerSpoke('s1');
+  assert.equal(a.take('s1'), true);
+  for (const bad of [undefined, null, '', 5, {}, ['s1']]) assert.equal(a.take(bad), false, String(bad));
+  assert.equal(a.setReach('any'), true);
+  assert.equal(a.setReach('family'), true);
+  for (let i = 0; i < SEND_LIMIT - 1; i++) a.take('s1');
+  assert.equal(a.take('s1'), false, 'changing the setting does not reset a count');
+});
+
+test('the counts survive a reload, and an owner message for a session with no count writes nothing', () => {
+  const r = reachIn();
+  const a = r.make();
+  for (let i = 0; i < SEND_LIMIT; i++) a.take('busy');
+  a.take('few');
+  const again = r.make();
+  assert.equal(again.take('busy'), false, 'a restart does not give the 10 back');
+  for (let i = 0; i < SEND_LIMIT - 1; i++) assert.equal(again.take('few'), true);
+  assert.equal(again.take('few'), false);
+  const before = fs.readFileSync(r.file, 'utf8');
+  fs.utimesSync(r.file, 1, 1);
+  again.ownerSpoke('nobody');
+  assert.deepEqual([fs.readFileSync(r.file, 'utf8'), fs.statSync(r.file).mtimeMs], [before, 1000]);
+  again.ownerSpoke('busy');
+  assert.equal(r.make().take('busy'), true, 'the reset is kept too');
+});
+
+test('a bad count in the file counts as the limit and never fewer sends than were made, and a missing one is 0', () => {
+  const r = reachIn();
+  fs.writeFileSync(r.file, JSON.stringify({ reach: 'any', sent: { text: 'x', neg: -3, frac: 1.5, zero: 0, nul: null, obj: {}, big: 1e9, three: 3 } }));
+  const a = r.make();
+  for (const id of ['text', 'neg', 'frac', 'zero', 'nul', 'obj', 'big']) assert.equal(a.take(id), false, id);
+  for (let i = 0; i < SEND_LIMIT - 3; i++) assert.equal(a.take('three'), true);
+  assert.equal(a.take('three'), false, 'a count of 3 leaves 7');
+  fs.writeFileSync(r.file, JSON.stringify({ reach: 'project', sent: 'busted' }));
+  const b = r.make();
+  assert.equal(b.reach(), 'project');
+  assert.equal(b.take('any'), true);
+});
+
+test('a send whose count cannot be saved does not go, a reach that cannot be saved is not changed, and a failed reset keeps the count', () => {
+  const r = reachIn();
+  const a = r.make();
+  assert.equal(a.take('s'), true);
+  const rename = fs.renameSync;
+  try {
+    fs.renameSync = () => { throw new Error('disk full'); };
+    assert.equal(a.take('s'), false, 'the increment is not saved, so it does not go');
+    assert.equal(a.take('fresh'), false);
+    assert.throws(() => a.setReach('any'), /disk full/);
+    a.ownerSpoke('s');
+  } finally {
+    fs.renameSync = rename;
+  }
+  assert.equal(a.reach(), 'family');
+  for (let i = 0; i < SEND_LIMIT - 1; i++) assert.equal(a.take('s'), true, 'the failed sends were not counted and the failed reset was not applied');
+  assert.equal(a.take('s'), false);
+  assert.equal(a.take('fresh'), true, 'the failed first send left no count behind');
+});
+
+test('ids that look like object keys are ordinary sessions with their own count', () => {
+  const r = reachIn();
+  const a = r.make();
+  for (const id of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    for (let i = 0; i < SEND_LIMIT; i++) assert.equal(a.take(id), true, `${id} ${i}`);
+    assert.equal(a.take(id), false, id);
+  }
+  assert.equal(a.take('plain'), true);
+  assert.equal(({}).polluted, undefined);
+  const again = r.make();
+  assert.equal(again.take('__proto__'), false, 'kept over a reload');
+  assert.equal(again.take('plain'), true);
+  fs.writeFileSync(r.file, '{"reach":"any","sent":{"__proto__":{"polluted":true}}}');
+  assert.equal(r.make().take('__proto__'), false);
+  assert.equal(({}).polluted, undefined);
 });

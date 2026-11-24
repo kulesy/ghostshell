@@ -42,6 +42,7 @@ import { makeForms } from './lib/forms.mjs';
 import { lockHolder } from './lib/restart.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
+import { makeSendReach } from './lib/send-reach.mjs';
 import { makeAccountLogins, resetOf } from './lib/account-logins.mjs';
 import { browserSeen, makeChromeCheck, openChromeSettings, SURVEY_MS } from './lib/chrome-check.mjs';
 import { accountFor, blockedBy, blockedError, blockedMessage, spillOf } from './lib/account-rule.mjs';
@@ -69,6 +70,7 @@ const routineStore = makeRoutines(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
 const uploads = makeUploads(cfg.stateDir);
 const accounts = makeAccounts(cfg.stateDir, { warn: console.error });
+const sendReach = makeSendReach(cfg.stateDir, { warn: console.error });
 // The environment an account's processes start with. An id nobody lists gets the active account's, which only a probe or a title ask can reach, since no turn runs on it.
 const envOfAccount = id => accounts.envFor(accounts.find(id) ?? accounts.active);
 useAccounts(chat => accountOfChat(chat));
@@ -582,6 +584,9 @@ function subCtx(sessionId) {
     summary: (id, cwd) => summaries.get(id, cwd),
     pulls: async rows => (await pullsFor(rows)).lists,
     send: sendToSession,
+    // Only the runner's send check calls these, closed over this chat's own id. No tool gets them.
+    reach: () => sendReach.reach(),
+    takeSend: () => sendReach.take(sessionId),
     // The same changes the layout routes make, so a tool's and the owner's cannot differ. A session another app runs is left alone, and a running chat of Capcom's is not stopped.
     // Resolves with how it went. 'done' says how many sub sessions went with it, and a refusal says whether the session itself stood in the way and how many below it did.
     archive(id) {
@@ -2076,6 +2081,19 @@ function keptWords(chat, wanted) {
   return `That chat is ${what} on ${accounts.find(chat.account)?.name ?? 'the other account'}. It moves to ${accounts.find(wanted)?.name ?? accounts.active.name} once ${ends}.`;
 }
 
+// GET api/settings gives the owner's choice of how far a session's send_session goes with no card, and POST sets it. A write lets sessions message each other
+// unasked, so it takes the stricter origin check.
+async function settingsApi(req, res, parts) {
+  if (parts.length !== 2) return send(res, 404, { error: 'Not found' });
+  if (req.method === 'GET') return send(res, 200, { sendReach: sendReach.reach() });
+  if (req.method !== 'POST') return send(res, 404, { error: 'Not found' });
+  if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+  const body = await readJson(req, 1_000);
+  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+  if (!sendReach.setReach(body.sendReach)) return send(res, 400, { error: 'sendReach is family, project or any.' });
+  return send(res, 200, { sendReach: sendReach.reach() });
+}
+
 // GET api/accounts lists them. POST api/accounts adds one by name and starts its sign-in, and POST api/accounts/<id>/sign-in starts one. The rest are
 // POST api/accounts/<id>/rename, POST api/accounts/<id>/use (with `continue`, a session to send "Continue." to), POST api/accounts/auto, POST api/accounts/seen,
 // POST api/accounts/plan, POST api/accounts/chrome-open (the extension's settings on the Mac) and POST api/accounts/chrome-seen. All of them run something as the owner, so they take the stricter origin check.
@@ -2159,6 +2177,7 @@ async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'banners') return bannersApi(req, res, parts);
   if (parts[1] === 'accounts') return accountsApi(req, res, parts);
+  if (parts[1] === 'settings') return settingsApi(req, res, parts);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
   if (parts[1] === 'scheduled') return scheduledApi(req, res, parts);
   if (parts[1] === 'schedule' && parts.length === 2) return scheduleApi(req, res, u);
@@ -2190,7 +2209,7 @@ async function api(req, res, u) {
       delete r.sortKey;
     }
     // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, the group a routine can be given for a heading in Home, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write, and giving a routine a project.
-    return send(res, 200, { ...index, commit: await updates.commit(), features: { groupSessions: true, sectionSessions: true, groupEdits: true, projectOrder: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true, routineProjects: true } });
+    return send(res, 200, { ...index, commit: await updates.commit(), features: { groupSessions: true, sectionSessions: true, groupEdits: true, projectOrder: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true, routineProjects: true, sendReach: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -2461,6 +2480,7 @@ async function api(req, res, u) {
       throw e;
     }
     if (row.groupSession) groupUpdates.ownerSpoke(id);
+    sendReach.ownerSpoke(id);
     if (held) terminal.release(id);
     uploads.record(id, files);
     const unarchived = row.archived && unarchive(id);
