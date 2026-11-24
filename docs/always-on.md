@@ -35,7 +35,7 @@ Use `npm run install-agent -- --label com.example.capcom` for a different label.
 
 ## Restart the service
 
-A restart is only needed after a change to server-side code. Files under `public/` load from disk on each request, so a reload of the page is enough for those. The sidebar shows a banner when merged changes are waiting on `main` and runs the update for you, as [Update from the sidebar](#update-from-the-sidebar) says.
+A restart is only needed after a change to server-side code. Files under `public/` load from disk on each request, so a reload of the page is enough for those. The sidebar shows a banner when merged changes are waiting on `main`. The server applies them itself, or you press Update, as [Update from the sidebar](#update-from-the-sidebar) says.
 
 ```bash
 npm run restart
@@ -66,6 +66,17 @@ Every 30 minutes the server fetches `origin/main` and compares it with the commi
 4. Update refuses, and changes nothing, when the checkout is not on `main`, has uncommitted changes to tracked files, has commits that are not on `origin/main` while it needs a merge, or a restart is already under way. It also stops when its fresh check needs a merge or a restart the banner did not offer, so the banner can show the new offer.
 
 If the helper gives up because a chat kept running, the banner stays and offers Restart.
+
+### Without a press
+
+With `autoUpdate` on, which is the default, the server applies waiting changes itself and Update is only needed when it holds back. This holds for the server that launchd runs. A server started by hand never does it. After each 30 minute check that finds changes, the server looks every 5 seconds for a moment when it can go ahead.
+
+1. The checkout must be on `main`, with no uncommitted change to a tracked file and no commit that `origin/main` lacks. When it is not, nothing moves and the banner says why. A change that only touches the page is then merged at any time, while chats run.
+2. A change that needs a restart waits until no chat is working or waiting on an answer, the time is outside the quiet window with at least a minute of wait left before it, the server has been up for 30 minutes and no sign-in is waiting on the Mac.
+3. It then fetches again, tests all of this on the new result, merges, and runs `npm run restart -- --wait <minutes>` with at most 5 minutes. It never passes `--now` or `--take-over`, so Force restart stays yours.
+4. Each 30 minute check allows one attempt. A failed merge, a helper that could not start and a helper that gave up are tried again after the next check, and the banner shows the reason meanwhile.
+
+Set `autoUpdate` to `false` in `config.local.json` to turn it off, as [Configuration](configuration.md#autoupdate) says. [The decision record](adr/20261124-apply-merged-changes-without-a-press.md) has the reasons and what it trusts.
 
 A change that needs a restart also offers Force restart beside the main button. It asks first, naming how many running chats it will cut, then pulls if anything is waiting and runs `npm run restart -- --now --take-over`. That also works while an Update is waiting for chats: the waiting helper is told to go now. It ignores the quiet window and the wait for chats, and it still refuses when the server started less than 60 seconds ago.
 

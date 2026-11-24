@@ -38,14 +38,14 @@ import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
-import { lockHolder } from './lib/restart.mjs';
+import { labelOf, launchdList, lockHolder } from './lib/restart.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins, resetOf } from './lib/account-logins.mjs';
 import { browserSeen, makeChromeCheck, openChromeSettings, SURVEY_MS } from './lib/chrome-check.mjs';
 import { accountFor, blockedBy, blockedError, blockedMessage, spillOf } from './lib/account-rule.mjs';
 import { groupNamed } from './lib/layout-tools.mjs';
-import { CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
+import { APPLY_EVERY_MS, CHECK_EVERY_MS, makeUpdate } from './lib/update.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { makeScheduledFile, makeScheduledSessions } from './lib/scheduled.mjs';
 import { esc } from './public/md.mjs';
@@ -1937,6 +1937,11 @@ const updates = makeUpdate({
   // The chats the restart helper waits for are the ones mid-turn, whether they are working or waiting on an approval. A queued send is no part of a turn, and the restart does not wait for it.
   busy: busyCount,
   log: path.join(cfg.stateDir, 'restart.log'),
+  auto: cfg.autoUpdate,
+  // Only the server launchd runs applies merged changes itself. The restart helper finds its job the same way.
+  service: async () => labelOf(await launchdList('launchctl'), [process.pid, process.ppid]) !== null,
+  signingIn: () => accountLogins.waiting(),
+  announce: text => console.log(`Update: ${text}`),
 });
 
 // GET api/banners gives both banners. POST api/banners/sign-in starts a sign-in on the Mac and POST api/banners/update pulls the merged changes,
@@ -2506,8 +2511,9 @@ server.listen(cfg.port, '127.0.0.1', () => {
   accounts.prepare(accounts.active);
   accountLogins.refreshAll();
   setInterval(accountLogins.refreshAll, REFRESH_MS).unref();
-  setTimeout(updates.check, cfg.updateDelayMs).unref();
-  setInterval(updates.check, CHECK_EVERY_MS).unref();
+  setTimeout(updates.scheduled, cfg.updateDelayMs).unref();
+  setInterval(updates.scheduled, CHECK_EVERY_MS).unref();
+  setInterval(updates.apply, APPLY_EVERY_MS).unref();
   setTimeout(chromeCheck.survey, cfg.surveyDelayMs).unref();
   setInterval(chromeCheck.survey, SURVEY_MS).unref();
 });

@@ -36,6 +36,10 @@ The settings in `config.json` and `config.local.json`, and the eleven environmen
 
 `prComments` is `true` by default. Every 3 minutes GhostShell checks the pull request of each session active in the last 14 days. When someone other than the `gh` account or a bot adds a comment, a review or a commit, the session gets one message with the author and a link, never what they wrote. A session gets at most one such message every 10 minutes, and anything newer waits for the next one. An archived session is not woken. Its group's chat hears about it instead, once a page has had that chat open in the last day, and until then the news waits. See [the decision record](adr/20261026-show-pull-request-status-on-session-cards.md). Set it to `false` to send none.
 
+### `autoUpdate`
+
+`autoUpdate` is `true` by default. GhostShell then merges the changes waiting on `main` itself and restarts when none of them is held back, with no press of Update (see [Update from the sidebar](always-on.md#update-from-the-sidebar)). It does so only on the server that launchd runs, never on one started by hand. Set it to `false` and the banner's buttons work as they always have. A change takes effect at the next restart. A commit on `origin/main` then runs on the Mac with no one pressing, so a machine that should not do that turns it off in `config.local.json`, which wins over a merged `config.json`.
+
 ### `autoTitle`
 
 `autoTitle` is `true` by default. GhostShell then names each session it starts: a session started with a title keeps it, and one you start by typing is named once its first reply finishes (see [naming a new session](session-list.md#naming-a-new-session)). That costs one short call to Haiku 5.5 for each typed session. Set it to `false` to make no such call and leave the first line of the first message as the title.

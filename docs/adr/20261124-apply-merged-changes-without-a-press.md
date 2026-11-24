@@ -34,7 +34,7 @@ Chosen option: "The server waits for the quiet moment itself", because it costs 
 
 The server checks for merged changes every 30 minutes, as before. After a check finds some, it looks every 5 seconds for a moment when all of these hold:
 
-1. `autoUpdate` is on, which is the default, and launchd runs this server. A server started by hand or from a test never applies anything.
+1. `autoUpdate` is on, which is the default, and launchd runs this server. A server started by hand or from a test never applies anything. The server asks launchd at each check until it answers yes, and then remembers.
 2. The checkout is on `main`, has no uncommitted change to a tracked file, and has no commit that `origin/main` lacks. Otherwise nothing merges, nothing restarts, and the banner gives the reason.
 3. No update or restart is already under way.
 
@@ -45,11 +45,11 @@ A page-only change is then merged. A change that needs a restart also waits unti
 6. The server has been up for 30 minutes.
 7. No sign-in is waiting on the Mac.
 
-It then fetches and checks again, and tests every condition against that result before it fast-forwards to the commit it checked. It starts `npm run restart -- --wait <minutes>` with at most 5 minutes, which is enough for the helper's two clear polls. The helper tests again that no chat is running, and it restarts nothing when one is. Both the server and the helper must agree, so a chat that starts in between is waited for. The automatic path never passes `--now` or `--take-over`, and Force restart stays the owner's button.
+It then fetches and checks again, and tests every condition against that result before it fast-forwards to the commit it checked. It starts `npm run restart -- --wait <minutes>` with at most 5 minutes, which is enough for the helper's two clear polls. The helper tests again that no chat is running, and it restarts nothing when one is. After the merge it tests the quiet window, the chats and the sign-in once more, and asks for the restart only if they still hold. Otherwise the checkout stays merged and the next look restarts it. Both the server and the helper must agree, so a chat that starts in between is waited for. The automatic path never passes `--now` or `--take-over`, and Force restart stays the owner's button.
 
 ### What stops a loop
 
-1. Each check allows one attempt, so a failed merge or a helper that gave up is tried again after the next check, 30 minutes later.
+1. Each check allows one attempt, so a failed merge, a failed read or a helper that gave up is tried again after the next check, 30 minutes later. A "not yet" found after the fetch, such as a chat that started during it, gives the attempt back, and the cheap conditions on the fresh result stop the next look, so it never fetches every 5 seconds.
 2. The server must have been up for 30 minutes before it restarts itself. A server that keeps restarting for any reason never adds a restart of its own, and a fault in the comparison could cause at most two restarts an hour.
 3. A restart is asked for only when the checkout holds the commit it is for, so the new server starts on that commit and finds nothing waiting.
 4. The helper's lock allows one restart at a time, and it refuses a server that has been up for less than 60 seconds.
