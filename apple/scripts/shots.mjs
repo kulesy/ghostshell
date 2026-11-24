@@ -1903,7 +1903,6 @@ const MAC_VERBS = {
   // A search's section heading is a row of its own above the results, so the results are counted without it and skipped past.
   choose: async (app, stub, n) => { if (!app.chooseRow(n + app.rows() - results(app))) throw new Error(`the sidebar has no result ${n}`); },
   route: async (app, stub, name) => { if (!app.press(name[0].toUpperCase() + name.slice(1))) throw new Error(`no ${name} link in the sidebar footer`); },
-  // A field is found by its label, or by its place among the form's text fields. The prompt is the form's text area.
   // A menu button is a menu button, a pop-up button or a plain button by how the window draws it, so it is found by name in all three.
   menu: async (app, stub, name) => {
     const button = app.find(node => ['AXMenuButton', 'AXPopUpButton', 'AXButton'].includes(node.role) && [app.label(node), node.title, node.desc].includes(name));
@@ -1913,6 +1912,7 @@ const MAC_VERBS = {
     const entry = app.waitFor(node => node.role === 'AXMenuItem' && node.title?.startsWith(name));
     if (!entry || !app.act(entry)) throw new Error(`the open menu has no ${name} item`);
   },
+  // A field is found by its label, or by its place among the form's text fields. The prompt is the form's text area.
   fill: async (app, stub, { field, text }) => {
     const fields = app.findAll(node => node.role === 'AXTextField' && node.path.length > 4);
     const box = field === 'Prompt text' ? app.findAll(node => node.role === 'AXTextArea').at(-1)
@@ -1972,7 +1972,8 @@ async function playJourney(bundle, appearance, journey) {
         }
       }
       if (record.status === 'failed') console.log(`JOURNEY mac ${journey.id}/${step.id}: ${record.reason}`);
-      if (record.status !== 'skipped' && !setupError) {
+      // An open native menu stops the window drawing its own shot, so a menu step that opened one has none.
+      if (record.status !== 'skipped' && !setupError && !(record.status === 'ok' && verbOf(step) === 'menu')) {
         await sleep(800);
         await app.shot(`${shotName(journey.id, i + 1, step.id)}-${appearance}-default`);
       }
