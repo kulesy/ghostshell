@@ -224,7 +224,7 @@ export function pinnedChromeWords(a, accounts) {
 
 export const SWITCH_LEAVES_PINS = 'A switch leaves pinned work on its account.';
 
-const placeWords = card => (card.from === 'group' || card.from === 'project' ? `the ${card.from}${card.fromName ? ` ${card.fromName}` : ''}` : 'the session it opens under');
+const placeWords = card => (card.from === 'session' ? `the session ${card.fromName ? `“${card.fromName}”` : 'it opens under'}` : `the ${card.from}${card.fromName ? ` ${card.fromName}` : ''}`);
 
 // The account line on a chip card, or null when the card shows none: one account listed, a server that sends no words for the card, or a chip that is not open.
 // `card` is the server's words for the place the chip opens in, `named` the account the chip names and `pick` the owner's own pick on the card, which is undefined
