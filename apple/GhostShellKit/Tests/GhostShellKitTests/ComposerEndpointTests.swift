@@ -68,6 +68,20 @@ final class ComposerEndpointTests: XCTestCase {
         XCTAssertTrue(reply.unarchived)
     }
 
+    func testAHandoverSendSaysSoAndReadsWhereTheWorkMoved() async throws {
+        ComposerStub.reset { _ in (200, #"{"state":"working","running":true,"movedTo":"new-1"}"#) }
+        let reply = try await client().sendMessage(OutgoingMessage(text: "go", handover: true), to: "abc-1")
+        XCTAssertEqual(try json(ComposerStub.last()?.body)["handover"] as? Bool, true)
+        XCTAssertEqual(reply.movedTo, "new-1")
+    }
+
+    func testASendWithNoHandoverLeavesTheFlagOutAndReadsNoMove() async throws {
+        ComposerStub.reset { _ in (200, ComposerEndpointTests.status) }
+        let reply = try await client().sendMessage(OutgoingMessage(text: "go"), to: "abc-1")
+        XCTAssertNil(try json(ComposerStub.last()?.body)["handover"])
+        XCTAssertNil(reply.movedTo)
+    }
+
     func testSendCarriesImagesAndFiles() async throws {
         ComposerStub.reset { _ in (200, ComposerEndpointTests.status) }
         let message = OutgoingMessage(text: "see", images: [OutgoingImage(mediaType: "image/png", data: "AAAA")], files: ["f1", "f2"])

@@ -3,6 +3,7 @@ import { pinsKey, supportsAccounts, supportsPins } from './account-rules.js';
 import { BlockedNotice, SpillNotice, SwitchAndContinue } from './accounts.js';
 import { Approvals } from './approvals.js';
 import { ArchiveButton } from './chat-archive.js';
+import { HandoffNotice } from './handoff.js';
 import { copyText } from './clipboard.js';
 import { Composer } from './composer.js';
 import { HOME } from './env.js';
@@ -203,6 +204,7 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
       <${Holds} ctrl=${ctrl} />
       <${BlockedNotice} ctrl=${ctrl} />
       <${SpillNotice} ctrl=${ctrl} />
+      <${HandoffNotice} ctrl=${ctrl} />
       <${Notice} ctrl=${ctrl} />
       <${Composer} ctrl=${ctrl} />
     </div>

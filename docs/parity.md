@@ -4,7 +4,7 @@ This ledger tracks how closely the Mac app matches the web page. The web page un
 
 - **Pair run.** `npm run apple:parity` lays each Mac shot beside its web shot. The `parity` job in the `Swift app` workflow runs it after the Mac shots and keeps the side-by-side images as the `parity-pairs` artifact. `apple/scripts/parity-pairs.json` maps the shot names that differ, and `apple/README.md` says how to read a run.
 - **Built.** 21 Nov 2026 from commit d19857db, with one side-by-side pass. The Pass log at the end says what it covered.
-- **Rows.** 371: direct 236, translated 3, partial 62, missing 49, unsupported 8, extra 12, manual 1.
+- **Rows.** 373: direct 237, translated 3, partial 63, missing 49, unsupported 8, extra 12, manual 1.
 
 ## Statuses
 
@@ -112,6 +112,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 1.71 | Polling and optimistic place, nest, archive | direct | `public/app.js:129` | `apple/GhostShellKit/Sources/GhostShellScreens/Organise/OrganiseModel.swift:8` | - | - | - |
 | 1.72 | Reload bar after an update | unsupported | `public/ui/reload.js:1` | `apple/GhostShell/GhostShellApp.swift:29` | - | - | Platform limit: the Mac app's code ships in its own build, so a server update leaves nothing on the Mac to reload. The Update banner covers the server, see Banners |
 | 1.73 | Toast region and stacked toasts | missing | `public/ui/toast.js:142` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:45` | - | - | No general toast layer; Mac has an alert for errors only |
+| 1.74 | Session row: ring for a saved handoff, with "Handoff saved" in the hover tip and the screen-reader label | direct | `public/ui/sessions-list.js:60` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarTheme.swift:15` | - | - | Shown when no other mark is. Not shot, since the ring needs a session with a saved handoff |
 
 ## 2. Organise
 
@@ -243,6 +244,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 4.23 | New session screen: which folder it starts in | partial | `public/ui/chat.js:20` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/NewSessionScreen.swift:59` | 7-new-session | - | See 4.23a |
 | 4.24 | Start-with-pin or account choice on a new session | partial | `public/ui/group-rules.js:137` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/NewSessionScreen.swift:39` | 7-new-session | - | Not verified |
 | 4.25 | Composer draft survives sessions | direct | `public/ui/draft.js:2` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/ComposerStore.swift:41` | 1-composer-relaunched | - | - |
+| 4.26 | Line by the prompt box for a saved handoff, and a send that moves to the fresh session | partial | `public/ui/handoff.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/ComposerView.swift:276` | - | - | The cold line, the line on the fresh session and the move on send are there. The line on the earlier session is not. See 4.26a |
 
 ## 5. Approvals
 
@@ -517,6 +519,7 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 | 4.2a | gap | 1-session-chosen, 12-term-chat | The Mac placeholder reads "Type / for commands" with the terminal on. The page adds "or ! to run a command", and the Mac has no ! mode (rows 4.2 and 4.3). |
 | 4.16a | gap, minor | 10-tool-tiles, 1-session-chosen | With no effort set, the Mac composer footer shows an "Effort" label next to the model. The page shows the model only. |
 | 4.23a | gap | 7-new-session | The page has no folder step: a new session starts in the viewed project's or parent's folder, and the head says "Starts Claude Code in" the folder. The Mac asks for a path, with a Recent folders menu. |
+| 4.26a | gap | - | The page shows "This work carries on in a fresh session" with an "Open it" link on the earlier, archived session. The Mac index lists no archived rows, so that line has no source there. Would need the archive list read by the chat. |
 | 5.7a | gap | 7-approval-edit, 7-approval-plan | The Mac edit and plan cards have no "All input" disclosure. The page shows it on every card. |
 | 5.9a | gap, major | 7-approval-question | The Mac question card is shorter. At 960 the own-answer field and the second question sit below the fold. At 640 only the first option shows, cut through its description. The page shows both options and the own-answer field at 640. |
 | 7.1a | question | 10-tool-tiles | With five pictures, the Mac shows three tiles and a "+2" tile. The page at 960 shows three tiles and no overflow tile, though `public/ui/gallery.js:32` has one. Check which is right. |

@@ -1,6 +1,6 @@
 # Configuration
 
-The settings in `config.json` and `config.local.json`, and the eleven environment variables that override them.
+The settings in `config.json` and `config.local.json`, and the twelve environment variables that override them.
 
 ## Files
 
@@ -40,6 +40,10 @@ The settings in `config.json` and `config.local.json`, and the eleven environmen
 
 `autoTitle` is `true` by default. GhostShell then names each session it starts: a session started with a title keeps it, and one you start by typing is named once its first reply finishes (see [naming a new session](session-list.md#naming-a-new-session)). That costs one short call to Haiku 5.5 for each typed session. Set it to `false` to make no such call and leave the first line of the first message as the title.
 
+### `cacheHandoffTokens`
+
+`cacheHandoffTokens` is `150000` by default. A chat that has sat idle for about 50 minutes with a context at least that large is asked to save a handoff before its prompt cache goes cold (see [handoff before the cache goes cold](chat.md#handoff-before-the-cache-goes-cold)). Each ask is a turn of that chat and spends tokens. Set it to `0` to ask none. A value that is not a whole number of tokens, 0 or more, is ignored with a line on stderr, and the default is used.
+
 ### `desktopHandoff`
 
 `desktopHandoff` is `false` by default. Set it to `true` to hand new sessions to Claude Desktop (see [sessions started here](how-it-works.md#sessions-started-here)). Turning it on also hands over, the next time GhostShell starts, every session started here that Desktop does not have yet.
@@ -56,7 +60,7 @@ The settings in `config.json` and `config.local.json`, and the eleven environmen
 
 ## Environment variables
 
-Eleven environment variables win over both files:
+Twelve environment variables win over both files:
 
 - `PORT` sets the port.
 - `CAPCOM_CLAUDE` sets the CLI.
@@ -65,6 +69,7 @@ Eleven environment variables win over both files:
 - `CAPCOM_AUTO_TITLE` set to `0` turns off [`autoTitle`](#autotitle), and any other value turns it on.
 - `CAPCOM_SECURITY`, `CAPCOM_OPEN`, `CAPCOM_UPDATE_ROOT` and `CAPCOM_UPDATE_DELAY_MS` point a test instance at stubs for the macOS `security` and `open` tools and at a scratch folder for the checkout it would update, and set the wait in milliseconds before its first check for updates (60000 by default). Leave them unset in real use.
 - `CAPCOM_GROUP_UPDATE_SCALE` divides the waits of the [group updates](#groupupdates) by that number, so a test instance can see one in seconds. Leave it unset in real use.
+- `CAPCOM_CACHE_HANDOFF_SCALE` divides the interval of the [handoff](#cachehandofftokens) check by that number, so a test instance sees one in seconds. The minutes a reply must be old stay as they are. Leave it unset in real use.
 - `CAPCOM_APPLE_TEAM_ID` sets [`appleTeamId`](#appleteamid), and a test instance uses it to turn the association file on or off.
 
 Two instances that share a state folder both fire its routines, so always give a test instance its own.

@@ -14,7 +14,7 @@ import { batch, logOf, set } from './leveldb-fixture.mjs';
 export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const PASSWORD = 'a long password for the tests';
 export const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
-const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-server-test-'));
+const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-server-test-')));
 // What the fake CLI answers to an initialize request, as the real one does: `clear` and `__remote-workflow` are for the server to leave out.
 export const CLI_COMMANDS = [
   { name: 'review-pr', description: 'Review a pull request  (user)', argumentHint: '[number]' },
@@ -140,11 +140,12 @@ const freePort = () => new Promise(resolve => {
 // row's status to disabled or connected, (and saves the file), or with an error when mcp-toggle-fails in the home holds `off` or `on` for that way round. Each answer waits as many milliseconds as mcp-toggle-wait holds, and a toggle is logged as `control` with its `serverName` and `enabled`.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
-// 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool>, and a message that opens with a <session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
+// 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool>, and a message that opens with a <session-message> tag ends its turn.
+// It writes the file a handoff ask names (see the `ask` lines below), and names the session as begun-by-the-fake on the seed of a session that carries on another's work. The log has the folder it started in, and the reply to each such request as `mcp`.
 // `autoTitle` turns on naming sessions from their first turn, which is off in the tests unless they ask, since the fake CLI would be asked as well.
 // `env` is added to the server's environment.
 // A session is { id, title, folder, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
-// edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
+// edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said, reply }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
 // `folder` is a folder under home that the Desktop record works in, made if it is not there. `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
 // lastTurnEdgeAt and createdAt, `forkedFrom` its forkedFromSessionId, `verdict` the status_category of its postTurnSummary, and `errorAgo` an error and when it
 // happened. `fields` is merged over the record last, so a key set to undefined is left out of it. `said` is what the assistant says after the first line, one text each.
@@ -157,7 +158,8 @@ const freePort = () => new Promise(resolve => {
 // Capcom's marks.json, with the minutes ago for each id under `edges`, `seen`, `unread` and `errors`. `chips` are the chips in chips.json, each
 // { sessionId, startedId, status } with the other fields as they are, a `toolUseId` made up when it has none, and `status` open unless it is given.
 // `forms` are the forms in forms.json, the same way, each { toolUseId, sessionId, title, questions } with `status` open unless it is given.
-function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks, chips, forms }) {
+// `handoffs` is cache-handoffs.json, with the minutes ago each session's last turn ended.
+function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks, chips, forms, handoffs }) {
   const desktop = path.join(home, 'Library', 'Application Support', 'Claude');
   const records = path.join(desktop, 'claude-code-sessions', 'account', 'org');
   const transcripts = path.join(home, '.claude', 'projects', '-test-folder');
@@ -186,6 +188,10 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     const times = list => Object.fromEntries(Object.entries(list ?? {}).map(([id, minutes]) => [id, back(minutes)]));
     fs.writeFileSync(path.join(state, 'marks.json'), JSON.stringify({ edges: times(marks.edges), seen: times(marks.seen), unread: times(marks.unread), errors: times(marks.errors) }));
   }
+  // `handoffs` is cache-handoffs.json: for each session id, the minutes ago its last turn ended, or a whole entry.
+  if (handoffs) {
+    fs.writeFileSync(path.join(state, 'cache-handoffs.json'), JSON.stringify(Object.fromEntries(Object.entries(handoffs).map(([id, v]) => [id, typeof v === 'number' ? { endedAt: back(v) } : v]))));
+  }
   if (chips) {
     const made = chips.map((c, i) => ({ toolUseId: `toolu_${i}`, status: 'open', ...c }));
     fs.writeFileSync(path.join(state, 'chips.json'), JSON.stringify(Object.fromEntries(made.map(c => [c.toolUseId, c]))));
@@ -195,7 +201,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     fs.writeFileSync(path.join(state, 'forms.json'), JSON.stringify(Object.fromEntries(made.map(f => [f.toolUseId, f]))));
   }
   const started = [];
-  sessions.forEach(({ id, title = '', folder, archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said = [] }) => {
+  sessions.forEach(({ id, title = '', folder, archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields, said = [], reply }) => {
     const at = back(ago);
     const cwd = folder ? path.join(home, folder) : home;
     if (folder) fs.mkdirSync(cwd, { recursive: true });
@@ -216,7 +222,9 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     if (source === 'capcom') started.push({ id, cwd: home, at, title, ...(routine && { routine }) });
     const transcript = path.join(transcripts, `${id}.jsonl`);
     const spoken = said.map((text, n) => ({ type: 'assistant', message: { id: `m${n}`, role: 'assistant', content: [{ type: 'text', text }] } }));
-    fs.writeFileSync(transcript, [{ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } }, ...spoken].map(e => `${JSON.stringify(e)}\n`).join(''));
+    // A `reply` adds a last reply that wrote `total` tokens to the cache (1 hour long unless `window` is '5m') `ago` minutes back, and a compaction after it when `compacted` is set.
+    const replied = reply ? [{ type: 'assistant', timestamp: new Date(back(reply.ago)).toISOString(), message: { id: 'mr', role: 'assistant', model: 'claude-opus-5-5', content: [{ type: 'text', text: 'Done.' }], usage: { input_tokens: 10, cache_creation_input_tokens: reply.total ?? 200_000, cache_read_input_tokens: 0, cache_creation: { ephemeral_5m_input_tokens: reply.window === '5m' ? reply.total ?? 200_000 : 0, ephemeral_1h_input_tokens: reply.window === '5m' ? 0 : reply.total ?? 200_000 } } } }, ...(reply.compacted ? [{ type: 'system', subtype: 'compact_boundary' }] : [])] : [];
+    fs.writeFileSync(transcript, [{ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } }, ...spoken, ...replied].map(e => `${JSON.stringify(e)}\n`).join(''));
     fs.utimesSync(transcript, back(fileAgo) / 1000, back(fileAgo) / 1000);
   });
   if (started.length) fs.writeFileSync(path.join(state, 'started.json'), JSON.stringify(started));
@@ -314,7 +322,17 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "      const [, , , tool, ...json] = said.split(' ');",
     "      say({ type: 'control_request', request_id: `perm-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: JSON.parse(json.join(' ') || '{}'), permission_suggestions: [{ type: 'addRules', rules: [{ toolName: `mcp__capcom__${tool}` }], behavior: 'allow', destination: 'localSettings' }] } });",
     "    }",
-    "    if (said.startsWith('<session-message')) say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
+    // The handoff ask names its file. The fake writes it, unless the home holds handoff-skip (nothing written), handoff-empty (an empty file) or handoff-write
+    // (it asks to use the Write tool on the path that file holds, and holds the turn open), with handoff-text as the file's words, and ends the turn with an error when handoff-error is there.
+    `    const handoffFlag = name => fs.existsSync(path.join(${JSON.stringify(home)}, name));`,
+    "    const ask = /Write the handoff to (\\S+) with the Write tool/.exec(said);",
+    "    if (ask && !handoffFlag('handoff-skip') && !handoffFlag('handoff-write')) {",
+    "      fs.mkdirSync(path.dirname(ask[1]), { recursive: true });",
+    `      fs.writeFileSync(ask[1], handoffFlag('handoff-empty') ? '' : handoffFlag('handoff-text') ? fs.readFileSync(path.join(${JSON.stringify(home)}, 'handoff-text'), 'utf8') : 'Fake handoff.\\n');`,
+    "    }",
+    `    if (ask && handoffFlag('handoff-write')) say({ type: 'control_request', request_id: 'perm-handoff', request: { subtype: 'can_use_tool', tool_name: 'Write', input: { file_path: fs.readFileSync(path.join(${JSON.stringify(home)}, 'handoff-write'), 'utf8').trim() || ask[1], content: 'x' } } });`,
+    "    if (said.includes('You carry on the work of session')) { say({ type: 'system', subtype: 'init', session_id: 'begun-by-the-fake', model: 'stub' }); begun = true; }",
+    "    if (said.startsWith('<session-message') && !(ask && handoffFlag('handoff-write'))) say(ask && handoffFlag('handoff-error') ? { type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' } : { type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
     "    if (m.message.content === 'ask to run a write') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'touch x' } } });",
     "    if (m.message.content === 'ask a question') say({ type: 'control_request', request_id: 'perm-ask', request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Which branch should it use?', header: 'Branch', multiSelect: false, options: [{ label: 'main', description: 'The default' }, { label: 'dev', description: 'The next one' }] }] } } });",

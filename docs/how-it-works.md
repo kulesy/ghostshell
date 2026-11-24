@@ -21,6 +21,8 @@ claude -p --input-format stream-json --output-format stream-json --permission-pr
 
 An existing session adds `--resume <id>`. The process uses your normal login, skills, hooks and MCP servers. It stops after 30 idle minutes and starts again on the next message.
 
+A chat that sits idle for most of an hour is asked to save a handoff before its prompt cache goes cold, and your next message then starts a fresh session from it (see [handoff before the cache goes cold](chat.md#handoff-before-the-cache-goes-cold)).
+
 The [chat page](chat.md) covers the prompt box, live work and messages between chats. A group, and each built-in section of the list, also has a chat of its own, which GhostShell books the first time you open it and which runs the same way in a private folder (see [group and section sessions](tools.md#group-and-section-sessions)).
 
 ## Approvals

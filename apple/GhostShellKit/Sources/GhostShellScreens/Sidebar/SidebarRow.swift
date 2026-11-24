@@ -37,7 +37,7 @@ struct SidebarSessionRow: View {
                 Spacer(minLength: 4)
                 if let start = row.turnStart { TurnTimer(start: start) }
                 if let fold { FoldButton(fold: fold) }
-                StatusDot(dot: dot)
+                StatusDot(dot: dot, cold: row.cold)
                 if !state.editing, metrics.touch || hovered || picked { RowMore(row: row, name: name) } else if !metrics.touch { Color.clear.frame(width: metrics.button.width, height: metrics.button.height) }
             }
             .padding(.vertical, 2)

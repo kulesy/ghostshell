@@ -12,6 +12,7 @@ import { forgetDrafts } from './draft.js';
 import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
+import { COLD_LABEL } from './handoff-rules.js';
 import { GroupChatHead, NewHereButton } from './group-button.js';
 import { canGrab, orderNote, parseTarget, slotFor, slotTarget, viewTargets } from './group-drag-rules.js';
 import { deleteDetail, groupById, newKeyRoute, newRoute, newUnderRoute, parseNewRoute, startsFrom, supportsGroupEdits, supportsGroupRename, supportsGroups, supportsProjectOrder } from './group-rules.js';
@@ -61,7 +62,7 @@ function RowLink({ r, title = r.title, dot = r.dot, note, tip, current, lifted, 
   const timed = r.turnStart != null;
   useClock(timed, r.turnStart);
   const last = when(r.lastActivityAt);
-  const where = [folderName(r.cwd, HOME), r.branch, DOT_LABEL[r.dot] ?? STATE_LABEL[r.state]].filter(Boolean).join(' · ');
+  const where = [folderName(r.cwd, HOME), r.branch, DOT_LABEL[r.dot] ?? STATE_LABEL[r.state], r.cold && COLD_LABEL].filter(Boolean).join(' · ');
   const at = title === last ? '' : last;
   const detail = [where, at].filter(Boolean).join(' · ');
   const noted = !!note && !over && !timed;
@@ -69,7 +70,7 @@ function RowLink({ r, title = r.title, dot = r.dot, note, tip, current, lifted, 
   return html`<a class="row" href=${sessionHash(r.id)} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} data-picked=${picked || null}
     data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} data-refused=${(over && refused) || null} aria-current=${current === r.id ? 'page' : null}
     data-tip=${hover || null} data-tip-side="right" data-tip-delay="700">
-    ${dot ? html`<span class="row-dot" data-dot=${dot} aria-hidden="true">${dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}
+    ${dot || r.cold ? html`<span class="row-dot" data-dot=${dot || 'cold'} aria-hidden="true">${dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}
     <span class="row-title">${title || UNTITLED}</span>${picked ? html`<span class="sr">, selected</span>` : null}
     ${over ? html`<span class="row-nest">${refused ? "Can't nest" : 'Nest here'}</span>` : timed ? html`<span class="row-run" aria-hidden="true">${duration(Date.now() - r.turnStart)}</span>` : noted ? html`<span class="row-nest row-idle">${note}</span>` : null}
     ${detail && !noted ? html`<span class="row-meta">${where ? html`<span class="row-where">${where}</span>` : null}${at ? html`<time class="row-time">${where ? ' · ' : ''}${at}</time>` : null}</span>` : null}</a>`;

@@ -1284,6 +1284,8 @@ body[data-scroll-locked] {
 
 .row-dot[data-dot="error"] { width: 0.75rem; color: var(--warning-foreground); }
 
+.row-dot[data-dot="cold"] { box-shadow: inset 0 0 0 1.5px var(--muted-foreground); }
+
 .row-dot > svg { display: block; width: 100%; height: 100%; }
 
 .row-title { grid-area: title; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

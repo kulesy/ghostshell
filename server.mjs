@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { cfg, ROOT } from './lib/config.mjs';
-import { lastReply, makeWindows, shapeMcp, shapePlan, shapeUsage, transcriptFigure } from './lib/context.mjs';
+import { cacheWindow, lastReply, makeWindows, shapeMcp, shapePlan, shapeUsage, transcriptFigure } from './lib/context.mjs';
 import { parseCron } from './lib/cron.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
@@ -30,7 +30,7 @@ import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } 
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { createSubagents } from './lib/subagents.mjs';
 import { agentsKey } from './lib/subagent-rules.mjs';
-import { chatFor, getChat, onAuthFailure, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, busyCount, wroteSince, useAccounts } from './lib/runner.mjs';
+import { chatFor, getChat, onAuthFailure, onHandoff, onTurn, onUsage, retireOtherAccounts, retireWhenQuietFor, runningChats, startChat, sweep, activeStates, busyCount, wroteSince, useAccounts } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { askClaude } from './lib/title-ask.mjs';
 import { makeTitler } from './lib/titler.mjs';
@@ -40,6 +40,7 @@ import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { makeForms } from './lib/forms.mjs';
 import { lockHolder } from './lib/restart.mjs';
+import { SEED_INLINE_BYTES, makeCacheHandoff, notWritten, scaled as scaledHandoff, seedText, thresholdOf } from './lib/cache-handoff.mjs';
 import { authInfo, cleanEnv, readLoginEnd, REFRESH_MS, startSignIn } from './lib/login.mjs';
 import { makeAccounts } from './lib/accounts.mjs';
 import { makeAccountLogins, resetOf } from './lib/account-logins.mjs';
@@ -122,7 +123,65 @@ onTurn(({ id, kind, at }) => writeMark(() => {
   if (kind === 'start') marks.started(id, at);
   else if (kind === 'end') marks.ended(id, at, !!viewers.get(id)?.size);
   else marks.failed(id, at);
+  if (kind === 'end' && handoffTokens) handoffs.turnEnded(id, at);
 }));
+onHandoff(({ id, kind, failed }) => (kind === 'sent' ? handoffs.sent(id) : handoffs.askEnded(id, { failed })));
+
+// ---- the handoff before the prompt cache goes cold ------------------------------------------------
+// See docs/adr/20261124-hand-off-before-the-cache-goes-cold.md. The manager is made here, ahead of the index that reads it, and its callbacks look the rest up when they run.
+
+const handoffTokens = thresholdOf(cfg.cacheHandoffTokens);
+
+// What the scope rules ask about a session now. Null when it is not listed.
+function handoffFacts(id) {
+  const row = findRow(id);
+  if (!row) return null;
+  const chat = getChat(id);
+  const started = readStarted().find(s => s.id === id);
+  const account = accountOfSession(id);
+  const dot = dotFor(row, false, { desk: loadDesktop(cfg.desktopDir), mine: marks.read(), now: Date.now() });
+  return {
+    listed: !row.groupSession,
+    archived: row.archived,
+    title: row.title,
+    state: chat ? chat.state : row.state,
+    pending: pendingOf(id).length,
+    awaiting: dot === 'awaiting',
+    jobs: chat?.jobs ?? 0,
+    elsewhere: runningElsewhere(id, row),
+    group: !!row.groupSession,
+    routine: !!(row.routine || started?.routine || started?.scheduled),
+    plan: (chat?.mode ?? settingsFor(id, row).mode) === 'plan',
+    restarting: lockHolder(path.join(cfg.stateDir, 'restart.lock')) !== null,
+    blocked: !!account.blocked || accountLogins.isOut(account.id),
+    sortAt: row.sortAt,
+    activeAt: row.lastActivityAt,
+  };
+}
+
+// The last reply's own time and size, and how long its cache lasts, read from the transcript.
+function handoffReply(id) {
+  const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+  const found = t && lastReply(t.file);
+  if (!found) return null;
+  if (found.compacted) return { compacted: true };
+  return { at: Date.parse(found.at), total: found.total, window: cacheWindow(t.file), compacted: false };
+}
+
+const handoffs = makeCacheHandoff({
+  timing: scaledHandoff(cfg.cacheHandoffScale),
+  tokens: () => handoffTokens,
+  home: () => os.homedir(),
+  store: makeUpdateStore(cfg.stateDir, 'cache-handoffs.json'),
+  logFile: path.join(cfg.stateDir, 'cache-handoffs.jsonl'),
+  facts: handoffFacts,
+  reply: handoffReply,
+  ask(id, text, file) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    ensureChat(id, findRow(id)).send(text, [], [], { handoff: file });
+  },
+});
+handoffs.recover();
 
 // ---- the session index ---------------------------------------------------------------------------
 
@@ -291,6 +350,7 @@ function buildIndex({ archived = false } = {}) {
   // Desktop's own place is its record's sort key and not the transcript's file time, which any write moves.
   const edges = marks.read().edges;
   const edgeOf = id => edges.get(id) ?? 0;
+  const handed = handoffs.entries();
 
   const rows = new Map();
   for (const r of desk.sessions) {
@@ -337,6 +397,15 @@ function buildIndex({ archived = false } = {}) {
     if (Object.hasOwn(own.archived, r.id)) r.archived = true;
     else if (unarchived.has(r.id)) r.archived = false;
     if (r.archived) r.archivedAt = Date.parse(own.archived[r.id]) || r.changedAt || r.lastActivityAt;
+    // While a handoff is asked for or waits, the row keeps the place and the time it had, since the ask is not the owner's turn.
+    const handoff = handed[r.id];
+    if (handoff?.kept) {
+      r.sortAt = Math.min(r.sortAt, Math.max(handoff.kept.sortAt, edgeOf(r.id)));
+      r.lastActivityAt = Math.min(r.lastActivityAt, handoff.kept.activeAt);
+    }
+    if (handoff?.state === 'cold' && !r.archived) Object.assign(r, { cold: true, coldAt: handoff.coldAt });
+    if (handoff?.movedTo) r.continuedIn = handoff.movedTo;
+    if (handoff?.from) r.continues = handoff.from;
     // Capcom's own title wins over every other, then the title a chip gave the session in place of its prompt's first line. Both are
     // applied before the sorts so a group goes by them.
     const title = ownTitle(own, r.id);
@@ -1044,6 +1113,47 @@ function unarchive(id) {
   } catch (e) {
     console.error(`Could not unarchive ${id}: ${e.message}`);
     return false;
+  }
+}
+
+// The owner's message to a session whose handoff is saved starts a fresh session from it, with the settings, place and children of the old one. Answers the new
+// session's status with `movedTo`, or null when the message goes to the old session after all. A start that fails throws before anything has changed.
+async function handOverSend({ id, row, cold, body, images, files, documents }) {
+  if (!handoffs.begin(id)) throw refuse(409, 'That session is already being handed over.');
+  try {
+    if (handoffReply(id)?.at > cold.coldAt) { handoffs.notMoved(id, 'another app wrote in the session after the handoff'); return null; }
+    const gone = notWritten(cold.path, cold.askedAt);
+    if (gone) { handoffs.notMoved(id, `the handoff cannot be used: ${gone}`); return null; }
+    const file = transcriptFor(id)?.file ?? '';
+    const handoff = fs.statSync(cold.path).size <= SEED_INLINE_BYTES ? fs.readFileSync(cold.path, 'utf8') : null;
+    const held = terminal.held(id);
+    const text = [seedText({ from: id, transcript: file, file: cold.path, handoff }), held, body.text || ''].filter(t => t.trim()).join('\n\n');
+    const chat = getChat(id);
+    const s = settingsFor(id, row);
+    const own = linksNow();
+    const parent = own(id);
+    const children = [...buildIndex({ archived: true }).rows.keys()].filter(k => own(k) === id);
+    let to;
+    try {
+      to = await newSession({ cwd: row.cwd, text, images, documents, files, mode: MODES.includes(body.mode) ? body.mode : chat?.mode ?? s.mode, model: chat?.model ?? s.model, effort: chat?.effort ?? s.effort, fast: chat?.fast ?? s.fast, title: row.title, group: row.group, parent: typeof parent === 'string' ? parent : null, account: layout.read().accounts[id] ?? null });
+    } catch (e) {
+      handoffs.notMoved(id, `the new session did not start: ${e.message}`);
+      throw e;
+    }
+    let placed = true;
+    try {
+      layout.handOver(id, to, { title: row.title, parent, children });
+    } catch (e) {
+      placed = false;
+      console.error(`Could not place ${to} where ${id} was: ${e.message}`);
+    }
+    handoffs.moved(id, to);
+    if (held) terminal.release(id);
+    uploads.record(to, files);
+    if (placed) chat?.stop();
+    return { ...(getChat(to)?.status() ?? {}), movedTo: to, ...(!placed && { placed: false, warning: 'The new session started, but could not take the place of the earlier one. It is in the list as a session of its own.' }) };
+  } finally {
+    handoffs.end(id);
   }
 }
 
@@ -1927,8 +2037,10 @@ function updateMembers(groupId) {
   const rows = found.members.filter(r => !r.archived).map(r => {
     const chat = workingChat(r.id);
     const turn = chat ? chat.work.snapshot() : updateOutside.read(transcriptFor(r.id));
-    const row = turn && r.state === 'idle' ? { ...r, state: 'active' } : r;
-    return { ...row, external: !chat, dot: dotFor(row, row.state === 'active' && !!turn, shared) };
+    // The handoff ask is not a turn the group's chat is told of.
+    const asking = handoffs.asking(r.id);
+    const row = asking ? { ...r, state: 'idle' } : turn && r.state === 'idle' ? { ...r, state: 'active' } : r;
+    return { ...row, external: !chat, dot: dotFor(row, !asking && row.state === 'active' && !!turn, shared) };
   });
   return { name: found.name, rows };
 }
@@ -2189,8 +2301,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, the group a routine can be given for a heading in Home, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write, and giving a routine a project.
-    return send(res, 200, { ...index, commit: await updates.commit(), features: { groupSessions: true, sectionSessions: true, groupEdits: true, projectOrder: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true, routineProjects: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, sessions for the built-in sections, deleting and ordering groups, adding, editing and deleting routines, routines that run a prompt file, the group a routine can be given for a heading in Home, one-off scheduled sessions, sub session summaries, the status of the pull requests a session works on, the status of the pull requests and issues a reply links to, and the ranked updates a group's chat gets, with the typing ping that holds them back, and the helpers a session started, and a new parent for several sessions, the banners for the sign-in and for updates, and moving or nesting several sessions in one write, and giving a routine a project, and the handoff a session saves before its prompt cache goes cold, with the send that moves on to a fresh session from it.
+    return send(res, 200, { ...index, commit: await updates.commit(), features: { groupSessions: true, sectionSessions: true, groupEdits: true, projectOrder: true, groupRename: true, routineEdits: true, routineFiles: true, scheduled: true, subStatus: true, pullStatus: true, linkStatus: true, groupUpdates: true, subagents: true, newParent: true, banners: true, accounts: true, accountPins: true, many: true, routineHeadings: true, routineProjects: true, cacheHandoff: true } });
   }
   if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   if (req.method === 'GET' && u.pathname === '/api/pulls') return pullsApi(res, u);
@@ -2204,7 +2316,7 @@ async function api(req, res, u) {
     const { rows, archivedSection } = buildIndex({ archived: true });
     // A built-in section is named by its id, and holds the rows the sidebar would list in it.
     const archived = [...rows.values()].filter(r => r.archived && (only === null || (sectionById(only) ? archivedSection.get(r.id) === only : r.group === only)))
-      .map(({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt }) => ({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt, archived: true }))
+      .map(({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt, continuedIn, continues }) => ({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt, archived: true, ...(continuedIn && { continuedIn }), ...(continues && { continues }) }))
       .sort((a, b) => b.archivedAt - a.archivedAt);
     return send(res, 200, { archived });
   }
@@ -2445,6 +2557,16 @@ async function api(req, res, u) {
     const record = form && forms.get(form.id);
     if (form && record?.sessionId !== id) return send(res, 404, { error: 'No form with that id in this chat.' });
     if (record && record.status !== 'open') return send(res, 409, { error: `That form was already ${record.status}.`, form: record });
+    // A saved handoff moves the owner's message to a fresh session when the client asks for that. Any other send to the session ends the handoff, which the runner hears.
+    const cold = handoffs.cold(id);
+    if (cold) {
+      const why = body.handover !== true ? 'the client did not ask for a handover' : row.archived ? 'the session is archived' : isSlashCommand(body.text || '') ? 'a slash command runs in the session it is for' : form ? 'a form answer goes to the session that asked' : null;
+      if (why) handoffs.notMoved(id, why);
+      else {
+        const moved = await handOverSend({ id, row, cold, body, images, files, documents });
+        if (moved) return send(res, 200, moved);
+      }
+    }
     const chat = ensureChat(id, row, { mode: body.mode });
     // The result of a command run with ! that Claude was not to reply to goes in front of the next message, as its own paragraph.
     // A slash command has to stay first to run, so the result waits for the message after it.
@@ -2609,6 +2731,7 @@ server.listen(cfg.port, '127.0.0.1', () => {
   setInterval(chromeCheck.survey, SURVEY_MS).unref();
 });
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
+setInterval(() => handoffs.tick().catch(e => console.error(`Cache handoffs failed: ${e.message}`)), scaledHandoff(cfg.cacheHandoffScale).tick).unref();
 setInterval(() => groupUpdates.tick().catch(e => console.error(`Group updates failed: ${e.message}`)), scaled(cfg.groupUpdateScale).tick).unref();
 setInterval(() => commentWatch.tick().catch(e => console.error(`Pull request comments failed: ${e.message}`)), scaledComments(cfg.groupUpdateScale).tick).unref();
 // Whatever the terminal started ends with Capcom, so a restart leaves nothing running behind. A signal ends the process through

@@ -241,7 +241,12 @@ struct ComposerHost: View {
     @Environment(AppModel.self) private var app
     let chat: ChatContext
 
-    var body: some View { ComposerView(model: ComposerModel.of(chat) { [app] in await app.refreshIndex() }, autofocus: true) }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HandoffStrip(chat: chat)
+            ComposerView(model: ComposerModel.of(chat, moved: { [app] in app.navigator.openSession($0) }) { [app] in await app.refreshIndex() }, autofocus: true)
+        }
+    }
 }
 
 /// "Quote" in the menu of a user or assistant message. It adds the whole message to the quotes every composer in the app shows.
@@ -254,7 +259,7 @@ struct QuoteMenuItem: View {
         if let text {
             Button("Quote", systemImage: "quote.opening") {
                 ComposerStore.shared.addQuote(text, fromID: chat.sessionID, fromTitle: chat.session.title)
-                ComposerModel.of(chat) { [app] in await app.refreshIndex() }.requestFocus()
+                ComposerModel.of(chat, moved: { [app] in app.navigator.openSession($0) }) { [app] in await app.refreshIndex() }.requestFocus()
             }
         }
     }
@@ -264,6 +269,24 @@ struct QuoteMenuItem: View {
         case .user(let user): user.text
         case .assistant(_, let text): text
         default: nil
+        }
+    }
+}
+
+/// What the chat's row says about a saved handoff, one muted line each, with a button to the session on the other end of a hand over.
+struct HandoffStrip: View {
+    @Environment(AppModel.self) private var app
+    let chat: ChatContext
+
+    var body: some View {
+        let row = app.index.flatMap { OrganiseRules.find($0, chat.sessionID) }
+        ForEach(HandoffRules.lines(for: row), id: \.text) { line in
+            HStack(spacing: 6) {
+                Text(verbatim: line.text).foregroundStyle(.secondary)
+                if let id = line.opens, let label = line.label { Button(label) { app.navigator.openSession(id) }.buttonStyle(.borderless) }
+            }
+            .font(ChatStyle.small)
+            .padding(.horizontal, 12)
         }
     }
 }

@@ -348,7 +348,13 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     const message = { text, images, files };
     store.set(s => ({ sending: [...s.sending, message], notice: '', refused: null, usageOut: false, jump: stay ? s.jump : s.jump + 1 }));
     try {
-      const { unarchived, form: settled, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }), ...(form && { form }) });
+      // A widget's button keeps the session it is in, so only the prompt box asks to move on to a fresh session when a handoff is saved. An older server ignores the flag.
+      const { unarchived, movedTo, form: settled, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(!stay && { handover: true }), ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }), ...(form && { form }) });
+      if (movedTo) {
+        await refreshIndex();
+        location.hash = `#/s/${enc(movedTo)}`;
+        return true;
+      }
       if (settled && !closed) keepForm(settled);
       // Each change of fast mode reaches the page over SSE, and a reply can be older than the last one.
       if (!closed) store.set(s => ({ status: { ...status, fast: s.status ? s.status.fast : status.fast } }));

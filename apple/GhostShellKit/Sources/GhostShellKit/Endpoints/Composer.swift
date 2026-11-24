@@ -17,24 +17,28 @@ public struct OutgoingMessage: Sendable, Equatable {
     public var images: [OutgoingImage]
     /// Ids that `uploadFile` returned.
     public var files: [String]
+    /// True for the composer's own send, which lets the server start a fresh session from a saved handoff. Anything else sends to the session itself.
+    public var handover: Bool
 
-    public init(text: String, mode: String? = nil, images: [OutgoingImage] = [], files: [String] = []) {
-        (self.text, self.mode, self.images, self.files) = (text, mode, images, files)
+    public init(text: String, mode: String? = nil, images: [OutgoingImage] = [], files: [String] = [], handover: Bool = false) {
+        (self.text, self.mode, self.images, self.files, self.handover) = (text, mode, images, files, handover)
     }
 
-    fileprivate var body: Body { Body(text: text, mode: mode, images: images.isEmpty ? nil : images, files: files.isEmpty ? nil : files) }
-    fileprivate struct Body: Encodable, Sendable { var text: String; var mode: String?; var images: [OutgoingImage]?; var files: [String]? }
+    fileprivate var body: Body { Body(text: text, mode: mode, images: images.isEmpty ? nil : images, files: files.isEmpty ? nil : files, handover: handover ? true : nil) }
+    fileprivate struct Body: Encodable, Sendable { var text: String; var mode: String?; var images: [OutgoingImage]?; var files: [String]?; var handover: Bool? }
 }
 
-/// The reply to a send: the chat's status, and whether the send brought the session back from the archive.
+/// The reply to a send: the chat's status, whether the send brought the session back from the archive, and the session it moved to when a handoff took the message.
 public struct SendReply: Decodable, Sendable {
     public let status: ChatStatus
     public let unarchived: Bool
+    public let movedTo: String?
 
-    private enum Key: String, CodingKey { case unarchived }
+    private enum Key: String, CodingKey { case unarchived, movedTo }
     public init(from decoder: Decoder) throws {
         status = try ChatStatus(from: decoder)
         let c = try decoder.container(keyedBy: Key.self)
+        movedTo = try? c.decode(String.self, forKey: .movedTo)
         // The server answers true, or an object describing the move, so anything present that is not false or null counts.
         if let flag = try? c.decode(Bool.self, forKey: .unarchived) { unarchived = flag } else { unarchived = (try? c.decodeNil(forKey: .unarchived)) == false }
     }

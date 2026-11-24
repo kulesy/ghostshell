@@ -144,6 +144,17 @@ A notice has a lamp (green when a task finished or a message was delivered, ambe
 
 Only known kinds of message become notices, so text you type that mentions a tag stays your message. A command you ran with `!` is not a notice. It shows as a command block with its output, as in [Terminal](terminal.md#commands-typed-in-the-prompt-box).
 
+## Handoff before the cache goes cold
+
+A chat's prompt cache lasts one hour. A message that arrives after that reloads the whole context at the price of a cache write, which is large for a session of 150,000 tokens or more. So a chat that has been idle for 50 to under 58 minutes, with a context at least [`cacheHandoffTokens`](configuration.md#cachehandofftokens) long, is asked to write a handoff to `~/.claude/handoffs/<session id>.md`. The decision record is [hand off before the cache goes cold](adr/20261124-hand-off-before-the-cache-goes-cold.md).
+
+- **Who is asked.** A chat whose last reply wrote a one hour cache and whose context is not compacted. Archived and done sessions, group and section chats, routines, chats in plan mode, chats that are running, holding a card or running a background job, and chats another app runs are left alone. A session is asked once for each idle stretch.
+- **The ask.** It is a message from GhostShell that stands alone. The chat may write that one file with Write and read it back, and nothing else is allowed by the ask. The turn is quiet: it moves no row, marks nothing unread and sends no notice.
+- **Saved.** The handoff counts only when the file is a regular, non-empty file written since the ask. The row then shows a [grey ring](session-list.md#rows-and-marks) and the prompt box says so.
+- **Your next message.** Typed in the prompt box or a group's reply box, it starts a fresh session with the old one's folder, model, mode and account. The new session opens with the handoff text (a file over 64 KB is named instead, to be read first), then your message. It takes the old session's place in the list, and the old one is archived with a line that links to the new one. The new session shows a line that links back.
+- **Anything else.** A message from another chat, a notice or a client that does not ask for a handover goes to the old session as before, and ends the handoff.
+- **Log.** `cache-handoffs.jsonl` in the state folder records each ask, save, failure, clearing and return.
+
 ## Messages between chats
 
 Chats message each other with the CLI's `SendMessage` tool and find each other with `ListAgents`. The CLI delivers a message when the sender and the receiving chat are in the same kind of permission mode, both bypassing permission prompts or both asking. An idle chat then starts a turn to answer it.

@@ -30,6 +30,8 @@ A session's row is one line on a mouse, as in Claude Desktop: the title, and a m
 - It is grey while a turn runs.
 - It is a small warning triangle when the last turn failed.
 
+- It is a grey ring when the session has saved a handoff and its next message starts a fresh session (see [handoff before the cache goes cold](chat.md#handoff-before-the-cache-goes-cold)). Any other mark takes its place, and the tip and the screen-reader label say "Handoff saved".
+
 A row that needs nothing shows none. GhostShell reads Desktop's unread marks, read only, so a session you read only in GhostShell stays unread in Desktop. On a mouse a row's text is grey, and darkens on the open chat's row and under the pointer.
 
 A folded family's head shows the most urgent mark in its family when that is more urgent than its own, so an amber mark on a folded parent means a session under it needs you. The fold arrow's name and tip say so, as "4 nested sessions, 1 waiting on you".
