@@ -275,7 +275,7 @@ test('a sub session woken by its parent resumes on its own pinned account, and o
 
   signedIn(c.s, c.dir, false);
   assert.equal((await pin(c, 'session', 'other', 'second')).status, 409, 'the refused pin refreshes the account\'s sign-in');
-  assert.match(await tool(c, 'top', 'send_session', { session_id: 'kid2', message: 'And you.' }), /^Refused: .*pinned to Second, which is signed out/);
+  assert.match(await tool(c, 'top', 'send_session', { session_id: 'kid2', message: 'And you.' }), /^Refused: that session's account is signed out or no longer listed\. Ask the owner to sort it out on the Accounts page\.$/);
   assert.equal(resumes(c, 'kid2').length, 0, 'nothing started for it');
 });
 
