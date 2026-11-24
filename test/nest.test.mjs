@@ -912,3 +912,20 @@ test('a parent posted with the card places nothing: only the chip the server sto
   assert.equal(res.status, 200, res.text);
   assert.equal(rowOf(await index(s, token), res.body().id).parent, 'maker');
 });
+
+test('a chip a routine run makes with its project\'s main session as parent starts its session under that session, in its group', async () => {
+  const groups = [{ ...GROUPS[0], project: 'cp-side' }, GROUPS[1]];
+  const s = await start({ sessions: UNDER, groups, claude: true, chips: [], layout: { projects: [{ id: 'cp-side', name: 'Side' }], routineProjects: { nightly: 'cp-side' } } });
+  const { token } = await signIn(s);
+  const replies = () => cliCalls(s).filter(c => c.mcp);
+  await request(s, 'POST', '/api/sessions/run/send', { headers: as(token), json: { text: `call spawn_task ${JSON.stringify({ title: 'Review', prompt: 'begin a session', cwd: s.home, parent: 'main' })}` } });
+  await until(() => replies().length);
+  const { result } = replies()[0].mcp;
+  assert.notEqual(result.isError, true, result.content[0].text);
+  const [chip] = await chipsOf(s, token, 'run');
+  assert.equal(chip.opensIn, 'Opens under “Main”, in Work');
+  const res = await request(s, 'POST', '/api/chips/start', { headers: as(token), json: { sessionId: 'run', toolUseId: chip.toolUseId } });
+  assert.equal(res.status, 200, res.text);
+  const row = rowOf(await index(s, token), res.body().id);
+  assert.deepEqual([row.parent, row.group], ['main', 'cg-work']);
+});
