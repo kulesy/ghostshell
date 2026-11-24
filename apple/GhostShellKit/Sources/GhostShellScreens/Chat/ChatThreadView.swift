@@ -111,7 +111,7 @@ struct ChatThreadView: View {
             let resized = new.content != old.content || new.container != old.container
             if resized {
                 // A jump made while already at the end re-measures the lazy rows, which can resize the content again and never settle.
-                if pinned, new.gap > 0.5 { position.scrollTo(edge: .bottom) }
+                if pinned, overflows, new.gap > 0.5 { position.scrollTo(edge: .bottom) }
             } else {
                 pinned = new.gap <= Self.near
                 away = new.gap > Self.near

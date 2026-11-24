@@ -211,7 +211,7 @@ final class ChatModel {
     /// A reply's Markdown, read once while its text stays the same. A longer text for the same item is read again.
     func blocks(key: String, text: String) -> [MDBlock] {
         if let held = parsed[key], held.text == text { return held.blocks }
-        let fresh = ChatMarkdown.parse(text, fileLinks: chat.fileLinks)
+        let fresh = ChatMarkdown.parse(text, fileLinks: chat.fileLinks, pictures: true)
         parsed[key] = (text, fresh)
         return fresh
     }

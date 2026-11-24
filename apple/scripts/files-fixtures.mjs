@@ -1,6 +1,6 @@
 // A stub server for the file screenshots. It answers sign-in, the session list and one chat whose replies link a markdown file, a text file, a PDF, two
-// audio clips, a binary file, a picture and a file that is not there, and whose messages carry pictures. The preview, file, save and images routes
-// answer from bytes built here, so no binary fixture is kept in git.
+// audio clips, a binary file, a picture and a file that is not there, and whose messages carry pictures. A second chat, `pictures`, holds a reply with
+// Markdown images in it. The preview, file, save and images routes answer from bytes built here, so no binary fixture is kept in git.
 import crypto from 'node:crypto';
 import http from 'node:http';
 import zlib from 'node:zlib';
@@ -137,6 +137,20 @@ function items() {
   ];
 }
 
+// An inline picture the chat links, one outside the folder that the server refuses, and an https one that is never loaded.
+const picturesItems = () => [
+  { kind: 'user', text: 'Can you show me the upload flow?', at: iso(8) },
+  { kind: 'assistant', msgId: 'p1', at: iso(6), text: `Here is the flow.
+
+![Upload flow diagram](${ROOT}/diagram.png)
+
+The old version is gone: ![The old chart](/work/private/chart.png)
+
+The build is green: ![Build badge](https://example.com/badge.png)
+
+That is the whole flow.` },
+];
+
 const imageList = () => ({ items: [
   { kind: 'user', images: REFS.user.map(ref => ({ ref, type: 'image/png' })) },
   { kind: 'tool', id: 't1', name: TOOL, summary: 'Take screenshots', input: {}, status: 'ok', images: REFS.tool.map(ref => ({ ref, type: 'image/png' })) },
@@ -145,7 +159,11 @@ const imageList = () => ({ items: [
 export async function startFilesStub() {
   const files = makeFiles();
   const chat = items();
-  const rows = [{ id: 'files', title: 'Read the notes against the screenshots', dot: null, state: 'idle', sortAt: Date.now() }];
+  const rows = [
+    { id: 'files', title: 'Read the notes against the screenshots', dot: null, state: 'idle', sortAt: Date.now() },
+    { id: 'pictures', title: 'Show the upload flow', dot: null, state: 'idle', sortAt: Date.now() - 1000 },
+  ];
+  const chats = { files: chat, pictures: picturesItems() };
   const pictures = new Map([...REFS.user, ...REFS.tool].map((ref, i) => [ref, png(i % 2 ? 1600 : 900, i % 2 ? 1000 : 560, i + 1)]));
   const send = (res, status, body, type = 'application/json') => res.writeHead(status, { 'Content-Type': type }).end(body);
   const server = http.createServer((req, res) => {
@@ -155,12 +173,14 @@ export async function startFilesStub() {
     req.on('end', () => {
       if (url.pathname === '/login') return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
       if (url.pathname === '/api/sessions') return void send(res, 200, JSON.stringify({ ungrouped: rows }));
-      const m = /^\/api\/sessions\/files\/([a-z]+)(?:\/([^/]+))?$/.exec(url.pathname);
+      const m = /^\/api\/sessions\/(files|pictures)\/([a-z]+)(?:\/([^/]+))?$/.exec(url.pathname);
       if (!m) return void send(res, 404, '{}');
-      const [, action, ref] = m;
+      const [, id, action, ref] = m;
+      const row = rows.find(r => r.id === id);
       if (action === 'messages') {
-        return void send(res, 200, JSON.stringify({ items: chat, start: 0, end: chat.length * 100, hasEarlier: false, reset: false, fileLinks: true, terminal: false,
-          session: { id: 'files', title: rows[0].title, cwd: ROOT, branch: 'main', connectors: {} } }));
+        const list = url.searchParams.has('after') ? [] : chats[id];
+        return void send(res, 200, JSON.stringify({ items: list, start: 0, end: chats[id].length * 100, hasEarlier: false, reset: false, fileLinks: true, terminal: false,
+          session: { id, title: row.title, cwd: ROOT, branch: 'main', connectors: {} } }));
       }
       if (action === 'events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });

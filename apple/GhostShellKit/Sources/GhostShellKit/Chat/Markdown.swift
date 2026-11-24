@@ -12,6 +12,8 @@ public indirect enum MDInline: Hashable, Sendable {
     /// Always http or https.
     case link(text: [MDInline], url: URL)
     case file(text: [MDInline], path: String, line: Int?)
+    /// A local picture file drawn inline. `path` is a plain path to a .png, .jpg, .jpeg, .gif or .webp.
+    case image(alt: String, path: String)
     case lineBreak
 }
 
@@ -33,8 +35,9 @@ public indirect enum MDBlock: Hashable, Sendable {
 }
 
 public enum ChatMarkdown {
-    public static func parse(_ src: String, fileLinks: Bool = false) -> [MDBlock] {
-        BlockParser(fileLinks: fileLinks).blocks(src)
+    /// `pictures` draws a Markdown image of a local picture file inline, and only a finished message asks for it.
+    public static func parse(_ src: String, fileLinks: Bool = false, pictures: Bool = false) -> [MDBlock] {
+        BlockParser(fileLinks: fileLinks, pictures: pictures).blocks(src)
     }
 
     /// Where a link or path points, as a path and line, or nil when it is not a plain path. A `:12` or `:12:3` on the end sets the line, a file URL
@@ -98,12 +101,15 @@ extension Rx {
 
 private final class InlineParser {
     let fileLinks: Bool
+    let pictures: Bool
     private var kept: [MDInline] = []
     private var spans: [Int: String] = [:]
 
-    init(fileLinks: Bool) { self.fileLinks = fileLinks }
+    init(fileLinks: Bool, pictures: Bool) { self.fileLinks = fileLinks; self.pictures = pictures }
 
     private static let codeSpan = Rx(#"`([^`\n]+)`"#)
+    private static let image = Rx(#"!\[([^\]\n]{0,1000})\]\((?:<([^>\n]{1,4096})>|([^\s)]{1,4096}))\)"#)
+    private static let pictureFile = Rx(#"\.(?:png|jpe?g|gif|webp)$"#, .caseInsensitive)
     private static let httpLink = Rx(#"\[([^\]\n]{1,1000})\]\((https?:\/\/[^\s)]{1,4096})\)"#)
     private static let fileLink = Rx(#"\[([^\]\n]{1,1000})\]\((?:<([^>\n]{1,4096})>|([^\s)]{1,4096}))\)"#)
     private static let otherLink = Rx(#"\[([^\]\n]{1,1000})\]\(([^\s)]{1,4096})\)"#)
@@ -129,6 +135,18 @@ private final class InlineParser {
         var s = Self.codeSpan.substitute(src) { hit in
             spans[kept.count] = hit.groups[1]
             return keep(.code(hit.groups[1]))
+        }
+        // A picture is drawn only for a local file, never an http URL, since loading one a model wrote could carry data out in its query.
+        s = Self.image.substitute(s) { hit in
+            let angled = hit.groups[2], alt = hit.groups[1]
+            let raw = angled.isEmpty ? hit.groups[3] : angled
+            let target = raw.hasPrefix("http://") || raw.hasPrefix("https://") || !fileLinks ? nil : ChatMarkdown.fileTarget(raw, encoded: true)
+            let text = alt.isEmpty ? (target.map { String($0.path.split(separator: "/").last ?? "") } ?? raw).filter { $0 != "[" && $0 != "]" } : alt
+            guard pictures, let target, target.line == nil, Self.pictureFile.matches(target.path) else {
+                return "[\(text)](" + (angled.isEmpty ? raw : "<\(angled)>") + ")"
+            }
+            let name = Self.slot.substitute(text) { slot in Int(slot.groups[1]).flatMap { spans[$0] } ?? "" }
+            return keep(.image(alt: name, path: target.path))
         }
         s = Self.httpLink.substitute(s) { hit in
             guard let url = URL(string: hit.groups[2]), ["http", "https"].contains(url.scheme) else { return nil }
@@ -197,6 +215,7 @@ private final class InlineParser {
 
 private struct BlockParser {
     let fileLinks: Bool
+    let pictures: Bool
 
     private static let fence = Rx(#"^\s*(```+|~~~+)\s*([\w+-]*)"#)
     private static let heading = Rx(#"^(#{1,6})\s+(.*)$"#, .dotMatchesLineSeparators)
@@ -209,7 +228,7 @@ private struct BlockParser {
     private static let tableRow = Rx(#"^\s*\|.*\|\s*$"#)
     private static let tableRule = Rx(#"^\s*\|?\s*:?-{2,}"#)
 
-    private func inline(_ s: String) -> [MDInline] { InlineParser(fileLinks: fileLinks).parse(s) }
+    private func inline(_ s: String) -> [MDInline] { InlineParser(fileLinks: fileLinks, pictures: pictures).parse(s) }
 
     private func cells(_ line: String) -> [[MDInline]] {
         var t = line.trimmingCharacters(in: .whitespaces)

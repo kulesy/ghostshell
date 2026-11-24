@@ -1584,6 +1584,19 @@ async function filesFlow(bundle, appearance) {
     app.type('whatever');
     app.submit();
     check(await until('rows', () => app.rows() === stub.rows.length), 'the files stub lists its chat');
+    // A reply with Markdown images: one draws inline, a refused path and an https image stay links.
+    app.chooseRow(rowOf(stub, 'pictures'));
+    check(await until('pictures chat', () => app.hasText('That is the whole flow.'), 20), 'the pictures chat shows its last line');
+    await sleep(1500);
+    await app.both('inline-pictures');
+    check(app.press('Upload flow diagram'), 'the inline picture is a button');
+    check(await until('inline viewer', () => app.hasButton('Close'), 15), 'an inline picture opens the viewer');
+    await sleep(800);
+    check(!app.hasButton('Next image'), 'the viewer leaves out the refused picture');
+    await app.shot(`10-inline-picture-viewer-${appearance}`);
+    check(app.press('Close'), 'the inline picture\'s viewer has a Close button');
+    check(await until('inline viewer closed', () => !app.hasButton('Close'), 10), 'Close closes the inline picture\'s viewer');
+
     app.chooseRow(rowOf(stub, 'files'));
     check(await until('chat', () => app.hasText('All five match the notes.'), 20), 'the files chat shows its last message');
     await sleep(1200);

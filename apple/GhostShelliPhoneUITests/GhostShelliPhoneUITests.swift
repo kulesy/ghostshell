@@ -826,6 +826,30 @@ final class GhostShelliPhoneUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Next image"].firstMatch.exists, "Close puts the viewer away")
     }
 
+    func testInlinePicturesDrawAndOpenInTheViewer() throws {
+        let app = launch(stub: "files")
+        signIn(app, expecting: "Show the upload flow")
+        open(app, "Show the upload flow", expecting: "That is the whole flow.")
+        let picture = app.buttons["Upload flow diagram"].firstMatch
+        XCTAssertTrue(picture.waitForExistence(timeout: 15), app.debugDescription)
+        // A refused path falls back to a link once its load fails, and an https image is a link from the start.
+        let refused = app.buttons["The old chart"]
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: refused)
+        waitForExpectations(timeout: 15)
+        XCTAssertFalse(app.buttons["Build badge"].exists, "An https image is never a picture button")
+        XCTAssertTrue(contains(app, "The old chart").exists, "The refused picture stays as its text")
+        XCTAssertTrue(contains(app, "Build badge").exists, "The https image stays as its text")
+        assertThreadMargin(app, reply: "That is the whole flow.", user: "Can you show me the upload flow?")
+        shot("files-13-inline-pictures")
+        picture.tap()
+        XCTAssertTrue(app.buttons["Close"].firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(app.buttons["Next image"].firstMatch.exists, "The viewer leaves out the refused picture")
+        sleep(1)
+        shot("files-14-inline-picture-viewer")
+        app.buttons["Close"].firstMatch.tap()
+        XCTAssertFalse(app.buttons["Close"].firstMatch.exists, "Close puts the viewer away")
+    }
+
     // MARK: Widgets
 
     func testAWidgetsLongPressAndAskBar() throws {

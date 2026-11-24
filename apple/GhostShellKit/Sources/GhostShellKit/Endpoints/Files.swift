@@ -135,7 +135,7 @@ public enum ChatFiles {
                 case .file(let text, let path, _): take(path); inlines(text)
                 case .strong(let inner), .em(let inner), .del(let inner): inlines(inner)
                 case .link(let text, _): inlines(text)
-                case .text, .code, .lineBreak: break
+                case .text, .code, .image, .lineBreak: break
                 }
             }
         }

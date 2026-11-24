@@ -52,6 +52,7 @@ public struct RootView: View {
                 .navigationSplitViewColumnWidth(sidebarWidth)
         } detail: {
             detailPane
+                .environment(\.narrowWindow, windowWidth < 768)
         }
         #if os(macOS)
         .toolbar(removing: .sidebarToggle)

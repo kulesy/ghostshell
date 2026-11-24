@@ -210,6 +210,8 @@ enum MarkdownText {
                 inner.link = ChatLink.file(path: path, line: line).url
                 Self.styleLink(&inner)
                 out += inner
+            case .image(let alt, _):
+                out += run(alt, style)
             case .lineBreak:
                 out += AttributedString("\n")
             }
@@ -241,6 +243,7 @@ private extension EnvironmentValues {
 /// A reply's Markdown blocks: headings, lists, quotes, code with a label and Copy, and tables. `canRun` lets a code block draw the Run slot, which
 /// only a finished reply of the assistant does, as on the page. A streaming reply and a thinking block never do.
 struct MarkdownView: View {
+    @State private var refused: Set<String> = []
     let blocks: [MDBlock]
     var font: Font = ChatStyle.body
     var canRun = false
@@ -253,6 +256,9 @@ struct MarkdownView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .environment(\.codeCanRun, canRun)
+        .environment(\.pictureGallery, MarkdownPieces.gallery(blocks, without: refused))
+        .environment(\.refusedPictures, refused)
+        .environment(\.refusePicture) { refused.insert($0) }
     }
 }
 
@@ -264,12 +270,9 @@ private struct MarkdownBlockView: View {
     var body: some View {
         switch block {
         case .paragraph(let inlines):
-            let text = MarkdownText.attributed(inlines, font: font)
-            Text(text).lineSpacing(ChatStyle.lineSpacing).fixedSize(horizontal: false, vertical: true).linkActions(text)
+            InlineRuns(inlines: inlines, font: font, lineSpacing: ChatStyle.lineSpacing)
         case .heading(let level, let inlines):
-            let text = MarkdownText.attributed(inlines, font: Self.headingFont(level))
-            Text(text)
-                .linkActions(text)
+            InlineRuns(inlines: inlines, font: Self.headingFont(level))
                 .fontWeight(.semibold)
                 .padding(.top, ChatStyle.headingTop)
                 .padding(.bottom, ChatStyle.headingBottom)
@@ -287,8 +290,7 @@ private struct MarkdownBlockView: View {
                             .font(font).monospacedDigit().foregroundStyle(ChatStyle.marker)
                             .frame(minWidth: ChatStyle.listMarkerWidth, alignment: .trailing)
                         VStack(alignment: .leading, spacing: 4) {
-                            let text = MarkdownText.attributed(item.text, font: font)
-                            Text(text).lineSpacing(ChatStyle.lineSpacing).fixedSize(horizontal: false, vertical: true).linkActions(text)
+                            InlineRuns(inlines: item.text, font: font, lineSpacing: ChatStyle.lineSpacing)
                             ForEach(Array(item.children.enumerated()), id: \.offset) { _, child in
                                 MarkdownBlockView(block: child, font: font, depth: depth + 1)
                             }
@@ -348,8 +350,7 @@ private struct TableView: View {
     }
 
     private func cellText(_ cell: [MDInline]) -> some View {
-        let text = MarkdownText.attributed(cell, font: font)
-        return Text(text).lineSpacing(ChatStyle.tableLineSpacing).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading).linkActions(text)
+        InlineRuns(inlines: cell, font: font, lineSpacing: ChatStyle.tableLineSpacing).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
