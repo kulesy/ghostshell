@@ -413,9 +413,12 @@ const FAMILY_ROWS = [
   { id: 'chat', title: 'Work', group: null, parent: null, groupSession: 'g-w' },
 ];
 
-function parentCtx(self = 'task', rows = FAMILY_ROWS) {
+function parentCtx(self = 'task', rows = FAMILY_ROWS, routineProjects = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-chips-'));
-  const subs = { lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived) }) };
+  const subs = {
+    lookup: ({ archived }) => ({ self: rows.find(r => r.id === self) ?? null, rows: rows.filter(r => archived || !r.archived) }),
+    routineProject: id => routineProjects[id] ?? null,
+  };
   return { dir, chips: makeChips(dir), sessionId: self, cwd: '/tmp/work', subs, groups: () => PROJECT_GROUPS };
 }
 const spawnWith = (ctx, args) => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...args } } }, ctx).result;
@@ -459,6 +462,31 @@ test('spawn_task parent is refused, with a reason, for a group alongside it, an 
   t.after(() => fs.rmSync(loose.dir, { recursive: true, force: true }));
   assert.match(spawnWith(loose, { parent: 'main' }).content[0].text, /another project/, 'Home is a project of its own');
   assert.equal(spawnWith(parentCtx('ghost'), { parent: 'main' }).isError, true, 'a caller the index does not list yet is refused');
+});
+
+test('a routine run opens a chip under the main session of its routine\'s project only, and one whose routine is in no project opens none', t => {
+  const ctxFor = (routineProjects, rows = FAMILY_ROWS) => {
+    const ctx = parentCtx('run', rows, routineProjects);
+    t.after(() => fs.rmSync(ctx.dir, { recursive: true, force: true }));
+    return ctx;
+  };
+  const mapped = ctxFor({ nightly: 'p-1' });
+  const ok = spawnWith(mapped, { parent: 'main' });
+  assert.equal(ok.isError, undefined, ok.content[0].text);
+  assert.deepEqual(mapped.chips.list().map(c => [c.parent, c.sessionId]), [['main', 'run']]);
+  const moved = FAMILY_ROWS.map(r => r.id === 'run' ? { ...r, group: 'g-v' } : r);
+  const refused = [
+    [mapped, 'far', /another project/], [mapped, 'home', /another project/], [mapped, 'kid', /not in this session's family/], [mapped, 'run', /routine run/],
+    [ctxFor({ other: 'p-1' }), 'main', /another project/], [ctxFor({}), 'home', /not in this session's family/],
+    [ctxFor({ nightly: 'p-1' }, moved), 'main', /another project/],
+  ];
+  for (const [ctx, parent, why] of refused) {
+    const had = ctx.chips.list().length;
+    const result = spawnWith(ctx, { parent });
+    assert.equal(result.isError, true, parent);
+    assert.match(result.content[0].text, why, parent);
+    assert.equal(ctx.chips.list().length, had, parent);
+  }
 });
 
 test('spawn_task parent is refused in a group\'s chat and left out of its schema, and a blank parent counts as none', t => {
