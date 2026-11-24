@@ -38,7 +38,7 @@ The settings in `config.json` and `config.local.json`, and the eleven environmen
 
 ### `autoUpdate`
 
-`autoUpdate` is `true` by default. GhostShell then merges the changes waiting on `main` itself and restarts when none of them is held back, with no press of Update (see [Update from the sidebar](always-on.md#update-from-the-sidebar)). It does so only on the server that launchd runs, never on one started by hand. Set it to `false` and the banner's buttons work as they always have. A change takes effect at the next restart. A commit on `origin/main` then runs on the Mac with no one pressing, so a machine that should not do that turns it off in `config.local.json`, which wins over a merged `config.json`.
+`autoUpdate` is `true` by default. GhostShell then merges the changes waiting on `main` itself, and restarts once no chat is running if they need it, with no press of Update (see [Update from the sidebar](always-on.md#update-from-the-sidebar)). It does so only on the server that launchd runs, never on one started by hand. Set it to `false` and the banner's buttons work as they always have. A change takes effect at the next restart. While it is on, a commit on `origin/main` runs on the Mac with no one pressing. Turn it off in `config.local.json`, which wins over a merged `config.json`.
 
 ### `autoTitle`
 
