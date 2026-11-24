@@ -566,15 +566,19 @@ const plainOpen = async opts => {
   return c;
 };
 
+// Clicks Start and gives the body of the one Start post. The page posts other things too, such as a chat's context read, in no fixed order.
+const clickStart = async page => {
+  await page.evaluate(`window.__starts = []; const real = window.fetch; window.fetch = (u, i) => { if (String(u) === 'api/chips/start') window.__starts.push(JSON.parse(i.body)); return real(u, i); }`);
+  await page.click('.chip-card [data-chip=start]');
+  await until(async () => (await page.evaluate(`window.__starts.length`)) === 1);
+  return (await page.evaluate(`window.__starts`))[0];
+};
+
 test('a card with one account listed shows no account line and posts no account', { skip, timeout }, async t => {
   const c = await plainOpen({ one: true, chips: [{ ...CHIP, toolUseId: 'toolu_a' }] });
   const page = await openCard(t, c);
   assert.deepEqual(await cardOf(page), { lines: [], state: null, buttons: ['Start session', 'Dismiss'], start: { disabled: false } });
-  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
-  await page.click('.chip-card [data-chip=start]');
-  await until(async () => (await page.evaluate(`window.__posts.length`)) === 1);
-  const [url, body] = (await page.evaluate(`window.__posts`))[0];
-  assert.equal(url, 'api/chips/start');
+  const body = await clickStart(page);
   assert.equal(Object.hasOwn(body, 'account') || Object.hasOwn(body, 'confirmAccount'), false);
   assert.deepEqual(page.problems, []);
 });
@@ -584,10 +588,7 @@ test('a card that follows the active account says so, and Start posts a null acc
   const page = await openCard(t, c);
   assert.deepEqual(await cardOf(page), { lines: ['Starts on Main, the active account.'], state: 'ok', buttons: ['Start session', 'Change account', 'Dismiss'], start: { disabled: false } });
   await chipShots(page, 'chip-follows-active');
-  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
-  await page.click('.chip-card [data-chip=start]');
-  await until(async () => (await page.evaluate(`window.__posts.length`)) === 1);
-  const [, body] = (await page.evaluate(`window.__posts`))[0];
+  const body = await clickStart(page);
   assert.deepEqual([body.account, body.confirmAccount], [null, 'main']);
   await page.until(`!!document.querySelector('.chip-card a.btn')`, 20_000);
   assert.deepEqual(await cardOf(page), { lines: [], state: null, buttons: ['Open the session'], start: null });
@@ -634,10 +635,7 @@ test('a chip that names an account other than its group\'s pin says it does not 
   const page = await openCard(t, c);
   assert.deepEqual((await cardOf(page)).lines, ['Starts on Main, chosen by this chip.', 'It does not follow the pin to Second on the group Loose. It has no overflow account.']);
   await chipShots(page, 'chip-replaces');
-  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
-  await page.click('.chip-card [data-chip=start]');
-  await until(async () => (await page.evaluate(`window.__posts.length`)) === 1);
-  const [, body] = (await page.evaluate(`window.__posts`))[0];
+  const body = await clickStart(page);
   assert.deepEqual([body.account, body.confirmAccount], ['main', 'main']);
   await page.until(`!!document.querySelector('.chip-card a.btn')`, 20_000);
   assert.equal((await index(c)).groups.find(g => g.id === 'cg-b').account, 'second', 'the group keeps its own pin');
@@ -717,9 +715,6 @@ test('a card whose pinned account is out of usage says which account it starts o
   await page.until(`/out of usage/.test(document.querySelector('.chip-card p.chip-account')?.textContent || '')`, 20_000);
   assert.deepEqual((await cardOf(page)).lines, ['Starts on Second. Main, pinned to the group Loose, is out of usage, so it starts on Second until Main resets.']);
   await chipShots(page, 'chip-spill');
-  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
-  await page.click('.chip-card [data-chip=start]');
-  await until(async () => (await page.evaluate(`window.__posts.length`)) === 1);
-  const [, body] = (await page.evaluate(`window.__posts`))[0];
+  const body = await clickStart(page);
   assert.deepEqual([body.account, body.confirmAccount], [null, 'second']);
 });
