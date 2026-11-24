@@ -29,6 +29,7 @@
   {"mac": "9-scheduled-empty", "page": "scheduled-empty"},
   {"mac": "10-tool-tiles", "page": "10-tool-tiles"},
   {"mac": "10-viewer-tool", "page": "10-viewer-tool"},
+  {"mac": "10-inline-pictures", "page": "10-inline-pictures"},
   {"mac": "10-file-markdown", "page": "10-file-markdown"},
   {"mac": "10-file-text-line", "page": "10-file-text-line"},
   {"mac": "10-file-pdf", "page": "10-file-pdf"},

@@ -67,6 +67,7 @@ public struct RootView: View {
         }
         .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+        .environment(\.narrowWindow, windowWidth < 768)
         #if DEBUG && os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("GSDebugSidebar"))) { note in
             debugSidebar = (note.object as? String).flatMap(Double.init).map { CGFloat($0) }

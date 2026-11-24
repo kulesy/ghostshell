@@ -164,6 +164,28 @@ final class FilesTests: XCTestCase {
         XCTAssertEqual(pictures.map(\.tool), [nil, "mcp__chrome__screenshot", "mcp__chrome__screenshot", nil])
     }
 
+    @MainActor func testARefusedPicturePathGivesNoPicture() async {
+        Stub.reset { _ in (403, [:], #"{"error": "not linked"}"#, nil) }
+        let cache = PictureCache(client: await client(), sessionID: "s1")
+        let none = await cache.image(.file(path: "/work/private/chart.png", alt: "chart"))
+        XCTAssertNil(none)
+        XCTAssertEqual(Stub.requests().first?.url?.path, "/api/sessions/s1/file")
+    }
+
+    func testAnInlinePictureRunSplitsIntoTextAndPicturesKeepingStyle() {
+        let pic = MDInline.image(alt: "a", path: "/tmp/a.png")
+        XCTAssertEqual(MarkdownPieces.split([.text("Hi "), pic, .lineBreak, .text(" there")]),
+                       [.text([.text("Hi")]), .picture(alt: "a", path: "/tmp/a.png"), .text([.text("there")])])
+        XCTAssertEqual(MarkdownPieces.split([.strong([.text("a "), pic, .text(" b")])]),
+                       [.text([.strong([.text("a")])]), .picture(alt: "a", path: "/tmp/a.png"), .text([.strong([.text("b")])])])
+        XCTAssertEqual(MarkdownPieces.split([pic]), [.picture(alt: "a", path: "/tmp/a.png")])
+    }
+
+    func testTheGalleryHoldsEachPictureOnceInOrder() {
+        let blocks = ChatMarkdown.parse("![a](/tmp/a.png) ![b](/tmp/b.png)\n\n- ![a](/tmp/a.png)", fileLinks: true, pictures: true)
+        XCTAssertEqual(MarkdownPieces.gallery(blocks).map(\.id), ["file:/tmp/a.png", "file:/tmp/b.png"])
+    }
+
     func testTheViewerStartsAtTheTappedPictureOrNilWhenTheChatDoesNotHoldIt() {
         let list = ["a", "b", "c"].map { ChatFiles.Picture(ref: $0) }
         XCTAssertEqual(ChatFiles.start(of: "b", in: list), 1)

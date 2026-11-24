@@ -317,6 +317,7 @@ const SCREENS = {
       await page.locator('.tool-images img, .result-images img, .thumb').last().click();
       await page.getByText(/\d of 7/).first().waitFor();
     }],
+    ['10-inline-pictures', async (page, ctx) => { await ctx.go('#/s/pictures'); await page.getByText('That is the whole flow.').first().waitFor({ timeout: 15_000 }); await sleep(1500); }],
     ['10-file-markdown', fileScreen('NOTES.md:14', 'Upload notes')],
     ['10-file-text-line', fileScreen('server.js:42', 'const RETRIES = 5;')],
     ['10-file-pdf', fileScreen('report.pdf', null, 2500)],

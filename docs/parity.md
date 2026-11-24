@@ -4,7 +4,7 @@ This ledger tracks how closely the Mac app matches the web page. The web page un
 
 - **Pair run.** `npm run apple:parity` lays each Mac shot beside its web shot. The `parity` job in the `Swift app` workflow runs it after the Mac shots and keeps the side-by-side images as the `parity-pairs` artifact. `apple/scripts/parity-pairs.json` maps the shot names that differ, and `apple/README.md` says how to read a run.
 - **Built.** 21 Nov 2026 from commit d19857db, with one side-by-side pass. The Pass log at the end says what it covered.
-- **Rows.** 370: direct 238, translated 3, partial 59, missing 49, unsupported 8, extra 12, manual 1.
+- **Rows.** 370: direct 239, translated 3, partial 59, missing 48, unsupported 8, extra 12, manual 1.
 
 ## Statuses
 
@@ -43,7 +43,7 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 1.2 | Unsupported-browser message | unsupported | `public/index.html:106` | `apple/GhostShell/GhostShellApp.swift:29` | - | - | Platform limit: the Mac app runs in no browser, so there is no browser to be too old for |
 | 1.3 | Two-column layout at wide sizes | direct | `public/app.js:8` | `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:34` | 1-session-chosen | chat/02-sidebar | - |
 | 1.4 | Narrow width (640): one column plus "Sessions" back link | unsupported | `public/ui/chat.js:33` | `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:34` | 1-session-chosen-min | chat/02-sidebar | Left out by the decision in https://github.com/kulesy/ghostshell/issues/175#issuecomment-6931080623: the Mac keeps both columns at 640 and gives the sidebar the page width. See 1.4a |
-| 1.5 | Empty main pane text | partial | `public/app.js:372` | `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:136` | 1-list-rows | chat/02-sidebar | See 1.5a and 1.5b |
+| 1.5 | Empty main pane text | partial | `public/app.js:372` | `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:137` | 1-list-rows | chat/02-sidebar | See 1.5a and 1.5b |
 | 1.6 | Sidebar header brand mark | direct | `public/index.html:113` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarHeader.swift:88` | 1-list-rows | chat/02-sidebar | - |
 | 1.7 | Projects toggle button | partial | `public/index.html:112` | `apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/SidebarHeader.swift:82` | 5-project-view | groups/organise-projects-menu | The button sits in the page's place since https://github.com/kulesy/ghostshell/pull/189, but opens a View menu (ViewMenuContent) instead of the rail. See 1.7a |
 | 1.8 | Projects rail docked on wide screens and as a left sheet on narrow ones | missing | `public/ui/projects.js:26` | would go near `apple/GhostShellKit/Sources/GhostShellScreens/Shell/RootView.swift:34` | 5-project-view | groups/organise-projects-menu | No rail, docked or as a sheet. The View menu (`apple/GhostShellKit/Sources/GhostShellScreens/Sidebar/ViewMenuContent.swift:12`, from https://github.com/kulesy/ghostshell/pull/101) stands in for it, and no PR or PBI weighed the rail. See 1.8a |
@@ -176,12 +176,12 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | 3.17 | History-loading spinner | direct | https://github.com/kulesy/ghostshell/pull/5 | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatThreadView.swift:77` | - | - | - |
 | 3.18 | Scroll to end button | direct | `public/ui/transcript.js:208` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatThreadView.swift:60` | 6-chat-long-scrolled-up | chat/04-chat-scrolled | - |
 | 3.19 | User message bubble | direct | `public/ui/rows.js:169` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:102` | 6-chat-rich | chat/03-chat-rich | - |
-| 3.20 | Assistant message with markdown | direct | `public/ui/rows.js:168` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/MarkdownView.swift:243` | 6-chat-rich | chat/03-chat-rich | - |
-| 3.21 | Markdown images inline | missing | https://github.com/kulesy/ghostshell/pull/195 | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Chat/MarkdownView.swift:243` | 6-chat-rich | - | Web only: https://github.com/kulesy/ghostshell/pull/195 changed public/md.mjs and transcript.js, no Swift |
-| 3.22 | Code block with Copy button and "Copied" | direct | `public/ui/chat.js:143` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/MarkdownView.swift:379` | 6-chat-rich | chat/03-chat-rich | - |
+| 3.20 | Assistant message with markdown | direct | `public/ui/rows.js:168` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/MarkdownView.swift:245` | 6-chat-rich | chat/03-chat-rich | - |
+| 3.21 | Markdown images inline | direct | https://github.com/kulesy/ghostshell/pull/195 | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/MarkdownPicture.swift:159` | 10-inline-pictures | files/10-inline-pictures | - |
+| 3.22 | Code block with Copy button and "Copied" | direct | `public/ui/chat.js:143` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/MarkdownView.swift:377` | 6-chat-rich | chat/03-chat-rich | - |
 | 3.23 | Code block Run (terminal) button | partial | `public/ui/run.js:6` | `apple/GhostShellKit/Sources/GhostShellScreens/Terminal/TerminalControls.swift:38` | 12-term-chat | chat/term-chat | See 3.23a |
 | 3.24 | Message timestamps | direct | https://github.com/kulesy/ghostshell/pull/71 | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:67` | 6-chat-rich | chat/03-chat-rich | - |
-| 3.25 | Message Copy (context menu) | direct | `public/ui/quote.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:102` | - | - | Selection copy works (`MarkdownView.swift:391`), and the Mac also adds Copy to each message's menu. See 3.25a |
+| 3.25 | Message Copy (context menu) | direct | `public/ui/quote.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:102` | - | - | Selection copy works (`MarkdownView.swift:389`), and the Mac also adds Copy to each message's menu. See 3.25a |
 | 3.26 | Quote a selection or message | partial | `public/ui/quote.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Composer/ComposerView.swift:248` | 7-composer-quote | - | Mac quotes the whole message from its menu. https://github.com/kulesy/ghostshell/pull/106 left selection quotes out without deciding. See 3.26a |
 | 3.27 | Quoted block in a sent message | direct | `public/ui/quote.js:2` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:86` | 7-composer-quote | - | - |
 | 3.28 | Sending (pending) message state | direct | `public/ui/transcript.js:94` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatRows.swift:127` | 1-chat-real-after-send | - | - |
@@ -505,7 +505,7 @@ Each entry comes from a side-by-side pair. A gap is a difference to close. A con
 | 2.26a | gap | 8-new-group-sheet | New project and Rename project open a modal name sheet with Cancel and Save on the Mac. The page names it in an inline field in the projects rail, as the Mac already does for sessions and groups. |
 | 3.15a | gap, major | 6-chat-empty | An empty chat on the Mac shows "Nothing here yet" mid-pane with the composer under it and a blank band below. The page keeps a blank thread with the composer at the bottom. |
 | 3.23a | gap | 12-term-chat | The Run button on a `console` block looks turned off on the Mac, the same grey as the refused `sh` block. The page shows it on. The Mac also puts Run before Copy. |
-| 3.25a | question | - | Each Markdown block on the Mac is its own view (`MarkdownView.swift:249`), so a selection may stop at a block's edge where the page selects across paragraphs. Check by selecting across two paragraphs. |
+| 3.25a | question | - | Each Markdown block on the Mac is its own view (`MarkdownView.swift:251`), so a selection may stop at a block's edge where the page selects across paragraphs. Check by selecting across two paragraphs. |
 | 3.26a | gap | 7-composer-quote | The Mac quotes a whole message from its menu. The page quotes the selected text, with a Quote button beside the selection or Cmd+quote, so a part of a message can be quoted. |
 | 3.31a | gap, minor | 6-chat-streaming | The Thought row on the Mac has a chevron and lighter text. |
 | 3.32a | gap, minor | 6-chat-streaming | While a reply streams, the Mac shows a system spinner. The page shows its three-dot chaser and the animated shell mark. No PR chose the spinner, and the shell mark is the page's own content, not a control. |

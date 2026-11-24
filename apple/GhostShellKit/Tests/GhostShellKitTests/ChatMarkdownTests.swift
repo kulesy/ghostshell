@@ -2,9 +2,9 @@ import XCTest
 @testable import GhostShellKit
 
 final class ChatMarkdownTests: XCTestCase {
-    private func parse(_ s: String, files: Bool = false) -> [MDBlock] { ChatMarkdown.parse(s, fileLinks: files) }
-    private func para(_ s: String, files: Bool = false) -> [MDInline] {
-        guard case .paragraph(let p)? = parse(s, files: files).first else { XCTFail("not a paragraph"); return [] }
+    private func parse(_ s: String, files: Bool = false, pictures: Bool = false) -> [MDBlock] { ChatMarkdown.parse(s, fileLinks: files, pictures: pictures) }
+    private func para(_ s: String, files: Bool = false, pictures: Bool = false) -> [MDInline] {
+        guard case .paragraph(let p)? = parse(s, files: files, pictures: pictures).first else { XCTFail("not a paragraph"); return [] }
         return p
     }
 
@@ -148,6 +148,65 @@ final class ChatMarkdownTests: XCTestCase {
         let started = Date()
         _ = parse(String(repeating: "[", count: 20_000) + String(repeating: "x ", count: 20_000))
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+    }
+
+    // MARK: Pictures
+
+    private func pic(_ s: String) -> [MDInline] { para(s, files: true, pictures: true) }
+
+    func testALocalPictureIsDrawnInline() {
+        XCTAssertEqual(pic("![Flow](/Users/me/a.png)"), [.image(alt: "Flow", path: "/Users/me/a.png")])
+        XCTAssertEqual(pic("![Home](~/shots/a.png)"), [.image(alt: "Home", path: "~/shots/a.png")])
+        XCTAssertEqual(pic("![Spaced](</Users/me/my shot.png>)"), [.image(alt: "Spaced", path: "/Users/me/my shot.png")])
+        XCTAssertEqual(pic("![Encoded](/Users/me/my%20shot.png)"), [.image(alt: "Encoded", path: "/Users/me/my shot.png")])
+        XCTAssertEqual(pic("![Loud](/Users/me/A.PNG)"), [.image(alt: "Loud", path: "/Users/me/A.PNG")])
+        for ext in ["png", "jpg", "jpeg", "gif", "webp"] {
+            XCTAssertEqual(pic("![x](/tmp/a.\(ext))"), [.image(alt: "x", path: "/tmp/a.\(ext)")], ext)
+        }
+    }
+
+    func testAnEmptyAltTakesTheFileNameAndBracketsAreDropped() {
+        XCTAssertEqual(pic("![](/Users/me/dir/a.png)"), [.image(alt: "a.png", path: "/Users/me/dir/a.png")])
+        XCTAssertEqual(pic("![](</Users/me/[x] a.png>)"), [.image(alt: "x a.png", path: "/Users/me/[x] a.png")])
+    }
+
+    func testACodeSpanInTheAltReadsAsPlainText() {
+        XCTAssertEqual(pic("![the `a.b` chart](/tmp/a.png)"), [.image(alt: "the a.b chart", path: "/tmp/a.png")])
+    }
+
+    func testAPictureSitsInsideListsTablesAndText() {
+        XCTAssertEqual(pic("see ![x](/tmp/a.png) here"), [.text("see "), .image(alt: "x", path: "/tmp/a.png"), .text(" here")])
+        guard case .list(_, _, let items)? = parse("- ![x](/tmp/a.png)", files: true, pictures: true).first else { return XCTFail("not a list") }
+        XCTAssertEqual(items.first?.text, [.image(alt: "x", path: "/tmp/a.png")])
+        guard case .table(_, let rows)? = parse("| a |\n|---|\n| ![x](/tmp/a.png) |", files: true, pictures: true).first else { return XCTFail("not a table") }
+        XCTAssertEqual(rows.first?.first, [.image(alt: "x", path: "/tmp/a.png")])
+    }
+
+    func testAPictureInsideLinkTextStaysInTheLink() {
+        let url = URL(string: "https://example.com")!
+        XCTAssertEqual(pic("[![a](/tmp/a.png)](https://example.com)"), [.link(text: [.image(alt: "a", path: "/tmp/a.png")], url: url)])
+    }
+
+    func testADeclinedPictureIsALinkOrCodeWithNoBang() {
+        for path in ["shots/a.png", "../a.png", "/Users/me/../a.png"] {
+            XCTAssertEqual(pic("![a](\(path))"), [.code("a")], path)
+        }
+        XCTAssertEqual(pic("![a](/Users/me/a.png:12)"), [.file(text: [.text("a")], path: "/Users/me/a.png", line: 12)])
+        for name in ["/Users/me/a.txt", "/Users/me/a.svg", "/Users/me/a"] {
+            XCTAssertEqual(pic("![a](\(name))"), [.file(text: [.text("a")], path: name, line: nil)], name)
+        }
+    }
+
+    func testAnHttpImageIsALinkLabelledByItsAltOrUrl() {
+        let url = URL(string: "https://example.com/b.png")!
+        XCTAssertEqual(pic("![Badge](https://example.com/b.png)"), [.link(text: [.text("Badge")], url: url)])
+        XCTAssertEqual(pic("![](https://example.com/b.png)"), [.link(text: [.text("https://example.com/b.png")], url: url)])
+    }
+
+    func testPicturesNeedBothSwitches() {
+        XCTAssertEqual(para("![a](/tmp/a.png)", files: true), [.file(text: [.text("a")], path: "/tmp/a.png", line: nil)])
+        XCTAssertEqual(para("![a](/tmp/a.png)", files: false, pictures: true), [.code("a")])
+        XCTAssertEqual(para("![a](/tmp/a.png)"), [.code("a")])
     }
 }
 
