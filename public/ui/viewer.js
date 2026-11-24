@@ -290,7 +290,13 @@ function Viewer({ images, start, from, current, earlier }) {
     } else lastTap.current = up;
   };
   // A click closes only if it began on the backdrop too, stayed put and never had a second finger, so a drag or a pinch that ends there does not.
-  const onClick = e => { const p = press.current; if (p.backdrop && !p.moved && !p.pinched && isBackdrop(e.target)) closeViewer(); };
+  // NOTE: [24 Nov 2026] EK - Keep cancelling clicks on the picture. WebKit's source has a route that zooms the page on a double tap whose click
+  // nobody handled, and touch-action does not stop it. See https://github.com/kulesy/ghostshell/issues/1.
+  const onClick = e => {
+    const p = press.current;
+    if (e.target === picture.current) e.preventDefault();
+    else if (p.backdrop && !p.moved && !p.pinched && isBackdrop(e.target)) closeViewer();
+  };
   // A long press on a zoomed picture would open the browser's menu, which cancels the pan. A mouse keeps its right click.
   const onContextMenu = e => { if (zoomedNow() && press.current.touches.size) e.preventDefault(); };
 

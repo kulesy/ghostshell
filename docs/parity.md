@@ -283,12 +283,12 @@ The web page is how the app looks and works. A Mac difference is `translated` or
 | # | Item | Status | Reference | Target | Mac shot | Page shot | Notes |
 |---|---|---|---|---|---|---|---|
 | 7.1 | Tool-result tiles (picture and file) | direct | `public/ui/gallery.js:10` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/Attachments.swift:5` | 10-tool-tiles | files/10-tool-tiles | See 7.1a |
-| 7.2 | Image viewer overlay | partial | `public/ui/viewer.js:301` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:22` | 10-viewer-tool | files/10-viewer-tool | See 7.2a |
+| 7.2 | Image viewer overlay | partial | `public/ui/viewer.js:307` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:22` | 10-viewer-tool | files/10-viewer-tool | See 7.2a |
 | 7.3 | Image viewer: Zoom and Fit to screen | direct | `public/ui/viewer.js:223` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/Zoom.swift:160` | 10-viewer-tool | files/10-viewer-picture | Pinch and double-click on the Mac |
-| 7.4 | Image viewer: Open in new tab | missing | `public/ui/viewer.js:306` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:21` | 10-viewer-tool | files/10-viewer-tool | Noted in https://github.com/kulesy/ghostshell/issues/177 |
+| 7.4 | Image viewer: Open in new tab | missing | `public/ui/viewer.js:312` | `would go near apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:21` | 10-viewer-tool | files/10-viewer-tool | Noted in https://github.com/kulesy/ghostshell/issues/177 |
 | 7.5 | Image viewer: Close (Esc) | direct | `public/ui/viewer.js:21` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:21` | 10-viewer-tool | files/10-viewer-tool | - |
-| 7.6 | Image viewer: Previous and Next | direct | `public/ui/viewer.js:317` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:109` | 10-viewer-next | - | - |
-| 7.7 | Image viewer: loading and error states | direct | `public/ui/viewer.js:298` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:79` | - | - | - |
+| 7.6 | Image viewer: Previous and Next | direct | `public/ui/viewer.js:323` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:109` | 10-viewer-next | - | - |
+| 7.7 | Image viewer: loading and error states | direct | `public/ui/viewer.js:304` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/ImageViewer.swift:79` | - | - | - |
 | 7.8 | File panel beside the chat | partial | `public/ui/files.js:1` | `apple/GhostShellKit/Sources/GhostShellScreens/Chat/ChatScreen.swift:158` | 10-file-text-line | files/10-file-text-line | Mac lays the file over the whole main pane since https://github.com/kulesy/ghostshell/pull/192. See 7.8b |
 | 7.9 | File panel header: file name, path and "File" tab | direct | `public/ui/file-view.js:165` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:73` | 10-file-text-line | files/10-file-text-line | - |
 | 7.10 | No file open | direct | `public/ui/file-view.js:24` | `apple/GhostShellKit/Sources/GhostShellScreens/Files/FilePanel.swift:28` | - | - | - |
