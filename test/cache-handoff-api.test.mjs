@@ -18,9 +18,9 @@ const log = s => { const f = path.join(s.state, 'cache-handoffs.jsonl'); return 
 const events = s => log(s).map(e => e.event);
 const stored = s => JSON.parse(fs.readFileSync(path.join(s.state, 'cache-handoffs.json'), 'utf8'));
 
-async function ready({ session, handoffs = { [ID]: 52 }, env, flags = {}, extra = [], chips } = {}) {
+async function ready({ session, handoffs = { [ID]: 52 }, env, flags = {}, extra = [], chips, forms } = {}) {
   const s = await start({
-    sessions: [{ id: ID, title: 'Fix it', ago: 52, reply: { ago: 52 }, ...session }, ...extra], claude: true, handoffs, chips,
+    sessions: [{ id: ID, title: 'Fix it', ago: 52, reply: { ago: 52 }, ...session }, ...extra], claude: true, handoffs, chips, forms,
     env: { CAPCOM_CACHE_HANDOFF_SCALE: '600', ...env },
   });
   for (const [name, text] of Object.entries(flags)) fs.writeFileSync(path.join(s.home, name), text);
@@ -131,6 +131,18 @@ test('a slash command stays in the session it is for', async () => {
   const res = await send(s, token, ID, { text: '/context', handover: true });
   assert.equal(res.body().movedTo, undefined);
   assert.ok(log(s).some(e => e.event === 'not-moved' && /slash/.test(e.reason)));
+});
+
+test('the answers to a form stay in the session that asked, and settle the form', async () => {
+  const forms = [{ toolUseId: 'toolu_form', sessionId: ID, title: 'Plan', questions: [{ type: 'text', question: 'What next?' }] }];
+  const { s, token } = await ready({ forms });
+  await goesCold(s);
+  const res = await send(s, token, ID, { text: 'What next? The type check', handover: true, form: { id: 'toolu_form', skipped: false } });
+  assert.equal(res.status, 200);
+  assert.equal(res.body().movedTo, undefined);
+  assert.equal(res.body().form.status, 'answered');
+  assert.ok(log(s).some(e => e.event === 'not-moved' && /form/.test(e.reason)));
+  assert.deepEqual(seeds(s), []);
 });
 
 test('with a handover the next message starts a fresh session from the handoff, in the earlier one\'s place, and the earlier one points at it', async () => {
