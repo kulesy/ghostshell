@@ -1,6 +1,6 @@
 # Show banners in the sidebar for Claude's sign-in ending and for merged changes waiting
 
-- Status: Accepted
+- Status: Accepted, amended 2026-11-24
 - Deciders: Eli
 - Date: 2026-11-02
 - Tags: ui, banners, login, updates, restart, routines
@@ -71,7 +71,7 @@ Chosen option: "Banners in the sidebar, fed by the server's own cached checks", 
 
 - Holding or re-queuing routines that failed while signed out.
 - A long-lived token, which would remove the four week end. It is a different trust decision.
-- Updating without the button.
+- Updating without the button, until [the server applies merged changes itself](20261124-apply-merged-changes-without-a-press.md).
 
 ## Pros and Cons of the Options
 
