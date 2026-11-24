@@ -40,6 +40,7 @@ const WRITES = [
   ['archive_session', { session_id: 'loose' }, 'archive "Loose" [loose]'],
   ['unarchive_session', { session_id: 'gone' }, 'unarchive "Gone" [gone]'],
   ['set_session_title', { session_id: 'loose', title: 'Renamed' }, 'rename "Loose" [loose] to "Renamed"'],
+  ['set_session_title', { session_id: 'loose', title: 'Fix "menus" [kid]' }, 'rename "Loose" [loose] to "Fix menus kid"'],
   ['move_session_to_group', { session_id: 'loose', group: 'home' }, 'move "Loose" [loose] to "Home" [cg-home]'],
   ['create_project', { name: 'Fresh' }, 'create the project "Fresh"'],
   ['create_group', { name: 'Shiny', project: 'side' }, 'create the group "Shiny" in the project "Side" [cp-side]'],
@@ -64,6 +65,8 @@ test('each write lands in layout.json as the layout route writes it, and the ser
   assert.match(textOf(await callTool(s, token, 'top', 'unarchive_session', { session_id: 'loose' })), /^Unarchived /);
   assert.equal(onDisk(s).archived.loose, undefined);
   assert.match(textOf(await callTool(s, token, 'top', 'archive_session', { session_id: 'gone' })), /already archived/);
+  await callTool(s, token, 'top', 'set_session_title', { session_id: 'loose', title: 'Fix "menus" [kid]' });
+  assert.equal(onDisk(s).titles.loose, 'Fix "menus" [kid]', 'the title keeps what its card leaves out');
 });
 
 test('a session retitles itself, and the refusals are the routes\': a group\'s chat, an unknown id, the caller itself, and a running session that is left running', async () => {
