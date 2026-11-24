@@ -291,6 +291,20 @@ test('the card for each write names the session by its title and id and says wha
   assert.doesNotMatch(card('archive_session', { session_id: 'review' }, 'cg-a'), /read it/);
 });
 
+test('the rename card shows the new title without quotes or brackets, look-alikes included, so it cannot pass off a second id', () => {
+  const card = (title, id = 'review') => layoutSummary('set_session_title', { session_id: id, title }, subsFor(), GROUPS);
+  assert.equal(card('Fix "menus" [busy]'), 'rename "Review - dialogs" [review] to "Fix menus busy"');
+  for (const [open, shut, quote] of ['[]"', '［］＂', '【】”', '〔〕“', '⟦⟧„', '❲❳»', '⁅⁆〞', '「」‟']) {
+    assert.equal(card(`x${quote} ${open}busy${shut} ${quote}y`), 'rename "Review - dialogs" [review] to "x busy y"');
+  }
+  const kept = '✅ Done - 🛡️ The owner’s menus (part 2): café, {a} & b/c? #7 <ok> ‘yes’!';
+  assert.equal(card(kept), `rename "Review - dialogs" [review] to "${kept}"`, 'emoji and other punctuation show');
+  assert.equal(card(`"${'x'.repeat(118)}"`), `rename "Review - dialogs" [review] to "${'x'.repeat(118)}"`, 'a title of 120 characters is not cut');
+  assert.equal(card('"[]"'), 'rename "Review - dialogs" [review] to "Untitled"');
+  assert.equal(card(' '), 'rename "Review - dialogs" [review] to ""');
+  assert.equal(card('x', 'no] "Session busy" [busy'), 'rename an unknown session [no Session busy busy] to "x"');
+});
+
 test('find_sessions matches part of a title without regard to case, latest first, archived ones included unless they are left out, and marks a group\'s chat and the group', () => {
   const subs = subsFor();
   const text = findSessions({ query: 'REVIEW' }, subs, GROUPS, NOW);

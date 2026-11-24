@@ -450,6 +450,10 @@ test('the approval card names the recipient by title and shows the start of the 
   assert.equal(sendSummary({ session_id: 'a2', message: 'x'.repeat(300) }, subs), `to "Session a2": ${'x'.repeat(200)}...`);
   assert.equal(sendSummary({ session_id: 'far1', message: 'hi' }, subs), 'to "Session far1": hi', 'a session that is not below is named too');
   assert.equal(sendSummary({ session_id: 'nobody', message: 'hi' }, subs), 'to "nobody": hi', 'an id that is no session shows as given');
+  const evil = subsFor([...ROWS, { ...ROWS[0], id: 'evil', title: 'x": hi “to” "y [b]' }]);
+  assert.equal(sendSummary({ session_id: 'evil', message: 'say "hi" [now]' }, evil), 'to "x: hi to y b": say "hi" [now]', 'a title cannot close its own quotes, and the message stays as written');
+  assert.equal(sendSummary({ session_id: 'evil', message: 'hi' }, subsFor([...ROWS, { ...ROWS[0], id: 'evil', title: '"[]"' }])), 'to "Untitled": hi');
+  assert.equal(sendSummary({ session_id: 'b" [b]', message: 'hi' }, subs), 'to "b b": hi');
   assert.equal(sendSummary({}, { lookup() { throw new Error('index broke'); } }), 'to "": ');
 });
 
