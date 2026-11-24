@@ -696,7 +696,7 @@ test('a card follows a pin set from the sidebar and an account that signs out, w
   await page.until(`document.querySelector('.chip-card p.chip-account')?.textContent === 'Starts on Second, pinned to the group Loose.'`, 20_000);
   signedIn(c.s, c.dir, false);
   assert.equal((await request(c.s, 'POST', '/api/accounts/second/use', { headers: { connection: 'close', origin: c.s.origin, ...as(c.token) }, json: {} })).status >= 200, true);
-  await page.until(`/Second is signed out/.test(document.querySelector('.chip-card p.chip-account')?.textContent || '')`, 30_000);
+  await page.until(`/Second, pinned to the group Loose, is signed out/.test(document.querySelector('.chip-card p.chip-account')?.textContent || '')`, 30_000);
   assert.equal(await page.evaluate(`document.querySelector('.chip-card [data-chip=start]').disabled`), true);
 });
 
