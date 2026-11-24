@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { serviceFor } from '../lib/accounts.mjs';
 import { findChromium, launch, notFound } from './browser.mjs';
-import { as, PASSWORD, request, restart, signIn, start, until } from './harness.mjs';
+import { as, cliCalls, PASSWORD, request, restart, signIn, start, until } from './harness.mjs';
 
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
@@ -510,4 +510,216 @@ test('a chat that spilled with no Chrome survey says only that it moved', { skip
   assert.equal(await page.evaluate(`document.querySelector('.account-hint').textContent`), 'Main is out of usage, so this session runs on Second until Main resets.');
   await shot(page, 'spill-line');
   assert.deepEqual(page.problems, []);
+});
+
+// ---- the account line on a chip card ----------------------------------------------------------------------------------------
+
+// A chip card at the narrow, default and phone widths, with `prepare` run after each resize (the menu shot opens the menu there).
+const WIDTHS = [['narrow', 640, 860], ['default', 1280, 860], ['phone', 390, 844]];
+async function chipShots(page, name, prepare) {
+  if (!process.env.CAPCOM_SHOTS) return;
+  for (const [size, width, height] of WIDTHS) {
+    await page.resize(width, height);
+    await new Promise(r => setTimeout(r, 400));
+    await prepare?.();
+    await shot(page, `${name}-${size}`);
+  }
+  await page.resize(1280, 860);
+}
+
+const MAKER = { id: 'maker', title: 'Maker', source: 'cli', ago: 5, group: 'cg-b' };
+const CHIP = { sessionId: 'maker', title: 'Follow up', prompt: 'begin a session' };
+const transcriptOf = (c, id) => path.join(c.s.home, '.claude', 'projects', '-test-folder', `${id}.jsonl`);
+
+// Puts a suggested task in a session's transcript, as the chat's own tool writes it, so the page draws a card for it.
+const plant = (c, id, ...uses) => {
+  const lines = uses.map(([toolUseId, input = { title: 'Follow up', prompt: 'begin a session' }]) => ({ type: 'assistant', message: { id: `m-${toolUseId}`, role: 'assistant', content: [{ type: 'tool_use', id: toolUseId, name: 'mcp__capcom__spawn_task', input }] } }));
+  fs.appendFileSync(transcriptOf(c, id), lines.map(l => `${JSON.stringify(l)}\n`).join(''));
+};
+
+// The card's account lines and what its buttons say, in the order they sit.
+const cardOf = page => page.evaluate(`(() => {
+  const card = document.querySelector('.chip-card');
+  const start = card.querySelector('[data-chip=start]');
+  return {
+    lines: [...card.querySelectorAll('p.chip-account')].map(p => p.textContent).filter(Boolean),
+    state: card.querySelector('p.chip-account')?.dataset.state ?? null,
+    buttons: [...card.querySelectorAll('.chip-actions .btn')].map(b => b.textContent),
+    start: start ? { disabled: start.disabled } : null,
+  };
+})()`);
+const openCard = async (t, c, hash) => {
+  const page = await openPage(t, c, hash ?? '#/s/maker');
+  await page.until(`!!document.querySelector('.chip-card')`, 20_000);
+  return page;
+};
+const MENU_BUTTON = '.chip-card [data-chip=account]';
+const pickOnCard = async (page, label) => {
+  await page.click(MENU_BUTTON);
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  await choose(page, MENU, label);
+  await page.until(`!document.querySelector('${MENU}')`);
+};
+const plainOpen = async opts => {
+  const c = await open({ sessions: [MAKER], ...opts });
+  plant(c, 'maker', ['toolu_a']);
+  return c;
+};
+
+test('a card with one account listed shows no account line and posts no account', { skip, timeout }, async t => {
+  const c = await plainOpen({ one: true, chips: [{ ...CHIP, toolUseId: 'toolu_a' }] });
+  const page = await openCard(t, c);
+  assert.deepEqual(await cardOf(page), { lines: [], state: null, buttons: ['Start session', 'Dismiss'], start: { disabled: false } });
+  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
+  await page.click('.chip-card [data-chip=start]');
+  await until(async () => (await page.evaluate(`window.__posts.length`)) === 1);
+  const [url, body] = (await page.evaluate(`window.__posts`))[0];
+  assert.equal(url, 'api/chips/start');
+  assert.equal(Object.hasOwn(body, 'account') || Object.hasOwn(body, 'confirmAccount'), false);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a card that follows the active account says so, and Start posts a null account with the account it confirms', { skip, timeout }, async t => {
+  const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a' }] });
+  const page = await openCard(t, c);
+  assert.deepEqual(await cardOf(page), { lines: ['Starts on Main, the active account.'], state: 'ok', buttons: ['Start session', 'Change account', 'Dismiss'], start: { disabled: false } });
+  await chipShots(page, 'chip-follows-active');
+  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
+  await page.click('.chip-card [data-chip=start]');
+  await until(async () => (await page.evaluate(`window.__posts.length`)) === 1);
+  const [, body] = (await page.evaluate(`window.__posts`))[0];
+  assert.deepEqual([body.account, body.confirmAccount], [null, 'main']);
+  await page.until(`!!document.querySelector('.chip-card a.btn')`, 20_000);
+  assert.deepEqual(await cardOf(page), { lines: [], state: null, buttons: ['Open the session'], start: null });
+  assert.deepEqual(page.problems, []);
+});
+
+test('a card in a pinned group names the account and the group that pins it', { skip, timeout }, async t => {
+  const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a' }] });
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  const page = await openCard(t, c);
+  assert.deepEqual((await cardOf(page)).lines, ['Starts on Second, pinned to the group Loose.']);
+  await chipShots(page, 'chip-group-pin');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a card for a chip that names an account says the chip chose it, and the pick on the card wins over the chip', { skip, timeout }, async t => {
+  const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a', account: 'second' }] });
+  const page = await openCard(t, c);
+  assert.deepEqual((await cardOf(page)).lines, ['Starts on Second, chosen by this chip.']);
+  await chipShots(page, 'chip-named');
+  await page.click(MENU_BUTTON);
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  assert.deepEqual(await itemsOf(page, MENU), ['Follow the pins', 'Main', 'Second (checked)']);
+  const reopen = async () => {
+    if (await page.evaluate(`!document.querySelector('${MENU}')`)) await page.click(MENU_BUTTON);
+    await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  };
+  await chipShots(page, 'chip-menu', reopen);
+  await page.press('Escape');
+  await page.until(`!document.querySelector('${MENU}')`);
+  await reopen();
+  await choose(page, MENU, 'Main');
+  await page.until(`!document.querySelector('${MENU}')`);
+  await page.until(`document.querySelector('.chip-card p.chip-account')?.textContent === 'Starts on Main, picked here.'`);
+  await chipShots(page, 'chip-picked');
+  await pickOnCard(page, 'Follow the pins');
+  await page.until(`document.querySelector('.chip-card p.chip-account')?.textContent === 'Starts on Main, the active account.'`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a chip that names an account other than its group\'s pin says it does not follow the pin, and one Start confirms it', { skip, timeout }, async t => {
+  const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a', account: 'main' }] });
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  const page = await openCard(t, c);
+  assert.deepEqual((await cardOf(page)).lines, ['Starts on Main, chosen by this chip.', 'It does not follow the pin to Second on the group Loose. It has no overflow account.']);
+  await chipShots(page, 'chip-replaces');
+  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
+  await page.click('.chip-card [data-chip=start]');
+  await until(async () => (await page.evaluate(`window.__posts.length`)) === 1);
+  const [, body] = (await page.evaluate(`window.__posts`))[0];
+  assert.deepEqual([body.account, body.confirmAccount], ['main', 'main']);
+  await page.until(`!!document.querySelector('.chip-card a.btn')`, 20_000);
+  assert.equal((await index(c)).groups.find(g => g.id === 'cg-b').account, 'second', 'the group keeps its own pin');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a signed out account stops Start and offers Sign in, which asks the server for the sign-in', { skip, timeout }, async t => {
+  const c = await plainOpen({ out: true, chips: [{ ...CHIP, toolUseId: 'toolu_a', account: 'second' }] });
+  const page = await openCard(t, c);
+  const card = await cardOf(page);
+  assert.deepEqual([card.lines, card.state, card.start, card.buttons], [['Second, chosen by this chip, is signed out. Sign it in, or pick another account.'], 'signedOut', { disabled: true }, ['Start session', 'Sign in to Second', 'Change account', 'Dismiss']]);
+  await chipShots(page, 'chip-signed-out');
+  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
+  await page.evaluate(`[...document.querySelectorAll('.chip-card .btn')].find(b => b.textContent === 'Sign in to Second').click()`);
+  await until(async () => (await page.evaluate(`window.__posts.map(p => p[0])`)).includes('api/accounts/second/sign-in'));
+  await pickOnCard(page, 'Main');
+  await page.until(`!document.querySelector('.chip-card [data-chip=start]').disabled`);
+  assert.deepEqual((await cardOf(page)).lines, ['Starts on Main, picked here.']);
+});
+
+test('an account that is no longer listed stops Start, says so, and offers no Sign in', { skip, timeout }, async t => {
+  const c = await plainOpen({ accounts: { maker: 'vanished' }, chips: [{ ...CHIP, toolUseId: 'toolu_a' }] });
+  const page = await openCard(t, c);
+  const card = await cardOf(page);
+  assert.match(card.lines[0], /no longer lists|no longer listed/);
+  assert.deepEqual([card.state, card.start, card.buttons], ['removed', { disabled: true }, ['Start session', 'Change account', 'Dismiss']]);
+  await chipShots(page, 'chip-removed');
+  await pickOnCard(page, 'Second');
+  await page.until(`!document.querySelector('.chip-card [data-chip=start]').disabled`);
+  assert.deepEqual((await cardOf(page)).lines.slice(0, 1), ['Starts on Second, picked here.']);
+});
+
+test('a card with a stored account the page cannot confirm because it has no account list shows no line, and Start gives the refusal in words and starts nothing', { skip, timeout }, async t => {
+  const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a', account: 'second' }] });
+  const page = await openPage(t, c, '');
+  await page.evaluate(`import('/ui/account-list.js').then(m => m.accountList.set({ accounts: null, at: Date.now() + 3_600_000 }))`);
+  await page.evaluate(`location.hash = '#/s/maker'`);
+  await page.until(`!!document.querySelector('.chip-card [data-chip=start]')`, 20_000);
+  assert.deepEqual(await cardOf(page), { lines: [], state: null, buttons: ['Start session', 'Dismiss'], start: { disabled: false } });
+  const before = cliCalls(c.s).length;
+  await page.click('.chip-card [data-chip=start]');
+  await page.until(`/This chip names an account/.test(document.body.textContent)`, 15_000);
+  assert.equal(cliCalls(c.s).length, before, 'nothing started');
+  assert.equal(await page.evaluate(`!!document.querySelector('.chip-card [data-chip=start]')`), true, 'the card is still open');
+  assert.deepEqual(page.problems.filter(p => !/400/.test(p)), []);
+});
+
+test('a card follows a pin set from the sidebar and an account that signs out, without the chat being reopened', { skip, timeout }, async t => {
+  const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a' }] });
+  const page = await openCard(t, c);
+  assert.deepEqual((await cardOf(page)).lines, ['Starts on Main, the active account.']);
+  await rightClick(page, '.group-head[data-key="cg-b"]');
+  await page.until(`!!document.querySelector('${MENU}') && document.querySelector('${MENU}').dataset.state === 'open'`);
+  await openSub(page, 'Account');
+  await choose(page, SUB, 'Second');
+  await page.until(`document.querySelector('.chip-card p.chip-account')?.textContent === 'Starts on Second, pinned to the group Loose.'`, 20_000);
+  signedIn(c.s, c.dir, false);
+  assert.equal((await request(c.s, 'POST', '/api/accounts/second/use', { headers: { connection: 'close', origin: c.s.origin, ...as(c.token) }, json: {} })).status >= 200, true);
+  await page.until(`/Second, pinned to the group Loose, is signed out/.test(document.querySelector('.chip-card p.chip-account')?.textContent || '')`, 30_000);
+  assert.equal(await page.evaluate(`document.querySelector('.chip-card [data-chip=start]').disabled`), true);
+});
+
+test('a card the server did not store follows the pins of the session it was drawn in', { skip, timeout }, async t => {
+  const c = await open({ sessions: [MAKER] });
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  plant(c, 'maker', ['toolu_unstored', { title: 'Follow up', prompt: 'begin a session', account: 'main' }]);
+  const page = await openCard(t, c);
+  assert.deepEqual((await cardOf(page)).lines, ['Starts on Second, pinned to the group Loose.'], 'the tool input in the transcript is not used');
+});
+
+test('a card whose pinned account is out of usage says which account it starts on instead, and Start confirms that account', { skip, timeout }, async t => {
+  const c = await plainOpen({ chips: [{ ...CHIP, toolUseId: 'toolu_a' }] });
+  assert.equal((await pinTo(c, 'group', 'cg-b', 'main', 'second')).status, 200);
+  assert.equal((await post(c, '/api/sessions/live/send', { text: 'hit the usage limit' })).status, 200);
+  await until(async () => (await accountsOf(c)).accounts.find(a => a.id === 'main').out);
+  const page = await openCard(t, c);
+  await page.until(`/out of usage/.test(document.querySelector('.chip-card p.chip-account')?.textContent || '')`, 20_000);
+  assert.deepEqual((await cardOf(page)).lines, ['Starts on Second. Main, pinned to the group Loose, is out of usage, so it starts on Second until Main resets.']);
+  await chipShots(page, 'chip-spill');
+  await page.evaluate(`window.__posts = []; const real = window.fetch; window.fetch = (u, i) => { if (i?.method === 'POST') window.__posts.push([String(u), JSON.parse(i.body)]); return real(u, i); }`);
+  await page.click('.chip-card [data-chip=start]');
+  await until(async () => (await page.evaluate(`window.__posts.length`)) === 1);
+  const [, body] = (await page.evaluate(`window.__posts`))[0];
+  assert.deepEqual([body.account, body.confirmAccount], [null, 'second']);
 });

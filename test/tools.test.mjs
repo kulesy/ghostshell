@@ -502,3 +502,100 @@ test('spawn_task parent is refused in a group\'s chat and left out of its schema
   assert.equal(spawnWith(ctx, { parent: '  ' }).isError, undefined);
   assert.deepEqual(ctx.chips.list().map(c => Object.hasOwn(c, 'parent')), [false]);
 });
+
+// ---- spawn_task account ------------------------------------------------------------------------------------------------
+
+const ACCOUNTS = [{ id: 'acct-1', name: 'Work' }, { id: 'acct-2', name: 'Personal' }];
+const spawnTool = (ctx, args) => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...args } } }, ctx).result;
+const accountCtx = (accounts = ACCOUNTS) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-chip-account-'));
+  return { dir, chips: makeChips(dir), cwd: '/tmp/work', accounts: () => accounts };
+};
+const spawnSchema = ctx => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, ctx).result.tools.find(t => t.name === 'spawn_task').inputSchema;
+
+test('spawn_task offers an account in the ordinary and the group schema only when more than one account is listed', () => {
+  assert.equal(Object.hasOwn(spawnSchema({}).properties, 'account'), false);
+  assert.equal(Object.hasOwn(spawnSchema({ accounts: () => [ACCOUNTS[0]] }).properties, 'account'), false, 'one account is today\'s schema');
+  assert.equal(Object.hasOwn(spawnSchema({ accounts: () => [] }).properties, 'account'), false);
+  assert.equal(spawnSchema({ accounts: () => ACCOUNTS }).properties.account.type, 'string');
+  assert.equal(spawnSchema({ accounts: () => ACCOUNTS, group: { stateDir: '/tmp/state' } }).properties.account.type, 'string');
+  assert.deepEqual(spawnSchema({ accounts: () => ACCOUNTS }).required, ['title', 'prompt']);
+  const listing = JSON.stringify(handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { accounts: () => ACCOUNTS }).result.tools);
+  assert.doesNotMatch(listing, /Work|Personal|acct-/, 'the schema names no account');
+});
+
+test('spawn_task stores the id of the account a name or an id matches, trimmed and without regard to case, and echoes only the words it was given', t => {
+  const ctx = accountCtx();
+  t.after(() => fs.rmSync(ctx.dir, { recursive: true, force: true }));
+  for (const wanted of ['Work', '  personal ', 'acct-1']) {
+    const ok = spawnTool(ctx, { account: wanted });
+    assert.equal(ok.isError, undefined, `${wanted}: ${ok.content[0].text}`);
+  }
+  assert.deepEqual(ctx.chips.list().map(c => c.account), ['acct-1', 'acct-2', 'acct-1']);
+  assert.match(spawnTool(ctx, { account: 'work' }).content[0].text, /to suggest the account "work"\./, 'the reply repeats the agent\'s own text');
+  const none = spawnTool(ctx, {});
+  assert.equal(none.isError, undefined);
+  assert.equal(Object.hasOwn(ctx.chips.list().at(-1), 'account'), false, 'no account keeps today\'s chip');
+  for (const blank of ['', '   ', null]) {
+    assert.equal(spawnTool(ctx, { account: blank }).isError, undefined, JSON.stringify(blank));
+    assert.equal(Object.hasOwn(ctx.chips.list().at(-1), 'account'), false);
+  }
+});
+
+test('spawn_task refuses an unknown, a shared and a non-string account with one answer that names no account, and stores no chip', t => {
+  const ctx = accountCtx([...ACCOUNTS, { id: 'acct-3', name: 'work' }]);
+  t.after(() => fs.rmSync(ctx.dir, { recursive: true, force: true }));
+  const answers = new Set();
+  for (const wanted of ['Nobody', 'WORK', 'ACCT-3', 5, true, ['Work'], { name: 'Work' }]) {
+    const refused = spawnTool(ctx, { account: wanted });
+    assert.equal(refused.isError, true, JSON.stringify(wanted));
+    answers.add(refused.content[0].text);
+  }
+  assert.equal(answers.size, 1, 'every refusal says the same');
+  assert.doesNotMatch([...answers][0], /Work|Personal|work|acct-/i);
+  assert.deepEqual(ctx.chips.list(), []);
+});
+
+test('spawn_task ignores an account on a station with one account, so a stale one cannot dead-end a chip', t => {
+  const ctx = accountCtx([ACCOUNTS[0]]);
+  t.after(() => fs.rmSync(ctx.dir, { recursive: true, force: true }));
+  assert.equal(spawnTool(ctx, { account: 'Nobody' }).isError, undefined);
+  assert.equal(Object.hasOwn(ctx.chips.list()[0], 'account'), false);
+  assert.equal(spawnTool({ ...ctx, accounts: undefined }, { account: 'Work' }).isError, undefined);
+});
+
+test('no tool takes an account, a pin or an overflow as input except spawn_task, and no read tool shows the account a chip names', t => {
+  const ctx = accountCtx();
+  t.after(() => fs.rmSync(ctx.dir, { recursive: true, force: true }));
+  assert.equal(spawnTool({ ...ctx, sessionId: 'maker' }, { account: 'Work' }).isError, undefined);
+  const lists = [
+    { accounts: ctx.accounts },
+    { accounts: ctx.accounts, subs: {} },
+    { accounts: ctx.accounts, group: { stateDir: '/tmp/state' } },
+    { accounts: ctx.accounts, group: { stateDir: '/tmp/state' }, subs: {} },
+    { accounts: ctx.accounts, group: { stateDir: '/tmp/state', section: { id: 'pinned', name: 'Pinned', place: 'pinned' } }, subs: {} },
+  ];
+  for (const list of lists) {
+    for (const tool of handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, list).result.tools) {
+      const names = Object.keys(tool.inputSchema.properties ?? {}).filter(k => /account|pin|overflow/i.test(k));
+      assert.deepEqual(names, tool.name === 'spawn_task' ? ['account'] : [], tool.name);
+    }
+  }
+  const shown = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_chips', arguments: {} } }, { ...ctx, subs: {} }).result.content[0].text;
+  assert.match(shown, /1 chip/);
+  assert.doesNotMatch(shown, /Work|acct-1|account/i, 'list_chips is silent about the account');
+});
+
+test('a group session that cannot start because its pin is signed out tells the model a bare failure with no account name', async () => {
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const blocked = Object.assign(new Error('This group (Work) is pinned to Second, which is signed out. Sign it in first.'), { status: 409, blocked: { reason: 'signedOut' } });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blocked-start-'));
+    const reply = await asked('start_group_session', { cwd: dir, prompt: 'x' }, { stateDir: '/tmp/state', name: 'Work', lookup: () => ({ name: 'Work', members: [] }), start: async () => { throw blocked; } });
+    assert.equal(reply.result.isError, true);
+    assert.doesNotMatch(reply.result.content[0].text, /Second|Work|pinned|signed out/);
+  } finally {
+    console.error = quiet;
+  }
+});

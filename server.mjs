@@ -237,6 +237,8 @@ function accountOfSession(id) {
 }
 // What a chip's group name is looked up in when the chip is made. Each call reads the layout again, so a group renamed since is seen as it is now.
 const groupList = () => layout.read().groups.map(({ id, name, project }) => ({ id, name, project }));
+// The accounts spawn_task may name, as id and name alone.
+const accountPairs = () => accounts.list().map(({ id, name }) => ({ id, name }));
 
 // A nested session that leaves its place would take the sessions linked straight to it along, though they show beside it, so each is
 // linked to the parent instead, and those further down keep their links. A head takes its whole family along.
@@ -489,7 +491,7 @@ function settingsFor(id, row) {
 async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, oneOff, group = null, parent = null, account = null }) {
   const s = desktopSettings({ cwd });
   const upfront = accountForNew({ pin: account, routine, group, parent });
-  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx, groups: groupList });
+  const chat = await startChat({ account: upfront, cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx, groups: groupList, accounts: accountPairs });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
@@ -527,11 +529,11 @@ function sendToSession(row, text) {
   const chat = getChat(row.id);
   if (runningElsewhere(row.id, row)) return 'elsewhere';
   const was = chat?.state ?? 'idle';
-  // A pinned account that is signed out refuses the start. The tool tells the model in words, and nothing is queued.
+  // A pinned account that is signed out refuses the start. The tool tells the model in words that name no account and no holder, and nothing is queued.
   try {
     ensureChat(row.id, row).send(text);
   } catch (e) {
-    throw e.blocked ? refusal(`Refused: ${e.message}`) : e;
+    throw e.blocked ? refusal("Refused: that session's account is signed out or no longer listed. Ask the owner to sort it out on the Accounts page.") : e;
   }
   return was;
 }
@@ -689,6 +691,77 @@ function withOpensIn(chip, row, rowOf = findRow) {
     return nameOf(row.group) ? `Opens under this session, in ${nameOf(row.group)}` : 'Opens under this session';
   })();
   return opensIn ? { ...chip, opensIn } : chip;
+}
+
+// The group's or section's own chat that a chip's maker is, from the stored maker or the session the card was drawn in.
+const chipGroupSession = (chip, sessionId, rowOf = findRow) => rowOf(chip?.sessionId || sessionId)?.groupSession || rowOf(sessionId)?.groupSession;
+
+// Where a chip's session lands: `group` and `parent` are what newSession is given. The card and Start both ask this, so they cannot name different places.
+// A parent that can no longer hold sessions throws what familyRoot throws. `live` gives the live index, built by the caller at most once for many chips.
+function chipLanding(chip, sessionId, rowOf = findRow, live) {
+  const makerId = chip?.sessionId || sessionId;
+  const groupId = chipGroupSession(chip, sessionId, rowOf);
+  const named = chip?.group;
+  const chosen = chip?.parent && !named && !groupId ? familyRoot(chip.parent, live?.()).root : null;
+  const nestUnder = chosen || (named ? null : liveHeadOf(rowOf(makerId), rowOf));
+  return { groupId, named, nestUnder, makerId, group: named || groupId || null, parent: named || groupId ? null : nestUnder || makerId };
+}
+
+// What an open chip's card says about the account, with more than one account listed: what the pins of the place it opens in give, with no account on the chip.
+// It carries ids, names and words only. A chip whose place cannot be worked out gets none, and Start then answers as it does for that place.
+function chipAccountCard(chip, sessionId, rowOf = findRow, d = accountData(), live) {
+  if (accounts.list().length < 2) return null;
+  try {
+    const { group, parent } = chipLanding(chip, sessionId, rowOf, live);
+    const { got, blocked } = settle({ group, parent }, d);
+    // Whoever holds the pin, which a pin reached through the session it opens under still names, so the card says the group or project and not that session.
+    const from = got.from === 'active' ? 'active' : got.pin?.kind ?? got.from;
+    const fromName = got.pin ? d.nameOf(got.pin.kind, got.pin.id) : '';
+    // What each listed account would give if the chip named it, so a pick that spills is worded before Start and confirmed as it will run.
+    const choices = Object.fromEntries(accounts.list().map(a => { const r = settle({ pin: a.id, group, parent }, d).got; return [a.id, { account: r.account, ...(r.spilled && { spill: r.spilled }) }]; }));
+    return { account: got.account, from, ...(fromName && { fromName }), ...(got.spilled && { spill: got.spilled }), ...(got.overflow && { overflow: got.overflow }), ...(blocked && { blocked: withWords(blocked) }), choices };
+  } catch {
+    return null;
+  }
+}
+
+// An open chip with its card's account words. A chip that is started or dismissed has none.
+function withAccountCard(chip, rowOf = findRow, d, live) {
+  const card = chip.status === 'open' && chipAccountCard(chip, chip.sessionId, rowOf, d, live);
+  return card ? { ...chip, accountCard: card } : chip;
+}
+
+const CHECK_CARD = 'Check the account on the card, then press Start again.';
+
+// The sign-in of the account a chip's Start is about to rest on is read again first, as a pin's is, so the check below judges it as it is now.
+async function readChipAccount(body, landing) {
+  if (!Object.hasOwn(body, 'confirmAccount')) return;
+  const pin = typeof body.account === 'string' ? body.account : null;
+  const target = accounts.find(settle({ pin, group: landing.group, parent: landing.parent }, accountData()).got.account);
+  if (target) await accountLogins.refresh(target);
+}
+
+// The account a chip's Start gives the new session, from what the card posted: `{ account }` for newSession, or `{ refused: { status, error, chip? } }`.
+// Only the posted account counts, never the one stored on the chip, and `confirmAccount` must name the account the session would really start on now, after any spill. A null `account`
+// follows the pins and is never filled in with the account they give, so the session holds no pin and keeps what its group or project gives it later.
+// Nothing awaits between this and newSession, which settles the same place again, so the two cannot differ.
+function chipAccountPick(known, body, landing) {
+  // An older page or the Swift app takes a reply with a chip as settled, so only a request that posted a confirmation gets the chip back.
+  const refused = (status, error) => ({ refused: { status, error, ...(known && Object.hasOwn(body, 'confirmAccount') && { chip: withAccountCard(withOpensIn(known, findRow(known.sessionId))) }) } });
+  const posted = Object.hasOwn(body, 'account');
+  // With one account listed there is no choice to confirm, so a chip's stored account (from before one was removed) is not asked about.
+  if (known?.account && !posted && accounts.list().length > 1) return refused(400, 'This chip names an account. Check it on the card, then press Start again.');
+  const { account = null, confirmAccount } = body;
+  if (account !== null && (typeof account !== 'string' || !accounts.find(account))) return refused(400, 'Unknown account.');
+  if (!Object.hasOwn(body, 'confirmAccount')) return account ? refused(400, CHECK_CARD) : { account: null };
+  if (typeof confirmAccount !== 'string') return refused(400, CHECK_CARD);
+  const { got, blocked } = settle({ pin: account, group: landing.group, parent: landing.parent }, accountData());
+  if (got.account !== confirmAccount) return refused(409, `The account this would start on has changed since the card was drawn. ${CHECK_CARD}`);
+  if (blocked) return refused(409, blockedMessage(blocked));
+  const found = accounts.find(got.account);
+  if (!found) return refused(409, 'That account is no longer listed. Pick another on the card.');
+  if (accountLogins.state(found).signedOut) return refused(409, `${found.name} is signed out. Sign it in first.`);
+  return { account };
 }
 
 // The sessions a section's chat reaches: those the sidebar lists in it, with the sessions nested under each, so the cap on a list and the
@@ -954,7 +1027,7 @@ function ensureChat(id, row, { mode } = {}) {
   };
   const booked = !groupId && isBooked(id);
   const had = !!getChat(id);
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, ...group, ...(booked && { fresh: () => !hasTranscript(id) }), subs: subCtx });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, groups: groupList, accounts: accountPairs, ...group, ...(booked && { fresh: () => !hasTranscript(id) }), subs: subCtx });
   dropFastOnRefusal(chat);
   if (booked && !had && cfg.desktopHandoff) afterTurn(chat, () => { if (isBooked(id) && !Object.hasOwn(layout.read().archived, id)) handOff(id); });
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
@@ -2198,12 +2271,15 @@ async function api(req, res, u) {
   if (req.method === 'POST' && u.pathname === '/api/layout/account') return pinAccount(req, res);
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
-    const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, model: postedModel, effort: postedEffort } = JSON.parse(await readBody(req) || '{}');
+    const body = JSON.parse(await readBody(req) || '{}');
+    const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, model: postedModel, effort: postedEffort } = body;
     if (!sessionId || !toolUseId) return send(res, 400, { error: 'Which chip?' });
     const known = chips.get(toolUseId);
     const maker = () => findRow(known?.sessionId || sessionId);
     if (known && known.status !== 'open') return send(res, 409, { error: `That chip was already ${known.status}.`, chip: withOpensIn(known, maker()) });
     if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: withOpensIn(chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }), maker()) });
+    // An account on the request picks the subscription the session spends, so it needs this host's own Origin, as /api/new does.
+    if ((Object.hasOwn(body, 'account') || Object.hasOwn(body, 'confirmAccount')) && !strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
     const text = known?.prompt || prompt;
     const model = known?.model || postedModel;
     if (model && (typeof model !== 'string' || !MODEL.test(model))) return send(res, 400, { error: 'Unknown model.' });
@@ -2215,7 +2291,7 @@ async function api(req, res, u) {
     // The folder comes from transcript text, so anywhere other than the session's own folder needs the one the card showed.
     const from = findRow(sessionId);
     // The chip's own session decides as well as the posted one, so naming another session cannot lift the group's rules.
-    const groupId = findRow(known?.sessionId || sessionId)?.groupSession || from?.groupSession;
+    const groupId = chipGroupSession(known, sessionId);
     const section = groupId && sectionById(groupId);
     // A card is drawn from a transcript, so the chat's tool is not the only place a section that cannot hold a new session is refused.
     if (section && !section.place) return send(res, 400, { error: chipRefusal(section) });
@@ -2233,20 +2309,20 @@ async function api(req, res, u) {
       }
     }
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
-    // A chip the server stored with a parent opens under that session's family root, if it can still hold sessions.
-    let chosen = null;
-    if (known?.parent && !named && !groupId) {
-      try {
-        chosen = familyRoot(known.parent).root;
-      } catch (e) {
-        const archived = findRow(known.parent)?.archived;
-        return send(res, 400, { error: `The session this chip opens under is no longer available: ${archived ? 'it is archived. Unarchive it with unarchive_session, or ask the session to suggest the task again.' : `${e.message} Ask the session to suggest the task again.`}` });
-      }
+    // A chip the server stored with a parent opens under that session's family root, if it can still hold sessions. A chip from a sub session starts its session
+    // beside it, under the sub session's parent. A chip naming a group is unlinked anyway.
+    let landing;
+    try {
+      landing = chipLanding(known, sessionId);
+    } catch (e) {
+      const archived = findRow(known.parent)?.archived;
+      return send(res, 400, { error: `The session this chip opens under is no longer available: ${archived ? 'it is archived. Unarchive it with unarchive_session, or ask the session to suggest the task again.' : `${e.message} Ask the session to suggest the task again.`}` });
     }
-    // A chip from a sub session starts its session beside it, under the sub session's parent. A chip naming a group is unlinked anyway.
-    const nestUnder = chosen || (named ? null : liveHeadOf(findRow(known?.sessionId || sessionId)));
-    const makerId = known?.sessionId || sessionId;
-    const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort, group: named || groupId || null, parent: named || groupId ? null : nestUnder || makerId });
+    const { nestUnder } = landing;
+    await readChipAccount(body, landing);
+    const picked = chipAccountPick(known, body, landing);
+    if (picked.refused) return send(res, picked.refused.status, { error: picked.refused.error, ...(picked.refused.chip && { chip: picked.refused.chip }) });
+    const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort, group: landing.group, parent: landing.parent, account: picked.account });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead, and a
     // section's chip pins it or leaves it loose, as that section's own chat would. A group the chip names wins over both, and the session is
     // unlinked so it stands in that group on its own. See docs/adr/20261027-chips-name-their-group.md.
@@ -2280,7 +2356,12 @@ async function api(req, res, u) {
   if (req.method === 'GET' && action === 'chips') {
     const index = buildIndex({ archived: true });
     const rowOf = rowId => index.rows.get(rowId) || index.groupSessions.get(rowId) || null;
-    return send(res, 200, { chips: chips.forSession(id).map(c => withOpensIn(c, rowOf(id), rowOf)) });
+    const d = accountData(index);
+    // A card with no stored chip (Desktop's, or one the transcript draws) gets the default for the session it was made in.
+    let liveIndex;
+    const live = () => liveIndex ??= buildIndex();
+    const accountDefault = chipAccountCard(null, id, rowOf, d, live);
+    return send(res, 200, { chips: chips.forSession(id).map(c => withAccountCard(withOpensIn(c, rowOf(id), rowOf), rowOf, d, live)), ...(accountDefault && { accountDefault }) });
   }
   // The pictures of the whole chat as items with refs and no bytes, for the viewer to count and step through.
   if (req.method === 'GET' && action === 'images' && !parts[4]) {

@@ -37,7 +37,7 @@ function signedIn(s, dir, on = true) {
 }
 
 const get = (c, url) => request(c.s, 'GET', url, { headers: as(c.token) });
-const post = (c, url, json = {}, headers = { origin: c.s.origin }) => request(c.s, 'POST', url, { headers: { connection: 'close', ...as(c.token), ...headers }, json });
+const post = (c, url, json = {}, headers = { origin: c.s.origin }) => request(c.s, 'POST', url, { headers: Object.fromEntries(Object.entries({ connection: 'close', ...as(c.token), ...headers }).filter(([, v]) => v !== undefined)), json });
 const accountsOf = async c => (await get(c, '/api/accounts')).body();
 const pin = (c, kind, id, account) => post(c, '/api/layout/account', { kind, id, account });
 const until = (check, ms = 20_000) => waitFor(check, ms);
@@ -275,7 +275,7 @@ test('a sub session woken by its parent resumes on its own pinned account, and o
 
   signedIn(c.s, c.dir, false);
   assert.equal((await pin(c, 'session', 'other', 'second')).status, 409, 'the refused pin refreshes the account\'s sign-in');
-  assert.match(await tool(c, 'top', 'send_session', { session_id: 'kid2', message: 'And you.' }), /^Refused: .*pinned to Second, which is signed out/);
+  assert.match(await tool(c, 'top', 'send_session', { session_id: 'kid2', message: 'And you.' }), /^Refused: that session's account is signed out or no longer listed\. Ask the owner to sort it out on the Accounts page\.$/);
   assert.equal(resumes(c, 'kid2').length, 0, 'nothing started for it');
 });
 
@@ -615,4 +615,264 @@ test('a move that gains or drops an overflow asks the owner and names it', async
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'move "Solo" [solo] to "Work" [cg-a], which runs it on Second, with no overflow account', 'a move that drops one');
   await pin(c, 'session', 'solo', 'second');
   assert.equal(await moveAsk(c, 'solo', { session_id: 'solo', group: 'Work' }), 'move "Solo" [solo] to "Work" [cg-a]', 'its own pin decides the account, so none is named, but the move changes project, so it asks');
+});
+
+// ---- a chip's account --------------------------------------------------------------------------------------------------
+
+const SECTION_CHAT = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c2';
+const MAKER = { id: 'maker', title: 'Maker', source: 'cli', ago: 5, group: 'cg-b' };
+const OPEN = { sessionId: 'maker', prompt: 'begin a session', title: 'Follow up' };
+const startChip = (c, toolUseId, json = {}, headers) => post(c, '/api/chips/start', { sessionId: 'maker', toolUseId, title: 'Follow up', prompt: 'begin a session', cwd: c.s.home, confirmCwd: c.s.home, ...json }, headers);
+const chipsOf = async (c, id = 'maker') => (await get(c, `/api/sessions/${id}/chips`)).body();
+const cardOf = async (c, toolUseId, id) => (await chipsOf(c, id)).chips.find(x => x.toolUseId === toolUseId);
+const chipOpen = async (c, toolUseId) => (await cardOf(c, toolUseId))?.status === 'open';
+
+test('an open chip\'s card names the account its place gives and who holds the pin, with ids and names only, and a station with one account sends none', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a' }] });
+  assert.deepEqual((await cardOf(c, 'toolu_a')).accountCard.account, 'main');
+  assert.equal((await cardOf(c, 'toolu_a')).accountCard.from, 'active');
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  const card = (await cardOf(c, 'toolu_a')).accountCard;
+  assert.deepEqual([card.account, card.from, card.fromName], ['second', 'group', 'Loose']);
+  assert.deepEqual(card.choices, { main: { account: 'main' }, second: { account: 'second' } });
+  const body = JSON.stringify(await chipsOf(c));
+  assert.doesNotMatch(body, /second@example|org-hidden|token|email/i, 'no email, org or token');
+  const none = await chipsOf(c, 'loosely');
+  assert.deepEqual(none.chips, []);
+  assert.deepEqual(none.accountDefault.account, 'second', 'a card with no stored chip gets the default for the session it was made in');
+  assert.equal((await chipsOf(c, 'live')).accountDefault.account, 'main');
+
+  fs.writeFileSync(path.join(c.s.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: false, accounts: [{ id: 'main', name: 'Main' }] }));
+  const lone = await restart(c.s);
+  const one = { s: lone, ...(await signIn(lone)) };
+  const single = await chipsOf(one);
+  assert.equal(JSON.stringify(single).includes('accountCard'), false);
+  assert.equal(JSON.stringify(single).includes('accountDefault'), false);
+});
+
+test('a chip with no account follows the pins and is not pinned itself, so it keeps what its place gives it later', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a' }, { ...OPEN, toolUseId: 'toolu_b' }] });
+  assert.equal((await pinTo(c, 'group', 'cg-b', 'second', 'main')).status, 200);
+  const res = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'second' });
+  assert.equal(res.status, 200, res.text);
+  await until(() => startsOn(c, c.dir) === 1);
+  const made = await rowOf(c, res.body().id);
+  assert.deepEqual([made.account, made.accountPin, made.accountOverflow], ['second', undefined, undefined], 'on the group\'s account, holding no pin of its own');
+  assert.equal(layoutOf(c).accounts?.[res.body().id], undefined);
+  assert.equal((await pin(c, 'group', 'cg-b', 'main')).status, 200);
+  assert.equal((await rowOf(c, res.body().id)).account, 'main', 'it follows the group when the pin moves');
+
+  assert.equal((await pin(c, 'group', 'cg-b', null)).status, 200);
+  const plain = await startChip(c, 'toolu_b', { account: null, confirmAccount: 'main' });
+  assert.equal(plain.status, 200, plain.text);
+  await until(() => startsOn(c, null) === 1);
+});
+
+test('a chip that names an account starts its session pinned to the one the card posted, and only that one', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a', account: 'second' }, { ...OPEN, toolUseId: 'toolu_b', account: 'second' }] });
+  const card = await cardOf(c, 'toolu_a');
+  assert.equal(card.account, 'second', 'the stored account reaches the card');
+  const res = await startChip(c, 'toolu_a', { account: 'second', confirmAccount: 'second' });
+  assert.equal(res.status, 200, res.text);
+  await until(() => startsOn(c, c.dir) === 1);
+  const made = await rowOf(c, res.body().id);
+  assert.deepEqual([made.account, made.accountPin, made.accountFrom], ['second', 'second', 'session']);
+  assert.equal(JSON.stringify(res.body()).includes('"account"'), true, 'the owner\'s own reply keeps the chip as stored');
+
+  // The owner chose to follow the pins on the card, so the chip's own account is not used.
+  const followed = await startChip(c, 'toolu_b', { account: null, confirmAccount: 'main' });
+  assert.equal(followed.status, 200, followed.text);
+  await until(() => startsOn(c, null) === 1);
+  assert.equal(startsOn(c, c.dir), 1, 'the second start did not use the chip\'s account');
+});
+
+test('a chip that names an account is refused when the page posts no account, and a chip the owner picked an account for needs it confirmed', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a', account: 'second' }, { ...OPEN, toolUseId: 'toolu_b' }] });
+  const before = calls(c).length;
+  const old = await startChip(c, 'toolu_a');
+  assert.equal(old.status, 400, old.text);
+  assert.match(old.body().error, /Check it on the card/);
+  assert.equal(old.body().chip, undefined, 'an older page treats a reply with a chip as settled, so a request with no confirmation gets none');
+  assert.equal(calls(c).length, before, 'nothing started');
+  assert.equal(await chipOpen(c, 'toolu_a'), true);
+
+  for (const json of [{ account: 'second' }, { account: 'second', confirmAccount: 5 }, { account: 5, confirmAccount: 'second' }, { account: 'nobody', confirmAccount: 'nobody' }, { account: ['second'], confirmAccount: 'second' }]) {
+    const res = await startChip(c, 'toolu_b', json);
+    assert.equal(res.status, 400, JSON.stringify(json));
+  }
+  assert.equal(calls(c).length, before, 'nothing started');
+  assert.equal((await startChip(c, 'toolu_b', { account: 'second' })).body().chip, undefined);
+  assert.equal((await startChip(c, 'toolu_b', { account: 'second', confirmAccount: 5 })).body().chip.accountCard.account, 'main', 'a request that posted a confirmation gets the fresh card');
+  const unknown = await startChip(c, 'toolu_b', { account: 'nobody', confirmAccount: 'nobody' });
+  assert.doesNotMatch(unknown.body().error, /Main|Second|main|second/, 'a refusal names no account');
+});
+
+test('a confirmation that does not match where the session would start is refused with the fresh card, and nothing starts', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a' }] });
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  const before = calls(c).length;
+  const stale = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'main' });
+  assert.equal(stale.status, 409, stale.text);
+  assert.match(stale.body().error, /has changed since the card was drawn/);
+  assert.equal(stale.body().chip.accountCard.account, 'second', 'the reply carries the card as it is now');
+  assert.equal(calls(c).length, before);
+  const other = await startChip(c, 'toolu_a', { account: 'main', confirmAccount: 'second' });
+  assert.equal(other.status, 409, 'a pick the card did not confirm');
+  assert.equal(calls(c).length, before);
+  assert.equal(await chipOpen(c, 'toolu_a'), true);
+});
+
+test('a chip is refused and starts nothing when its account is signed out, active or not, or no longer listed', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a', account: 'second' }] });
+  signedIn(c.s, c.dir, false);
+  const before = calls(c).length;
+  const out = await startChip(c, 'toolu_a', { account: 'second', confirmAccount: 'second' });
+  assert.equal(out.status, 409, out.text);
+  assert.match(out.body().error, /Second.*signed out/);
+  assert.equal(calls(c).length, before);
+
+  signedIn(c.s, c.dir);
+  assert.equal((await post(c, '/api/accounts/second/use')).status, 200);
+  signedIn(c.s, c.dir, false);
+  const active = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'second' });
+  assert.equal(active.status, 409, 'the active account is held to the same check');
+  assert.match(active.body().error, /signed out/);
+  assert.equal(calls(c).length, before);
+
+  signedIn(c.s, c.dir);
+  fs.writeFileSync(path.join(c.s.state, 'accounts.json'), JSON.stringify({ active: 'main', autoSwitch: false, accounts: [{ id: 'main', name: 'Main' }, { id: 'third', name: 'Third', dir: path.join(c.s.state, 'accounts', 'third') }] }));
+  const gone = await restart(c.s);
+  const d = { s: gone, ...(await signIn(gone)) };
+  const removed = await startChip(d, 'toolu_a', { account: 'second', confirmAccount: 'second' });
+  assert.equal(removed.status, 400, 'an account that is not listed cannot be posted');
+  assert.equal(startsOn(d, c.dir), 0);
+});
+
+test('a pin to an account that is signed out stops the chip, and a pick of another account on the card gets past it', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a' }] });
+  assert.equal((await pin(c, 'group', 'cg-b', 'second')).status, 200);
+  await signOutSecond(c);
+  const before = calls(c).length;
+  const refused = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'second' });
+  assert.equal(refused.status, 409, refused.text);
+  assert.equal(calls(c).length, before);
+  const picked = await startChip(c, 'toolu_a', { account: 'main', confirmAccount: 'main' });
+  assert.equal(picked.status, 200, picked.text);
+  await until(() => startsOn(c, null) === 1);
+  assert.equal((await rowOf(c, picked.body().id)).accountPin, 'main');
+});
+
+test('an account on a chip\'s Start needs this host\'s own Origin, and a request with none or a foreign one starts nothing', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a' }] });
+  const before = calls(c).length;
+  for (const headers of [{ origin: undefined }, { origin: 'https://evil.example' }, { origin: 'null' }]) {
+    for (const json of [{ account: 'second', confirmAccount: 'second' }, { account: null }, { confirmAccount: 'main' }]) {
+      const res = await startChip(c, 'toolu_a', json, headers);
+      assert.equal(res.status, 403, `${JSON.stringify(headers)} ${JSON.stringify(json)}`);
+    }
+  }
+  assert.equal(calls(c).length, before, 'nothing started');
+  assert.equal(await chipOpen(c, 'toolu_a'), true);
+  const same = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'main' });
+  assert.equal(same.status, 200, same.text);
+});
+
+test('an account written into a transcript or a card\'s own text is never used, and a card the server did not store follows the pins', async () => {
+  const c = await open({ sessions: [MAKER] });
+  assert.equal((await pin(c, 'group', 'cg-b', 'main')).status, 200);
+  const res = await startChip(c, 'toolu_unstored', { prompt: 'begin a session', input: { account: 'second' }, account: null, confirmAccount: 'main' });
+  assert.equal(res.status, 200, res.text);
+  await until(() => startsOn(c, null) === 1);
+  assert.equal(startsOn(c, c.dir), 0);
+  assert.equal((await rowOf(c, res.body().id)).accountPin, undefined);
+});
+
+test('a chip that names a group, a parent, a group\'s chat or a section\'s chat starts on what the card said, and the session then agrees', async () => {
+  const c = await open({
+    groups: [{ id: 'cg-a', name: 'Work', project: 'cp-a', session: WORK_CHAT }, GROUPS[1]],
+    sessions: [MAKER, { id: 'nest', title: 'Nest', source: 'cli', ago: 6, group: 'cg-a' }],
+    layout: { sections: { pinned: SECTION_CHAT } },
+    chips: [
+      { ...OPEN, toolUseId: 'toolu_group', group: 'cg-a' },
+      { ...OPEN, toolUseId: 'toolu_parent', parent: 'nest' },
+      { sessionId: WORK_CHAT, toolUseId: 'toolu_chat', prompt: 'begin a session', title: 'Follow up' },
+      { sessionId: SECTION_CHAT, toolUseId: 'toolu_section', prompt: 'begin a session', title: 'Follow up' },
+    ],
+  });
+  assert.equal((await pin(c, 'group', 'cg-a', 'second')).status, 200);
+  const cases = [['maker', 'toolu_group', 'second', 'group'], ['maker', 'toolu_parent', 'second', 'group'], [WORK_CHAT, 'toolu_chat', 'second', 'group'], [SECTION_CHAT, 'toolu_section', 'main', 'active']];
+  for (const [maker, toolUseId, account, from] of cases) {
+    const card = (await cardOf(c, toolUseId, maker)).accountCard;
+    assert.deepEqual([card.account, card.from], [account, from], toolUseId);
+    const res = await startChip(c, toolUseId, { sessionId: maker, account: null, confirmAccount: card.account });
+    assert.equal(res.status, 200, `${toolUseId}: ${res.text}`);
+    await until(async () => !!(await rowOf(c, res.body().id)));
+    const made = await rowOf(c, res.body().id);
+    assert.deepEqual([made.account, made.accountPin], [card.account, undefined], `${toolUseId}: the session runs where the card said`);
+  }
+  assert.equal(startsOn(c, c.dir), 3);
+});
+
+test('a card says when the account its place pins is out of usage and the overflow takes the session, and Start confirms the account it will really run on', async () => {
+  const c = await open({ sessions: [MAKER, { id: 'busy', title: 'Busy', source: 'cli', ago: 7, group: 'cg-b' }], chips: [{ ...OPEN, toolUseId: 'toolu_a' }] });
+  fs.writeFileSync(path.join(c.s.home, 'plan-usage.json'), JSON.stringify([weeklyFull()]));
+  assert.equal((await pinTo(c, 'group', 'cg-b', 'main', 'second')).status, 200);
+  await say(c, 'loosely', 'finish the turn');
+  await until(() => startsOn(c, null) === 1);
+  await say(c, 'loosely', 'hit the usage limit');
+  await until(() => continues(c) === 1);
+  const card = (await cardOf(c, 'toolu_a')).accountCard;
+  assert.deepEqual([card.account, card.spill, card.overflow], ['second', 'main', 'second']);
+  assert.deepEqual(card.choices.main, { account: 'main' }, 'a chip that names the pinned account has its own pin and no overflow, so it does not spill');
+
+  const wrong = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'main' });
+  assert.equal(wrong.status, 409, 'confirming the pinned account that the session would leave');
+  const res = await startChip(c, 'toolu_a', { account: null, confirmAccount: 'second' });
+  assert.equal(res.status, 200, res.text);
+  await until(() => startsOn(c, c.dir) >= 1);
+});
+
+test('a chip that names an account other than its place\'s pin replaces the pin on the card, and Start pins only the new session', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a', account: 'main' }] });
+  assert.equal((await pinTo(c, 'group', 'cg-b', 'second', 'main')).status, 200);
+  const card = (await cardOf(c, 'toolu_a')).accountCard;
+  assert.deepEqual([card.account, card.from, card.overflow], ['second', 'group', 'main']);
+  const res = await startChip(c, 'toolu_a', { account: 'main', confirmAccount: 'main' });
+  assert.equal(res.status, 200, res.text);
+  await until(() => startsOn(c, null) === 1);
+  const made = await rowOf(c, res.body().id);
+  assert.deepEqual([made.account, made.accountPin, made.accountOverflow], ['main', 'main', undefined], 'no overflow carries over');
+  assert.equal(layoutOf(c).groups?.find?.(g => g.id === 'cg-b')?.account ?? layoutOf(c).accounts?.['cg-b'] ?? 'second', 'second', 'the group\'s own pin stays');
+  assert.equal((await index(c)).groups.find(g => g.id === 'cg-b').account, 'second');
+});
+
+test('a started or dismissed chip carries no account words, and list_chips and the other tools never show a chip\'s account', async () => {
+  const c = await open({ sessions: [MAKER], chips: [{ ...OPEN, toolUseId: 'toolu_a', account: 'second' }, { ...OPEN, toolUseId: 'toolu_b', account: 'second' }] });
+  const started = await startChip(c, 'toolu_a', { account: 'second', confirmAccount: 'second' });
+  assert.equal(started.status, 200, started.text);
+  assert.equal(started.body().chip.accountCard, undefined);
+  const dismissed = await post(c, '/api/chips/dismiss', { sessionId: 'maker', toolUseId: 'toolu_b', title: 'Follow up' });
+  assert.equal(dismissed.body().chip.accountCard, undefined);
+  assert.equal((await cardOf(c, 'toolu_a')).accountCard, undefined);
+  assert.equal((await cardOf(c, 'toolu_b')).accountCard, undefined);
+  const again = await startChip(c, 'toolu_a', { account: 'second', confirmAccount: 'second' });
+  assert.equal(again.status, 409);
+  assert.equal(again.body().chip.accountCard, undefined);
+
+  await until(() => startsOn(c, c.dir) === 1);
+  for (const [name, args] of [['list_chips', {}], ['find_sessions', { query: 'Maker' }], ['list_sub_sessions', {}]]) {
+    const shown = await tool(c, 'live', name, args);
+    assert.doesNotMatch(shown, /Second|second|Main|account/i, `${name} says nothing about an account`);
+  }
+});
+
+test('send_session to a session whose pin is signed out words the refusal with no account and no holder, and every tool call that reports a refusal says the same', async () => {
+  const c = await open({
+    sessions: [{ id: 'top', title: 'Top', source: 'cli', ago: 5 }, { id: 'kid', title: 'Kid', source: 'cli', ago: 6, parent: 'top' }],
+    layout: { accounts: { kid: 'second' } },
+  });
+  await signOutSecond(c);
+  const refusal = await tool(c, 'top', 'send_session', { session_id: 'kid', message: 'Hello.' });
+  assert.equal(refusal, "Refused: that session's account is signed out or no longer listed. Ask the owner to sort it out on the Accounts page.");
+  assert.equal(resumes(c, 'kid').length, 0);
 });

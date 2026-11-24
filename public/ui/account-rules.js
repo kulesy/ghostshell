@@ -1,7 +1,7 @@
 // What the Accounts pane and the banners about accounts say, as rules that need no page, so node can test them. Times are the page's own clock.
 import { endWords, SOON } from './banner-rules.js';
 import { pinsOnStart } from './group-rules.js';
-import { findRow, rootOf } from './tree.js';
+import { everyRow, findRow, rootOf } from './tree.js';
 
 export const supportsAccounts = ix => !!ix?.features?.accounts;
 
@@ -68,6 +68,9 @@ export function chromeBanner(chrome) {
 
 export const supportsPins = ix => !!ix?.features?.accountPins;
 
+// Every pin the list shows, as one string that changes when a pin does, so a chip card drawn from the pins is asked for again.
+export const pinsKey = ix => (ix ? JSON.stringify([ix.groups.map(g => [g.id, g.account, g.overflow]), (ix.projects ?? []).map(p => [p.id, p.account, p.overflow]), everyRow(ix).filter(r => r.accountPin).map(r => [r.id, r.accountPin, r.accountOverflow])]) : '');
+
 // A pick shows when the server pins and there is a choice to make, or when something is already pinned, so a single-account page is as it was.
 export const offersPick = (ix, accounts, pinned) => supportsPins(ix) && (!!pinned || (accounts?.length ?? 0) > 1);
 
@@ -88,7 +91,8 @@ export function chromeNote(accounts) {
 // The Account menu's items for something pinned to `pin` (an id, or none). `follows` says whom "Active account" runs as. `pick(id)` takes an id or null.
 // A signed out account cannot be picked, but stays marked when it is the pin, and a pin to an account no longer listed shows as removed.
 // `pickOverflow(id)` takes an id or null. The overflow choices show under a pin that holds its own, with more than one account to choose from.
-export function accountItems({ accounts, pin, overflow = null, follows, pick, pickOverflow }) {
+// `none` words the item that clears the pin, and `notes: false` leaves out the notes about a running chat, for a menu on something that has not started.
+export function accountItems({ accounts, pin, overflow = null, follows, pick, pickOverflow, none = 'Active account', notes = true }) {
   const row = a => ({
     id: `account:${a.id}`,
     label: a.name,
@@ -104,13 +108,11 @@ export function accountItems({ accounts, pin, overflow = null, follows, pick, pi
     ? [{ group: `If ${pinName} runs out`, items: [...others.map(spare), { id: 'overflow:', label: `Stay on ${pinName}`, checked: !overflow, run: overflow ? () => pickOverflow(null) : undefined }] }]
     : [];
   return [
-    { id: 'account:', label: 'Active account', value: follows || null, checked: !pin, run: pin ? () => pick(null) : undefined },
+    { id: 'account:', label: none, value: follows || null, checked: !pin, run: pin ? () => pick(null) : undefined },
     ...(accounts ?? []).map(row),
     ...(pin && !pinName ? [{ id: `account:${pin}`, label: 'Removed account', checked: true }] : []),
     ...spill,
-    { separator: true },
-    { note: PICK_NOTE },
-    { note: chromeNote(accounts) },
+    ...(notes ? [{ separator: true }, { note: PICK_NOTE }, { note: chromeNote(accounts) }] : []),
   ];
 }
 
@@ -224,3 +226,34 @@ export function pinnedChromeWords(a, accounts) {
 }
 
 export const SWITCH_LEAVES_PINS = 'A switch leaves pinned work on its account.';
+
+const placeWords = card => (card.from === 'session' ? `the session ${card.fromName ? `“${card.fromName}”` : 'it opens under'}` : `the ${card.from}${card.fromName ? ` ${card.fromName}` : ''}`);
+
+// The account line on a chip card, or null when the card shows none: one account listed, a server that sends no words for the card, or a chip that is not open.
+// `card` is the server's words for the place the chip opens in, `named` the account the chip names and `pick` the owner's own pick on the card, which is undefined
+// for none and null for "follow the pins". The pick wins, then the chip's account, then the pins. `post` is what Start sends, and `ok` says Start may be pressed.
+export function chipAccount({ card, accounts, named = null, pick }) {
+  if (!card || (accounts?.length ?? 0) < 2) return null;
+  const want = pick !== undefined ? pick : named;
+  const by = want ? (pick !== undefined ? 'pick' : 'chip') : 'pins';
+  const listed = id => accounts.find(a => a.id === id);
+  const spent = want ? card.choices?.[want] : card;
+  const id = want ? spent?.account ?? want : card.account;
+  const spill = spent?.spill ? accountName(accounts, spent.spill) || 'an account that is no longer listed' : '';
+  const account = listed(id);
+  const how = by === 'pick' ? 'picked here' : by === 'chip' ? 'chosen by this chip' : card.from === 'active' ? 'the active account' : `pinned to ${placeWords(card)}`;
+  const pinned = card.from !== 'active' && (card.spill ?? card.account);
+  const replaces = want && pinned && pinned !== want
+    ? `It does not follow the pin to ${accountName(accounts, pinned) || 'an account that is no longer listed'} on ${placeWords(card)}${card.overflow ? `, or its overflow to ${accountName(accounts, card.overflow) || 'an account that is no longer listed'}` : ''}. It has no overflow account.`
+    : '';
+  const base = { by, want, replaces, post: { account: want ?? null, confirmAccount: id } };
+  if (!account) return { ...base, state: 'removed', ok: false, name: '', line: want ? 'The account this chip names is no longer listed. Pick another.' : card.blocked?.message || 'The pin it opens under is to an account that is no longer listed. Pick another.' };
+  const line = spill ? `Starts on ${account.name}. ${spill}, ${how}, is out of usage, so it starts on ${account.name} until ${spill} resets.` : `Starts on ${account.name}, ${how}.`;
+  if (account.signedOut) return { ...base, state: 'signedOut', ok: false, id, name: account.name, line: `${account.name}, ${how}, is signed out. Sign it in, or pick another account.` };
+  return { ...base, state: 'ok', ok: true, id, name: account.name, line };
+}
+
+// The menu items of a chip card's Account control: follow the pins first, then each account, with the current choice checked.
+export function chipAccountItems({ accounts, card, line, pick }) {
+  return accountItems({ accounts, pin: line.want, follows: accountName(accounts, card.account), pick, none: 'Follow the pins', notes: false });
+}

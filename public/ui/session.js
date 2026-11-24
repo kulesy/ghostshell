@@ -1,5 +1,6 @@
 // One open chat: the transcript, the live event stream and every action on them. It is plain data and functions, so
 // the components only draw what is in its store and call what it returns.
+import { accountList } from './account-store.js';
 import { api } from './api.js';
 import { mergeContext } from './context-rules.js';
 import { pinsOnStart } from './group-rules.js';
@@ -58,7 +59,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   // Until a new session starts, the box holds its settings here; the ones left alone follow the home folder's defaults.
   const touched = draft ? new Set() : null;
   const store = createStore({
-    items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
+    items: [], orphans: new Map(), chips: new Map(), accountDefault: null, start: 0, end: 0, hasEarlier: false, loaded: false, failed: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: null, model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, agents: null, holdsEnded: endedByChat.get(id) || [],
     group: null, parent: null, folder: HOME, sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', refused: null, usageOut: false, starting: false, loadingEarlier: false,
@@ -89,8 +90,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
 
   async function loadChips() {
     try {
-      const { chips } = await api(`api/sessions/${enc(id)}/chips`);
-      return new Map(chips.map(ch => [ch.toolUseId, ch]));
+      const { chips, accountDefault } = await api(`api/sessions/${enc(id)}/chips`);
+      return { chips: new Map(chips.map(ch => [ch.toolUseId, ch])), accountDefault: accountDefault ?? null };
     } catch { return null; }
   }
 
@@ -103,7 +104,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
       const chips = await loadChips();
       if (closed) return;
       store.set(s => ({
-        ...thread, ...(chips && { chips }), start: r.start, end: r.end, hasEarlier: r.hasEarlier, loaded: true, failed: false,
+        ...thread, ...chips, start: r.start, end: r.end, hasEarlier: r.hasEarlier, loaded: true, failed: false,
         sending: s.sending.filter(m => !thread.items.some(i => sameMessage(i, m))),
       }));
     } catch (e) {
@@ -113,8 +114,25 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     }
   }
 
+  // A chip's account line goes stale when an account signs in or out or is renamed or removed, or a pin moves, so the cards are asked for again.
+  const accountsKey = () => JSON.stringify(accountList.get().accounts?.map(a => [a.id, a.name, a.signedOut, a.active]));
+  let accountsSeen = '';
+  async function reloadChips() {
+    if (!state().loaded || !state().items.some(i => /__spawn_task$/.test(i.name || ''))) return;
+    const chips = await loadChips();
+    if (!closed && chips) store.set(chips);
+  }
+  function onAccounts() {
+    const now = accountsKey();
+    if (now === accountsSeen) return;
+    accountsSeen = now;
+    reloadChips();
+  }
+  let unwatch = () => {};
+
   async function open() {
     document.addEventListener('visibilitychange', onVisible);
+    if (!draft) { accountsSeen = accountsKey(); unwatch = accountList.subscribe(onAccounts); }
     if (draft) {
       loadDefaults(HOME);
       return;
@@ -139,6 +157,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
     clearTimeout(contextTimer);
     es?.close();
     document.removeEventListener('visibilitychange', onVisible);
+    unwatch();
   }
 
   // ---- the live event stream ---------------------------------------------------------------------------
@@ -196,7 +215,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
         const thread = absorb(r.reset ? { items: [], orphans: new Map() } : s, r.items);
         const saved = s.think?.done && r.items.some(i => i.kind === 'thinking' && i.msgId === s.think.id);
         return {
-          ...thread, ...(chips && { chips }), end: r.end,
+          ...thread, ...chips, end: r.end,
           ...(r.reset && { start: r.start, hasEarlier: r.hasEarlier }),
           ...(s.session && names && !sameNames(names, s.session.connectors) && { session: { ...s.session, connectors: names } }),
           sending: s.sending.filter(m => !r.items.some(i => sameMessage(i, m))),
@@ -351,19 +370,22 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
 
   const dismissHold = ids => store.set(s => keepEnded(s.holdsEnded.filter(d => !ids.includes(d.id))));
 
-  // A 409 means the chip was settled somewhere else, and the error carries its current state for the card to show.
-  async function chip(action, tool, folder) {
+  // A 409 means the chip was settled somewhere else, and the error carries its current state for the card to show. Resolves true when the card has moved on,
+  // false when the press failed, and the server's words when it refused the account the card posted, which the card shows itself.
+  async function chip(action, tool, folder, account) {
     const keep = c => store.set(s => ({ chips: new Map(s.chips).set(tool.id, c) }));
     try {
       const r = await api(`api/chips/${action}`, {
         sessionId: id, toolUseId: tool.id, title: tool.input?.title, tldr: tool.input?.tldr,
         prompt: tool.input?.prompt, cwd: tool.input?.cwd, confirmCwd: folder, model: tool.input?.model, effort: tool.input?.effort,
+        ...account,
       });
       keep(r.chip);
       refreshIndex();
       return true;
     } catch (err) {
-      if (err.data?.chip) { keep(err.data.chip); return true; }
+      if (err.data?.chip) { keep(err.data.chip); return err.data.chip.status === 'open' ? err.message : true; }
+      if (account) return err.message;
       notice(err.message);
       return false;
     }
@@ -484,7 +506,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex,
   const fileUrl = path => `api/sessions/${enc(id)}/file?path=${enc(path)}`;
 
   return {
-    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, loadMcp, reloadMcp, retry,
+    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext, loadPlan, loadMcp, reloadMcp, retry, reloadChips,
     send, prompt, stop, decide, dismissHold, chip, setMode, pick, repin, setFolder, startNew, notice, imageUrl, fileUrl,
   };
 }

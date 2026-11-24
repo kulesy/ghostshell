@@ -4,9 +4,12 @@ import { BashItem } from './bash.js';
 import { HOME } from './env.js';
 import { clip, duration, lf, modelLabel, pre, preview, sentAt, serverLabel, tilde, toolLabel } from './format.js';
 import { FileCard } from './file-card.js';
+import { accountList, loadAccounts } from './account-list.js';
+import { chipAccount } from './account-rules.js';
+import { ChipAccountActions, ChipAccountLine } from './chip-account.js';
 import { fromTool, imageKey, overflow, TILES, tileLabel, toolShots } from './gallery.js';
-import { Fragment, html, memo, useLayoutEffect, useReducer, useRef, useState } from './html.js';
-import { useClock } from './hooks.js';
+import { Fragment, html, memo, useEffect, useLayoutEffect, useReducer, useRef, useState } from './html.js';
+import { useClock, useStore } from './hooks.js';
 import { draw, icons } from './menu.js';
 import { effortName, modelName } from './model-rules.js';
 import { splitQuotes } from './quote-rules.js';
@@ -93,22 +96,35 @@ const ToolGroup = memo(function ToolGroup({ rows, imageUrl, onImage, connectors,
 }, (a, b) => a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.running === b.running && a.fileUrl === b.fileUrl && sameRows(a.rows, b.rows));
 
 // A chip from Capcom's own tool or from Desktop's, so chips in resumed Desktop sessions can be started here too.
-function ChipCard({ t, chip, cwd, onChip }) {
+function ChipCard({ t, chip, cwd, onChip, fallback }) {
   const [busy, setBusy] = useState('');
+  const [pick, setPick] = useState(undefined);
+  const [problem, setProblem] = useState('');
+  const accounts = useStore(accountList, s => s.accounts);
   const i = t.input || {};
   const status = chip?.status || 'open';
   const folder = chip?.cwd || i.cwd || cwd || '';
   const model = chip?.model || i.model;
   const effort = chip?.effort || i.effort;
+  // The card's account words come from the server: the chip's own, or for a card with no stored chip the default for this session. The account is the chip's, never the tool input's.
+  const card = status === 'open' ? chip?.accountCard || (chip ? null : fallback) : null;
+  const line = chipAccount({ card, accounts, named: chip?.account ?? null, pick });
+  useEffect(() => { if (card) loadAccounts(); }, [!!card]);
+  const signing = line?.state === 'signedOut' ? accounts?.find(a => a.id === line.id) : null;
+  const failure = signing?.stage === 'failed' ? signing.problem || '' : '';
   const act = async action => {
     setBusy(action);
-    if (!(await onChip(action, t, folder))) setBusy('');
+    setProblem('');
+    const done = await onChip(action, t, folder, action === 'start' ? line?.post : undefined);
+    if (done !== true) setBusy('');
+    if (typeof done === 'string') setProblem(done);
   };
   const actions = status === 'started'
     ? html`<a class="btn" data-variant="outline" href=${`#/s/${encodeURIComponent(chip.startedId)}`}>Open the session</a>`
     : status === 'dismissed'
       ? html`<span class="quiet">Dismissed</span>`
-      : html`<button class="btn" type="button" data-chip="start" data-tool=${t.id} data-folder=${folder} disabled=${busy === 'start'} onClick=${() => act('start')}>Start session</button>
+      : html`<button class="btn" type="button" data-chip="start" data-tool=${t.id} data-folder=${folder} disabled=${busy === 'start' || (line && !line.ok)} onClick=${() => act('start')}>Start session</button>
+         ${line ? html`<${ChipAccountActions} line=${line} card=${card} accounts=${accounts} tool=${t.id} onPick=${setPick} onProblem=${setProblem} />` : null}
          <button class="btn" data-variant="ghost" type="button" data-chip="dismiss" data-tool=${t.id} disabled=${busy === 'dismiss'} onClick=${() => act('dismiss')}>Dismiss</button>`;
   return html`<li class="chip-card" data-status=${status} data-model=${model || undefined} data-effort=${effort || undefined}>
     <p class="chip-kind">Suggested task${t.name.startsWith('mcp__capcom__') ? '' : ' from Desktop'}</p>
@@ -117,6 +133,7 @@ function ChipCard({ t, chip, cwd, onChip }) {
     <pre class="tool-io chip-prompt">${pre(clip(i.prompt || '', 8))}</pre>
     <p class="chip-folder">Starts in ${tilde(folder, HOME) || 'the session folder'}${model ? ` on ${modelName(model)}` : ''}${effort ? ` at ${effortName(effort)} effort` : ''}</p>
     ${chip?.opensIn ? html`<p class="chip-folder chip-opens">${chip.opensIn}</p>` : null}
+    ${line ? html`<${ChipAccountLine} line=${line} problem=${problem || failure} />` : null}
     <div class="chip-actions">${actions}</div></li>`;
 }
 
@@ -156,7 +173,7 @@ function Quoted({ quote }) {
 }
 
 // Row never reads `today`. It is here so a new day redraws the rows, whose times `sentAt` works out against the date.
-const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
+const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.fallback === b.fallback && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
   && a.term === b.term && a.terminal === b.terminal && a.today === b.today
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
 
@@ -165,14 +182,14 @@ const timeOf = i => sentAt(i.at) || undefined;
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
-export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl, term, terminal }) {
+export const Row = memo(function Row({ item: i, chip, cwd, fallback, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl, term, terminal }) {
   if (i.kind === 'user') {
     const { quotes, text } = splitQuotes(i.text);
     return html`<li class=${`msg user${i.sending ? ' sending' : ''}`} data-time=${timeOf(i)}>${i.images?.length || i.files?.length ? html`<${Thumbs} images=${i.images} files=${i.files} url=${imageUrl} onOpen=${onImage} />` : null}${quotes.map((q, n) => html`<${Quoted} key=${n} quote=${q} />`)}${text ? html`<div class="bubble">${lf(text)}</div>` : null}</li>`;
   }
   if (i.kind === 'assistant') return html`<li class="msg claude" data-time=${timeOf(i)} dangerouslySetInnerHTML=${{ __html: md(i.text, fileUrl) }}></li>`;
   if (i.kind === 'tool') {
-    if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} onChip=${onChip} />`;
+    if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} fallback=${fallback} onChip=${onChip} />`;
     if (/__mark_chapter$/.test(i.name)) return html`<li class="chapter"><span>${i.input?.title || 'Chapter'}</span></li>`;
     if (/__show_widget$/.test(i.name) && i.input?.widget_code) return html`<${Widget} t=${i} onPrompt=${onPrompt} />`;
     if (/__dismiss_task$/.test(i.name)) return html`<li hidden></li>`;

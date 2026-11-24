@@ -4952,6 +4952,10 @@ ol.offer-list { padding-left: 1.4rem; }
 
 .chip-folder { font-family: var(--font-mono); font-size: 0.75rem !important; }
 
+.chip-account:empty { display: none; }
+
+.chip-card p.chip-account[data-state="signedOut"], .chip-card p.chip-account[data-state="removed"], .chip-card p.chip-account[data-state="refused"] { color: var(--destructive); }
+
 .chapter {
   display: flex;
   align-items: center;

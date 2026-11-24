@@ -1,7 +1,7 @@
 // Run with `npm test`. What the account picks and notices show, as rules that need no page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountChoices, accountItems, accountLabel, accountMenu, blockedNow, blockedPlan, CHROME_NOTE, chatAccount, chromeNote, draftAccount, offersPick, pinnedChromeWords, pinnedStay, pinnedWords, rowAccountMenu, rowFor, spillLine, SWITCH_LEAVES_PINS } from '../public/ui/account-rules.js';
+import { accountChoices, accountItems, accountLabel, accountMenu, blockedNow, blockedPlan, CHROME_NOTE, chatAccount, chipAccount, chipAccountItems, chromeNote, draftAccount, offersPick, pinnedChromeWords, pinsKey, pinnedStay, pinnedWords, rowAccountMenu, rowFor, spillLine, SWITCH_LEAVES_PINS } from '../public/ui/account-rules.js';
 
 const ON = { features: { accountPins: true } };
 const MAIN = { id: 'main', name: 'Main' };
@@ -290,4 +290,97 @@ test('the spill line names both accounts, adds Chrome when the survey proved the
   assert.equal(spillLine(row, [{ ...MAIN, chromeOn: 'second' }, SECOND]), "Second is out of usage, so this session runs on Main until Second resets. Chrome is on Second, so it can't reach Chrome.");
   assert.equal(spillLine({ account: 'main' }, [MAIN, SECOND]), '');
   assert.equal(spillLine(row, [MAIN]), '', 'an account no longer listed has no line');
+});
+
+const ACTIVE = { account: 'main', from: 'active' };
+const GROUP = { account: 'second', from: 'group', fromName: 'Loose', choices: { main: { account: 'main' }, second: { account: 'second' } } };
+
+test('a chip card shows no account line with one account, no card from the server, or nothing to name', () => {
+  assert.equal(chipAccount({ card: ACTIVE, accounts: [MAIN] }), null);
+  assert.equal(chipAccount({ card: null, accounts: [MAIN, SECOND], named: 'second' }), null);
+  assert.equal(chipAccount({ card: undefined, accounts: [MAIN, SECOND] }), null);
+});
+
+test('a chip with no account follows the pins, and posts a null account with the account it confirms', () => {
+  const line = chipAccount({ card: ACTIVE, accounts: [MAIN, SECOND] });
+  assert.deepEqual([line.state, line.ok, line.by, line.line, line.replaces], ['ok', true, 'pins', 'Starts on Main, the active account.', '']);
+  assert.deepEqual(line.post, { account: null, confirmAccount: 'main' });
+  const pinned = chipAccount({ card: GROUP, accounts: [MAIN, SECOND] });
+  assert.equal(pinned.line, 'Starts on Second, pinned to the group Loose.');
+  assert.deepEqual(pinned.post, { account: null, confirmAccount: 'second' });
+});
+
+test('the owner\'s pick wins over the chip, and the chip wins over the pins', () => {
+  const chip = chipAccount({ card: GROUP, accounts: [MAIN, SECOND], named: 'main' });
+  assert.deepEqual([chip.by, chip.id, chip.post], ['chip', 'main', { account: 'main', confirmAccount: 'main' }]);
+  const picked = chipAccount({ card: GROUP, accounts: [MAIN, SECOND], named: 'main', pick: 'second' });
+  assert.deepEqual([picked.by, picked.id, picked.line], ['pick', 'second', 'Starts on Second, picked here.']);
+  const follow = chipAccount({ card: GROUP, accounts: [MAIN, SECOND], named: 'main', pick: null });
+  assert.deepEqual([follow.by, follow.id, follow.post], ['pins', 'second', { account: null, confirmAccount: 'second' }]);
+});
+
+test('a chip that names an account other than its place\'s pin says it replaces the pin, and a chip that names the pinned account does not', () => {
+  const replaced = chipAccount({ card: { ...GROUP, overflow: 'main' }, accounts: [MAIN, SECOND], named: 'main' });
+  assert.equal(replaced.replaces, 'It does not follow the pin to Second on the group Loose, or its overflow to Main. It has no overflow account.');
+  assert.equal(replaced.ok, true);
+  assert.equal(chipAccount({ card: GROUP, accounts: [MAIN, SECOND], named: 'second' }).replaces, '');
+  assert.equal(chipAccount({ card: ACTIVE, accounts: [MAIN, SECOND], named: 'second' }).replaces, '', 'the active account is not a pin');
+});
+
+test('the card names the holder of a pin by its kind and name, and says "the session it opens under" with no name', () => {
+  const line = from => chipAccount({ card: { account: 'second', ...from }, accounts: [MAIN, SECOND] }).line;
+  assert.equal(line({ from: 'project', fromName: 'Work' }), 'Starts on Second, pinned to the project Work.');
+  assert.equal(line({ from: 'session', fromName: 'Maker' }), 'Starts on Second, pinned to the session “Maker”.');
+  assert.equal(line({ from: 'session' }), 'Starts on Second, pinned to the session it opens under.');
+});
+
+test('a pin the account spilled off says which account it runs on and when the pinned one resets', () => {
+  const card = { account: 'main', spill: 'second', from: 'group', fromName: 'Loose' };
+  const line = chipAccount({ card, accounts: [MAIN, SECOND] });
+  assert.equal(line.line, 'Starts on Main. Second, pinned to the group Loose, is out of usage, so it starts on Main until Second resets.');
+  assert.deepEqual(line.post, { account: null, confirmAccount: 'main' });
+});
+
+test('a signed out account stops Start, and a removed one stops it with no sign-in state', () => {
+  const out = chipAccount({ card: ACTIVE, accounts: [MAIN, { ...SECOND, signedOut: true }], named: 'second' });
+  assert.deepEqual([out.state, out.ok, out.id, out.line], ['signedOut', false, 'second', 'Second, chosen by this chip, is signed out. Sign it in, or pick another account.']);
+  const active = chipAccount({ card: ACTIVE, accounts: [{ ...MAIN, signedOut: true }, SECOND] });
+  assert.deepEqual([active.state, active.ok], ['signedOut', false]);
+  const named = chipAccount({ card: ACTIVE, accounts: [MAIN, SECOND], named: 'gone' });
+  assert.deepEqual([named.state, named.ok, named.line], ['removed', false, 'The account this chip names is no longer listed. Pick another.']);
+  const pinned = chipAccount({ card: { account: 'gone', from: 'group', fromName: 'Loose' }, accounts: [MAIN, SECOND] });
+  assert.deepEqual([pinned.state, pinned.ok, pinned.line], ['removed', false, 'The pin it opens under is to an account that is no longer listed. Pick another.']);
+  assert.equal(chipAccount({ card: { account: 'gone', from: 'group', blocked: { message: 'Blocked words.' } }, accounts: [MAIN, SECOND] }).line, 'Blocked words.');
+});
+
+test('the card\'s menu follows the pins first, lists each account, checks the current choice, and has no notes', () => {
+  const picked = [];
+  const make = line => chipAccountItems({ accounts: [MAIN, SECOND], card: GROUP, line, pick: id => picked.push(id) });
+  const pins = make(chipAccount({ card: GROUP, accounts: [MAIN, SECOND] }));
+  assert.deepEqual(pins.map(i => i.label), ['Follow the pins', 'Main', 'Second']);
+  assert.deepEqual(pins.filter(i => i.checked).map(i => i.label), ['Follow the pins']);
+  assert.equal(pins[0].value, 'Second', 'follow the pins runs as the account the pins give');
+  assert.equal(pins.some(i => i.note), false);
+  const chosen = make(chipAccount({ card: GROUP, accounts: [MAIN, SECOND], named: 'main' }));
+  assert.deepEqual(chosen.filter(i => i.checked).map(i => i.label), ['Main']);
+  chosen[0].run();
+  assert.deepEqual(picked, [null]);
+  assert.equal(chosen[1].run, undefined, 'the current choice has nothing to run');
+});
+
+test('the pins key changes when a group, project or session pin or overflow does, and not otherwise', () => {
+  const ix = () => ({ groups: [{ id: 'g', account: null, overflow: null, sessions: [{ id: 'a', accountPin: null }] }], projects: [{ id: 'p', account: null }], pinned: [], routines: [], started: [], ungrouped: [], other: [] });
+  assert.equal(pinsKey(null), '');
+  assert.equal(pinsKey(ix()), pinsKey(ix()));
+  const g = ix(); g.groups[0].account = 'second';
+  const p = ix(); p.projects[0].account = 'second';
+  const o = ix(); o.groups[0].overflow = 'main';
+  const s = ix(); s.groups[0].sessions[0].accountPin = 'second';
+  assert.equal(new Set([ix(), g, p, o, s].map(pinsKey)).size, 5);
+});
+
+test('the item that clears the pin takes its own words, and the notes can be left out', () => {
+  const items = accountItems({ accounts: [MAIN, SECOND], pin: null, follows: 'Main', pick() {}, none: 'Follow the pins', notes: false });
+  assert.deepEqual(items.map(i => i.label), ['Follow the pins', 'Main', 'Second']);
+  assert.equal(accountItems({ accounts: [MAIN, SECOND], pin: null, follows: 'Main', pick() {} })[0].label, 'Active account');
 });
