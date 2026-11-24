@@ -15,6 +15,7 @@ import { acquire } from '../../lib/lock.mjs';
 import { checkNoHooks } from './build.mjs';
 import { startChatStub } from './chat-fixtures.mjs';
 import { startFilesStub } from './files-fixtures.mjs';
+import { startChipStub } from './chip-fixtures.mjs';
 import { startGroupStub } from './group-fixtures.mjs';
 import { makePng } from './png.mjs';
 import { routinesStub } from './routines-fixtures.mjs';
@@ -193,19 +194,21 @@ function startFixtures(stub, { empty = false } = {}) {
 
 // MARK: Test runs
 
-// The other stubs a test can sign in to, by the name it asks for: files, groups, routines, and organise (a scratch server with seeded sessions).
+// The other stubs a test can sign in to, by the name it asks for: files, chip, groups, routines, and organise (a scratch server with seeded sessions).
 async function startStubs() {
   const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(`http://localhost:${server.address().port}`)));
   const files = await startFilesStub();
+  const chip = await startChipStub();
   const groups = await startGroupStub();
   const routines = routinesStub({ accept: true });
   const routinesEmpty = routinesStub({ accept: true, empty: true });
   const scratch = await startScratch();
   return {
-    addresses: { files: files.address, groups: groups.address, routines: await listen(routines.server), routinesempty: await listen(routinesEmpty.server), organise: scratch.address },
+    addresses: { files: files.address, chip: chip.address, groups: groups.address, routines: await listen(routines.server), routinesempty: await listen(routinesEmpty.server), organise: scratch.address },
     password: fs.readFileSync(scratch.passwordFile, 'utf8').trim(),
     stop: async () => {
       files.stop();
+      chip.stop();
       groups.stop();
       for (const { server } of [routines, routinesEmpty]) { server.closeAllConnections(); server.close(); }
       await scratch.stop();
