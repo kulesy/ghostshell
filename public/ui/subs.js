@@ -62,7 +62,8 @@ async function sendReply(id, name) {
   setBox(id, { sending: true, problem: '' });
   try {
     // No `mode`, which leaves a running chat on its mode and starts any other on the session's own, as its chat's prompt box would.
-    await api(`api/sessions/${enc(id)}/send`, { text: text.trim() });
+    const { movedTo } = await api(`api/sessions/${enc(id)}/send`, { text: text.trim(), handover: true });
+    if (movedTo) location.hash = `#/s/${enc(movedTo)}`;
     const at = document.activeElement;
     if (at === document.body || replyText(id)?.form.contains(at)) replyButton(id)?.focus({ preventScroll: true });
     setBox(id, { open: false, text: '', sending: false });

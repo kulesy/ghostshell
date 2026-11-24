@@ -741,6 +741,26 @@ test('a chip made by a sub session starts its session beside it under the sub se
   assert.equal(rowOf(await index(again, (await signIn(again)).token), beside.body().id).parent, 'maker', 'a restart reads it from chips.json');
 });
 
+test('the cards of a session that was handed over open under the one that carries on, and say so', async () => {
+  const sessions = [{ id: 'old', title: 'Audit', archived: true, ago: 5 }, { id: 'new', title: 'Audit', group: 'cg-work', ago: 1 }, { id: 'sub', title: 'Sub', parent: 'new', ago: 2 }];
+  const chips = [
+    { sessionId: 'new', madeIn: 'old', toolUseId: 'toolu_known', prompt: 'begin a session' },
+    { sessionId: 'sub', madeIn: 'old', toolUseId: 'toolu_beside', prompt: 'begin a session' },
+  ];
+  const opened = async (toolUseId, json = {}) => {
+    const s = await start({ sessions, groups: GROUPS, claude: true, chips, handoffs: { old: { movedTo: 'new', movedAt: Date.now() } } });
+    const { token } = await signIn(s);
+    assert.deepEqual((await chipsOf(s, token, 'old')).map(c => c.opensIn), ['Opens under “Audit”, in Work', 'Opens beside “Sub”, under “Audit”, in Work']);
+    const res = await request(s, 'POST', '/api/chips/start', { headers: as(token), json: { sessionId: 'old', toolUseId, ...json } });
+    assert.equal(res.status, 200, res.text);
+    return { chip: res.body().chip, row: rowOf(await index(s, token), res.body().id) };
+  };
+  const known = await opened('toolu_known');
+  assert.deepEqual([known.row.parent, known.row.group], ['new', 'cg-work']);
+  const unknown = await opened('toolu_never_stored', { title: 'A task', prompt: 'begin a session' });
+  assert.deepEqual([unknown.row.parent, unknown.chip.sessionId, unknown.chip.madeIn], ['new', 'new', 'old']);
+});
+
 test('a chip from a session that shows as a head because its parent is archived nests its session under that session', async () => {
   const sessions = SUB.map(r => (r.id === 'maker' ? { ...r, archived: true } : r));
   const s = await start({ sessions, groups: GROUPS, claude: true, chips: SUB_CHIPS });

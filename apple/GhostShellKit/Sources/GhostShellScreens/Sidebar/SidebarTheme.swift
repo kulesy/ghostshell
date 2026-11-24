@@ -14,6 +14,8 @@ extension GhostPalette {
 /// and a warning triangle for a failure.
 struct StatusDot: View {
     let dot: SessionDot?
+    /// A saved handoff waits, shown as a quiet ring when no other mark is.
+    var cold = false
     private let size = GhostMetrics.current.dot
 
     var body: some View {
@@ -23,7 +25,7 @@ struct StatusDot: View {
             case .awaiting?: lamp(Color.ghost.warning)
             case .ready?: Circle().fill(Color.ghost.ready).frame(width: size, height: size)
             case .error?: Image(systemName: "exclamationmark.triangle.fill").font(.system(size: size + 3)).foregroundStyle(Color.ghost.warningForeground)
-            default: Color.clear
+            default: if cold { Circle().strokeBorder(Color.ghost.sidebarMuted, lineWidth: 1.5).frame(width: size, height: size) } else { Color.clear }
             }
         }
         .frame(width: size + 4, height: size + 4)
@@ -46,7 +48,7 @@ struct StatusDot: View {
         case .error?: "Failed"
         case .ready?: "Unread"
         case .running?: "Working"
-        default: ""
+        default: cold ? HandoffRules.coldLabel : ""
         }
     }
 }

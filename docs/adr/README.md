@@ -62,3 +62,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-11-09 | [Let a pin name an overflow account that takes its work while the pinned one is out of usage](20261109-spill-pinned-work-to-an-overflow-account.md) | Accepted |
 | 2026-11-11 | [Reload one MCP server in a running chat by switching it off and on](20261111-reload-an-mcp-server-with-toggle.md) | Accepted |
 | 2026-11-24 | [Let the page draw Claude's ask forms from questions sent as data](20261124-page-draws-ask-forms.md) | Accepted |
+| 2026-11-24 | [Hand off before the prompt cache goes cold](20261124-hand-off-before-the-cache-goes-cold.md) | Accepted |

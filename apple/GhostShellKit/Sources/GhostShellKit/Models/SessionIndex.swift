@@ -57,11 +57,18 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
     public var account: String?
     public var accountPin: String?
     public var children: [SessionRow]
+    /// A handoff is saved and the next message starts a fresh session from it.
+    public var cold: Bool
+    /// When that handoff was saved.
+    public var coldAt: Date?
+    /// The session this one carries on from, and the one its work carries on in.
+    public var continues: String?
+    public var continuedIn: String?
     /// When the open turn began by this device's clock, present while a turn runs. The server sends how long it has run, so this is that long ago.
     public var turnStart: Date?
 
     private enum Key: String, CodingKey {
-        case id, title, cwd, branch, state, dot, lastActivityAt, sortAt, pinned, archived, group, parent, routine, source, account, accountPin, children, turnMs
+        case id, title, cwd, branch, state, dot, lastActivityAt, sortAt, pinned, archived, group, parent, routine, source, account, accountPin, children, turnMs, cold, coldAt, continues, continuedIn
     }
 
     /// Only the id is required. Anything else the server leaves out or words differently reads as empty.
@@ -84,16 +91,22 @@ public struct SessionRow: Hashable, Sendable, Identifiable, Decodable {
         account = try? c.decode(String.self, forKey: .account)
         accountPin = try? c.decode(String.self, forKey: .accountPin)
         children = lossy(c, .children)
+        cold = (try? c.decode(Bool.self, forKey: .cold)) ?? false
+        coldAt = (try? c.decode(Double.self, forKey: .coldAt)).map { Date(timeIntervalSince1970: $0 / 1000) }
+        continues = try? c.decode(String.self, forKey: .continues)
+        continuedIn = try? c.decode(String.self, forKey: .continuedIn)
         turnStart = (try? c.decode(Double.self, forKey: .turnMs)).map { Self.turnStart(ms: $0) }
     }
 
     public init(id: String, title: String = "", cwd: String = "", branch: String = "", state: SessionState = .idle, dot: SessionDot? = nil,
                 lastActivityAt: Date? = nil, sortAt: Date? = nil, pinned: Bool = false, archived: Bool = false, group: String? = nil,
-                parent: String? = nil, routine: String? = nil, source: String? = nil, account: String? = nil, accountPin: String? = nil, children: [SessionRow] = [], turnStart: Date? = nil) {
+                parent: String? = nil, routine: String? = nil, source: String? = nil, account: String? = nil, accountPin: String? = nil, children: [SessionRow] = [], turnStart: Date? = nil,
+                cold: Bool = false, coldAt: Date? = nil, continues: String? = nil, continuedIn: String? = nil) {
         (self.id, self.title, self.cwd, self.branch, self.state, self.dot) = (id, title, cwd, branch, state, dot)
         (self.lastActivityAt, self.sortAt, self.pinned, self.archived) = (lastActivityAt, sortAt, pinned, archived)
         (self.group, self.parent, self.routine, self.source, self.children, self.turnStart) = (group, parent, routine, source, children, turnStart)
         (self.account, self.accountPin) = (account, accountPin)
+        (self.cold, self.coldAt, self.continues, self.continuedIn) = (cold, coldAt, continues, continuedIn)
     }
 
     // The server sends how long the turn has run, so the start moves with every poll. Whole seconds keep two polls of one turn equal, and the feed skips an equal index.

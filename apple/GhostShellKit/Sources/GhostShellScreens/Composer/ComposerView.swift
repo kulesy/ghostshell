@@ -47,14 +47,14 @@ struct ComposerView: View {
     }
 
     #if os(iOS)
-    private static let sidePadding: CGFloat = 8
+    fileprivate static let sidePadding: CGFloat = 8
     private static let bottomPadding: CGFloat = 12
-    private static let dock = AnyShapeStyle(.bar)
+    fileprivate static let dock = AnyShapeStyle(.bar)
     private static let hintInk = AnyShapeStyle(.tertiary)
     #else
-    private static let sidePadding = ChatStyle.threadInset
+    fileprivate static let sidePadding = ChatStyle.threadInset
     private static let bottomPadding = 0.5 * GhostMetrics.current.rem
-    private static let dock = ChatStyle.dock
+    fileprivate static let dock = ChatStyle.dock
     private static let hintInk = ChatStyle.muted
     #endif
 
@@ -241,7 +241,14 @@ struct ComposerHost: View {
     @Environment(AppModel.self) private var app
     let chat: ChatContext
 
-    var body: some View { ComposerView(model: ComposerModel.of(chat) { [app] in await app.refreshIndex() }, autofocus: true) }
+    var body: some View {
+        VStack(spacing: 0) {
+            HandoffStrip(chat: chat)
+            ComposerView(model: ComposerModel.of(chat, moved: { [app] in app.navigator.openSession($0) }) { [app] in await app.refreshIndex() }, autofocus: true)
+        }
+        // The composer's own priority reaches only this stack, and the chat's column needs it too.
+        .layoutPriority(1)
+    }
 }
 
 /// "Quote" in the menu of a user or assistant message. It adds the whole message to the quotes every composer in the app shows.
@@ -254,7 +261,7 @@ struct QuoteMenuItem: View {
         if let text {
             Button("Quote", systemImage: "quote.opening") {
                 ComposerStore.shared.addQuote(text, fromID: chat.sessionID, fromTitle: chat.session.title)
-                ComposerModel.of(chat) { [app] in await app.refreshIndex() }.requestFocus()
+                ComposerModel.of(chat, moved: { [app] in app.navigator.openSession($0) }) { [app] in await app.refreshIndex() }.requestFocus()
             }
         }
     }
@@ -264,6 +271,29 @@ struct QuoteMenuItem: View {
         case .user(let user): user.text
         case .assistant(_, let text): text
         default: nil
+        }
+    }
+}
+
+/// What the chat's row says about a saved handoff, one muted line each, with a button to the session on the other end of a hand over.
+struct HandoffStrip: View {
+    @Environment(AppModel.self) private var app
+    let chat: ChatContext
+
+    var body: some View {
+        let row = app.index.flatMap { OrganiseRules.find($0, chat.sessionID) }
+        ForEach(HandoffRules.lines(for: row), id: \.text) { line in
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(verbatim: line.text).foregroundStyle(ChatStyle.muted)
+                if let id = line.opens, let label = line.label {
+                    Button { app.navigator.openSession(id) } label: { Text(label).underline().foregroundStyle(ChatStyle.text) }.buttonStyle(.plain).phoneField()
+                }
+            }
+            .font(.geist(13 * GhostMetrics.current.scale, relativeTo: .caption))
+            .frame(maxWidth: ChatStyle.column, alignment: .leading)
+            .padding(.horizontal, ComposerView.sidePadding).padding(.top, 4)
+            .frame(maxWidth: .infinity)
+            .background(ComposerView.dock)
         }
     }
 }

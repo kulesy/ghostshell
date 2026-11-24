@@ -61,8 +61,9 @@ final class ComposerModel {
     }
 
     /// The composer of an open chat, made on first use.
-    static func of(_ chat: ChatContext, refreshIndex: @escaping @MainActor () async -> Void) -> ComposerModel {
-        chat.store(ComposerModel.self) { ComposerModel(client: chat.client, chat: chat, refreshIndex: refreshIndex, started: { _ in }) }
+    /// `moved` hears the id of the session a message went to when the chat's saved handoff took it.
+    static func of(_ chat: ChatContext, moved: @escaping (String) -> Void, refreshIndex: @escaping @MainActor () async -> Void) -> ComposerModel {
+        chat.store(ComposerModel.self) { ComposerModel(client: chat.client, chat: chat, refreshIndex: refreshIndex, started: moved) }
     }
 
     /// The composer of the New Session screen. `started` hears the id of the session the server made, and `group` is where it starts.
@@ -174,7 +175,7 @@ final class ComposerModel {
         // A slash command has to stay first to run, so the quotes wait for the next message.
         let (words, kept) = QuoteRules.messageFor(heldQuotes, text: typed, here: chat?.sessionID)
         let pictures = held.compactMap(\.image)
-        let message = OutgoingMessage(text: words, mode: mode, images: pictures.map(\.outgoing), files: files.map(\.id))
+        let message = OutgoingMessage(text: words, mode: mode, images: pictures.map(\.outgoing), files: files.map(\.id), handover: chat != nil)
         text = ""
         _ = store.takeAttachments(from: draftID)
         store.setQuotes(kept)
@@ -192,7 +193,15 @@ final class ComposerModel {
         if let chat {
             let mine = chat.beginSending(SendingMessage(text: message.text, imageCount: message.images.count, fileCount: message.files.count))
             do {
-                var reply = try await client.sendMessage(message, to: chat.sessionID).status
+                let answer = try await client.sendMessage(message, to: chat.sessionID)
+                // The message went to a fresh session, so this chat's own bubble and status do not apply.
+                if let to = answer.movedTo {
+                    chat.endSending(mine)
+                    await refreshIndex()
+                    started(to)
+                    return true
+                }
+                var reply = answer.status
                 // Each change of fast mode reaches the chat over its stream, and a reply can be older than the last one.
                 if let now = chat.status { reply.fast = now.fast }
                 chat.apply(status: reply)

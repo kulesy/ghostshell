@@ -297,7 +297,7 @@ public enum SidebarOutline {
         default: switch row.state { case .working: "working"; case .waiting: "needs you"; case .active: "active"; default: "" }
         }
         let at = when(row.lastActivityAt, now: now, calendar: calendar, locale: locale)
-        return [[folderName(row.cwd, home: home), row.branch, word].filter { !$0.isEmpty }.joined(separator: " · "), at == (title ?? row.title) ? "" : at]
+        return [[folderName(row.cwd, home: home), row.branch, word, row.cold ? HandoffRules.coldLabel : ""].filter { !$0.isEmpty }.joined(separator: " · "), at == (title ?? row.title) ? "" : at]
             .filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
