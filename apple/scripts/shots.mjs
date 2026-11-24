@@ -1592,6 +1592,7 @@ async function filesFlow(bundle, appearance) {
     check(app.press('Upload flow diagram'), 'the inline picture is a button');
     check(await until('inline viewer', () => app.hasButton('Close'), 15), 'an inline picture opens the viewer');
     await sleep(800);
+    check(!app.hasButton('Next image'), 'the viewer leaves out the refused picture');
     await app.shot(`10-inline-picture-viewer-${appearance}`);
     check(app.press('Close'), 'the inline picture\'s viewer has a Close button');
     check(await until('inline viewer closed', () => !app.hasButton('Close'), 10), 'Close closes the inline picture\'s viewer');

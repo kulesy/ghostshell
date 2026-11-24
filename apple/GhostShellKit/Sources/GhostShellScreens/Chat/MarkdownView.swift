@@ -243,6 +243,7 @@ private extension EnvironmentValues {
 /// A reply's Markdown blocks: headings, lists, quotes, code with a label and Copy, and tables. `canRun` lets a code block draw the Run slot, which
 /// only a finished reply of the assistant does, as on the page. A streaming reply and a thinking block never do.
 struct MarkdownView: View {
+    @State private var refused: Set<String> = []
     let blocks: [MDBlock]
     var font: Font = ChatStyle.body
     var canRun = false
@@ -255,7 +256,9 @@ struct MarkdownView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .environment(\.codeCanRun, canRun)
-        .environment(\.pictureGallery, MarkdownPieces.gallery(blocks))
+        .environment(\.pictureGallery, MarkdownPieces.gallery(blocks, without: refused))
+        .environment(\.refusedPictures, refused)
+        .environment(\.refusePicture) { refused.insert($0) }
     }
 }
 

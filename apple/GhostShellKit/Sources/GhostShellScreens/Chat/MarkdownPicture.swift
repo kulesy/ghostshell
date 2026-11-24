@@ -46,6 +46,21 @@ enum MarkdownPieces {
         return trimmed(out)
     }
 
+    /// The same run with these pictures put back as the file links they would have been.
+    static func linking(_ refused: Set<String>, in inlines: [MDInline]) -> [MDInline] {
+        inlines.map { inline in
+            switch inline {
+            case .image(let alt, let path): refused.contains(path) ? .file(text: [.text(alt)], path: path, line: nil) : inline
+            case .strong(let inner): .strong(linking(refused, in: inner))
+            case .em(let inner): .em(linking(refused, in: inner))
+            case .del(let inner): .del(linking(refused, in: inner))
+            case .link(let text, let url): .link(text: linking(refused, in: text), url: url)
+            case .file(let text, let path, let line): .file(text: linking(refused, in: text), path: path, line: line)
+            case .text, .code, .lineBreak: inline
+            }
+        }
+    }
+
     /// Whitespace and line breaks beside a picture are dropped, and so is a run left with nothing to show.
     private static func trimmed(_ pieces: [Piece]) -> [Piece] {
         var out: [Piece] = []
@@ -81,8 +96,8 @@ enum MarkdownPieces {
         }
     }
 
-    /// Every picture of these blocks in document order, once each.
-    static func gallery(_ blocks: [MDBlock]) -> [ChatPicture] {
+    /// Every picture of these blocks in document order, once each, without those that would not load.
+    static func gallery(_ blocks: [MDBlock], without refused: Set<String> = []) -> [ChatPicture] {
         var seen = Set<String>()
         var out: [ChatPicture] = []
         func inlines(_ list: [MDInline]) {
@@ -90,7 +105,7 @@ enum MarkdownPieces {
                 switch inline {
                 case .image(let alt, let path):
                     let picture = ChatPicture.file(path: path, alt: alt)
-                    if seen.insert(picture.id).inserted { out.append(picture) }
+                    if !refused.contains(path), seen.insert(picture.id).inserted { out.append(picture) }
                 case .strong(let inner), .em(let inner), .del(let inner), .link(let inner, _), .file(let inner, _, _): inlines(inner)
                 case .text, .code, .lineBreak: break
                 }
@@ -115,28 +130,34 @@ enum MarkdownPieces {
 extension EnvironmentValues {
     /// The pictures of the message being drawn, so a tap opens the viewer on all of them.
     @Entry var pictureGallery: [ChatPicture] = []
+    /// The paths of that message's pictures that would not load.
+    @Entry var refusedPictures: Set<String> = []
+    @Entry var refusePicture: @MainActor @Sendable (String) -> Void = { _ in }
     /// The page's `max-width: 47.99rem`, which is the window and not the pane.
     @Entry var narrowWindow = false
 }
 
 /// Inline Markdown drawn as one `Text`, or, when it holds a picture, as text runs and pictures stacked.
+/// A picture that will not load goes back into the text as its link.
 struct InlineRuns: View {
+    @Environment(\.refusedPictures) private var refused
     let inlines: [MDInline]
     let font: Font
     var lineSpacing: CGFloat = 0
 
     var body: some View {
-        if MarkdownPieces.hasPicture(inlines) {
+        let runs = refused.isEmpty ? inlines : MarkdownPieces.linking(refused, in: inlines)
+        if MarkdownPieces.hasPicture(runs) {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(MarkdownPieces.split(inlines).enumerated()), id: \.offset) { _, piece in
+                ForEach(Array(MarkdownPieces.split(runs).enumerated()), id: \.offset) { _, piece in
                     switch piece {
                     case .text(let run): text(run)
-                    case .picture(let alt, let path): MarkdownPicture(alt: alt, path: path, font: font, lineSpacing: lineSpacing).id(path)
+                    case .picture(let alt, let path): MarkdownPicture(alt: alt, path: path).id(path)
                     }
                 }
             }
         } else {
-            text(inlines)
+            text(runs)
         }
     }
 
@@ -155,40 +176,34 @@ struct InlineText: View {
 }
 
 /// A picture file from a reply: a button that opens the viewer. It reads its bytes only through the chat's `PictureCache`, so the server's rule that
-/// the chat's replies must link the file holds, and a picture that will not load becomes the file link it would have been.
+/// the chat's replies must link the file holds.
 struct MarkdownPicture: View {
     @Environment(ChatModel.self) private var model: ChatModel?
     @Environment(\.pictureGallery) private var gallery
+    @Environment(\.refusePicture) private var refuse
     @Environment(\.narrowWindow) private var narrow
     @State private var image: PlatformImage?
-    @State private var failed = false
     @State private var hovering = false
     let alt: String
     let path: String
-    let font: Font
-    let lineSpacing: CGFloat
 
     private var picture: ChatPicture { .file(path: path, alt: alt) }
     private static let shape = GhostCorner(GhostMetrics.current.lg)
     private var tallest: CGFloat { (narrow ? 10 : 15) * GhostMetrics.current.rem }
 
     var body: some View {
-        if failed || model == nil {
-            InlineText(inlines: [.file(text: [.text(alt)], path: path, line: nil)], font: font, lineSpacing: lineSpacing)
-        } else {
-            Button(action: open) { content }
-                .buttonStyle(.plain)
-                .onHover { hovering = $0 }
-                .accessibilityLabel(alt)
-                .task(id: picture.id) {
-                    guard let model else { return }
-                    let store = FilesSlot.store(model.chat)
-                    image = store.pictures.cached(picture.id)
-                    guard image == nil else { return }
-                    image = await store.pictures.image(picture)
-                    failed = image == nil
-                }
-        }
+        Button(action: open) { content }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .accessibilityLabel(alt)
+            .task(id: picture.id) {
+                guard let model else { return refuse(path) }
+                let pictures = FilesSlot.store(model.chat).pictures
+                image = pictures.cached(picture.id)
+                guard image == nil else { return }
+                image = await pictures.image(picture)
+                if image == nil { refuse(path) }
+            }
     }
 
     private var content: some View {

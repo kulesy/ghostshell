@@ -178,8 +178,8 @@ export async function startFilesStub() {
       const [, id, action, ref] = m;
       const row = rows.find(r => r.id === id);
       if (action === 'messages') {
-        const list = chats[id];
-        return void send(res, 200, JSON.stringify({ items: list, start: 0, end: list.length * 100, hasEarlier: false, reset: false, fileLinks: true, terminal: false,
+        const list = url.searchParams.has('after') ? [] : chats[id];
+        return void send(res, 200, JSON.stringify({ items: list, start: 0, end: chats[id].length * 100, hasEarlier: false, reset: false, fileLinks: true, terminal: false,
           session: { id, title: row.title, cwd: ROOT, branch: 'main', connectors: {} } }));
       }
       if (action === 'events') {
