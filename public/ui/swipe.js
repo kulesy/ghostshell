@@ -13,6 +13,7 @@ const TRAIL_MS = 100;
 const OUT_MS = 160;
 const BACK_MS = 200;
 const QUIET_MS = 250;
+const NARROW = 340;
 
 const swallow = e => { e.preventDefault(); e.stopPropagation(); };
 const side = offset => (offset < 0 ? 'left' : 'right');
@@ -29,6 +30,7 @@ export function swipeRows(box, { row, leaves = () => true, active = () => true, 
   let quiet = 0;
 
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const hear = () => { clearTimeout(quiet); window.removeEventListener('click', swallow, true); };
   const forget = () => { ending?.abort(); ending = null; touch = null; };
 
   function clear(t) {
@@ -39,13 +41,15 @@ export function swipeRows(box, { row, leaves = () => true, active = () => true, 
   }
 
   function down(e) {
+    if (!e.isPrimary || e.pointerType !== 'touch') return;
+    // Below this width app.css keeps a row's buttons still while it swipes, so a tap on one straight after counts.
+    if (innerWidth < NARROW) hear();
     const el = e.target.closest(row);
-    if (!el || !e.isPrimary || e.pointerType !== 'touch' || e.target.closest(POPUPS) || !active()) return;
+    if (!el || e.target.closest(POPUPS) || !active()) return;
     // The edges are the browser's, for going back and forward.
     if (e.clientX < EDGE || e.clientX > innerWidth - EDGE) return;
     forget();
-    clearTimeout(quiet);
-    window.removeEventListener('click', swallow, true);
+    hear();
     touch = { el, host: el.parentElement, x: e.clientX, y: e.clientY, locked: false, origin: 0, width: 0, offset: 0, mark: '', trail: [] };
     ending = new AbortController();
     const { signal } = ending;
@@ -63,7 +67,9 @@ export function swipeRows(box, { row, leaves = () => true, active = () => true, 
       if (Math.hypot(dx, dy) < LOCK) return;
       // A long press has lifted the row to drag, which is the drag's. A move that is not clearly sideways is a scroll.
       if (document.body.classList.contains('dragging') || Math.abs(dx) <= RATIO * Math.abs(dy)) return forget();
-      const { width, height } = t.el.getBoundingClientRect();
+      const { height } = t.el.getBoundingClientRect();
+      // The host's, because app.css narrows the row itself on the smallest pages and it may still be widening from the last swipe.
+      const { width } = t.host.getBoundingClientRect();
       Object.assign(t, { locked: true, origin: dx, width });
       owner.set(t.host, t);
       t.host.style.setProperty('--swipe-height', `${height}px`);
@@ -90,7 +96,7 @@ export function swipeRows(box, { row, leaves = () => true, active = () => true, 
     if (!t.locked) return;
     // A touch can send a click after the pointer goes up, which would open the row.
     window.addEventListener('click', swallow, true);
-    quiet = setTimeout(() => window.removeEventListener('click', swallow, true), QUIET_MS);
+    quiet = setTimeout(hear, QUIET_MS);
     const v = speed(t, e);
     const flung = Math.abs(v) >= FLING && Math.sign(v) === Math.sign(t.offset) && Math.abs(t.offset) >= FLING_MIN;
     const taken = e.type === 'pointerup' && (Math.abs(t.offset) >= COMMIT * t.width || flung);
