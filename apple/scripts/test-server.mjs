@@ -56,7 +56,7 @@ exec ${JSON.stringify(real)} "$@"
 `, { mode: 0o755 });
 }
 
-// The server's transcript index skips a folder that is a symlink, so a finished test chat is copied in as a plain file to be read back.
+// The server's transcript index skips a link out of its projects folder, so a finished test chat is copied in as a plain file to be read back.
 export function copyTranscript(server, id) {
   const link = path.join(server.home, '.claude', 'projects', folderName(TEST_CWD));
   const source = path.join(os.homedir(), '.claude', 'projects', folderName(TEST_CWD), `${id}.jsonl`);
