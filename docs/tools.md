@@ -46,17 +46,17 @@ GhostShell never starts a turn in a parent to pass status up. A parent's model l
 
 ### Messages between sessions
 
-An owner-only setting decides which `send_session` calls go with no card. It has three values, and a send that none of them covers asks, as item 1 says ([issue 240](https://github.com/kulesy/ghostshell/issues/240)).
+An owner-only setting decides which `send_session` calls go with no card. You choose it on the page: the sidebar's Account button, then Settings, then Messages between sessions. It has three values, and a send that none of them covers asks, as item 1 says ([issue 240](https://github.com/kulesy/ghostshell/issues/240)).
 
-- **`family`** is the default. Only a send within the sender's tree or chip family goes with no card.
-- **`project`** adds a send from an ordinary chat to a session in the sender's own project. Home counts as a project of its own, so two sessions on Home reach each other. A group's own chat counts as a member of its group's project. A section's chat, a group that is gone and an archived session are never reached.
-- **`any`** adds a send from an ordinary chat to any session that is not archived and not the sender.
+- **`family`**, shown as Its own family, is the default. Only a send within the sender's tree or chip family goes with no card.
+- **`project`**, shown as Its own project, adds a send from an ordinary chat to a session in the sender's own project. Home counts as a project of its own, so two sessions on Home reach each other. A group's own chat counts as a member of its group's project. A section's chat, a group that is gone and an archived session are never reached.
+- **`any`**, shown as Any session, adds a send from an ordinary chat to any session that is not archived and not the sender.
 
 A group's or section's chat asks for every send under every value. Archive, unarchive, rename and move, and every move of a project, group or routine, ask exactly as before, because the setting covers `send_session` alone. GhostShell reads the target's project from its own rows and groups, never from the tool's input, so extra fields in a call change nothing.
 
 A message starts a turn in a session that may run in Bypass, and text from a web page, an email or a pull request comment could steer the chat that sends it. A send with no card is therefore capped. Each session may send 10 with no card, and the 11th and every later send from it asks until you next write to that session. Only your own message to the sender, typed in its chat, resets its count. A message from another session, an approved card, a "Continue." and a group's update do not. The count is saved in `send-reach.json` in the state folder, so a restart keeps it. Each session has its own 10, so a chain of sessions that each pass a message on can send more than 10 in all.
 
-`GET api/settings` returns `{"sendReach": "family"}` and `POST api/settings` with `{"sendReach": "any"}` sets it. The write needs the same-origin check the Accounts routes use, and any other value gets a 400. The server sends `features.sendReach` so a page can tell. No tool can read or set it, and a chat cannot raise its own limit. A chat with shell access on the Mac runs as you and can edit `send-reach.json`, and a chat that drives your signed-in Chrome can click the setting once a page offers one, so the setting does not stop a chat that has either.
+`GET api/settings` returns `{"sendReach": "family"}` and `POST api/settings` with `{"sendReach": "any"}` sets it. The write needs the same-origin check the Accounts routes use, and any other value gets a 400. The server sends `features.sendReach` so a page can tell. No tool can read or set it, and a chat cannot raise its own limit. A chat with shell access on the Mac runs as you and can edit `send-reach.json`, and a chat that drives your signed-in Chrome can click the setting, so the setting does not stop a chat that has either.
 
 ### Finding and changing sessions
 

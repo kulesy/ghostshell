@@ -235,7 +235,7 @@ test('in front of a server that has no accounts, the page shows no link, no pane
   await new Promise(done => setTimeout(done, 500));
   await page.click('.list-foot .foot-account');
   await page.until(`!!document.querySelector('.menu [role=menuitem]')`);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.menu [role=menuitem]')].map(el => el.textContent)`), ['Passkeys', 'Sign out']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.menu [role=menuitem]')].map(el => el.textContent)`), ['Passkeys', 'Settings', 'Sign out']);
   assert.deepEqual(await page.evaluate(`({ pane: !!document.querySelector('#accounts'), banner: !!document.querySelector('aside.offer[aria-labelledby=banner-out-title]') })`), { pane: false, banner: false });
 });
 
@@ -247,7 +247,7 @@ test('the footer has Routines, Scheduled and an Account menu that a key opens, a
   await page.evaluate(`document.querySelector('.list-foot .foot-account').focus()`);
   await page.press('ArrowDown');
   await page.until(`document.activeElement?.closest('.menu') && document.activeElement.textContent === 'Accounts'`);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.menu [role=menuitem]')].map(el => [el.textContent, el.getAttribute('aria-current')])`), [['Accounts', 'page'], ['Passkeys', null], ['Sign out', null]]);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.menu [role=menuitem]')].map(el => [el.textContent, el.getAttribute('aria-current')])`), [['Accounts', 'page'], ['Passkeys', null], ['Settings', null], ['Sign out', null]]);
   await page.press('ArrowDown');
   await page.press('Enter');
   await page.until(`location.hash === '#/passkeys' && !document.querySelector('.menu')`);

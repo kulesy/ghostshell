@@ -3,7 +3,7 @@
 // onto a section to move it there, or onto another row to nest it under that one, and a group's header can be dragged among the groups
 // or onto a project. Everything else is done from menus, so a phone can do it all.
 import { useAccounts } from './account-list.js';
-import { accountMenu as pinItems, rowAccountMenu, supportsAccounts } from './account-rules.js';
+import { accountMenu as pinItems, rowAccountMenu, supportsAccounts, supportsSendReach } from './account-rules.js';
 import { api } from './api.js';
 import { ask } from './ask.js';
 import { isRunning, stopQuestion, subsRunning } from './close.js';
@@ -372,7 +372,7 @@ const problemNote = text => say(text, { problem: true });
 // refused because one was running and `stop` was false. `archiveAll(ids, archived, { stop })` does that for several, one after another,
 // and resolves with { done, stopped, failed }: the ids it took, how many were running chats it stopped, and { id, message, running } for
 // each it refused.
-export function SessionList({ ix, projects, error, current, place, nest, placeMany, edit, archive, archiveAll, onFind, passkeys, accountsOpen, routines, routinesOpen, refreshRoutines, scheduled, scheduledOpen, refreshScheduled, banner }) {
+export function SessionList({ ix, projects, error, current, place, nest, placeMany, edit, archive, archiveAll, onFind, passkeys, accountsOpen, settingsOpen, routines, routinesOpen, refreshRoutines, scheduled, scheduledOpen, refreshScheduled, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [folded, setFolded] = useLocal('folded', {});
   const { view } = projects;
@@ -1132,6 +1132,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
     items: [
       ...(supportsAccounts(ix) ? [{ label: 'Accounts', icon: icons.users, current: accountsOpen, run: () => { location.hash = '#/accounts'; } }] : []),
       { label: 'Passkeys', icon: icons.keyRound, current: passkeys, run: () => { location.hash = '#/passkeys'; } },
+      ...(supportsSendReach(ix) ? [{ label: 'Settings', icon: icons.slidersHorizontal, current: settingsOpen, run: () => { location.hash = '#/settings'; } }] : []),
       { separator: true },
       { label: 'Sign out', icon: icons.logOut, run: () => signOut.current.requestSubmit() },
     ],
@@ -1404,7 +1405,7 @@ export function SessionList({ ix, projects, error, current, place, nest, placeMa
         <a class="btn" data-variant="ghost" data-size="sm" href="#/routines" aria-current=${routinesOpen ? 'page' : null}>Routines</a>
         ${supportsScheduled(ix) ? html`<a class="btn" data-variant="ghost" data-size="sm" href=${SCHEDULED_HASH} aria-current=${scheduledOpen ? 'page' : null}>Scheduled</a>` : null}
       </div>
-      <button class="btn foot-account" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Account" data-tip="Account" data-current=${accountsOpen || passkeys ? '' : null} aria-haspopup="menu" aria-expanded=${shown?.key === 'account'} aria-controls=${shown?.key === 'account' ? layerId(shown.id) : null} data-state=${shown?.key === 'account' ? 'open' : 'closed'} ...${accountTrigger}>${draw(icons.circleUser)}</button>
+      <button class="btn foot-account" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Account" data-tip="Account" data-current=${accountsOpen || passkeys || settingsOpen ? '' : null} aria-haspopup="menu" aria-expanded=${shown?.key === 'account'} aria-controls=${shown?.key === 'account' ? layerId(shown.id) : null} data-state=${shown?.key === 'account' ? 'open' : 'closed'} ...${accountTrigger}>${draw(icons.circleUser)}</button>
       <form method="post" action="logout" hidden ref=${signOut} onSubmit=${forgetDrafts}></form>
     </footer>
     <${Menu} menu=${shown && !shown.rail ? (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown) : null} onClose=${() => setShown(null)} />
