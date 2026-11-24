@@ -1377,7 +1377,7 @@ async function accountsFlow(bundle, appearance) {
     // Settings has no View menu item, so it opens from the account menu. Opening it and looking at it posts nothing.
     check(app.accountMenuItems().slice(0, 3).join().match(/Accounts.*Passkeys.*Settings/), 'the account menu lists Settings after Passkeys');
     check(app.pick(['Account', 'account'], 'Settings'), 'the account menu opens Settings');
-    check(await until('settings', () => sees('Messages between sessions') && app.hasButtonLike('Its own project'), 15), 'the Settings screen shows the three choices');
+    check(await until('settings', () => sees('Choose which messages a session can send without asking you.') && ['Its own family', 'Its own project', 'Any session'].every(name => app.findAll(node => node.role === 'AXButton' && app.label(node)?.startsWith(name)).length > 0), 15), 'the Settings screen shows the three choices');
     check(!calls.includes('/api/settings'), 'loading Settings posts nothing');
     await app.both('settings');
     check(app.press('Its own project', { prefix: true }), 'the Its own project row can be pressed');
