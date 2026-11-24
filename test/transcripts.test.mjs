@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { IMAGE_TYPES } from '../lib/images.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
-import { completeEnd, keepScans, listImages, readAfter, readBefore, readHead, readImage, toolSummary } from '../lib/transcripts.mjs';
+import { completeEnd, indexTranscripts, keepScans, listImages, readAfter, readBefore, readHead, readImage, toolSummary } from '../lib/transcripts.mjs';
 import { threadImages } from '../public/ui/gallery.js';
 import { absorb, prepend } from '../public/ui/thread.js';
 
@@ -48,6 +48,73 @@ const user = content => ({ type: 'user', timestamp: '2026-10-16T01:00:00.000Z', 
 const queued = (prompt, commandMode, extra = {}) => ({ type: 'attachment', timestamp: '2026-10-16T01:00:01.000Z', attachment: { type: 'queued_command', commandMode, prompt, ...extra } });
 const itemsOf = (t, limit = 8000) => readBefore(t, t.size, t.size, '/work', limit).items;
 const assistant = (id, content) => ({ type: 'assistant', timestamp: '2026-10-16T01:00:02.000Z', message: { id, role: 'assistant', content } });
+
+// A projects folder of its own for each test. `put` writes a transcript and gives its real path, and `link` makes a link to the target.
+function projectsFolder(name) {
+  const root = path.join(fs.realpathSync.native(base), name);
+  fs.mkdirSync(root);
+  const at = (...parts) => path.join(root, ...parts);
+  const put = (folder, id) => {
+    fs.mkdirSync(path.resolve(root, folder), { recursive: true });
+    const f = path.resolve(root, folder, `${id}.jsonl`);
+    fs.writeFileSync(f, JSON.stringify(user(folder)) + '\n');
+    return f;
+  };
+  const link = (target, as) => fs.symlinkSync(target, at(as));
+  return { root, at, put, link, found: () => Object.fromEntries([...indexTranscripts(root, 0)].map(([id, t]) => [id, t.file])) };
+}
+
+test('a project folder that is a link to a folder is indexed', () => {
+  const p = projectsFolder('links');
+  const plain = p.put('-work-plain', 'plain');
+  const kept = p.put('store/-work-kept', 'kept');
+  p.link(path.join('store', '-work-kept'), '-work-kept');
+  assert.deepEqual(p.found(), { plain, kept });
+});
+
+test('a link in the projects folder that is broken, loops or leads to a file is skipped and the rest are indexed', () => {
+  const p = projectsFolder('bad-links');
+  const plain = p.put('-work-plain', 'plain');
+  p.put('store', 'stored');
+  p.link('nowhere', '-a-broken');
+  p.link('-a-loop-b', '-a-loop-a');
+  p.link('-a-loop-a', '-a-loop-b');
+  p.link('-a-itself', '-a-itself');
+  p.link(path.join('store', 'stored.jsonl'), '-a-file');
+  assert.deepEqual(p.found(), { plain, stored: p.at('store', 'stored.jsonl') });
+});
+
+test('a link that leads out of the projects folder, or to the folder itself, is skipped', () => {
+  const p = projectsFolder('outside-links');
+  const plain = p.put('-work-plain', 'plain');
+  p.put('.', 'loose');
+  const beside = p.put('../outside-links-beside', 'beside');
+  p.link(path.dirname(beside), '-outside');
+  p.link('.', '-itself');
+  p.link('..', '-above');
+  p.link(path.join('-outside', '..'), '-through');
+  assert.deepEqual(p.found(), { plain });
+});
+
+test('a transcript reached by more than one way is listed once, by its real path', () => {
+  const p = projectsFolder('twice-links');
+  const plain = p.put('-work-plain', 'plain');
+  const kept = p.put('store/-work-kept', 'kept');
+  p.put('store/-work-kept', 'plain');
+  p.link('-work-plain', '-work-same');
+  p.link(path.join('store', '-work-kept'), '-z-one');
+  p.link('-z-one', '-z-two');
+  assert.deepEqual(p.found(), { plain, kept }, 'a real project folder wins over a linked one that holds the same id');
+});
+
+test('a projects folder reached by a link of its own still follows the links in it', () => {
+  const p = projectsFolder('real-root');
+  const kept = p.put('store/-work-kept', 'kept');
+  p.link(path.join('store', '-work-kept'), '-work-kept');
+  const root = path.join(base, 'linked-root');
+  fs.symlinkSync(p.root, root);
+  assert.equal(indexTranscripts(root, 0).get('kept')?.file, kept);
+});
 
 test('a finished task is a green notice with its summary, and the ids, output file, note and result behind the details', () => {
   const n = noticeFrom(AGENT);
