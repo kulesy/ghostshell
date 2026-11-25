@@ -94,7 +94,9 @@ private struct MeterBody: View {
 
     @ViewBuilder private func boxed(_ face: some View) -> some View {
         #if os(macOS)
-        face.frame(minWidth: Self.side, minHeight: Self.side).contentShape(Rectangle())
+        face.frame(minWidth: Self.side, minHeight: Self.side)
+            .background(open ? Color.ghost.accent : .clear, in: GhostShape(GhostRadius.md))
+            .contentShape(Rectangle())
         #else
         face
         #endif

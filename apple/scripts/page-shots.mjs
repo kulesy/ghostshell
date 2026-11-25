@@ -348,7 +348,7 @@ const SCREENS = {
       await page.getByText('Done. I added').first().waitFor({ timeout: 15_000 });
       await page.getByRole('button', { name: /^Context:/ }).click();
       await page.getByText('Plan usage').first().waitFor({ timeout: 15_000 });
-      await page.getByText('Messages').first().waitFor({ timeout: 15_000 });
+      await page.getByText('Autocompact buffer').waitFor({ timeout: 15_000 });
     }],
     ['6-accounts', async (page, ctx) => { await ctx.go('#/accounts'); await page.locator('.accounts-body').waitFor(); }],
     ['6-passkeys', async (page, ctx) => { await ctx.go('#/passkeys'); await page.getByText('MacBook Pro, Safari').first().waitFor(); }],

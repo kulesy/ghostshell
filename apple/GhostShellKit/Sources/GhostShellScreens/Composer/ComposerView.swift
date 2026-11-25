@@ -20,7 +20,7 @@ struct ComposerView: View {
     var body: some View {
         content
         .frame(maxWidth: ChatStyle.column)
-        .padding(.horizontal, Self.sidePadding).padding(.top, 8).padding(.bottom, Self.bottomPadding)
+        .padding(.horizontal, Self.sidePadding).padding(.top, Self.topPadding).padding(.bottom, Self.bottomPadding)
         .frame(maxWidth: .infinity)
         .background(Self.dock)
         .layoutPriority(1)
@@ -48,11 +48,13 @@ struct ComposerView: View {
 
     #if os(iOS)
     private static let sidePadding: CGFloat = 8
+    private static let topPadding: CGFloat = 8
     private static let bottomPadding: CGFloat = 12
     private static let dock = AnyShapeStyle(.bar)
     private static let hintInk = AnyShapeStyle(.tertiary)
     #else
     private static let sidePadding = ChatStyle.threadInset
+    private static let topPadding = 0.5 * GhostMetrics.current.rem
     private static let bottomPadding = 0.5 * GhostMetrics.current.rem
     private static let dock = ChatStyle.dock
     private static let hintInk = ChatStyle.muted
@@ -82,8 +84,8 @@ struct ComposerView: View {
 
     /// The page's box: the attachments over one row of attach button, field and Send, with the pickers under it.
     private var content: some View {
-        VStack(alignment: .leading, spacing: 0.375 * rem) {
-            notice
+        VStack(alignment: .leading, spacing: 0) {
+            notice.padding(.bottom, 0.375 * rem)
             VStack(alignment: .leading, spacing: 0) {
                 ComposerChips(model: model)
                 HStack(alignment: .bottom, spacing: 0) {
@@ -115,7 +117,7 @@ struct ComposerView: View {
                 }
                 if let chat = model.chat { ContextMeter(sessionID: chat.sessionID) }
             }
-            .padding(.horizontal, 0.25 * rem)
+            .padding(.horizontal, 0.25 * rem).padding(.top, 0.3 * rem)
         }
     }
     #endif
