@@ -38,5 +38,9 @@
   {"mac": "10-file-binary", "page": "10-file-binary"},
   {"mac": "10-file-missing", "page": "10-file-missing"},
   {"mac": "12-term-chat", "page": "term-chat"},
-  {"mac": "12-term-panel", "page": "term-panel"}
+  {"mac": "12-term-panel", "page": "term-panel"},
+  {"mac": "13-chip-named", "page": "chip-named"},
+  {"mac": "13-chip-out", "page": "chip-out"},
+  {"mac": "13-chip-pins", "page": "chip-pins"},
+  {"mac": "13-chip-desktop", "page": "chip-desktop"}
 ]

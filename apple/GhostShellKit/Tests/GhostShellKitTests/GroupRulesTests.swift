@@ -41,6 +41,32 @@ final class GroupRulesTests: XCTestCase {
         XCTAssertEqual(GroupRules.chipFolder(record: nil, input: nil, session: ""), "")
     }
 
+    func testAChipSaysWhereAndOnWhatItStartsInThePagesWords() {
+        func line(_ folder: String = "/Users/me/Projects/site", home: String = "/Users/me", model: String? = nil, effort: String? = nil) -> String {
+            GroupRules.chipStartsIn(folder: folder, home: home, model: model, effort: effort)
+        }
+        XCTAssertEqual(line(model: "claude-opus-5-5", effort: "high"), "Starts in ~/Projects/site on Opus 5.5 at High effort")
+        XCTAssertEqual(line(model: "claude-opus-5-5[1m]"), "Starts in ~/Projects/site on Opus 5.5 (1M)")
+        XCTAssertEqual(line(model: "claude-opus-4-8", effort: "ultra"), "Starts in ~/Projects/site on Opus 4.8 at ultra effort")
+        XCTAssertEqual(line(effort: "xhigh"), "Starts in ~/Projects/site at Extra effort")
+        XCTAssertEqual(line(), "Starts in ~/Projects/site")
+        XCTAssertEqual(line("", model: "claude-haiku-5-5"), "Starts in the session folder on Haiku 5.5")
+        XCTAssertEqual(line("/Users/me"), "Starts in ~")
+        XCTAssertEqual(line(home: ""), "Starts in /Users/me/Projects/site")
+        XCTAssertEqual(line("/work/site"), "Starts in /work/site")
+    }
+
+    func testAChipsModelAndEffortComeFromTheRecordThenTheInput() {
+        XCTAssertEqual(GroupRules.chipValue(record: "a", input: "b"), "a")
+        XCTAssertEqual(GroupRules.chipValue(record: "", input: "b"), "b")
+        XCTAssertNil(GroupRules.chipValue(record: nil, input: ""))
+    }
+
+    func testOnlyAChipFromAnotherToolIsFromDesktop() {
+        XCTAssertEqual(GroupRules.chipKind(tool: "mcp__capcom__spawn_task"), "Suggested task")
+        XCTAssertEqual(GroupRules.chipKind(tool: "mcp__ccd_session__spawn_task"), "Suggested task from Desktop")
+    }
+
     func testDescendantsEndOnALoop() {
         let rows = [row("a", parent: "b"), row("b", parent: "a"), row("c", parent: "a")]
         XCTAssertEqual(Set(GroupRules.descendants(rows, of: "a").map(\.id)), ["b", "c"])

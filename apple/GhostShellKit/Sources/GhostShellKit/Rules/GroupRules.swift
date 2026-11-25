@@ -436,8 +436,22 @@ public enum GroupRules {
 
     /// The folder a chip starts in and the folder the owner is shown. As the page picks it, an empty string counts as absent.
     public static func chipFolder(record: String?, input: String?, session: String) -> String {
-        [record, input].lazy.compactMap { $0 }.first { !$0.isEmpty } ?? session
+        chipValue(record: record, input: input) ?? session
     }
+
+    /// What a chip says of one field: the server's record, then the tool's input. An empty string counts as absent.
+    public static func chipValue(record: String?, input: String?) -> String? {
+        [record, input].lazy.compactMap { $0 }.first { !$0.isEmpty }
+    }
+
+    /// The card's "Starts in" line in the page's words (ChipCard in public/ui/rows.js). `home` is the server's, and empty until it is known.
+    public static func chipStartsIn(folder: String, home: String, model: String?, effort: String?) -> String {
+        let place = folder.isEmpty ? "the session folder" : TerminalRules.inHome(folder, home: home)
+        return "Starts in \(place)\(model.map { " on \(ComposerOptions.modelName($0))" } ?? "")\(effort.map { " at \(ComposerOptions.effortName($0)) effort" } ?? "")"
+    }
+
+    /// A chip not from GhostShell's own tool is Claude Desktop's, in a Desktop session resumed here.
+    public static func chipKind(tool: String) -> String { tool.hasPrefix("mcp__capcom__") ? "Suggested task" : "Suggested task from Desktop" }
 
     public static func isRunning(_ row: SessionRow) -> Bool { row.state == .working || row.state == .waiting }
 

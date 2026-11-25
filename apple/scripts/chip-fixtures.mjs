@@ -1,5 +1,6 @@
-// A stub server for the chip account journeys. Three chats each hold one suggested-task card: one that names an account, one that names a signed
-// out account and one that names none. It serves the account list, the chips and the Start and Dismiss routes, and records every POST.
+// A stub server for the suggested-task cards. Four chats each hold one: a card naming an account, a model and an effort, a card naming a signed out
+// account and a model, a card naming nothing, and a card Claude Desktop made, in a long folder. It serves the account list, the home folder,
+// the chips and the Start and Dismiss routes, and records every POST.
 import http from 'node:http';
 
 const MAIN = { id: 'main', name: 'Main' };
@@ -9,11 +10,12 @@ const choices = Object.fromEntries([MAIN, SECOND, THIRD].map(a => [a.id, { accou
 
 export async function startChipStub() {
   const now = Date.now();
-  const chatIds = ['chip-named', 'chip-out', 'chip-pins'];
+  const chatIds = ['chip-named', 'chip-out', 'chip-pins', 'chip-desktop'];
   const rows = [
     { id: 'chip-named', title: 'Suggest a task on a named account', state: 'idle', dot: null, sortAt: now - 60_000 },
     { id: 'chip-out', title: 'Suggest a task on a signed out account', state: 'idle', dot: null, sortAt: now - 120_000 },
     { id: 'chip-pins', title: 'Suggest a task with no account', state: 'idle', dot: null, sortAt: now - 180_000 },
+    { id: 'chip-desktop', title: 'Suggest a task from Desktop', state: 'idle', dot: null, sortAt: now - 240_000 },
   ];
   const accounts = [
     { id: 'main', name: 'Main', stage: 'idle', signedOut: false, active: true, pinned: {}, chats: [] },
@@ -21,16 +23,17 @@ export async function startChipStub() {
     { id: 'third', name: 'Third', stage: 'idle', signedOut: true, active: false, pinned: {}, chats: [] },
   ];
   const input = { title: 'Add a retry to the upload step', tldr: 'The upload step fails once in five runs.', prompt: 'The upload step fails once in five runs.\n\nStart with the failing test and work outward.', cwd: '/Users/me/Projects/site' };
+  const desktopInput = { ...input, cwd: '/Users/me/Projects/site/.claude/worktrees/upload-retry', model: 'claude-opus-5-5', effort: 'xhigh' };
   const itemsOf = chat => [
     { kind: 'user', text: 'What should we do about the upload step?', at: new Date(now - 9 * 60_000).toISOString() },
     { kind: 'assistant', msgId: `${chat}-a`, text: 'I have written it up as a task you can start from here.', at: new Date(now - 8 * 60_000).toISOString() },
-    { kind: 'tool', id: `${chat}-tool`, name: 'mcp__capcom__spawn_task', summary: input.title, input, status: 'pending' },
+    { kind: 'tool', id: `${chat}-tool`, name: chat === 'chip-desktop' ? 'mcp__ccd_session__spawn_task' : 'mcp__capcom__spawn_task', summary: input.title, input: chat === 'chip-desktop' ? desktopInput : input, status: 'pending' },
     { kind: 'result', toolId: `${chat}-tool`, status: 'ok', output: 'Chip shown.' },
   ];
   const chips = {
-    'chip-named': { toolUseId: 'chip-named-tool', sessionId: 'chip-named', title: input.title, tldr: input.tldr, status: 'open', prompt: input.prompt, cwd: input.cwd, account: 'second',
+    'chip-named': { toolUseId: 'chip-named-tool', sessionId: 'chip-named', title: input.title, tldr: input.tldr, status: 'open', prompt: input.prompt, cwd: input.cwd, account: 'second', model: 'claude-opus-5-5', effort: 'high',
       accountCard: { account: 'main', from: 'active', choices } },
-    'chip-out': { toolUseId: 'chip-out-tool', sessionId: 'chip-out', title: input.title, tldr: input.tldr, status: 'open', prompt: input.prompt, cwd: input.cwd, account: 'third',
+    'chip-out': { toolUseId: 'chip-out-tool', sessionId: 'chip-out', title: input.title, tldr: input.tldr, status: 'open', prompt: input.prompt, cwd: input.cwd, account: 'third', model: 'claude-sonnet-5-5',
       accountCard: { account: 'main', from: 'active', choices } },
   };
   const pinsDefault = { account: 'second', from: 'group', fromName: 'Release', choices };
@@ -48,6 +51,7 @@ export async function startChipStub() {
       if (pathname === '/login') return void res.writeHead(303, { Location: '/', 'Set-Cookie': 'capcom=stub; HttpOnly' }).end();
       if (pathname === '/api/sessions') return json(res, { ungrouped: rows });
       if (pathname === '/api/accounts') return json(res, { autoSwitch: false, waiting: false, accounts });
+      if (pathname === '/api/folders') return json(res, { folders: ['/Users/me'] });
       const chat = /^\/api\/sessions\/([^/]+)\/(chips|messages|events)$/.exec(pathname);
       if (chat && chatIds.includes(chat[1])) {
         if (chat[2] === 'chips') return json(res, { chips: chips[chat[1]] ? [chips[chat[1]]] : [], accountDefault: pinsDefault });
@@ -63,7 +67,7 @@ export async function startChipStub() {
         const { toolUseId, sessionId } = JSON.parse(body || '{}');
         const started = pathname.endsWith('start');
         const chat = sessionId ?? toolUseId.replace(/-tool$/, '');
-        chips[chat] = { toolUseId, sessionId: chat, title: input.title, tldr: '', status: started ? 'started' : 'dismissed', startedId: started ? 'started-1' : undefined, opensIn: started ? 'Opened in Release' : undefined, prompt: '' };
+        chips[chat] = { ...chips[chat], toolUseId, sessionId: chat, title: input.title, tldr: '', status: started ? 'started' : 'dismissed', startedId: started ? 'started-1' : undefined, opensIn: started ? 'Opened in Release' : undefined, prompt: '' };
         return json(res, { id: started ? 'started-1' : undefined, chip: chips[chat] });
       }
       return json(res, {}, 404);

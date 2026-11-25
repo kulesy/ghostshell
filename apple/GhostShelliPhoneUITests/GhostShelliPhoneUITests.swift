@@ -1007,6 +1007,8 @@ final class GhostShelliPhoneUITests: XCTestCase {
     func testASuggestedTaskNamesItsAccountAndTakesAPick() throws {
         let app = openChipChat("Suggest a task on a named account")
         XCTAssertTrue(contains(app, "Starts on Second, chosen by this chip.").waitForExistence(timeout: 15), "The card names the account\n\(app.debugDescription)")
+        XCTAssertTrue(contains(app, "Starts in ~/Projects/site on Opus 5.5 at High effort").waitForExistence(timeout: 5), "The card names the model and the effort\n\(app.debugDescription)")
+        XCTAssertFalse(contains(app, "Suggested task from Desktop").exists, "A GhostShell chip does not say it is from Desktop")
         sleep(1)
         shot("chip-account-1-named")
         let change = app.buttons["Change account"].firstMatch
@@ -1028,6 +1030,14 @@ final class GhostShelliPhoneUITests: XCTestCase {
         assertTouchable(app.buttons["Sign in to Third"].firstMatch, "Sign in to Third")
         sleep(1)
         shot("chip-account-4-signed-out")
+    }
+
+    func testASuggestedTaskFromDesktopSaysSo() throws {
+        let app = openChipChat("Suggest a task from Desktop")
+        XCTAssertTrue(contains(app, "Suggested task from Desktop").waitForExistence(timeout: 15), "The card says it is from Desktop\n\(app.debugDescription)")
+        XCTAssertTrue(contains(app, "Starts in ~/Projects/site/.claude/worktrees/upload-retry on Opus 5.5 at Extra effort").waitForExistence(timeout: 5), "The long line is whole\n\(app.debugDescription)")
+        sleep(1)
+        shot("chip-desktop")
     }
 
     // MARK: Routines and scheduled sessions
