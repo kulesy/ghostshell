@@ -1,6 +1,6 @@
 # Let a pin name an overflow account that takes its work while the pinned one is out of usage
 
-- Status: Accepted
+- Status: Accepted, amended 2026-11-25
 - Deciders: Eli
 - Date: 2026-11-09
 - Tags: accounts, cli, layout, usage
@@ -96,7 +96,7 @@ The overflow rides the pin route, so it keeps the password, the strict origin ch
 - ❌ A session cut mid-turn pays for its context again on the overflow.
 - ❌ The marks live in memory. After a restart, pinned work starts on the pinned account, runs out once and spills again.
 - ❌ The reset comes from the CLI's `get_usage` request, which is not a published contract. If it moves, the mark keeps its hour and work tries the pinned account each hour.
-- ❌ The Mac app still sets a pin without an overflow. It keeps the overflow the page set. The Mac and iPhone apps also don't show that a session spilled.
+- ❌ The Mac app sets an overflow only from the composer's model menu ([#259](https://github.com/kulesy/ghostshell/issues/259)). Its sidebar menus set a pin without one and keep the overflow already set. The Mac and iPhone apps also don't show that a session spilled.
 
 ### Out of scope
 

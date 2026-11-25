@@ -357,8 +357,8 @@ class App {
   toggleNotifications() { return this.pick(['Account', 'account'], 'Notifications'); }
   // The account menu's item names in order. The shots are a self-render of the window, which does not draw a native menu, so the order is read from the tree.
   accountMenuItems() {
-    const button = this.find(node => node.role === 'AXMenuButton' && [node.title, node.desc].some(name => ['Account', 'account'].includes(name)));
-    if (!button || !this.act(button)) return [];
+    const button = this.openMenuButton(['Account', 'account']);
+    if (!button) return [];
     const menu = this.waitFor(node => node.role === 'AXMenu' && node.path.length === button.path.length + 1 && node.path.slice(0, -1).join() === button.path.join());
     const items = menu ? this.menuItemsOf(menu).map(item => item.title) : [];
     this.closeMenu();
@@ -504,11 +504,24 @@ class App {
     return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
   }
   menu(bar, item) { return this.run('menu', bar, item).ok === true; }
+  // Presses a menu or pop-up button, trying for up to 5 seconds, because right after a resize the runner can refuse the first press.
+  openMenuButton(name) {
+    const names = [].concat(name);
+    let button;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      button = this.find(node => ['AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.title, node.help].some(text => names.includes(text)));
+      const pressed = button && this.run('act', JSON.stringify(button.path), 'AXPress');
+      // An error can still leave the menu open, and a second press would close it.
+      if (pressed && (pressed.ok === true || this.find(node => node.role === 'AXMenu' && node.path.slice(0, -1).join() === button.path.join()))) return button;
+      if (attempt === 9) console.log(`     no press on ${names[0]}: ${pressed ? JSON.stringify(pressed) : `the menu buttons are ${this.findAll(node => node.role === 'AXMenuButton').map(node => node.desc || node.title || node.help || '-').join(', ') || 'none'}`}`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+    }
+    return undefined;
+  }
   // Opens a menu or pop-up button by its name, then presses one of its items.
   // `name` can be a list, because an icon-only menu button is named by its label or by its icon's name, whichever the system reports.
   pick(name, item) {
-    const button = this.find(node => ['AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.title, node.help].some(text => [].concat(name).includes(text)));
-    if (!button || !this.act(button)) return false;
+    if (!this.openMenuButton(name)) return false;
     const entry = this.waitFor(node => node.role === 'AXMenuItem' && node.title === item);
     return !!entry && this.act(entry);
   }
