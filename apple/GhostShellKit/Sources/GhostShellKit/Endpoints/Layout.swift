@@ -23,12 +23,14 @@ private struct AccountBody: Encodable, Sendable {
     var kind: PinKind
     var id: String
     var account: String?
-    private enum Key: String, CodingKey { case kind, id, account }
+    var overflow: String??
+    private enum Key: String, CodingKey { case kind, id, account, overflow }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: Key.self)
         try c.encode(kind, forKey: .kind)
         try c.encode(id, forKey: .id)
         try c.encode(Maybe(value: account), forKey: .account)
+        if let overflow { try c.encode(Maybe(value: overflow), forKey: .overflow) }
     }
 }
 
@@ -208,9 +210,9 @@ extension GhostShellClient {
         try await post("api/layout/many", json: ManyBody(ids: ids, to: target))
     }
 
-    /// The server refuses an account that is signed out.
-    public func pinAccount(_ kind: PinKind = .session, id: String, account: String?) async throws {
-        try await send("api/layout/account", json: AccountBody(kind: kind, id: id, account: account))
+    /// The server refuses an account that is signed out. `overflow` is where the pin spills to when it is out of usage: left out it sends no key, a value sets it and nil clears it.
+    public func pinAccount(_ kind: PinKind = .session, id: String, account: String?, overflow: String?? = nil) async throws {
+        try await send("api/layout/account", json: AccountBody(kind: kind, id: id, account: account, overflow: overflow))
     }
 
     // MARK: Groups

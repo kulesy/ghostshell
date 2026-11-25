@@ -57,15 +57,11 @@ public struct RootView: View {
         #if os(macOS)
         .toolbar(removing: .sidebarToggle)
         #endif
+        #if os(iOS)
         .toolbar {
-            if let id = model.navigator.selectedSessionID {
-                #if os(macOS)
-                BareToolbarItems { ToolbarItem { ContextMeter(sessionID: id) } }
-                #else
-                ToolbarItem { ContextMeter(sessionID: id) }
-                #endif
-            }
+            if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
         }
+        #endif
         .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         #if DEBUG && os(macOS)

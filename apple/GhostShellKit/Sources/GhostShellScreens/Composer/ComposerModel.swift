@@ -2,9 +2,10 @@ import Foundation
 import GhostShellKit
 import Observation
 
-/// What the footer's pickers can change.
+/// What the footer's pickers can change. The account and its overflow are the chat's pin and not part of its status. `pin` is the account the overflow belongs to.
 enum ComposerSetting: Equatable {
     case mode(String), model(String), effort(String), fast(Bool)
+    case account(String?), overflow(String?, pin: String?)
 }
 
 /// The keys the text box hands to the slash list.
@@ -20,6 +21,7 @@ final class ComposerModel {
         var model: String?
         var effort: String?
         var fast = false
+        var account: String?
         var touched: Set<String> = []
     }
 
@@ -29,7 +31,7 @@ final class ComposerModel {
     private let store = ComposerStore.shared
     @ObservationIgnored private let started: (String) -> Void
     /// The group a new session starts in, or nil for Home. The New Session screen updates it when it is shown again for another one.
-    @ObservationIgnored var group: String?
+    var group: String?
     /// Reads the session list again after a write, so the sidebar does not wait for the next poll.
     @ObservationIgnored private let refreshIndex: @MainActor () async -> Void
 
@@ -209,7 +211,8 @@ final class ComposerModel {
         let request = NewSessionRequest(cwd: place, message: message,
                                         model: fresh.touched.contains("model") ? fresh.model : nil,
                                         effort: fresh.touched.contains("effort") ? fresh.effort : nil,
-                                        fast: fresh.touched.contains("fast") ? fresh.fast : nil, group: group)
+                                        fast: fresh.touched.contains("fast") ? fresh.fast : nil, group: group,
+                                        account: fresh.touched.contains("account") ? fresh.account : nil)
         do {
             let id = try await client.startSession(request)
             await refreshIndex()
@@ -238,6 +241,11 @@ final class ComposerModel {
             fresh.touched.insert(Self.kind(setting))
             return
         }
+        switch setting {
+        case .account(let account): return await repin(chat, account: account)
+        case .overflow(let overflow, let pin): return await repin(chat, account: pin, overflow: .some(overflow))
+        default: break
+        }
         let before = chat.status
         var shown = before ?? ChatStatus()
         change(&shown, setting)
@@ -248,6 +256,7 @@ final class ComposerModel {
             case .model(let model): chat.apply(status: try await client.setModel(model, sessionID: chat.sessionID))
             case .effort(let effort): chat.apply(status: try await client.setEffort(effort, sessionID: chat.sessionID))
             case .fast(let fast): chat.apply(status: try await client.setFast(fast, sessionID: chat.sessionID))
+            case .account, .overflow: break
             }
         } catch {
             // Only the setting that was tried goes back, so a change the stream reported meanwhile stays.
@@ -256,12 +265,21 @@ final class ComposerModel {
         }
     }
 
+    /// Changes the chat's pin, then reads the list so the label and the menu follow. A refusal, such as a signed out account, goes to the notice.
+    private func repin(_ chat: ChatContext, account: String?, overflow: String?? = nil) async {
+        do {
+            try await client.pinAccount(id: chat.sessionID, account: account, overflow: overflow)
+            await refreshIndex()
+        } catch { notice = error.localizedDescription }
+    }
+
     private static func kind(_ setting: ComposerSetting) -> String {
         switch setting {
         case .mode: "mode"
         case .model: "model"
         case .effort: "effort"
         case .fast: "fast"
+        case .account, .overflow: "account"
         }
     }
 
@@ -271,6 +289,7 @@ final class ComposerModel {
         case .model: .model(status.shownModel ?? status.model ?? "")
         case .effort: .effort(status.effort ?? "")
         case .fast: .fast(status.fast)
+        case .account, .overflow: setting
         }
     }
 
@@ -280,6 +299,7 @@ final class ComposerModel {
         case .model(let model): (status.model, status.shownModel) = (model, model)
         case .effort(let effort): status.effort = effort.isEmpty ? nil : effort
         case .fast(let fast): status.fast = fast
+        case .account, .overflow: break
         }
     }
 
@@ -289,6 +309,8 @@ final class ComposerModel {
         case .model(let model): fresh.model = model
         case .effort(let effort): fresh.effort = effort
         case .fast(let fast): fresh.fast = fast
+        case .account(let account): fresh.account = account
+        case .overflow: break
         }
     }
 

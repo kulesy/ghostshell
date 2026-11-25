@@ -106,10 +106,14 @@ struct ComposerView: View {
             .overlay(alignment: .topLeading) {
                 if model.menuOpen { SlashMenu(model: model).offset(y: -(SlashMenu.height(for: model.matches.count) + 6)) }
             }
-            // The page keeps the pickers on one row below 40rem and shrinks the mode's label. Here the row falls back to icons alone when the names do not fit, so nothing clips.
-            ViewThatFits(in: .horizontal) {
-                ComposerPickers(model: model, compact: false)
-                ComposerPickers(model: model, compact: true)
+            // As on the page, the row wraps when it does not fit: the mode on one line, the account, model and effort under it at the right.
+            // The ring sits outside the choice so it is built once and keeps its popover open.
+            HStack(alignment: .bottom, spacing: 0.1 * rem) {
+                ViewThatFits(in: .horizontal) {
+                    ComposerPickers(model: model, compact: false)
+                    ComposerPickers(model: model, compact: false, wrapped: true)
+                }
+                if let chat = model.chat { ContextMeter(sessionID: chat.sessionID) }
             }
             .padding(.horizontal, 0.25 * rem)
         }

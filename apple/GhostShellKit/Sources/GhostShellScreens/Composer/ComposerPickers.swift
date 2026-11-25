@@ -1,25 +1,18 @@
 import GhostShellKit
 import SwiftUI
 
-/// The model, effort and permission mode of the chat, in the box's footer. With little room each one shrinks to its icon.
+/// The model, effort and permission mode of the chat, in the box's footer. On the iPhone each shrinks to its icon with little room. On the Mac the
+/// row wraps instead, as the page's does, and the account the chat runs on shows before the model.
 struct ComposerPickers: View {
     let model: ComposerModel
     let compact: Bool
+    #if os(macOS)
+    /// The permission mode on one line and the account, model and effort on the next, at the right.
+    var wrapped = false
+    #endif
 
     var body: some View {
-        HStack(spacing: 2) {
-            #if os(macOS)
-            // The page puts the permission mode on the left and the model and effort on the right, with no chevrons.
-            modeMenu
-            Spacer(minLength: 8)
-            modelMenu
-            effortMenu
-            #else
-            modelMenu
-            effortMenu
-            modeMenu
-            #endif
-        }
+        row
         .task(id: model.folder) {
             // A typed folder probes the CLI on the server, so wait for typing to pause.
             if model.chat == nil {
@@ -28,6 +21,22 @@ struct ComposerPickers: View {
             }
             await model.loadModels()
         }
+    }
+
+    @ViewBuilder private var row: some View {
+        #if os(macOS)
+        // The page puts the permission mode on the left and the account, model and effort on the right, with no chevrons.
+        if wrapped {
+            VStack(alignment: .trailing, spacing: 0) {
+                HStack(spacing: 2) { modeMenu; Spacer(minLength: 0) }
+                HStack(spacing: 2) { AccountLabel(model: model); modelMenu; effortMenu }
+            }
+        } else {
+            HStack(spacing: 2) { modeMenu; Spacer(minLength: 8); AccountLabel(model: model); modelMenu; effortMenu }
+        }
+        #else
+        HStack(spacing: 2) { modelMenu; effortMenu; modeMenu }
+        #endif
     }
 
     #if os(macOS)
@@ -50,6 +59,9 @@ struct ComposerPickers: View {
         .padding(.horizontal, 6).padding(.vertical, 3)
         #if os(iOS)
         .frame(minWidth: 44, minHeight: 44)
+        #else
+        // The page's buttons are 2rem tall, which is also the context ring's height beside them.
+        .frame(minHeight: 2 * GhostMetrics.current.rem)
         #endif
         .contentShape(Rectangle())
     }
@@ -76,6 +88,9 @@ struct ComposerPickers: View {
                 Divider()
                 Toggle("Fast mode", isOn: choice({ model.fast }, { .fast($0) }))
             }
+            #if os(macOS)
+            AccountSubmenu(model: model)
+            #endif
         } label: {
             look(modelName + (model.fast ? " fast" : ""), model.fast ? "bolt.fill" : "cpu")
         }
@@ -131,3 +146,75 @@ private extension View {
         #endif
     }
 }
+
+#if os(macOS)
+/// What the composer shows of the account: the chat's own, or for a new session the one it will start on.
+@MainActor private func accountOf(_ model: ComposerModel, _ app: AppModel) -> OrganiseRules.ChatAccount {
+    let index = app.index ?? SessionIndex()
+    if let chat = model.chat { return OrganiseRules.chatAccount(index, app.accounts, id: chat.sessionID) }
+    return OrganiseRules.chatAccount(index, app.accounts, group: model.group, picked: model.fresh.account)
+}
+
+/// The account's name before the model, as the page's `account-label`. Menus are fixed in size, so this is the first thing to shrink.
+private struct AccountLabel: View {
+    @Environment(AppModel.self) private var app
+    let model: ComposerModel
+    private let rem = GhostMetrics.current.rem
+
+    var body: some View {
+        let name = OrganiseRules.accountLabel(app.accounts, accountOf(model, app).shown)
+        if !name.isEmpty {
+            CappedWidth(limit: 9 * rem) {
+                Text(verbatim: name).font(Font.geist(0.75 * rem)).foregroundStyle(ChatStyle.muted).lineLimit(1).truncationMode(.tail)
+            }
+            .padding(.trailing, 0.25 * rem)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Account: \(name)")
+        }
+    }
+}
+
+/// The Account item at the end of the model menu, as the page's: the choice of account, and for an existing chat where it moves when its pin runs out.
+private struct AccountSubmenu: View {
+    @Environment(AppModel.self) private var app
+    let model: ComposerModel
+
+    /// The page shows the pin's name as the item's value, which a native submenu has no place for but its title.
+    private func title(_ mine: OrganiseRules.ChatAccount, _ accounts: [Account]) -> String {
+        guard let pin = mine.pin else { return "Account" }
+        let name = OrganiseRules.accountName(accounts, pin)
+        return "Account: \(name.isEmpty ? "Removed" : name)"
+    }
+
+    var body: some View {
+        let mine = accountOf(model, app)
+        if mine.offered, let accounts = app.accounts {
+            Divider()
+            Menu(title(mine, accounts)) {
+                AccountChoices(accounts: accounts, pin: mine.pin, follows: mine.follows, overflow: mine.overflow,
+                               pick: { account in Task { await model.pick(.account(account)) } },
+                               pickOverflow: model.chat == nil ? nil : { overflow in Task { await model.pick(.overflow(overflow, pin: mine.pin)) } })
+            }
+        }
+    }
+}
+
+/// Holds its one child to a width, and no wider than the child wants, which a plain `frame(maxWidth:)` would not.
+private struct CappedWidth: Layout {
+    let limit: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews[0].sizeThatFits(fitted(proposal, subviews[0]))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let fit = fitted(ProposedViewSize(width: bounds.width, height: bounds.height), subviews[0])
+        subviews[0].place(at: bounds.origin, anchor: .topLeading, proposal: fit)
+    }
+
+    private func fitted(_ proposal: ProposedViewSize, _ child: LayoutSubview) -> ProposedViewSize {
+        let ideal = child.sizeThatFits(.unspecified).width
+        return ProposedViewSize(width: min(ideal, limit, proposal.width ?? .infinity), height: proposal.height)
+    }
+}
+#endif

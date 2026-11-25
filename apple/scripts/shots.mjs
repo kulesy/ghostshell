@@ -1278,7 +1278,7 @@ async function accountsFlow(bundle, appearance) {
   const now = Date.now();
   const day = 86_400_000;
   const rows = ['Fix the flaky upload test', 'Write the release notes', 'Tidy the sidebar']
-    .map((title, i) => ({ id: `acct-${i}`, title, dot: i === 0 ? 'running' : undefined, state: 'idle', sortAt: now - i * 60_000 }));
+    .map((title, i) => ({ id: `acct-${i}`, title, dot: i === 0 ? 'running' : undefined, state: 'idle', sortAt: now - i * 60_000, ...(i === 0 && { account: 'work' }) }));
   const work = { id: 'work', name: 'Work' };
   const personal = { id: 'personal', name: 'Personal' };
   const chrome = { state: 'elsewhere', to: personal, on: work, email: 'me@example.com' };
@@ -1334,7 +1334,7 @@ async function accountsFlow(bundle, appearance) {
       }
       if (pathname.endsWith('/context')) return send(res, context(JSON.parse(Buffer.concat(chunks).toString() || '{}').detail));
       if (pathname.endsWith('/plan')) return send(res, { limits });
-      return send(res, { ungrouped: rows, features: { sendReach: true } });
+      return send(res, { ungrouped: rows, features: { sendReach: true, accountPins: true } });
     });
   });
   const app = await appOn(stub, bundle, appearance, '6');
@@ -1390,10 +1390,29 @@ async function accountsFlow(bundle, appearance) {
     check(await until('meter', () => app.hasButton('Context: 84,000 of 200,000 tokens, 42% used'), 15), 'choosing a session shows the context meter');
     await app.both('meter');
 
+    // Under the box the row reads the account, the model, the effort and then the ring, which sits below the message box.
+    const row = () => {
+      const [label, model, effort, ring, box] = [app.find(node => node.desc === 'Account: Work'), app.buttonsLike('Model: ')[0], app.buttonsLike('Effort: ')[0], app.buttonsLike('Context:')[0], app.composerBox()];
+      return { label, model, effort, ring, box };
+    };
+    const centre = node => node.pos[1] + node.size[1] / 2;
+    const checkRow = name => {
+      const { label, model, effort, ring, box } = row();
+      check(!!label && !!model && label.size[0] > 0 && label.pos[0] + label.size[0] <= model.pos[0] + 1 && Math.abs(centre(label) - centre(model)) < 10, `the account label shows beside the model, before it, at the ${name} size`);
+      check(!!effort && !!ring && !!box && ring.pos[0] >= effort.pos[0] + effort.size[0] - 1 && ring.pos[1] >= box.pos[1] + box.size[1], `the ring sits right of the effort button and below the message box at the ${name} size`);
+    };
+    app.resize(DEFAULT_SIZE);
+    await sleep(700);
+    checkRow('default');
+    check(app.buttonMenuItems('Model: ').includes('Account'), 'the model menu has an Account item');
+    app.closeMenu();
+    await sleep(400);
+
     // A popover can close when the window is resized, so each size opens its own.
     for (const [name, size] of [['default', DEFAULT_SIZE], ['min', MIN_SIZE]]) {
       app.resize(size);
       await sleep(700);
+      checkRow(name);
       check(app.press('Context:', { prefix: true }), `the meter opens its popover at the ${name} size`);
       const shown = () => sees('Plan usage') && sees('Messages');
       // On macOS 27.2 the first press at the default size leaves the popover shut, for a reason not yet found, so it is pressed once more.

@@ -86,6 +86,26 @@ function bannersFixture() {
   };
 }
 
+// What the Mac's accounts flow answers for the chosen chat's context and the plan's usage, so the ring reads 84,000 of 200,000 tokens with the same parts and bars.
+function meterAnswer(pathname, body) {
+  const now = Date.now();
+  const day = 86_400_000;
+  if (pathname.endsWith('/context')) {
+    const detail = JSON.parse(body.toString() || '{}').detail;
+    return { source: 'process', total: 84_000, window: 200_000, autoCompactAt: 160_000, model: 'claude-opus-4-5',
+      ...(detail === 'full' ? { categories: [{ id: 'sys', name: 'System prompt', tokens: 3200 }, { id: 'tools', name: 'Tools', tokens: 14_800 }, { id: 'msgs', name: 'Messages', tokens: 66_000 }],
+        free: { name: 'Free space', tokens: 116_000 }, buffer: { name: 'Autocompact buffer', tokens: 40_000 } } : {}) };
+  }
+  if (pathname.endsWith('/plan')) {
+    return { limits: [
+      { kind: 'session', percent: 62, resetsAt: new Date(now + 95 * 60_000).toISOString(), severity: 'normal' },
+      { kind: 'weekly_all', percent: 84, resetsAt: new Date(now + 2 * day).toISOString(), severity: 'warning' },
+      { kind: 'weekly_scoped', group: 'opus', scope: 'Opus', percent: 97, resetsAt: new Date(now + 2 * day).toISOString(), severity: 'critical' },
+    ] };
+  }
+  return undefined;
+}
+
 // What the page gets where a stub has no route, so a screen draws its empty state and not an error.
 const empty = pathname => (pathname === '/api/routines' ? { routines: [] } : pathname === '/api/scheduled' ? { scheduled: [] } : /\/chips$/.test(pathname) ? { chips: [] }
   : pathname === '/renew' ? { ok: true } : {});
@@ -159,8 +179,9 @@ const SETS = {
     const stub = await startChatStub();
     const fixtures = accountsFixture();
     const proxy = await startProxy(stub.address, {
-      answer: p => (p === '/api/accounts' || p === '/api/accounts/plan' ? fixtures.accounts : p === '/api/banners' ? bannersFixture() : p === '/api/passkeys' ? fixtures.passkeys : undefined),
-      patch: forList(FEATURES),
+      answer: (p, req, body) => (p === '/api/accounts' || p === '/api/accounts/plan' ? fixtures.accounts : p === '/api/banners' ? bannersFixture() : p === '/api/passkeys' ? fixtures.passkeys : meterAnswer(p, body)),
+      // The Mac's chosen chat runs on the Work account, which is what its row says.
+      patch: (p, query) => (p === '/api/sessions' ? body => ({ ...LIST, ...body, features: FEATURES, ungrouped: body.ungrouped.map(row => (row.id === 'rich' ? { ...row, account: 'work' } : row)) }) : forList(FEATURES)(p, query)),
     });
     return { address: proxy.address, stop: () => { proxy.stop(); stub.stop(); } };
   },
@@ -316,6 +337,18 @@ const SCREENS = {
       await ctx.go('#/');
       await page.getByRole('button', { name: /Force restart/ }).first().click();
       await page.getByText('2 running chats will be cut.').first().waitFor();
+    }],
+    ['6-meter', async (page, ctx) => {
+      await ctx.go('#/s/rich');
+      await page.getByText('Done. I added').first().waitFor({ timeout: 15_000 });
+      await page.getByRole('button', { name: /^Context:/ }).waitFor({ timeout: 15_000 });
+    }],
+    ['6-meter-popover', async (page, ctx) => {
+      await ctx.go('#/s/rich');
+      await page.getByText('Done. I added').first().waitFor({ timeout: 15_000 });
+      await page.getByRole('button', { name: /^Context:/ }).click();
+      await page.getByText('Plan usage').first().waitFor({ timeout: 15_000 });
+      await page.getByText('Messages').first().waitFor({ timeout: 15_000 });
     }],
     ['6-accounts', async (page, ctx) => { await ctx.go('#/accounts'); await page.locator('.accounts-body').waitFor(); }],
     ['6-passkeys', async (page, ctx) => { await ctx.go('#/passkeys'); await page.getByText('MacBook Pro, Safari').first().waitFor(); }],
