@@ -126,8 +126,9 @@ public actor WatchRelayHandler {
             return [WatchPrompt(kind: .plan, title: "Plan ready", text: cut(Approvals.plan(of: pending) ?? "", 1500))]
         case .permission:
             let parts = Approvals.parts(of: pending, connectors: connectors)
-            let detail = parts.path ?? parts.fields.first?.value ?? ""
-            return [WatchPrompt(kind: .permission, title: parts.title, text: cut(detail, 600))]
+            let lines = ([parts.path].compactMap { $0 } + parts.notes).joined(separator: "\n")
+            let detail = lines.isEmpty ? parts.fields.first?.value ?? "" : lines
+            return [WatchPrompt(kind: .permission, title: parts.title, text: cut(detail, parts.notes.isEmpty ? 600 : 1500))]
         }
     }
 

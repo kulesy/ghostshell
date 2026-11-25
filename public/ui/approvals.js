@@ -27,6 +27,8 @@ const LAYOUT_CARDS = {
   mcp__capcom__unarchive_session: 'Claude wants to unarchive a session',
   mcp__capcom__set_session_title: 'Claude wants to rename a session',
   mcp__capcom__move_session_to_group: 'Claude wants to move a session to a group',
+  mcp__capcom__nest_session: 'Claude wants to nest a session under another',
+  mcp__capcom__unnest_session: 'Claude wants to take a session out from under another',
   mcp__capcom__create_project: 'Claude wants to create a project',
   mcp__capcom__create_group: 'Claude wants to create a group',
   mcp__capcom__move_group_to_project: 'Claude wants to move a group to a project',
@@ -47,7 +49,10 @@ function cardParts(p, names, place) {
   if (p.tool === 'Agent' || p.tool === 'Task') return { title: 'Claude wants to start a subagent', fields: [['Task', i.description], ['Prompt', clip(i.prompt, 12)]] };
   if (p.tool === 'mcp__capcom__start_group_session') return { title: `Claude wants to start a session in this ${place}`, fields: [['Folder', i.cwd], ['Title', i.title], ['First message', clip(i.prompt, 12)]] };
   if (p.tool === 'mcp__capcom__send_session') return { title: 'Claude wants to message another session', path: p.summary, fields: [['Message', clip(i.message, 12)]] };
-  if (Object.hasOwn(LAYOUT_CARDS, p.tool)) return { title: LAYOUT_CARDS[p.tool], path: p.summary, fields: [] };
+  if (Object.hasOwn(LAYOUT_CARDS, p.tool)) {
+    const [path, ...notes] = String(p.summary ?? '').split('\n');
+    return { title: LAYOUT_CARDS[p.tool], path, notes, fields: [] };
+  }
   if (p.tool === 'SendMessage') return { title: 'Claude wants to message another session', fields: [['To', i.to], ['Message', clip(i.message, 12)]] };
   const chrome = chromeTool(p.tool);
   if (chrome !== null) return chromeCard(chrome, i);
@@ -82,6 +87,7 @@ function ApprovalCard({ p, names, place, onDecide }) {
   return html`<article class="approval" data-id=${p.requestId}>
     <h3><span class="lamp" data-state="waiting" aria-hidden="true"></span>${c.title}</h3>
     ${c.path ? html`<p class="approval-path">${c.path}</p>` : null}
+    ${(c.notes || []).map(note => html`<p class="approval-note">${note}</p>`)}
     ${fields.length ? html`<dl class="fields">${fields.map(([k, v]) => html`<dt>${k}</dt><dd><pre>${pre(v)}</pre></dd>`)}</dl>` : null}
     ${c.diff ? html`<${Diff} before=${c.diff[0]} after=${c.diff[1]} />` : null}
     ${p.description ? html`<p>${p.description}</p>` : null}

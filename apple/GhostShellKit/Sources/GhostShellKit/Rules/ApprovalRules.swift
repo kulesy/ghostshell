@@ -59,6 +59,8 @@ public struct ApprovalParts: Equatable, Sendable {
     public var path: String?
     public var fields: [Field]
     public var diff: Diff?
+    /// The lines under a card's first line, each a consequence the owner reads before answering.
+    public var notes: [String] = []
 }
 
 public enum Approvals {
@@ -121,6 +123,8 @@ public enum Approvals {
         "mcp__capcom__unarchive_session": "Claude wants to unarchive a session",
         "mcp__capcom__set_session_title": "Claude wants to rename a session",
         "mcp__capcom__move_session_to_group": "Claude wants to move a session to a group",
+        "mcp__capcom__nest_session": "Claude wants to nest a session under another",
+        "mcp__capcom__unnest_session": "Claude wants to take a session out from under another",
     ]
 
     /// `place` is what the chat's session belongs to, "group" or "section", for the card that starts a session in it.
@@ -153,7 +157,12 @@ public enum Approvals {
         case "SendMessage": return card("Claude wants to message another session", field("To", text(i["to"])), field("Message", clipped("message", 12)))
         default: break
         }
-        if let title = layoutTitles[p.tool] { return card(title, path: p.summary) }
+        if let title = layoutTitles[p.tool] {
+            let lines = (p.summary ?? "").components(separatedBy: "\n")
+            var layout = card(title, path: lines.first)
+            layout.notes = lines.dropFirst().filter { !$0.isEmpty }
+            return layout
+        }
         if let chrome = ChatText.chromeTool(p.tool) { return chromeParts(chrome, i) }
 
         let fields: [ApprovalParts.Field] = members(i).sorted { $0.key < $1.key }

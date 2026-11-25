@@ -2796,6 +2796,8 @@ button.thumb {
 
 .approval .approval-path { margin: 0.25rem 0 0 1.25rem; font: 0.75rem/1rem var(--font-mono); word-break: break-all; }
 
+.approval .approval-note { margin: 0.25rem 0 0 1.25rem; color: var(--card-foreground); overflow-wrap: anywhere; }
+
 .approval pre {
   margin: 0.5rem 0 0;
   padding: 0.5rem 0.75rem;

@@ -222,6 +222,13 @@ function resolveAccount(self, d = accountData()) {
   };
 }
 
+// What a change of place does to the account a session runs on, from the rule's answer before and after, as the cards word it. `below` counts the sessions
+// whose chain changes with it, and any asks. The card compares the overflows the pins hold and not the spilled account of the moment.
+function accountChange(was, now, below = 0) {
+  const spills = (was.overflow ?? null) !== (now.overflow ?? null);
+  return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || spills || below > 0, to: accounts.find(now.account)?.name, active: now.from === 'active', ...(spills && { spills, overflow: now.overflow ? accounts.find(now.overflow)?.name ?? 'another account' : null }) };
+}
+
 function accountOfChat(chat) {
   const d = accountData();
   return resolveAccount({ id: chat.id, ...(d.anyPin && d.facts(chat.id)) }, d);
@@ -623,8 +630,7 @@ function subCtx(sessionId) {
         if (!d.groups[id]) return { changes: true };
         const was = accountFor({ group: id }, d);
         const now = accountFor({ group: id }, { ...d, groups: { ...d.groups, [id]: { ...d.groups[id], project } } });
-        const spills = (was.overflow ?? null) !== (now.overflow ?? null);
-        return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || spills, to: accounts.find(now.account)?.name, active: now.from === 'active', ...(spills && { spills, overflow: now.overflow ? accounts.find(now.overflow)?.name ?? 'another account' : null }) };
+        return accountChange(was, now);
       } catch {
         return { changes: true };
       }
@@ -642,9 +648,47 @@ function subCtx(sessionId) {
         const now = accountFor({ id, ...facts, group: picked.id, parent: null }, d);
         // A pin on the active account's own id still holds through a switch, and the sessions below can follow a head or be relinked off a nested session's pin, so both ask.
         const below = belowNow(id, { archived: false }).length + Object.keys(leaving(id).relink ?? {}).length;
-        // The card compares the overflows the pins hold and not the spilled account of the moment.
-        const spills = (was.overflow ?? null) !== (now.overflow ?? null);
-        return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || spills || below > 0, to: accounts.find(now.account)?.name, active: now.from === 'active', below, ...(spills && { spills, overflow: now.overflow ? accounts.find(now.overflow)?.name ?? 'another account' : null }) };
+        return { ...accountChange(was, now, below), below };
+      } catch {
+        return { changes: true };
+      }
+    },
+    // What a nest of `id` under `parent` would change, as ids and outcomes only, which the card and the key are both made from. It writes nothing and throws the
+    // refusal a nest meets. A part it cannot work out says `changes: true`, and any other failure throws, so the call refuses with no approval used.
+    nestPlan(id, parent) {
+      return nestPlanOf(this, sessionId, id, parent);
+    },
+    // The nest the owner approved, by the same check the route meets. The tool has compared its plan with the card's before it calls this.
+    nest(id, parent) {
+      nestableRow(id);
+      return CHANGES.nest(id, parent);
+    },
+    // Takes a session out from under its parent when the live list shows it under one, and answers where it shows now. One it does not show under a parent writes nothing.
+    unnest(id) {
+      nestableRow(id);
+      const from = buildIndex().rows.get(id).parent;
+      if (!from) return { nested: false };
+      CHANGES.nest(id, null);
+      const all = buildIndex({ archived: true });
+      return { nested: true, from, place: placeOf(this, all, all.rows.get(id)) };
+    },
+    // Whether taking `id` out from under its parent would change its account or its project, or the account of the sessions relinked with it. One that cannot be worked
+    // out counts as a change, so the owner is asked.
+    unnestChange(id) {
+      try {
+        const live = buildIndex();
+        const row = live.rows.get(id);
+        if (!row?.parent) return { changes: false };
+        const all = buildIndex({ archived: true });
+        const here = all.rows.get(id);
+        const project = placeOf(this, all, here).project !== placeOf(this, all, { ...here, parent: null }).project;
+        const d = accountData();
+        if (!d.anyPin) return { changes: project, project };
+        const facts = d.facts(id);
+        if (!facts) return { changes: true };
+        const below = Object.keys(keepFamily(id, live)).length;
+        const account = accountChange(accountFor({ id, ...facts }, d), accountFor({ id, ...facts, group: row.group, parent: null }, d), below);
+        return { ...account, changes: account.changes || project, account: account.changes, project, below };
       } catch {
         return { changes: true };
       }
@@ -1310,6 +1354,7 @@ const CHANGES = {
   move: (id, group) => layout.move(id, group ?? null, leaving(id)),
   rename: (id, title) => layout.rename(id, title),
   archived: setArchived,
+  nest,
 };
 
 // The session a new one nests under, and the root of its family: a family is one level deep, so a child stands for its parent. Throws the first refusal.
@@ -1323,6 +1368,69 @@ function familyRoot(parent, { rows, groupSessions } = buildIndex()) {
   return { target, root: target.parent ?? target.id };
 }
 
+// The live session a tool may nest or take out. A group's or section's chat stays with it, and an archived session is unarchived first.
+function nestableRow(id) {
+  const row = editableRow(id);
+  if (row.archived) throw refuse(400, 'That session is archived. Unarchive it first.');
+  return row;
+}
+
+// Where a row shows, as ids: its group, whether it is pinned, the section when it is in no group, and its project, none for Home. `all` is the index with archived rows.
+const placeOf = (subs, all, row) => ({ group: row.group ?? null, pinned: !!row.pinned, section: sectionOf(row, all.rows) ?? null, project: projectOf(subs, layout.read().groups, [...all.rows.values()], row) ?? null });
+
+// See nestPlan in subCtx. What changes comes from the links as they would stand after the nest, so the sessions that follow the moved one are found
+// whether or not they are archived: those under a head, and the archived ones linked through a nested session, whose live ones stay with its parent.
+function nestPlanOf(subs, callerId, id, parent) {
+  nestableRow(id);
+  const live = buildIndex();
+  const { root, already } = nestCheck(id, parent, live);
+  if (already) return { root, already: true };
+  const all = buildIndex({ archived: true });
+  const links = linksNow();
+  const relink = keepFamily(id, live);
+  const linksAfter = sid => (sid === id ? root : Object.hasOwn(relink, sid) ? relink[sid] : links(sid));
+  const familyOf = linkOf => new Set([...familiesOf(all.rows, linkOf, { archived: true })].filter(([, f]) => f.parent === root).map(([sid]) => sid));
+  const family = familyOf(links);
+  const under = [...familyOf(linksAfter)].filter(sid => sid !== id && !family.has(sid)).sort();
+  const here = all.rows.get(id);
+  const rootRow = all.rows.get(root);
+  const after = placeOf(subs, all, { ...here, group: rootRow.group, pinned: rootRow.pinned, parent: root });
+  let account;
+  try {
+    const d = accountData();
+    const facts = d.anyPin && d.facts(id);
+    const below = under.filter(sid => !all.rows.get(sid).archived).length + Object.keys(relink).length;
+    account = !d.anyPin ? { changes: false } : facts ? { ...accountChange(accountFor({ id, ...facts }, d), accountFor({ id, ...facts, group: undefined, parent: root }, d), below), below } : { changes: true };
+  } catch {
+    account = { changes: true };
+  }
+  const { self, rows: listed } = subs.lookup({ archived: true });
+  const reads = !!self && (descendantsOf(listed, callerId).some(r => r.id === root) || listed.find(r => r.id === root)?.startedBy === callerId);
+  const caller = callerId === id ? 'moved' : under.includes(callerId) ? 'under' : callerId === root ? 'root' : family.has(callerId) ? 'family' : reads ? 'reads' : null;
+  // The sessions this one's chips started can send to the family root with no card once it is that session's parent, if they are in its project.
+  const rows = [...all.rows.values()];
+  const groups = layout.read().groups;
+  const chipped = [...new Set(chips.list().filter(c => c.status === 'started' && c.sessionId === id && c.startedId).map(c => c.startedId))].filter(sid => {
+    const r = all.rows.get(sid);
+    const chip = subs.chipOf(sid);
+    return r && !r.archived && !r.routine && chip?.maker === id && chip.nestUnder !== root && (projectOf(subs, groups, rows, r) ?? null) === after.project;
+  }).sort();
+  return {
+    moved: id, given: parent, root, redirected: parent !== root, parent: live.rows.get(id).parent ?? null,
+    before: placeOf(subs, all, here), after, account, under,
+    lost: descendantsOf(rows, id).map(r => r.id).sort(),
+    family: [root, ...family].sort(), chips: chipped, caller, callerChat: self?.groupSession ?? null,
+  };
+}
+
+// Every refusal a nest meets, and whether it is nested there already. It reads and writes nothing, so the route, the tools and the card's plan share it.
+function nestCheck(id, parent, index) {
+  const { target, root } = familyRoot(parent, index);
+  // The links lead through archived sessions too, which a family does not show, so they are followed all the way up.
+  if ([target, ...chainOf(index.rows, linksNow(), target)].some(r => r.id === id)) throw refuse(400, 'A session cannot nest under itself or its own child.');
+  return { target, root, already: index.rows.get(id).parent === root };
+}
+
 // Nests a session under another, or takes it out when `parent` is null. A family is one level deep, so a drop on a child nests under that
 // child's parent. The answer carries the parent the list now shows.
 function nest(id, parent) {
@@ -1334,11 +1442,9 @@ function nest(id, parent) {
     if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, index) });
     return { parent: null };
   }
-  const { target, root } = familyRoot(parent, index);
-  // The links lead through archived sessions too, which a family does not show, so they are followed all the way up.
-  if ([target, ...chainOf(rows, linksNow(), target)].some(r => r.id === id)) throw refuse(400, 'A session cannot nest under itself or its own child.');
+  const { root, already } = nestCheck(id, parent, index);
   // A session that shows under that parent already keeps its own group and its link.
-  if (rows.get(id).parent === root) return { parent: root };
+  if (already) return { parent: root };
   layout.nest(id, root, { relink: keepFamily(id, index) });
   return { parent: buildIndex().rows.get(id).parent };
 }
@@ -2287,7 +2393,7 @@ async function api(req, res, u) {
   if (req.method === 'POST' && u.pathname === '/api/models') return askLists(req, res, 'models', listModels);
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => CHANGES.move(id, body.group));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
-  if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
+  if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => CHANGES.nest(id, body.parent));
   if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: CHANGES.rename(id, body.title) }));
   if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => CHANGES.archived(id, body.archived, body.stop));
   if (req.method === 'POST' && u.pathname === '/api/layout/account') return pinAccount(req, res);

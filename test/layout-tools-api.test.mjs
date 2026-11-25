@@ -43,6 +43,15 @@ const WRITES = [
   ['set_session_title', { session_id: 'loose', title: 'Renamed' }, 'rename "Loose" [loose] to "Renamed"'],
   ['set_session_title', { session_id: 'loose', title: 'Fix "menus" [kid]' }, 'rename "Loose" [loose] to "Fix menus kid"'],
   ['move_session_to_group', { session_id: 'loose', group: 'home' }, 'move "Loose" [loose] to "Home" [cg-home]'],
+  ['nest_session', { session_id: 'loose', parent: 'member' }, [
+    'nest "Loose" [loose] under "Member" [member]',
+    '"Member" [member] can then read it.',
+    'It and "Member" [member] can then message, rename, move and take out one another with no card.',
+    'It shows under "Member" [member] in the group "Work" [cg-work].',
+    (id) => (id === WORK ? 'This group\'s chat can then read it.' : 'The chat of the group "Work" [cg-work] can then read it.'),
+    'Archiving "Member" [member] archives it.',
+  ]],
+  ['unnest_session', { session_id: 'loose' }, 'take "Loose" [loose] out from under its parent'],
   ['create_project', { name: 'Fresh' }, 'create the project "Fresh"'],
   ['create_group', { name: 'Shiny', project: 'side' }, 'create the group "Shiny" in the project "Side" [cp-side]'],
   ['move_group_to_project', { group: 'work', project: 'side' }, 'move the group "Work" [cg-work] to the project "Side" [cp-side]'],
@@ -157,7 +166,7 @@ test('a group\'s chat is given the layout tools and uses them, and its own chat 
   await sendTo(s, token, WORK, 'list the tools');
   await until(() => replies(s).length === 1);
   const listed = replies(s)[0].result.tools.map(t => t.name);
-  for (const name of ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project', 'send_session']) assert.ok(listed.includes(name), name);
+  for (const name of ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'nest_session', 'unnest_session', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project', 'send_session']) assert.ok(listed.includes(name), name);
   const moved = textOf(await callTool(s, token, WORK, 'move_session_to_group', { session_id: 'loose', group: 'Work' }));
   assert.match(moved, /^Moved "Loose" \[loose\] to the group "Work"/);
   assert.match(moved, /This group's chat can now read it with read_group_session\.$/);
@@ -185,7 +194,7 @@ for (const mode of ['manual', 'bypassPermissions', 'auto']) {
           await sendTo(s, token, id, `ask to use ${tool} ${JSON.stringify(input)}`);
           await until(() => viewer.events.filter(e => e.type === 'approval').length > before);
           const card = viewer.events.filter(e => e.type === 'approval').at(-1).data;
-          assert.deepEqual([card.tool, card.always, card.summary], [`mcp__capcom__${tool}`, false, summary], `${id} ${tool}`);
+          assert.deepEqual([card.tool, card.always, card.summary], [`mcp__capcom__${tool}`, false, Array.isArray(summary) ? summary.map(line => (typeof line === 'function' ? line(id) : line)).join('\n') : summary], `${id} ${tool}`);
           const answered = () => cliCalls(s).filter(c => c.requestId === `perm-${tool}`).length;
           const had = answered();
           await new Promise(resolve => setTimeout(resolve, 150));
@@ -694,4 +703,300 @@ test('the owner\'s message route is the only place that clears a sender\'s count
   const source = fs.readFileSync(fileURLToPath(new URL('../server.mjs', import.meta.url)), 'utf8');
   assert.equal(source.match(/sendReach\.ownerSpoke\(/g).length, 1);
   assert.match(source, /if \(row\.groupSession\) groupUpdates\.ownerSpoke\(id\);\n\s*sendReach\.ownerSpoke\(id\);/);
+});
+
+// Nesting: a card the owner approves for one tool use id, then the call that carries that id. The fake CLI raises `ask to use as <id>` as the can_use_tool request and `call as <id>` as the tool call.
+const FAMILY = [
+  { id: 'top', title: 'Top', ago: 5 },
+  { id: 'boss', title: 'Boss', ago: 6 },
+  { id: 'loose', title: 'Loose', ago: 8 },
+  { id: 'other', title: 'Other', ago: 9 },
+  { id: 'gone', title: 'Gone', archived: true, ago: 20 },
+  { id: 'member', title: 'Member', group: 'cg-work', ago: 6 },
+];
+const readyNest = mine => ready({ sessions: FAMILY, chips: [], ...mine });
+const answersTo = (s, requestId) => cliCalls(s).filter(c => c.requestId === requestId);
+// Asks to use a tool as the call `useId` and answers with the card it raised, or with the CLI's answer when it went with no card.
+async function askAs(s, token, id, useId, tool, input) {
+  const requestId = `perm-${useId}`;
+  const viewer = listen(s, token, id);
+  try {
+    await until(() => viewer.events.length);
+    const had = answersTo(s, requestId).length;
+    await sendTo(s, token, id, `ask to use as ${useId} ${tool} ${JSON.stringify(input)}`);
+    const card = () => viewer.events.find(e => e.type === 'approval' && e.data.requestId === requestId)?.data;
+    await until(() => card() || answersTo(s, requestId).length > had);
+    return card() ? { card: card() } : { answer: answersTo(s, requestId).at(-1).response };
+  } finally {
+    viewer.close();
+  }
+}
+const decide = async (s, token, id, useId, decision) => {
+  const had = answersTo(s, `perm-${useId}`).length;
+  assert.equal((await post(s, token, `/api/sessions/${id}/approve`, { requestId: `perm-${useId}`, decision })).status, 200);
+  await until(() => answersTo(s, `perm-${useId}`).length > had);
+  return answersTo(s, `perm-${useId}`).at(-1);
+};
+async function callAs(s, token, id, useId, tool, args) {
+  const before = replies(s).length;
+  await sendTo(s, token, id, `call as ${useId} ${tool} ${JSON.stringify(args)}`);
+  await until(() => replies(s).length > before);
+  return replies(s)[before];
+}
+const NEST = { session_id: 'loose', parent: 'member' };
+const refusedAs = (reply, text) => {
+  assert.equal(reply.result.isError, true, textOf(reply));
+  assert.match(textOf(reply), text);
+};
+
+test('a nest shows a card of what it grants, writes nothing until the owner approves, and then writes once, for that call', async () => {
+  const { s, token } = await readyNest();
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const { card } = await askAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+  assert.deepEqual([card.tool, card.always], ['mcp__capcom__nest_session', false]);
+  assert.deepEqual(card.summary.split('\n'), [
+    'nest "Loose" [loose] under "Member" [member]',
+    '"Member" [member] can then read it.',
+    'It and "Member" [member] can then message, rename, move and take out one another with no card.',
+    'It shows under "Member" [member] in the group "Work" [cg-work].',
+    'The chat of the group "Work" [cg-work] can then read it.',
+    'Archiving "Member" [member] archives it.',
+  ]);
+  assert.equal(JSON.stringify(card).includes('"key"'), false, 'the page is given no key');
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'a card writes nothing');
+  refusedAs(await callAs(s, token, 'top', 'use-1', 'nest_session', NEST), /^The owner has not approved this nest\. Nothing changed\.$/);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'a call before the owner decides writes nothing');
+  assert.equal((await decide(s, token, 'top', 'use-1', 'allow')).response, 'allow');
+  const done = await callAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+  assert.equal(textOf(done), 'Nested "Loose" [loose] under "Member" [member]. It now shows in the group "Work" [cg-work].');
+  assert.equal(onDisk(s).parents.loose, 'member');
+  const after = fs.readFileSync(s.layout, 'utf8');
+  assert.equal(textOf(await callAs(s, token, 'top', 'use-1', 'nest_session', NEST)), '"Loose" [loose] is already nested under "Member" [member]. Nothing changed.');
+  assert.equal((await post(s, token, '/api/layout/nest', { id: 'loose', parent: null })).status, 200);
+  const out = fs.readFileSync(s.layout, 'utf8');
+  refusedAs(await callAs(s, token, 'top', 'use-1', 'nest_session', NEST), /^The owner has not approved this nest\. Nothing changed\.$/);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), out, 'a replay after a move out writes nothing and needs a new card');
+});
+
+// A call with no card to approve: the CLI is answered at once, the call then says why, and layout.json is as it was.
+async function refusedNest(s, token, id, useId, input, text) {
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const asked = await askAs(s, token, id, useId, 'nest_session', input);
+  assert.equal(asked.card, undefined, `no card for ${JSON.stringify(input)}`);
+  assert.equal(asked.answer, 'allow');
+  const reply = await callAs(s, token, id, useId, 'nest_session', input);
+  refusedAs(reply, text);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, `${JSON.stringify(input)} wrote nothing`);
+}
+
+test('every nest the sidebar refuses is refused by the tool with no card and nothing written, a group\'s or section\'s chat or an archived session on either side included', async () => {
+  const sessions = [...FAMILY, { id: 'kid', title: 'Kid', parent: 'boss', ago: 4 }, { id: 'run', title: 'Nightly', routine: 'nightly', ago: 3 }];
+  const { s, token } = await readyNest({ sessions, layout: { projects: PROJECTS, routineProjects: { nightly: 'cp-side' } } });
+  const cases = [
+    [{ session_id: 'loose', parent: 'loose' }, /^A session cannot nest under itself or its own child\.$/],
+    [{ session_id: 'boss', parent: 'kid' }, /^A session cannot nest under itself or its own child\.$/],
+    [{ session_id: 'loose', parent: 'gone' }, /^That session is archived\.$/],
+    [{ session_id: 'gone', parent: 'boss' }, /^That session is archived\. Unarchive it first\.$/],
+    [{ session_id: 'loose', parent: WORK }, /^A group's session cannot hold sessions\.$/],
+    [{ session_id: WORK, parent: 'boss' }, /^A group's session stays with its group\.$/],
+    [{ session_id: 'loose', parent: 'run' }, /^A routine run cannot hold sessions\.$/],
+    [{ session_id: 'loose', parent: 'nobody' }, /^No session with that id on this Mac\.$/],
+    [{ session_id: 'nobody', parent: 'boss' }, /^No session with that id on this Mac\.$/],
+  ];
+  for (const [i, [input, text]] of cases.entries()) await refusedNest(s, token, 'top', `refuse-${i}`, input, text);
+  const pinned = (await post(s, token, '/api/groups/pinned/session')).body().id;
+  await refusedNest(s, token, 'top', 'refuse-section', { session_id: 'loose', parent: pinned }, /^A section's session cannot hold sessions\.$/);
+  await refusedNest(s, token, 'top', 'refuse-section-2', { session_id: pinned, parent: 'boss' }, /^A section's session stays with its section\.$/);
+});
+
+test('a nest with a bad session_id or parent is refused with no card, and a missing parent is never read as a take out', async () => {
+  const { s, token } = await readyNest({ sessions: [...FAMILY, { id: 'kid', title: 'Kid', parent: 'boss', ago: 4 }] });
+  const parentText = /^Give the id of the session to nest it under as parent\. unnest_session takes a session out from under another\.$/;
+  const idText = /^Give the id of the session as session_id\.$/;
+  const bad = [undefined, null, '', '   ', ['boss'], { toString: 'boss' }, 5, true];
+  for (const [i, parent] of bad.entries()) await refusedNest(s, token, 'top', `parent-${i}`, { session_id: 'kid', parent }, parentText);
+  for (const [i, session_id] of bad.entries()) await refusedNest(s, token, 'top', `id-${i}`, { session_id, parent: 'boss' }, idText);
+  for (const [i, input] of [{}, { session_id: 'kid' }, { parent: 'boss' }].entries()) await refusedNest(s, token, 'top', `missing-${i}`, input, /^Give the id of the session/);
+  for (const [i, id] of ['__proto__', 'constructor', 'a b', 'x'.repeat(5000), 'boss/../kid'].entries()) {
+    await refusedNest(s, token, 'top', `odd-parent-${i}`, { session_id: 'kid', parent: id }, /^No session with that id on this Mac\.$/);
+    await refusedNest(s, token, 'top', `odd-id-${i}`, { session_id: id, parent: 'boss' }, /^No session with that id on this Mac\.$/);
+  }
+  assert.equal(onDisk(s).parents?.kid, undefined, 'kid was never taken out or moved');
+});
+
+test('nesting a session that is nested already under that parent, or a sibling of it, is answered with nothing written and no card', async () => {
+  const { s, token } = await readyNest({ sessions: [...FAMILY, { id: 'kid', title: 'Kid', parent: 'boss', ago: 4 }, { id: 'twin', title: 'Twin', parent: 'boss', ago: 4 }] });
+  const before = fs.readFileSync(s.layout, 'utf8');
+  for (const [i, parent] of ['boss', 'twin'].entries()) {
+    const input = { session_id: 'kid', parent };
+    assert.equal((await askAs(s, token, 'top', `same-${i}`, 'nest_session', input)).answer, 'allow');
+    assert.equal(textOf(await callAs(s, token, 'top', `same-${i}`, 'nest_session', input)), '"Kid" [kid] is already nested under "Boss" [boss]. Nothing changed.');
+  }
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+});
+
+// Each is a change the owner or another session makes while the card waits, as the routes make it.
+const WHILE_WAITING = [
+  ['the parent is nested under another session', s => ({ route: '/api/layout/nest', body: { id: 'member', parent: 'other' } })],
+  ['the parent moves to another group', () => ({ route: '/api/layout/move', body: { id: 'member', group: 'cg-home' } })],
+  ['the parent is archived', () => ({ route: '/api/layout/archive', body: { id: 'member', archived: true } })],
+  ['the session gains a sub session', () => ({ route: '/api/layout/nest', body: { id: 'other', parent: 'loose' } })],
+  ['the parent\'s group moves to another project', () => ({ route: '/api/layout/group/move', body: { id: 'cg-work', project: 'cp-side' } })],
+  ['the session itself is nested under another', () => ({ route: '/api/layout/nest', body: { id: 'loose', parent: 'boss' } })],
+];
+
+test('a nest whose plan changes while the card waits is refused when the call comes, with nothing written, and a retitle alone does not refuse it', async () => {
+  for (const [what, change] of WHILE_WAITING) {
+    const { s, token } = await readyNest();
+    const { card } = await askAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+    assert.ok(card, what);
+    const { route, body } = change();
+    assert.equal((await post(s, token, route, body)).status, 200, what);
+    await decide(s, token, 'top', 'use-1', 'allow');
+    const during = fs.readFileSync(s.layout, 'utf8');
+    const reply = await callAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+    assert.equal(reply.result.isError, true, `${what}: ${textOf(reply)}`);
+    assert.match(textOf(reply), /^(What the approval card showed has changed since\. Nothing changed\. Call nest_session again to ask the owner\.|That session is archived\.)$/, what);
+    assert.equal(fs.readFileSync(s.layout, 'utf8'), during, `${what}: nothing was written`);
+  }
+  const { s, token } = await readyNest();
+  await askAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+  assert.equal((await post(s, token, '/api/layout/rename', { id: 'member', title: 'Renamed while waiting' })).status, 200);
+  await decide(s, token, 'top', 'use-1', 'allow');
+  assert.match(textOf(await callAs(s, token, 'top', 'use-1', 'nest_session', NEST)), /^Nested "Loose" \[loose\] under "Renamed while waiting" \[member\]\./);
+});
+
+test('an approval belongs to one call: another tool use id, other arguments, a denied card or a chat that was not asked cannot use it, and a refused call spends it', async () => {
+  const { s, token } = await readyNest();
+  const other = { session_id: 'other', parent: 'member' };
+  await askAs(s, token, 'top', 'use-a', 'nest_session', NEST);
+  await askAs(s, token, 'top', 'use-b', 'nest_session', other);
+  await decide(s, token, 'top', 'use-a', 'allow');
+  assert.equal((await decide(s, token, 'top', 'use-b', 'deny')).response, 'deny');
+  const before = fs.readFileSync(s.layout, 'utf8');
+  refusedAs(await callAs(s, token, 'top', 'use-b', 'nest_session', other), /^The owner has not approved this nest\./);
+  refusedAs(await callAs(s, token, 'top', 'use-c', 'nest_session', NEST), /^The owner has not approved this nest\./);
+  refusedAs(await callAs(s, token, 'boss', 'use-a', 'nest_session', NEST), /^The owner has not approved this nest\./);
+  refusedAs(await callAs(s, token, 'top', 'use-a', 'nest_session', other), /^What the approval card showed has changed since\./);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'none of them wrote');
+  refusedAs(await callAs(s, token, 'top', 'use-a', 'nest_session', NEST), /^The owner has not approved this nest\./);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'the refused call spent the approval');
+});
+
+test('two calls with one approval write once, and an approval is gone after a restart or with no tool use id', async () => {
+  const { s, token } = await readyNest();
+  await askAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+  await decide(s, token, 'top', 'use-1', 'allow');
+  const had = replies(s).length;
+  await sendTo(s, token, 'top', `call as use-1 nest_session ${JSON.stringify(NEST)}`);
+  await sendTo(s, token, 'top', `call as use-1 nest_session ${JSON.stringify(NEST)}`);
+  await until(() => replies(s).length >= had + 2);
+  const texts = replies(s).slice(had).map(textOf);
+  assert.equal(texts.filter(t => t.startsWith('Nested ')).length, 1, texts.join(' | '));
+  assert.equal(onDisk(s).parents.loose, 'member');
+  const bare = await readyNest();
+  const { card } = await askAs(bare.s, bare.token, 'top', 'use-1', 'nest_session', NEST);
+  assert.ok(card);
+  await decide(bare.s, bare.token, 'top', 'use-1', 'allow');
+  const noId = await callTool(bare.s, bare.token, 'top', 'nest_session', NEST);
+  refusedAs(noId, /^The owner has not approved this nest\./);
+  const left = fs.readFileSync(bare.s.layout, 'utf8');
+  const again = await restart(bare.s);
+  const signed = await signIn(again);
+  refusedAs(await callAs(again, signed.token, 'top', 'use-1', 'nest_session', NEST), /^The owner has not approved this nest\./);
+  assert.equal(fs.readFileSync(again.layout, 'utf8'), left, 'a call with no tool use id, and one after a restart, write nothing');
+});
+
+test('Always allow and an answer on a nest card remember nothing and change nothing: the card comes again, and the call is the one that was shown', async () => {
+  const { s, token } = await readyNest();
+  await askAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+  const first = await decide(s, token, 'top', 'use-1', 'always');
+  assert.deepEqual([first.response, first.rules], ['allow', undefined]);
+  assert.match(textOf(await callAs(s, token, 'top', 'use-1', 'nest_session', NEST)), /^Nested "Loose"/);
+  const again = await askAs(s, token, 'top', 'use-2', 'nest_session', { session_id: 'other', parent: 'member' });
+  assert.ok(again.card, 'a second nest shows a card of its own');
+  assert.equal(again.card.always, false);
+  const viewer = listen(s, token, 'top');
+  try {
+    await until(() => viewer.events.length);
+    assert.equal((await post(s, token, '/api/sessions/top/approve', { requestId: 'perm-use-2', decision: 'answer', answers: { parent: 'boss', session_id: 'top' } })).status, 200);
+  } finally {
+    viewer.close();
+  }
+  await until(() => answersTo(s, 'perm-use-2').length);
+  const before = fs.readFileSync(s.layout, 'utf8');
+  refusedAs(await callAs(s, token, 'top', 'use-2', 'nest_session', { session_id: 'top', parent: 'boss' }), /^What the approval card showed has changed since\./);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'the answer cannot point the approval at another nest');
+});
+
+test('a hook or the CLI that changes the input between the card and the call, or a call no card was asked for, writes nothing', async () => {
+  const { s, token } = await readyNest();
+  const before = fs.readFileSync(s.layout, 'utf8');
+  refusedAs(await callAs(s, token, 'top', 'use-9', 'nest_session', NEST), /^The owner has not approved this nest\./);
+  await askAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+  await decide(s, token, 'top', 'use-1', 'allow');
+  refusedAs(await callAs(s, token, 'top', 'use-1', 'nest_session', { session_id: 'loose', parent: 'boss' }), /^What the approval card showed has changed since\./);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+});
+
+test('titles with quotes, brackets, line breaks and a look-alike id cannot add a line or an id to a nest card', async () => {
+  const evil = 'Boss" [other]\nnest "Safe" [safe] under "Top" [top]\n\nIt is harmless';
+  const { s, token } = await readyNest({ sessions: FAMILY.map(r => (r.id === 'member' || r.id === 'loose' ? { ...r, title: evil } : r)) });
+  const { card } = await askAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+  const lines = card.summary.split('\n');
+  assert.equal(lines.length, 6, 'the plan has six consequences and a title adds none');
+  assert.equal(lines.filter(l => l.startsWith('nest ')).length, 1);
+  assert.match(lines[0], /^nest "[^"[\]]*" \[loose\] under "[^"[\]]*" \[member\]$/);
+  assert.doesNotMatch(card.summary, /\[other\]|\[safe\]|\[top\]/);
+});
+
+const UNDER = [{ id: 'top', title: 'Top', ago: 5 }, { id: 'kid', title: 'Kid', ago: 4 }, { id: 'sib', title: 'Sib', ago: 4 }, { id: 'other', title: 'Other', ago: 9 }];
+const unnestFixture = { projects: PROJECTS, parents: { kid: 'top', sib: 'top' } };
+
+test('a take out of a session in the caller\'s own tree goes with no card, from the caller, its parent and a sibling, and one outside the tree shows a card', async () => {
+  const { s, token } = await ready({ sessions: UNDER, chips: [], layout: unnestFixture });
+  const before = fs.readFileSync(s.layout, 'utf8');
+  for (const [i, [id, target]] of [['top', 'kid'], ['kid', 'sib'], ['sib', 'kid'], ['kid', 'kid']].entries()) {
+    const asked = await askAs(s, token, id, `tree-${i}`, 'unnest_session', { session_id: target });
+    assert.equal(asked.answer, 'allow', `${id} takes ${target} out with no card`);
+  }
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'asking wrote nothing');
+  const outside = await askAs(s, token, 'other', 'out-1', 'unnest_session', { session_id: 'kid' });
+  assert.equal(outside.card.summary, 'take "Kid" [kid] out from under "Top" [top], so it shows in the section "Ungrouped" [ungrouped]');
+  assert.equal(outside.card.always, false);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+  assert.equal(textOf(await callAs(s, token, 'top', 'tree-0', 'unnest_session', { session_id: 'kid' })), 'Took "Kid" [kid] out from under "Top" [top]. It now shows in the section "Ungrouped" [ungrouped], and is no longer part of that family.');
+  assert.equal(onDisk(s).parents.kid ?? null, null);
+  assert.equal(textOf(await callAs(s, token, 'top', 'tree-0', 'unnest_session', { session_id: 'kid' })), '"Kid" [kid] is not nested. Nothing changed.');
+});
+
+test('a take out that changes the project of the session asks, though it is in the caller\'s tree, and one the live list shows under no parent asks and writes nothing', async () => {
+  const sessions = [{ id: 'top', title: 'Top', ago: 5 }, { id: 'run', title: 'Nightly', routine: 'nightly', ago: 3 }];
+  const { s, token } = await ready({ sessions, chips: [], layout: { projects: PROJECTS, routineProjects: { nightly: 'cp-side' }, parents: { run: 'top' } } });
+  const asked = await askAs(s, token, 'top', 'run-1', 'unnest_session', { session_id: 'run' });
+  assert.match(asked.card.summary, /^take "Nightly" \[run\] out from under "Top" \[top\], so it shows in the section "Routines" \[routines\], which changes its project/);
+  const heads = [{ id: 'gone', title: 'Gone', archived: true, ago: 20 }, { id: 'one', title: 'One', ago: 4, parent: 'gone' }, { id: 'two', title: 'Two', ago: 4, parent: 'gone' }];
+  const under = await ready({ sessions: heads, chips: [], layout: { projects: PROJECTS } });
+  const left = fs.readFileSync(under.s.layout, 'utf8');
+  const take = await askAs(under.s, under.token, 'one', 'head-1', 'unnest_session', { session_id: 'two' });
+  assert.ok(take.card, 'two heads under an archived root are no family, so the take out asks');
+  assert.equal(textOf(await callAs(under.s, under.token, 'one', 'head-1', 'unnest_session', { session_id: 'two' })), '"Two" [two] is not nested. Nothing changed.');
+  const nest = await askAs(under.s, under.token, 'one', 'head-2', 'nest_session', { session_id: 'two', parent: 'one' });
+  assert.ok(nest.card, 'and a nest always asks');
+  assert.equal(fs.readFileSync(under.s.layout, 'utf8'), left, 'nothing was written');
+});
+
+test('a nest of a session with sessions under it, archived ones included, says they move with it and that the parent reads them, and they follow it', async () => {
+  const sessions = [...FAMILY, { id: 'sub', title: 'Sub', parent: 'loose', ago: 7 }, { id: 'oldsub', title: 'Old sub', parent: 'loose', archived: true, ago: 30 }];
+  const { s, token } = await readyNest({ sessions });
+  const { card } = await askAs(s, token, 'top', 'use-1', 'nest_session', NEST);
+  const lines = card.summary.split('\n');
+  assert.equal(lines[1], '"Member" [member] can then read it and the 2 sessions under it.');
+  assert.equal(lines[3], 'The 2 sessions under it then show beside it, and it can no longer read them.');
+  assert.equal(lines[4], 'It shows under "Member" [member] in the group "Work" [cg-work]. The 2 sessions under it move with it.');
+  assert.equal(lines.at(-1), 'Archiving "Member" [member] archives it and the 2 sessions under it.');
+  await decide(s, token, 'top', 'use-1', 'allow');
+  assert.match(textOf(await callAs(s, token, 'top', 'use-1', 'nest_session', NEST)), /The 2 sessions under it went with it\.$/);
+  const ix = (await get(s, token, '/api/sessions')).body().groups.find(g => g.id === 'cg-work').sessions.find(r => r.id === 'member');
+  assert.deepEqual(ix.children.map(r => r.id).sort(), ['loose', 'sub'], 'the live ones show beside it, under the new parent');
 });

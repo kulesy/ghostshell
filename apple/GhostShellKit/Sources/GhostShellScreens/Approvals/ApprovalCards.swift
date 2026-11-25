@@ -133,6 +133,9 @@ struct PermissionCard: View {
             if let path = parts.path, !path.isEmpty {
                 Text(verbatim: path).font(ChatStyle.monoSmall).foregroundStyle(ChatStyle.muted).textSelection(.enabled)
             }
+            ForEach(Array(parts.notes.enumerated()), id: \.offset) { _, note in
+                Text(verbatim: note).font(ChatStyle.body).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            }
             ForEach(Array(parts.fields.filter { !$0.value.isEmpty }.enumerated()), id: \.offset) { _, field in
                 LabelledText(label: field.label, text: field.value)
             }

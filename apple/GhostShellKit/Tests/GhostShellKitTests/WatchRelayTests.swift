@@ -141,6 +141,14 @@ final class WatchRelayTests: XCTestCase {
         XCTAssertEqual(session.prompts, [WatchPrompt(kind: .question, title: "Storage", text: "Which database?", options: ["SQLite", "Postgres"], requestID: "r1", answerable: true)])
     }
 
+    func testANestPromptKeepsEveryLineOfTheCard() async {
+        let permission = "[{\"requestId\":\"r3\",\"tool\":\"mcp__capcom__nest_session\",\"input\":{},\"summary\":\"nest A under B\\nB can then read it.\\nArchiving B archives it.\"}]"
+        WatchStub.reset(["/api/sessions/abc/messages": .init(body: "{\"items\":[]}"), "/api/sessions/abc/events": .init(body: status(permission), stream: true)])
+        let answer = await handler().handle(WatchRequest(.session(id: "abc")), client: await client())
+        guard case .session(let session) = answer.body else { return XCTFail("\(answer)") }
+        XCTAssertEqual(session.prompts, [WatchPrompt(kind: .permission, title: "Claude wants to nest a session under another", text: "nest A under B\nB can then read it.\nArchiving B archives it.")])
+    }
+
     func testAPermissionIsWordedAndAnOverlongMessageIsCut() async {
         let permission = "[{\"requestId\":\"r2\",\"tool\":\"Bash\",\"input\":{\"command\":\"rm -rf build\"}}]"
         let long = String(repeating: "x", count: 5000)
