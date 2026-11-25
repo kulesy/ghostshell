@@ -139,8 +139,8 @@ const freePort = () => new Promise(resolve => {
 // An `mcp_status` request is answered with the rows of mcp-servers.json in the home (each { name, status, scope, config: { type } }, an empty list if there is none), and an `mcp_toggle` with success after it sets that
 // row's status to disabled or connected, (and saves the file), or with an error when mcp-toggle-fails in the home holds `off` or `on` for that way round. Each answer waits as many milliseconds as mcp-toggle-wait holds, and a toggle is logged as `control` with its `serverName` and `enabled`.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
-// CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session',
-// 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool>, and a message that opens with a <session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
+// CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server (or 'call as <id> <tool> <json>', which sends <id> as the call's tool use id, as request call-<id>), sent 'list the tools' it lists them, and sent 'ask to start a session',
+// 'ask to list the group', 'ask to list the subs', 'ask to send to a sub' (kid) or 'ask to send to <id>' it asks to use the tool of that name, and sent 'ask to use <tool> <json>' it asks to use that tool of Capcom's own server with that input as request perm-<tool> ('ask to use as <id> <tool> <json>' also gives the request the tool use id <id> and names it perm-<id>), and a message that opens with a <session-message> tag ends its turn. The log has the folder it started in, and the reply to each such request as `mcp`.
 // `autoTitle` turns on naming sessions from their first turn, which is off in the tests unless they ask, since the fake CLI would be asked as well.
 // `env` is added to the server's environment.
 // A session is { id, title, folder, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
@@ -302,8 +302,10 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "      fs.writeFileSync(path.join(projects, '-group-folder', `${namedId}.jsonl`), JSON.stringify({ type: 'user', cwd: process.cwd(), message: { role: 'user', content: m.message.content } }) + '\\n');",
     "    }",
     "    if (said.startsWith('call ')) {",
-    "      const [, tool, ...json] = said.split(' ');",
-    "      say({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(json.join(' ') || '{}') } } } });",
+    "      const [, first, ...rest] = said.split(' ');",
+    "      const [useId, tool, ...json] = first === 'as' ? rest : [null, first, ...rest];",
+    "      const meta = useId ? { _meta: { 'claudecode/toolUseId': useId } } : {};",
+    "      say({ type: 'control_request', request_id: `call-${useId || tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(json.join(' ') || '{}'), ...meta } } } });",
     "    }",
     "    if (m.message.content === 'list the tools') say({ type: 'control_request', request_id: 'list-tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
     "    if (m.message.content === 'ask to start a session') say({ type: 'control_request', request_id: 'perm-start', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__start_group_session', input: { cwd: '/tmp', prompt: 'x' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'mcp__capcom__start_group_session' }], behavior: 'allow', destination: 'localSettings' }] } });",
@@ -311,8 +313,9 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    if (m.message.content === 'ask to list the subs') say({ type: 'control_request', request_id: 'perm-subs', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__list_sub_sessions', input: {} } });",
     "    if (said.startsWith('ask to send to ')) say({ type: 'control_request', request_id: 'perm-send', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__send_session', input: { session_id: said === 'ask to send to a sub' ? 'kid' : said.slice(15), message: 'Please rebase' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'mcp__capcom__send_session' }], behavior: 'allow', destination: 'localSettings' }] } });",
     "    if (said.startsWith('ask to use ')) {",
-    "      const [, , , tool, ...json] = said.split(' ');",
-    "      say({ type: 'control_request', request_id: `perm-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: JSON.parse(json.join(' ') || '{}'), permission_suggestions: [{ type: 'addRules', rules: [{ toolName: `mcp__capcom__${tool}` }], behavior: 'allow', destination: 'localSettings' }] } });",
+    "      const [, , , first, ...rest] = said.split(' ');",
+    "      const [useId, tool, ...json] = first === 'as' ? rest : [null, first, ...rest];",
+    "      say({ type: 'control_request', request_id: `perm-${useId || tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, ...(useId && { tool_use_id: useId }), input: JSON.parse(json.join(' ') || '{}'), permission_suggestions: [{ type: 'addRules', rules: [{ toolName: `mcp__capcom__${tool}` }], behavior: 'allow', destination: 'localSettings' }] } });",
     "    }",
     "    if (said.startsWith('<session-message')) say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",

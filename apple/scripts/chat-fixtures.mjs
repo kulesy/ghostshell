@@ -234,6 +234,16 @@ function approvalChats() {
     old_string: 'export async function uploadFile(path) {\n  const body = await fs.readFile(path);\n  return fetch(url, { method: "PUT", body });\n}',
     new_string: 'export async function uploadFile(path) {\n  await server.ready();\n  const body = await fs.readFile(path);\n  return fetch(url, { method: "PUT", body });\n}',
   }, { summary: 'test/helpers.js', always: true });
+  const nest = ask('req-nest', 'mcp__capcom__nest_session', { session_id: 'upload-fix', parent: 'release' }, { label: 'nest session', summary: [
+    'nest "Fix the upload race" [upload-fix] under "Release 4.2" [release], since "Draft the notes" [notes] is itself nested under it',
+    '"Release 4.2" [release] can then read it and the 2 sessions under it.',
+    'It, the 2 sessions under it, "Release 4.2" [release] and the 3 other sessions in that family can then message, rename, move and take out one another with no card.',
+    'The 2 sessions under it then show beside it, and it can no longer read them.',
+    'It leaves the group "Bugs" [bugs] and shows under "Release 4.2" [release] in the group "Releases" [releases]. Its project changes from Home to the project "Site" [site]. The 2 sessions under it move with it.',
+    'The chat of the group "Releases" [releases] can then read it and the 2 sessions under it.',
+    'It then runs on Work, and the 2 sessions under it or linked with it can change account too.',
+    'Archiving "Release 4.2" [release] archives it and the 2 sessions under it.',
+  ].join('\n') });
   const question = ask('req-ask', 'AskUserQuestion', { questions: [
     { question: 'Which test runner should the new tests use?', header: 'Runner', multiSelect: false, options: [
       { label: 'node:test', description: 'Built in, no new dependency.', preview: "import test from 'node:test';\n\ntest('uploads a file', async () => {});" },
@@ -248,6 +258,7 @@ function approvalChats() {
   return {
     'ask-bash': chat('Push the upload fix', [bash]),
     'ask-edit': chat('Edit the upload helper', [edit]),
+    'ask-nest': chat('Tidy the release sessions', [nest]),
     'ask-question': chat('Choose the test setup', [question]),
     'ask-plan': chat('Approve the retry plan', [plan]),
     'ask-two': chat('Several things waiting', [bash, edit, longBash]),

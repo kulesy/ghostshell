@@ -2,9 +2,10 @@
 // gives each chat callbacks, so here they are fakes. The wording of the server's own refusals is not under test here, layout-tools-api.test.mjs has them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { archiveSession, createGroup, createProject, findSessions, groupNamed, layoutSummary, listChips, moveGroupToProject, moveProject, moveRoutineToProject, moveSession, projectNamed, setSessionTitle, unarchiveSession } from '../lib/layout-tools.mjs';
+import { archiveSession, createGroup, createProject, findSessions, groupNamed, layoutSummary, listChips, moveGroupToProject, moveProject, moveRoutineToProject, moveSession, projectNamed, setSessionTitle, unarchiveSession, unnestSession } from '../lib/layout-tools.mjs';
 import { showsNothing } from '../lib/layout.mjs';
 import { descendantsOf } from '../public/ui/sub-rules.js';
+import { nestApproval, nestLines, nestSession, nestSummary, unnestSummary } from '../lib/nest-tool.mjs';
 import { handleMcp, LAYOUT_READ_NAMES, LAYOUT_WRITE_NAMES, SEND_NAME, SUB_READ_NAMES, TOOL_NAMES, TREE_WRITE_NAMES } from '../lib/tools.mjs';
 
 const NOW = Date.parse('2026-10-28T06:00:00.000Z');
@@ -747,15 +748,15 @@ test('list_chips filters by title, status and the session that made the chip, wh
 
 const rpc = (method, params, ctx) => handleMcp({ jsonrpc: '2.0', id: 7, method, params }, ctx);
 const names = reply => reply.result.tools.map(t => t.name);
-const LAYOUT = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'];
+const LAYOUT = ['list_chips', 'find_sessions', 'archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'nest_session', 'unnest_session', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'];
 
-test('the eleven tools are listed to every chat that is given callbacks, an ordinary one, a group\'s and a section\'s, and to none that is not', () => {
+test('the thirteen tools are listed to every chat that is given callbacks, an ordinary one, a group\'s and a section\'s, and to none that is not', () => {
   const subs = subsFor();
   const group = { lookup: () => null };
   const section = { section: { id: 'pinned', name: 'Pinned', place: 'pin' }, lookup: () => null };
-  assert.deepEqual(names(rpc('tools/list', {}, { subs })).slice(-11), LAYOUT);
-  assert.deepEqual(names(rpc('tools/list', {}, { subs, group })).slice(-11), LAYOUT);
-  assert.deepEqual(names(rpc('tools/list', {}, { subs, group: section })).slice(-11), LAYOUT);
+  assert.deepEqual(names(rpc('tools/list', {}, { subs })).slice(-13), LAYOUT);
+  assert.deepEqual(names(rpc('tools/list', {}, { subs, group })).slice(-13), LAYOUT);
+  assert.deepEqual(names(rpc('tools/list', {}, { subs, group: section })).slice(-13), LAYOUT);
   for (const ctx of [{}, { group }, { group: section }]) assert.deepEqual(names(rpc('tools/list', {}, ctx)).filter(n => LAYOUT.includes(n)), [], 'no callbacks, no tools');
 });
 
@@ -765,8 +766,8 @@ test('each write says when the owner approves it, every description is short and
   for (const tool of tools.filter(t => LAYOUT.includes(t.name))) {
     assert.ok(tool.description.length < 420, `${tool.name} is sent with every request, so its description stays short`);
     assert.doesNotMatch(tool.description, /[–—]|Capcom/);
-    assert.equal(/owner approves every call/.test(tool.description), ['archive_session', 'unarchive_session', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].includes(tool.name), tool.name);
-    assert.equal(inTree.test(tool.description), ['set_session_title', 'move_session_to_group'].includes(tool.name), tool.name);
+    assert.equal(/owner approves every call/.test(tool.description), ['archive_session', 'unarchive_session', 'nest_session', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].includes(tool.name), tool.name);
+    assert.equal(inTree.test(tool.description), ['set_session_title', 'move_session_to_group', 'unnest_session'].includes(tool.name), tool.name);
   }
   for (const group of [{ lookup: () => null }, { section: { id: 'pinned', name: 'Pinned', place: 'pin' }, lookup: () => null }]) {
     for (const tool of rpc('tools/list', {}, { subs: subsFor(), group }).result.tools.filter(t => LAYOUT_WRITE_NAMES.includes(`mcp__capcom__${t.name}`))) {
@@ -789,8 +790,8 @@ test('each write says when the owner approves it, every description is short and
 });
 
 test('the writes are named for the runner to hold for a card, the reads are named to run without one, and none is a tool every chat is allowed', () => {
-  assert.deepEqual(LAYOUT_WRITE_NAMES, ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].map(n => `mcp__capcom__${n}`));
-  assert.deepEqual(TREE_WRITE_NAMES, ['set_session_title', 'move_session_to_group'].map(n => `mcp__capcom__${n}`), 'archiving, unarchiving and making a project or group ask for every target');
+  assert.deepEqual(LAYOUT_WRITE_NAMES, ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'nest_session', 'unnest_session', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].map(n => `mcp__capcom__${n}`));
+  assert.deepEqual(TREE_WRITE_NAMES, ['set_session_title', 'move_session_to_group', 'unnest_session'].map(n => `mcp__capcom__${n}`), 'archiving, unarchiving and making a project or group ask for every target');
   assert.deepEqual(LAYOUT_READ_NAMES, ['list_chips', 'find_sessions'].map(n => `mcp__capcom__${n}`));
   for (const name of [...LAYOUT_WRITE_NAMES, ...LAYOUT_READ_NAMES]) {
     assert.equal(TOOL_NAMES.includes(name), false, `${name} would be allowed in a chat that has no callbacks`);
@@ -850,4 +851,275 @@ test('the approval card names both projects with their ids, and echoes a name th
   assert.equal(layoutSummary('move_project', { project: 'WORK', after: 'home lab' }, subs, PLACED), 'move the project "Work" [cp-w] after "Home lab" [cp-h]');
   assert.equal(layoutSummary('move_project', { project: 'work', before: 'nope' }, subs, PLACED), 'move the project "Work" [cp-w] before "nope"');
   assert.equal(layoutSummary('move_project', { project: 5 }, subs, PLACED), 'move the project "5" before "undefined"');
+});
+
+// The plan is what the server's nestPlan answers: ids and outcomes only. The card's lines and the key both come from it.
+const NEST_ROWS = [
+  row('top'),
+  row('boss', { title: 'Boss', group: 'cg-a' }),
+  row('kid', { title: 'Kid', group: 'cg-b' }),
+  row('under1', { title: 'Below one', parent: 'kid' }),
+  row('under2', { title: 'Below two', parent: 'kid', archived: true }),
+  row('mate', { title: 'Mate', parent: 'boss' }),
+  row('chipped', { title: 'From a chip' }),
+  row('chat', { title: 'Needs Review', groupSession: 'cg-a' }),
+];
+const PLAN = {
+  moved: 'kid', given: 'boss', root: 'boss', redirected: false, parent: null,
+  before: { group: 'cg-b', pinned: false, section: null, project: null },
+  after: { group: 'cg-a', pinned: false, section: null, project: null },
+  account: { changes: false }, under: [], lost: [], reads: [], chats: [['group:cg-a', ['kid']]], sends: [], shifted: [], openProject: false, family: ['boss', 'mate'], caller: null, callerChat: null,
+};
+const FULL = {
+  ...PLAN, given: 'mate', redirected: true, parent: 'top', under: ['under1', 'under2'], lost: ['under1'], chats: [['group:cg-a', ['kid', 'under1', 'under2']]], sends: [['chipped', 'boss']], caller: 'family', callerChat: 'cg-a',
+  before: { group: 'cg-b', pinned: true, section: 'pinned', project: 'cp-h' },
+  after: { group: 'cg-a', pinned: false, section: null, project: 'cp-w' },
+  account: { changes: true, to: 'Work', active: false, below: 2 },
+};
+
+// A nest as the server does it, for a plan: the plan is answered for the one nest it was made for, and a refusal or any other error can be given instead.
+function nestSubs({ plan = PLAN, fail, rows = NEST_ROWS } = {}) {
+  const subs = subsFor({ rows });
+  subs.nestPlan = (id, parent) => {
+    subs.calls.push(['plan', id, parent]);
+    if (fail) throw fail;
+    return plan;
+  };
+  subs.nest = (id, parent) => { subs.calls.push(['nest', id, parent]); return { parent: plan.root }; };
+  subs.unnest = id => { subs.calls.push(['unnest', id]); return rows.find(r => r.id === id)?.parent ? { nested: true, from: rows.find(r => r.id === id).parent, place: PLAN.before } : { nested: false }; };
+  return subs;
+}
+const ofCalls = (subs, kind) => subs.calls.filter(c => c[0] === kind);
+// What the runner holds for a call: the key of the card the owner approved, handed over once.
+const approvals = (key, id = 'use-1') => {
+  const held = new Map(key === undefined ? [] : [[id, key]]);
+  return { takeNest: useId => { const got = held.get(useId); held.delete(useId); return got; }, toolUseId: id, held };
+};
+
+test('the card for a nest has the action first and then one line for each consequence that applies', () => {
+  const lines = nestLines(PLAN, nestSubs(), GROUPS);
+  assert.deepEqual(lines, [
+    'nest "Kid" [kid] under "Boss" [boss]',
+    '"Boss" [boss] can then read it.',
+    'It, "Boss" [boss] and the 1 other session in that family can then message, rename, move and take out one another with no card.',
+    'It leaves the group "Backlog" [cg-b] and shows under "Boss" [boss] in the group "Needs Review" [cg-a].',
+    'The chat of the group "Needs Review" [cg-a] can then read it.',
+    'Archiving "Boss" [boss] archives it.',
+  ]);
+});
+
+test('the card says every consequence a nest has: the redirect, who reads what, what is lost, the place and project, the account, the chips and the caller', () => {
+  const lines = nestLines(FULL, nestSubs(), GROUPS);
+  assert.equal(lines[0], 'nest "Kid" [kid] under "Boss" [boss], since "Mate" [mate] is itself nested under it');
+  assert.equal(lines[1], '"Boss" [boss] can then read it and the 2 sessions under it.');
+  assert.match(lines[2], /^It, the 2 sessions under it, "Boss" \[boss\] and the 1 other session in that family can then message, rename, move and take out one another with no card\.$/);
+  assert.equal(lines[3], 'The 2 sessions under it then show beside it and it can no longer read 1 of them.');
+  assert.match(lines[4], /^It leaves Pinned, the group "Backlog" \[cg-b\] and "Session top" \[top\] and shows under "Boss" \[boss\] in the group "Needs Review" \[cg-a\]\. Its project changes from the project "Home lab" \[cp-h\] to the project "Work" \[cp-w\]\. The 2 sessions under it move with it\.$/);
+  assert.equal(lines[5], 'This group\'s chat can then read it and the 2 sessions under it.');
+  assert.equal(lines[6], 'It then runs on Work, and the 2 sessions under it or linked with it can change account too.');
+  assert.equal(lines[7], '"From a chip" [chipped] can then send to "Boss" [boss] with no card.');
+  assert.equal(lines[8], 'This chat is in the family it joins.');
+  assert.equal(lines[9], 'Archiving "Boss" [boss] archives it and the 2 sessions under it.');
+  assert.equal(lines.length, 10);
+  assert.equal(nestLines({ ...FULL, lost: ['under1', 'under2'] }, nestSubs(), GROUPS)[3], 'The 2 sessions under it then show beside it, and it can no longer read them.');
+  const unknown = nestLines({ ...PLAN, account: { changes: true } }, nestSubs(), GROUPS);
+  assert.ok(unknown.includes('It may change the account it runs on.'));
+  const other = nestLines({ ...PLAN, after: { ...PLAN.after, group: 'cg-d' }, chats: [['group:cg-d', ['kid']]], callerChat: 'cg-a' }, nestSubs(), GROUPS);
+  assert.ok(other.includes('The chat of the group "Reviewing" [cg-d] can then read it.'), 'a group that is not the caller\'s is named');
+});
+
+test('a chat that gains only some of the nest says exactly which, and a section is named by its id', () => {
+  const said = (chats, under = ['under1', 'under2', 'chipped']) => nestLines({ ...PLAN, under, chats }, nestSubs(), GROUPS).filter(l => /chat of/.test(l));
+  assert.deepEqual(said([['group:cg-a', ['kid']]]), ['The chat of the group "Needs Review" [cg-a] can then read it.']);
+  assert.deepEqual(said([['group:cg-a', ['kid', 'under1']]]), ['The chat of the group "Needs Review" [cg-a] can then read it and 1 of the 3 sessions under it.']);
+  assert.deepEqual(said([['group:cg-a', ['under1', 'chipped']]]), ['The chat of the group "Needs Review" [cg-a] can then read 2 of the 3 sessions under it.']);
+  assert.deepEqual(said([['group:cg-a', ['kid', 'under1', 'under2', 'chipped']]]), ['The chat of the group "Needs Review" [cg-a] can then read it and the 3 sessions under it.']);
+  assert.deepEqual(said([['group:cg-a', ['under1', 'under2', 'chipped']]]), ['The chat of the group "Needs Review" [cg-a] can then read the 3 sessions under it.']);
+  assert.match(said([['section:started', ['kid']], ['group:cg-d', ['under1']]], ['under1', 'under2']).join('\n'), /^The chat of the section .*\[started\].* can then read it\.\nThe chat of the group "Reviewing" \[cg-d\] can then read 1 of the 2 sessions under it\.$/);
+});
+
+test('a chat that gains the root or the rest of its family names the root and counts the others', () => {
+  const said = (ids, family = ['boss', 'mate', 'third']) => nestLines({ ...PLAN, family, chats: [['group:cg-a', ids]] }, nestSubs(), GROUPS).filter(l => /chat of/.test(l));
+  const chat = 'The chat of the group "Needs Review" [cg-a] can then read';
+  assert.deepEqual(said(['boss']), [`${chat} "Boss" [boss].`]);
+  assert.deepEqual(said(['kid', 'boss']), [`${chat} it and "Boss" [boss].`]);
+  assert.deepEqual(said(['mate']), [`${chat} 1 of the 2 other sessions in that family.`]);
+  assert.deepEqual(said(['mate', 'third']), [`${chat} the 2 other sessions in that family.`]);
+  assert.deepEqual(said(['kid', 'boss', 'mate', 'third']), [`${chat} it, "Boss" [boss] and the 2 other sessions in that family.`]);
+  assert.deepEqual(said(['mate'], ['boss', 'mate']), [`${chat} the 1 other session in that family.`]);
+});
+
+test('a reader other than the parent gets a line of its own, and a session that was read before but not now is named apart from those under it', () => {
+  const lines = nestLines({ ...PLAN, under: ['under1'], reads: [['chipped', ['kid', 'under1']], ['mate', ['kid']]], lost: ['under1', 'top'] }, nestSubs(), GROUPS);
+  assert.ok(lines.includes('"From a chip" [chipped] can then read "Kid" [kid] and "Below one" [under1].'));
+  assert.ok(lines.includes('"Mate" [mate] can then read "Kid" [kid].'));
+  assert.ok(lines.includes('The 1 session under it then shows beside it, and it can no longer read it.'));
+  assert.ok(lines.includes('It can then no longer read "Session top" [top], which stays where it was.'));
+  assert.ok(nestLines({ ...PLAN, reads: [['chipped', ['a', 'b', 'c', 'd']]] }, nestSubs(), GROUPS).includes('"From a chip" [chipped] can then read 4 sessions.'));
+  assert.equal(nestLines(PLAN, nestSubs(), GROUPS).some(l => /no longer/.test(l)), false);
+});
+
+test('a send a chip session gains has a line for each target naming up to three senders, and a project that opens the send setting says so for the sessions under it too', () => {
+  const lines = nestLines({ ...PLAN, sends: [['chipped', 'boss'], ['mate', 'boss'], ['under1', 'kid']] }, nestSubs(), GROUPS);
+  assert.ok(lines.includes('"From a chip" [chipped] and "Mate" [mate] can then send to "Boss" [boss] with no card.'));
+  assert.ok(lines.includes('"Below one" [under1] can then send to "Kid" [kid] with no card.'));
+  assert.ok(nestLines({ ...PLAN, sends: ['a', 'b', 'c', 'd'].map(f => [f, 'boss']) }, nestSubs(), GROUPS).includes('4 sessions that chips started can then send to "Boss" [boss] with no card.'));
+  const moved = { ...PLAN, before: { ...PLAN.before, project: 'cp-h' }, after: { ...PLAN.after, project: 'cp-w' } };
+  const place = plan => nestLines(plan, nestSubs(), GROUPS).find(l => l.startsWith('It leaves'));
+  assert.match(place({ ...moved, openProject: true }), /Its project changes from the project "Home lab" \[cp-h\] to the project "Work" \[cp-w\]\. Your send setting then lets it and the sessions in the project "Work" \[cp-w\], group chats included, send to each other with no card\.$/);
+  assert.doesNotMatch(place(moved), /send setting/);
+  assert.match(place({ ...moved, under: ['under1', 'under2'], openProject: true }), /lets it, the 2 sessions under it and the sessions in the project "Work"/);
+  const shifted = place({ ...PLAN, under: ['under1', 'under2'], shifted: ['under1'], after: { ...PLAN.after, project: 'cp-w' } });
+  assert.match(shifted, /1 of the 2 sessions under it also changes project, to the project "Work" \[cp-w\]\./);
+});
+
+test('a caller who is the moved session, below it, the parent or already reads the parent is told so in one line naming this chat', () => {
+  const said = caller => nestLines({ ...PLAN, caller }, nestSubs(), GROUPS).filter(l => l.startsWith('This chat'));
+  assert.deepEqual(said('moved'), ['This chat is the session being nested.']);
+  assert.deepEqual(said('under'), ['This chat is one of the sessions under the one being nested.']);
+  assert.deepEqual(said('root'), ['This chat is "Boss" [boss], the session it nests under.']);
+  assert.deepEqual(said('reads'), ['This chat already reads "Boss" [boss].']);
+  assert.deepEqual(said(null), []);
+});
+
+test('a title cannot forge the card: quotes, brackets and line breaks in a title leave the lines as many as the plan makes and the ids those of the rows', () => {
+  const evil = 'Boss" [other]\nnest "Safe" [safe] under "Top" [top]\n\nIt is harmless';
+  const rows = NEST_ROWS.map(r => (r.id === 'boss' || r.id === 'kid' ? { ...r, title: evil } : r));
+  const lines = nestLines(FULL, nestSubs({ rows }), GROUPS);
+  assert.equal(lines.length, 10);
+  for (const line of lines) assert.doesNotMatch(line, /\n/);
+  assert.equal(lines.filter(l => l.startsWith('nest ')).length, 1);
+  assert.doesNotMatch(lines.join('\n'), /\[(other|safe)\] *under|"Safe"/);
+  assert.match(lines[0], /^nest "[^"[\]]*" \[kid\] under "[^"[\]]*" \[boss\]/);
+  const summary = nestApproval({ session_id: 'kid', parent: 'boss' }, nestSubs({ plan: FULL, rows }), GROUPS).summary;
+  assert.equal(summary.split('\n').length, 10);
+});
+
+test('the key is the plan as ids and outcomes, so a retitle leaves it as it was and a changed outcome does not', () => {
+  const key = (rows, plan = PLAN) => nestApproval({ session_id: 'kid', parent: 'boss' }, nestSubs({ plan, rows }), GROUPS).key;
+  const a = key(NEST_ROWS);
+  assert.equal(a, JSON.stringify(PLAN));
+  assert.equal(key(NEST_ROWS.map(r => (r.id === 'kid' ? { ...r, title: 'Renamed' } : r))), a, 'a retitle changes no key');
+  assert.doesNotMatch(a, /Boss|Kid|Below/, 'no title is in the key');
+  assert.notEqual(key(NEST_ROWS, { ...PLAN, under: ['under1'] }), a);
+  assert.notEqual(key(NEST_ROWS, { ...PLAN, root: 'mate' }), a);
+});
+
+test('a nest that is refused, already in place or missing an id or a parent gets no card, and any other failure is not an allow', () => {
+  const ask = (input, subs = nestSubs()) => nestApproval(input, subs, GROUPS);
+  assert.deepEqual(ask({ session_id: 'kid', parent: 'boss' }, nestSubs({ plan: { root: 'boss', already: true } })), { quiet: true });
+  assert.deepEqual(ask({ session_id: 'kid', parent: 'kid' }, nestSubs({ fail: status(400, 'A session cannot nest under itself or its own child.') })), { quiet: true });
+  for (const input of [undefined, null, 'x', {}, { session_id: 'kid' }, { parent: 'boss' }, { session_id: 'kid', parent: null }, { session_id: 'kid', parent: ' ' }, { session_id: 5, parent: 'boss' }, { session_id: 'kid', parent: ['boss'] }]) {
+    const subs = nestSubs();
+    assert.deepEqual(ask(input, subs), { quiet: true }, JSON.stringify(input));
+    assert.deepEqual(ofCalls(subs, 'plan'), [], 'a bad input is never planned');
+  }
+  assert.throws(() => ask({ session_id: 'kid', parent: 'boss' }, nestSubs({ fail: new Error('/secret/path broke') })), /secret/);
+  assert.match(ask({ session_id: 'kid', parent: 'boss' }).summary, /^nest "Kid" \[kid\] under "Boss" \[boss\]\n/);
+});
+
+test('the fallback line names both sessions as the other tools do and echoes an id that matches nothing without quotes or brackets', () => {
+  assert.equal(nestSummary({ session_id: 'kid', parent: 'boss' }, nestSubs()), 'nest "Kid" [kid] under "Boss" [boss]');
+  assert.equal(nestSummary({ session_id: 'kid', parent: 'x" [boss]' }, nestSubs()), 'nest "Kid" [kid] under an unknown session [x boss]');
+  assert.equal(nestSummary({}, nestSubs()), 'nest an unknown session under an unknown session');
+  assert.equal(nestSummary(null, nestSubs()), 'nest an unknown session under an unknown session');
+});
+
+test('nest_session writes once, for the card that was approved, and says where the session landed', () => {
+  const subs = nestSubs({ plan: FULL });
+  const held = approvals(JSON.stringify(FULL));
+  const out = nestSession({ session_id: 'kid', parent: 'mate' }, { subs, groups: () => GROUPS, ...held });
+  assert.equal(out, 'Nested "Kid" [kid] under "Boss" [boss]. "Mate" [mate] is itself nested under "Boss" [boss], so it went under "Boss" [boss]. It left Pinned, the group "Backlog" [cg-b] and "Session top" [top] and now shows in the group "Needs Review" [cg-a]. Its project is now the project "Work" [cp-w]. The 2 sessions under it went with it.');
+  assert.deepEqual(ofCalls(subs, 'nest'), [['nest', 'kid', 'mate']]);
+  assert.equal(held.held.size, 0, 'the approval is spent');
+});
+
+test('nest_session writes nothing with no approval, with one for another nest, after a replay or for another tool use id, and a refusal says to ask again', () => {
+  const run = (held, plan = PLAN, args = { session_id: 'kid', parent: 'boss' }) => {
+    const subs = nestSubs({ plan });
+    return { subs, run: () => nestSession(args, { subs, groups: () => GROUPS, ...held }) };
+  };
+  const none = run(approvals());
+  refused(none.run, 'The owner has not approved this nest. Nothing changed.');
+  const other = run(approvals(JSON.stringify({ ...PLAN, under: ['under1'] })));
+  refused(other.run, 'What the approval card showed has changed since. Nothing changed. Call nest_session again to ask the owner.');
+  const held = approvals(JSON.stringify(PLAN));
+  const first = run(held);
+  assert.match(first.run(), /^Nested /);
+  refused(first.run, 'The owner has not approved this nest. Nothing changed.');
+  assert.equal(ofCalls(first.subs, 'nest').length, 1, 'a replay writes nothing');
+  const elsewhere = run({ ...approvals(JSON.stringify(PLAN)), toolUseId: 'use-2' });
+  refused(elsewhere.run, 'The owner has not approved this nest. Nothing changed.');
+  const noKey = run({ takeNest: undefined, toolUseId: 'use-1' });
+  refused(noKey.run, 'The owner has not approved this nest. Nothing changed.');
+  for (const r of [none, other, elsewhere, noKey]) assert.deepEqual(ofCalls(r.subs, 'nest'), []);
+});
+
+test('an approval is spent by a call that is refused, so the owner is asked again', () => {
+  const held = approvals(JSON.stringify(PLAN));
+  const subs = nestSubs({ fail: status(400, 'A session cannot nest under itself or its own child.') });
+  refused(() => nestSession({ session_id: 'kid', parent: 'kid' }, { subs, groups: () => GROUPS, ...held }), 'A session cannot nest under itself or its own child.');
+  assert.equal(held.held.size, 0);
+  const again = nestSubs();
+  refused(() => nestSession({ session_id: 'kid', parent: 'boss' }, { subs: again, groups: () => GROUPS, ...held }), 'The owner has not approved this nest. Nothing changed.');
+});
+
+test('nest_session answers already nested with nothing written and no approval needed, and a missing or blank parent is a refusal that is never a take out', () => {
+  const subs = nestSubs({ plan: { root: 'boss', already: true } });
+  assert.equal(nestSession({ session_id: 'mate', parent: 'boss' }, { subs, groups: () => GROUPS, ...approvals() }), '"Mate" [mate] is already nested under "Boss" [boss]. Nothing changed.');
+  assert.deepEqual(ofCalls(subs, 'nest'), []);
+  for (const parent of [undefined, null, '', '  ', 5, ['boss'], {}]) {
+    const bad = nestSubs();
+    refused(() => nestSession({ session_id: 'kid', parent }, { subs: bad, groups: () => GROUPS, ...approvals(JSON.stringify(PLAN)) }), 'Give the id of the session to nest it under as parent. unnest_session takes a session out from under another.');
+    assert.deepEqual([...ofCalls(bad, 'nest'), ...ofCalls(bad, 'unnest')], []);
+  }
+  for (const session_id of [undefined, null, '', 5]) refused(() => nestSession({ session_id, parent: 'boss' }, { subs: nestSubs(), groups: () => GROUPS, ...approvals() }), 'Give the id of the session as session_id.');
+});
+
+test('the server\'s refusals come back as the model\'s, with nothing written, and a plan that throws something else is a failure and not a write', () => {
+  const refusals = ['A session cannot nest under itself or its own child.', 'That session is archived. Unarchive it first.', "A group's session stays with its group.", 'No session with that id on this Mac.'];
+  for (const message of refusals) {
+    const subs = nestSubs({ fail: status(400, message) });
+    refused(() => nestSession({ session_id: 'kid', parent: 'boss' }, { subs, groups: () => GROUPS, ...approvals(JSON.stringify(PLAN)) }), message);
+    assert.deepEqual(ofCalls(subs, 'nest'), []);
+  }
+  const subs = nestSubs({ fail: new Error('/secret/path broke') });
+  const call = rpc('tools/call', { name: 'nest_session', arguments: { session_id: 'kid', parent: 'boss' }, _meta: { 'claudecode/toolUseId': 'use-1' } }, { subs, groups: () => GROUPS, ...approvals(JSON.stringify(PLAN)) }).result;
+  assert.deepEqual(call, { content: [{ type: 'text', text: 'nest_session could not finish (error).' }], isError: true });
+  assert.deepEqual(ofCalls(subs, 'nest'), []);
+});
+
+test('the tool call hands the tool use id of the call to the approval, so an approval for one call does not serve another', () => {
+  const subs = nestSubs();
+  const held = approvals(JSON.stringify(PLAN), 'use-1');
+  const call = id => rpc('tools/call', { name: 'nest_session', arguments: { session_id: 'kid', parent: 'boss' }, _meta: { 'claudecode/toolUseId': id } }, { subs, groups: () => GROUPS, takeNest: held.takeNest }).result;
+  assert.match(call('use-2').content[0].text, /^The owner has not approved this nest\./);
+  assert.match(call('use-1').content[0].text, /^Nested "Kid" \[kid\] under "Boss" \[boss\]\./);
+  assert.deepEqual(ofCalls(subs, 'nest'), [['nest', 'kid', 'boss']]);
+});
+
+test('unnest_session takes a nested session out and says where it shows, answers plainly for one that is not nested and refuses the server\'s refusals', () => {
+  const rows = NEST_ROWS.map(r => (r.id === 'mate' ? { ...r, group: 'cg-a' } : r));
+  const subs = nestSubs({ rows });
+  subs.unnest = id => { subs.calls.push(['unnest', id]); return id === 'mate' ? { nested: true, from: 'boss', place: { group: 'cg-a', pinned: false, section: null, project: null } } : { nested: false }; };
+  assert.equal(unnestSession({ session_id: 'mate' }, subs, GROUPS), 'Took "Mate" [mate] out from under "Boss" [boss]. It now shows in the group "Needs Review" [cg-a], and is no longer part of that family.');
+  assert.equal(unnestSession({ session_id: 'top' }, subs, GROUPS), '"Session top" [top] is not nested. Nothing changed.');
+  subs.unnest = () => { throw status(400, 'That session is archived. Unarchive it first.'); };
+  refused(() => unnestSession({ session_id: 'mate' }, subs, GROUPS), 'That session is archived. Unarchive it first.');
+  for (const session_id of [undefined, null, '', 5]) refused(() => unnestSession({ session_id }, subs, GROUPS), 'Give the id of the session as session_id.');
+});
+
+test('the card for a take out names the session and its parent, where it then shows, and the project and account it changes, and never throws', () => {
+  const subs = nestSubs({ rows: NEST_ROWS.map(r => (r.id === 'mate' ? { ...r, group: 'cg-a' } : r)) });
+  subs.unnestChange = () => ({ changes: false });
+  assert.equal(unnestSummary({ session_id: 'mate' }, subs, GROUPS), 'take "Mate" [mate] out from under "Boss" [boss], so it shows in the group "Needs Review" [cg-a]');
+  assert.equal(unnestSummary({ session_id: 'top' }, subs, GROUPS), 'take "Session top" [top] out from under its parent');
+  assert.equal(unnestSummary({ session_id: 'nobody' }, subs, GROUPS), 'take an unknown session [nobody] out from under its parent');
+  assert.equal(unnestSummary({}, subs, GROUPS), 'take an unknown session out from under its parent');
+  subs.unnestChange = () => ({ changes: true, project: true, account: true, to: 'Work', below: 1 });
+  assert.equal(unnestSummary({ session_id: 'mate' }, subs, GROUPS), 'take "Mate" [mate] out from under "Boss" [boss], so it shows in the group "Needs Review" [cg-a], which changes its project and runs it on Work, and the 1 session linked with it can change account too');
+  subs.unnestChange = () => ({ changes: true });
+  assert.match(unnestSummary({ session_id: 'mate' }, subs, GROUPS), /, which may change the account it runs on$/);
+  subs.unnestChange = () => { throw new Error('broke'); };
+  assert.match(unnestSummary({ session_id: 'mate' }, subs, GROUPS), /, which may change the account it runs on$/);
 });

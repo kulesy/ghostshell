@@ -1,6 +1,6 @@
 # Nest sessions under a parent, and follow the links Desktop records
 
-- Status: Accepted, amended 2026-10-22, 2026-10-23, 2026-10-27, 2026-10-28, 2026-10-30, 2026-10-31 and 2026-11-02
+- Status: Accepted, amended 2026-10-22, 2026-10-23, 2026-10-27, 2026-10-28, 2026-10-30, 2026-10-31, 2026-11-02 and 2026-11-25
 - Deciders: Eli
 - Date: 2026-10-22
 - Tags: sessions, nesting, linked-sessions, layout, drag-and-drop, claude-desktop
@@ -82,6 +82,8 @@ Checked: the chip map and `startedBy()` across a restart, the maker listing and 
 - **What changes for the owner.** A family's members sort among themselves by the list's sort, since no member is below another. A nested session no longer shows a Sub sessions tab or a roll-up for sessions linked to it, and its tools no longer reach a session Desktop linked to it unless one of its chips started that session. Picking a session with one linked to it, for a new parent or a move, places each on its own, since the list showed them as siblings, where before the second rode along under the first.
 
 Checked, in the test suite: the walk's `parent` and `near` for a chain with and without its middle archived; archiving a nested session, its head, and a session whose head was archived alone; unarchiving a head's batch and a nested session alone; moving, pinning, nesting and archiving a session with another linked to it; `list_sub_sessions`, `read_sub_session` and `inOwnTree` through the running server, including a session started from an old chip of a nested session and two heads under an archived root; and the archive note and Sub sessions cards in a headless Chromium shell. Not checked: a real Claude Desktop chain of side chats, and WebKit.
+
+**Amended 2026-11-25, a session can nest and take out through tools.** The owner could nest and take out by drag, menu and route, and a session could not ([issue 257](https://github.com/kulesy/ghostshell/issues/257)). `nest_session(session_id, parent)` and `unnest_session(session_id)` run the code the routes run, so the tool and the route cannot disagree. Nesting is an access grant here: the parent reads the sessions under it, and the family sends, renames, moves and takes out one another with no card. So `nest_session` shows the owner a card for every call, in every mode, listing each consequence, and the write checks that the nest is the one the card showed. The card comes from the nest applied to the layout in memory, with the real access rules run before and after, so a grant that the rules give is on it. A chat's lines are what it could list after the nest with the caps on its lists lifted, less what it lists now, over the session, those under it, the root and its family, so later activity that moves a capped list gives it no read the card did not name. The decision, the options turned down, the approval record, the card, the costs and what was checked are in [the layout tools record](20261028-layout-tools-for-sessions.md) (amended 2026-11-25).
 
 ### Consequences
 

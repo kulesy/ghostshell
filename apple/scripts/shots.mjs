@@ -787,6 +787,10 @@ async function approvalsFlow(bundle, appearance) {
     await sleep(800);
     await app.both('approval-edit');
 
+    await shown('ask-nest', 'Claude wants to nest a session under another');
+    await sleep(800);
+    await app.both('approval-nest');
+
     await shown('ask-question', 'Claude is asking');
     await sleep(800);
     await app.both('approval-question');

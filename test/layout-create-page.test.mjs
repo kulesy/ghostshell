@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { findChromium, launch, notFound } from './browser.mjs';
 import { as, PASSWORD, request, signIn, start } from './harness.mjs';
 
-const SESSIONS = [{ id: 'top', title: 'Top', ago: 5 }, { id: 'other', title: 'Other', ago: 6 }, { id: 'mover', title: 'Mover', ago: 7 }, { id: 'mover2', title: 'Mover two', ago: 8 }];
+const SESSIONS = [{ id: 'top', title: 'Top', ago: 5 }, { id: 'other', title: 'Other', ago: 6 }, { id: 'mover', title: 'Mover', ago: 7 }, { id: 'mover2', title: 'Mover two', ago: 8 }, { id: 'nester', title: 'Nester', ago: 9 }];
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
 const timeout = 60_000;
@@ -75,6 +75,21 @@ test('the card for moving a group has its own title and says which group goes in
     assert.deepEqual(cards, [['Claude wants to move a group to a project', line]]);
     assert.deepEqual(page.problems, []);
   }
+});
+
+test('the card for a nest has its own title, its action line, and each consequence on a line of its own beneath it', { skip, timeout }, async t => {
+  const { token } = await signIn(app);
+  const sent = text => request(app, 'POST', '/api/sessions/nester/send', { headers: as(token), json: { text } });
+  assert.equal((await sent('begin a session')).status, 200);
+  assert.equal((await sent('ask to use nest_session {"session_id":"other","parent":"top"}')).status, 200);
+  const page = await appPage(t, '#/s/nester');
+  await page.until(`document.querySelectorAll('.approval').length === 1`);
+  const card = await page.evaluate(`(() => { const a = document.querySelector('.approval'); return [a.querySelector('h3').textContent, a.querySelector('.approval-path').textContent, [...a.querySelectorAll('.approval-note')].map(n => n.textContent)]; })()`);
+  assert.equal(card[0], 'Claude wants to nest a session under another');
+  assert.equal(card[1], 'nest "Other" [other] under "Top" [top]');
+  assert.match(card[2][0], /^"Top" \[top\] can then read it\.$/);
+  assert.equal(card[2].at(-1), 'Archiving "Top" [top] archives it.');
+  assert.deepEqual(page.problems, []);
 });
 
 test('a project and a group made by a tool show in a sidebar that is already open, with no reload', { skip, timeout }, async t => {

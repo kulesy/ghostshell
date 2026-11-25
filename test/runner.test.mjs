@@ -1020,6 +1020,8 @@ const groupCli = dir => {
     "  if (verb === 'ask') out({ type: 'control_request', request_id: `ask-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: JSON.parse(rest.join(' ') || '{}'), permission_suggestions: rule } });",
     "  if (verb === 'builtin') out({ type: 'control_request', request_id: `builtin-${tool}`, request: { subtype: 'can_use_tool', tool_name: tool, input: JSON.parse(rest.join(' ') || '{}'), permission_suggestions: rule } });",
     "  if (verb === 'call') out({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(rest.join(' ') || '{}') } } } });",
+    "  if (verb === 'use') { out({ type: 'control_request', request_id: `use-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${rest[0]}`, tool_use_id: tool, input: JSON.parse(rest.slice(1).join(' ') || '{}'), permission_suggestions: rule } }); }",
+    "  if (verb === 'callas') out({ type: 'control_request', request_id: `callas-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: rest[0], _meta: { 'claudecode/toolUseId': tool.split('@')[0] }, arguments: JSON.parse(rest.slice(1).join(' ') || '{}') } } } });",
     "  if (verb === 'result') out({ type: 'result', subtype: 'success', is_error: false });",
     "  if (verb === 'tools') out({ type: 'control_request', request_id: 'tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
     '});',
@@ -1036,7 +1038,7 @@ const groupCli = dir => {
 
 const GROUP_ID = '11111111-2222-4333-8444-555555555555';
 // What a group's chat is made to ask about, whatever the mode. Spelled out here so a change to the list is a change to a test.
-const LAYOUT_WRITES = ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].map(n => `mcp__capcom__${n}`);
+const LAYOUT_WRITES = ['archive_session', 'unarchive_session', 'set_session_title', 'move_session_to_group', 'nest_session', 'unnest_session', 'create_project', 'create_group', 'move_group_to_project', 'move_project', 'move_routine_to_project'].map(n => `mcp__capcom__${n}`);
 const GROUP_ASKS = ['mcp__capcom__start_group_session', 'mcp__capcom__send_session', ...LAYOUT_WRITES, 'Write', 'Edit', 'NotebookEdit', 'SendMessage'];
 const groupChat = (t, { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-')), id = GROUP_ID, ...options } = {}) => {
   const recorded = groupCli(dir);
@@ -1963,4 +1965,148 @@ test('under any a rename, a move, an archive and an unarchive outside the tree s
   const group = groupChat(t, { group: {}, subs: () => ({ lookup: () => ({ self: { id: 'me', title: 'Me' }, rows: REACH_ROWS }), pending: () => [], summary: () => null, send: () => 'idle', reach: () => 'any', takeSend: () => { taken++; return true; } }), groups: REACH_GROUPS, id: '11111111-2222-4333-8444-000000000290' });
   for (const to of ['mate', 'far', 'kid']) assert.equal(await wentFree(group.chat, group.recorded, sendAsk(to)), false, `a group's chat to ${to}`);
   assert.equal(taken, 0);
+});
+
+// A nest as the server answers it: the plan, the rows the card names, and what was nested.
+const nestOf = (t, { plan, fail, already = false, ...options } = {}) => {
+  const nested = [];
+  const base = { moved: 'kid', given: 'boss', root: 'boss', redirected: false, parent: null, before: { group: null, pinned: false, section: null, project: null }, after: { group: null, pinned: false, section: null, project: null }, account: { changes: false }, under: [], lost: [], reads: [], chats: [], sends: [], shifted: [], openProject: false, family: ['boss'], caller: null, callerChat: null, already };
+  const rows = [{ id: 'kid', title: 'Kid', parent: 'me' }, { id: 'boss', title: 'Boss', parent: null }, { id: 'loose', title: 'Loose', parent: null }];
+  const subs = () => ({
+    lookup: () => ({ self: { id: 'me', title: 'Me' }, rows }),
+    pending: () => [], summary: () => null, send: () => 'idle', projects: () => [],
+    nestPlan: (id, parent) => { if (fail) throw fail; return { ...base, ...plan, moved: id, given: parent, root: parent }; },
+    nest: (id, parent) => { nested.push([id, parent]); },
+  });
+  return { ...groupChat(t, { subs, ...options }), nested };
+};
+const NEST_INPUT = { session_id: 'kid', parent: 'boss' };
+const nestUse = (id, input = NEST_INPUT) => `use ${id} nest_session ${JSON.stringify(input)}`;
+const nestCall = (id, input = NEST_INPUT) => `callas ${id} nest_session ${JSON.stringify(input)}`;
+const replyText = (recorded, id) => answerTo(recorded, id).at(-1)?.mcp_response?.result?.content?.[0]?.text ?? '';
+let calls = 0;
+const callNest = async (chat, recorded, id, input) => {
+  const named = `${id}@${++calls}`;
+  chat.send(nestCall(named, input), []);
+  await slow(() => answerTo(recorded, `callas-${named}`).length === 1);
+  return replyText(recorded, `callas-${named}`);
+};
+
+test('a nest always shows a card in any mode, with the plan\'s lines, no Always allow and no key on what the page is sent, and the call writes once for that tool use id after an allow that leaves the input as it was', async t => {
+  const modes = ['manual', 'bypassPermissions', 'auto'];
+  for (const [n, mode] of modes.entries()) {
+    const { chat, recorded, nested } = nestOf(t, { mode, id: `11111111-2222-4333-8444-00000000a30${n}` });
+    chat.send(nestUse('u1'), []);
+    await slow(() => chat.status().pending.length === 1);
+    const card = chat.status().pending[0];
+    assert.equal(card.tool, 'mcp__capcom__nest_session');
+    assert.equal(card.always, false, mode);
+    assert.match(card.summary, /^nest "Kid" \[kid\] under "Boss" \[boss\]\n/, mode);
+    assert.equal(JSON.stringify(card).includes('"key"'), false, 'the key stays on the server');
+    assert.equal(answerTo(recorded, 'use-u1').length, 0);
+    assert.match(await callNest(chat, recorded, 'u1'), /has not approved/, 'a call before the owner answers writes nothing');
+    assert.deepEqual(nested, []);
+    chat.answer('use-u1', 'allow');
+    await slow(() => answerTo(recorded, 'use-u1').length === 1);
+    assert.deepEqual([answerTo(recorded, 'use-u1')[0].behavior, answerTo(recorded, 'use-u1')[0].updatedInput], ['allow', NEST_INPUT]);
+    assert.match(await callNest(chat, recorded, 'other'), /has not approved/, 'another tool use id');
+    assert.match(await callNest(chat, recorded, 'u1'), /Nested "Kid" \[kid\] under "Boss" \[boss\]/);
+    assert.deepEqual(nested, [['kid', 'boss']], mode);
+    assert.match(await callNest(chat, recorded, 'u1'), /has not approved|already/);
+    assert.deepEqual(nested, [['kid', 'boss']], 'the approval is spent');
+  }
+});
+
+test('a nest that is denied writes nothing, and Always allow and an answer keep no rule and leave the input as it was, the approval still being for that one call', async t => {
+  const { chat, recorded, nested } = nestOf(t, { id: '11111111-2222-4333-8444-00000000a310' });
+  chat.send(nestUse('d1'), []);
+  await slow(() => chat.status().pending.length === 1);
+  chat.answer('use-d1', 'deny');
+  await slow(() => answerTo(recorded, 'use-d1').length === 1);
+  assert.equal(answerTo(recorded, 'use-d1')[0].behavior, 'deny');
+  assert.match(await callNest(chat, recorded, 'd1'), /has not approved/);
+  for (const [decision, id] of [['always', 'a1'], ['answer', 'n1']]) {
+    chat.send(nestUse(id), []);
+    await slow(() => chat.status().pending.length === 1);
+    chat.answer(`use-${id}`, decision, { x: 'y' });
+    await slow(() => answerTo(recorded, `use-${id}`).length === 1);
+    const [reply] = answerTo(recorded, `use-${id}`);
+    assert.deepEqual([reply.behavior, reply.updatedInput, 'updatedPermissions' in reply], ['allow', NEST_INPUT, false], decision);
+  }
+  assert.deepEqual(nested, []);
+  assert.match(await callNest(chat, recorded, 'a1'), /Nested/);
+  assert.deepEqual(nested, [['kid', 'boss']]);
+});
+
+test('a nest with a refusal or nothing to change is allowed with no card and no key, so its call says why and writes nothing, and one with no tool use id or a plan that cannot be made shows a card that approves nothing', async t => {
+  const refused = Object.assign(new Error('no'), { status: 400 });
+  for (const [n, options] of [{ fail: refused }, { already: true }].entries()) {
+    const { chat, recorded, nested } = nestOf(t, { ...options, id: `11111111-2222-4333-8444-00000000a32${n}` });
+    chat.send(nestUse('q1'), []);
+    await slow(() => answerTo(recorded, 'use-q1').length === 1);
+    assert.deepEqual([answerTo(recorded, 'use-q1')[0].behavior, chat.status().pending.length], ['allow', 0]);
+    await callNest(chat, recorded, 'q1');
+    assert.deepEqual(nested, []);
+  }
+  const bare = nestOf(t, { id: '11111111-2222-4333-8444-00000000a330' });
+  bare.chat.send(`ask nest_session ${JSON.stringify(NEST_INPUT)}`, []);
+  await slow(() => bare.chat.status().pending.length === 1);
+  bare.chat.answer('ask-nest_session', 'allow');
+  await slow(() => answerTo(bare.recorded, 'ask-nest_session').length === 1);
+  bare.chat.send(`call nest_session ${JSON.stringify(NEST_INPUT)}`, []);
+  await slow(() => answerTo(bare.recorded, 'call-nest_session').length === 1);
+  assert.match(replyText(bare.recorded, 'call-nest_session'), /has not approved/);
+  assert.deepEqual(bare.nested, []);
+  const broken = nestOf(t, { fail: new Error('boom'), id: '11111111-2222-4333-8444-00000000a331' });
+  broken.chat.send(nestUse('b1'), []);
+  await slow(() => broken.chat.status().pending.length === 1);
+  assert.match(broken.chat.status().pending[0].summary, /^nest "Kid" \[kid\] under "Boss" \[boss\]$/);
+  broken.chat.answer('use-b1', 'allow');
+  await slow(() => answerTo(broken.recorded, 'use-b1').length === 1);
+  await callNest(broken.chat, broken.recorded, 'b1');
+  assert.deepEqual(broken.nested, []);
+});
+
+test('a nest card a background subagent left open outlives the turn and still writes once, and a process exit forgets every approval', async t => {
+  const { chat, recorded, nested } = nestOf(t, { id: '11111111-2222-4333-8444-00000000a340' });
+  chat.send(nestUse('k1'), []);
+  await slow(() => chat.status().pending.length === 1);
+  chat.send('result', []);
+  await slow(() => chat.nestKeys.size === 1);
+  chat.answer('use-k1', 'allow');
+  await slow(() => chat.nests.size === 1);
+  assert.match(await callNest(chat, recorded, 'k1'), /^Nested/);
+  assert.equal(chat.nests.size, 0);
+  assert.equal(nested.length, 1);
+  chat.send(nestUse('k2'), []);
+  await slow(() => chat.status().pending.length === 1);
+  chat.answer('use-k2', 'allow');
+  await slow(() => chat.nests.size === 1);
+  chat.send(nestUse('k3'), []);
+  await slow(() => chat.nestKeys.size === 1);
+  chat.stop();
+  await slow(() => chat.nestKeys.size === 0 && chat.nests.size === 0);
+  assert.equal(nested.length, 1);
+});
+
+test('a group chat\'s nest shows a card too, and a take out of a session in an ordinary chat\'s own tree goes with no card only when the server says it changes nothing else', async t => {
+  const group = nestOf(t, { group: {}, mode: 'bypassPermissions', id: '11111111-2222-4333-8444-00000000a350' });
+  group.chat.send(nestUse('g1'), []);
+  await slow(() => group.chat.status().pending.length === 1);
+  assert.equal(answerTo(group.recorded, 'use-g1').length, 0);
+  const unnestAsk = input => `ask unnest_session ${JSON.stringify(input)}`;
+  const take = async (n, unnestChange) => {
+    const { chat, recorded } = groupChat(t, { subs: () => ({ ...subsOf()(), ...(unnestChange && { unnestChange }) }), id: `11111111-2222-4333-8444-00000000a36${n}` });
+    chat.send(unnestAsk({ session_id: 'kid' }), []);
+    await slow(() => chat.status().pending.length === 1 || answerTo(recorded, 'ask-unnest_session').length === 1);
+    return answerTo(recorded, 'ask-unnest_session').length === 1 && chat.status().pending.length === 0;
+  };
+  assert.equal(await take(0, () => ({ changes: false })), true, 'nothing else changes');
+  assert.equal(await take(1, () => ({ changes: true, project: true })), false, 'a project changes');
+  assert.equal(await take(2, () => ({})), false, 'no answer on whether it changes');
+  assert.equal(await take(3, undefined), false, 'a context with no answer');
+  assert.equal(await take(4, () => { throw new Error('boom'); }), false, 'a check that fails');
+  const { chat } = groupChat(t, { subs: subsOf(), id: '11111111-2222-4333-8444-00000000a370' });
+  chat.send(unnestAsk({ session_id: 'stranger' }), []);
+  await slow(() => chat.status().pending.length === 1);
 });

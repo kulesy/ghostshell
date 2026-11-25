@@ -23,6 +23,7 @@
   {"mac": "7-approval-plan", "page": "07-approval-plan"},
   {"mac": "7-approval-bash", "page": "08-approval-bash"},
   {"mac": "7-approval-edit", "page": "approval-edit"},
+  {"mac": "7-approval-nest", "page": "approval-nest"},
   {"mac": "7-composer-draft", "page": "composer-draft"},
   {"mac": "9-sidebar-routines", "page": "sidebar-routines"},
   {"mac": "9-routines-list", "page": "routines-list"},

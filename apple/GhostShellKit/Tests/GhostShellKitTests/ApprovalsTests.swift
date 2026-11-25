@@ -180,6 +180,18 @@ final class ApprovalsTests: XCTestCase {
         XCTAssertEqual(Approvals.parts(of: try prompt("SendMessage", "{\"to\":\"x\",\"message\":\"m\"}")).fields.map(\.label), ["To", "Message"])
     }
 
+    func testANestCardHasItsActionAsThePathAndEachConsequenceAsANote() throws {
+        let summary = "nest \"A\" [a] under \"B\" [b]\n\"B\" [b] can then read it.\n\nArchiving \"B\" [b] archives it."
+        let nest = Approvals.parts(of: try prompt("mcp__capcom__nest_session", "{}", summary: summary))
+        XCTAssertEqual(nest.title, "Claude wants to nest a session under another")
+        XCTAssertEqual(nest.path, "nest \"A\" [a] under \"B\" [b]")
+        XCTAssertEqual(nest.notes, ["\"B\" [b] can then read it.", "Archiving \"B\" [b] archives it."], "a blank line is no note")
+        let out = Approvals.parts(of: try prompt("mcp__capcom__unnest_session", "{}", summary: "take \"A\" [a] out from under \"B\" [b]"))
+        XCTAssertEqual(out.title, "Claude wants to take a session out from under another")
+        XCTAssertEqual(out.notes, [])
+        XCTAssertEqual(Approvals.parts(of: try prompt("mcp__capcom__archive_session", "{}", summary: "Build")).notes, [])
+    }
+
     // MARK: Questions and plans
 
     private let askJSON = """

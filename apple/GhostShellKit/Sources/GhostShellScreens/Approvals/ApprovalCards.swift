@@ -13,6 +13,8 @@ extension EnvironmentValues {
 private struct CardFrame<Content: View, Actions: View>: View {
     let title: String
     let state: ApprovalCardState
+    /// A card with notes, such as a nest's consequences, lays its body out in full and lets the stack scroll, so Allow cannot be pressed with a line cut off above it.
+    var uncapped = false
     @ViewBuilder var content: Content
     @ViewBuilder var actions: Actions
     @Environment(\.approvalBodyCap) private var bodyCap
@@ -24,12 +26,13 @@ private struct CardFrame<Content: View, Actions: View>: View {
                 Text(verbatim: title).font(ChatStyle.body).fontWeight(.semibold).foregroundStyle(ChatStyle.warningText)
                     .frame(minHeight: ChatStyle.titleHeight).textSelection(.enabled)
             }
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 10) { content }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if uncapped {
+                lines
+            } else {
+                ScrollView(.vertical) { lines }
+                    .frame(maxHeight: state.error == nil ? bodyCap : max(bodyCap - 25, 60))
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxHeight: state.error == nil ? bodyCap : max(bodyCap - 25, 60))
-            .fixedSize(horizontal: false, vertical: true)
             if let error = state.error {
                 Text(verbatim: error).font(ChatStyle.small).foregroundStyle(ChatStyle.removed).fixedSize(horizontal: false, vertical: true)
             }
@@ -47,6 +50,11 @@ private struct CardFrame<Content: View, Actions: View>: View {
         .overlay(GhostCorner(ChatStyle.radiusCard).strokeBorder(ChatStyle.approvalEdge))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: title))
+    }
+
+    private var lines: some View {
+        VStack(alignment: .leading, spacing: 10) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder private var busyMark: some View {
@@ -129,9 +137,12 @@ struct PermissionCard: View {
     var body: some View {
         let parts = Approvals.parts(of: prompt, connectors: chat.session.connectors)
         let id = prompt.requestID
-        CardFrame(title: parts.title, state: state) {
+        CardFrame(title: parts.title, state: state, uncapped: !parts.notes.isEmpty) {
             if let path = parts.path, !path.isEmpty {
                 Text(verbatim: path).font(ChatStyle.monoSmall).foregroundStyle(ChatStyle.muted).textSelection(.enabled)
+            }
+            ForEach(Array(parts.notes.enumerated()), id: \.offset) { _, note in
+                Text(verbatim: note).font(ChatStyle.body).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
             ForEach(Array(parts.fields.filter { !$0.value.isEmpty }.enumerated()), id: \.offset) { _, field in
                 LabelledText(label: field.label, text: field.value)

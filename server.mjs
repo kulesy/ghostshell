@@ -19,7 +19,7 @@ import { makeGroupUpdates, makeUpdateStore, pullsOf, scaled } from './lib/group-
 import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, refusal, workFolder } from './lib/groups.mjs';
 import { MAX_TITLE, makeLayout, nameOf } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
-import { pendingLines, projectOf } from './lib/subs.mjs';
+import { inChipFamily, inOwnTree, pendingLines, projectOf, reachOf } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
 import { makePulls } from './lib/pulls.mjs';
 import { archivedText, makeCommentWatch, scaled as scaledComments } from './lib/pr-comments.mjs';
@@ -154,6 +154,16 @@ const accountStates = () => ({ list: accounts.list(), signedOut: a => accountLog
 let lastReadable = null;
 const pinsOf = own => (own.problem ? lastReadable ?? own : (lastReadable = own));
 
+// Works `fn` out on the layout as a step of layout.many would leave it, without writing. A supposed layout is no stand-in for an unreadable one, so `lastReadable` is kept as it was.
+function supposing(step, fn) {
+  const kept = lastReadable;
+  try {
+    return layout.suppose(step, fn);
+  } finally {
+    lastReadable = kept;
+  }
+}
+
 // A session GhostShell started (`mine`, its entry in started.json) has its routine there alone, since its first message is text anyone can word as a
 // routine's. Any other has what `read` finds.
 const routineFrom = (mine, read) => (mine ? mine.routine || null : read());
@@ -222,6 +232,13 @@ function resolveAccount(self, d = accountData()) {
   };
 }
 
+// What a change of place does to the account a session runs on, from the rule's answer before and after, as the cards word it. `below` counts the sessions
+// whose chain changes with it, and any asks. The card compares the overflows the pins hold and not the spilled account of the moment.
+function accountChange(was, now, below = 0) {
+  const spills = (was.overflow ?? null) !== (now.overflow ?? null);
+  return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || spills || below > 0, to: accounts.find(now.account)?.name, active: now.from === 'active', ...(spills && { spills, overflow: now.overflow ? accounts.find(now.overflow)?.name ?? 'another account' : null }) };
+}
+
 function accountOfChat(chat) {
   const d = accountData();
   return resolveAccount({ id: chat.id, ...(d.anyPin && d.facts(chat.id)) }, d);
@@ -281,7 +298,8 @@ function accountRows(index) {
   }
 }
 
-function buildIndex({ archived = false } = {}) {
+// `uncapped` lifts the cap on each list, which the nest card uses to name every session a chat could list once activity moves.
+function buildIndex({ archived = false, uncapped = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
   const own = layout.read();
   const files = indexTranscripts(cfg.projectsDir);
@@ -410,12 +428,12 @@ function buildIndex({ archived = false } = {}) {
   const routines = new Map();
   for (const r of top.filter(r => r.routine && !r.group && !r.pinned).sort(comparator(DEFAULT_SORT))) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, ...(routineTitles.has(r.routine) && { title: routineTitles.get(r.routine) }), ...(routineHeadings.has(r.routine) && { heading: routineHeadings.get(r.routine) }), latest: r, earlier: [] });
-    else if (routines.get(r.routine).earlier.length < 12 || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
+    else if (routines.get(r.routine).earlier.length < 12 || uncapped || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
   }
   const loose = sortRows(top.filter(r => !r.group && !r.routine && !r.pinned), sorts.sessions);
   // A list stops at its newest 60 but keeps every session brought back from the archive, so an old one is not lost between the two.
   // A family counts as one and stays whole when any of its members was brought back.
-  const newest = list => list.filter((r, i) => i < 60 || [r, ...(r.children ?? [])].some(m => unarchived.has(m.id)));
+  const newest = list => list.filter((r, i) => uncapped || i < 60 || [r, ...(r.children ?? [])].some(m => unarchived.has(m.id)));
   return {
     station: cfg.station,
     problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
@@ -543,18 +561,22 @@ function sendToSession(row, text) {
   return was;
 }
 
+// The rows a chat's tools see for an index, each with the session that made its chip and the batch it was archived with.
+function shapedRows({ rows, groupSessions }) {
+  const { archivedWith, parents } = layout.read();
+  const startedBy = chips.startedBy();
+  // The owner placing a session elsewhere ends its link to the maker.
+  const makerOf = id => (Object.hasOwn(parents, id) ? undefined : startedBy.get(id));
+  return [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id], startedBy: makerOf(r.id) })), ...[...groupSessions.values()].filter(r => !r.retired)];
+}
+
 // What a chat reaches the sessions under it through, and what every chat sends to, archives, unarchives, renames and moves any session with. Each call looks the index up again, so a session archived or nested since is seen
 // as it is now. Every row is in the index whether archived or not, and `parent` skips the archived ones unless they are asked for. The sessions of groups and sections
 // are listed too, so one can send and be sent to, and none is ever below another. A deleted group's chat is left out, as nothing would answer its tools.
 function subCtx(sessionId) {
   return {
     lookup({ archived }) {
-      const { rows, groupSessions } = buildIndex({ archived });
-      const { archivedWith, parents } = layout.read();
-      const startedBy = chips.startedBy();
-      // The owner placing a session elsewhere ends its link to the maker.
-      const makerOf = id => (Object.hasOwn(parents, id) ? undefined : startedBy.get(id));
-      const listed = [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id], startedBy: makerOf(r.id) })), ...[...groupSessions.values()].filter(r => !r.retired)];
+      const listed = shapedRows(buildIndex({ archived }));
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
@@ -623,8 +645,7 @@ function subCtx(sessionId) {
         if (!d.groups[id]) return { changes: true };
         const was = accountFor({ group: id }, d);
         const now = accountFor({ group: id }, { ...d, groups: { ...d.groups, [id]: { ...d.groups[id], project } } });
-        const spills = (was.overflow ?? null) !== (now.overflow ?? null);
-        return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || spills, to: accounts.find(now.account)?.name, active: now.from === 'active', ...(spills && { spills, overflow: now.overflow ? accounts.find(now.overflow)?.name ?? 'another account' : null }) };
+        return accountChange(was, now);
       } catch {
         return { changes: true };
       }
@@ -642,9 +663,47 @@ function subCtx(sessionId) {
         const now = accountFor({ id, ...facts, group: picked.id, parent: null }, d);
         // A pin on the active account's own id still holds through a switch, and the sessions below can follow a head or be relinked off a nested session's pin, so both ask.
         const below = belowNow(id, { archived: false }).length + Object.keys(leaving(id).relink ?? {}).length;
-        // The card compares the overflows the pins hold and not the spilled account of the moment.
-        const spills = (was.overflow ?? null) !== (now.overflow ?? null);
-        return { changes: was.account !== now.account || (was.from === 'active') !== (now.from === 'active') || spills || below > 0, to: accounts.find(now.account)?.name, active: now.from === 'active', below, ...(spills && { spills, overflow: now.overflow ? accounts.find(now.overflow)?.name ?? 'another account' : null }) };
+        return { ...accountChange(was, now, below), below };
+      } catch {
+        return { changes: true };
+      }
+    },
+    // What a nest of `id` under `parent` would change, as ids and outcomes only, which the card and the key are both made from. It writes nothing and throws the
+    // refusal a nest meets. A part it cannot work out says `changes: true`, and any other failure throws, so the call refuses with no approval used.
+    nestPlan(id, parent) {
+      return nestPlanOf(this, sessionId, id, parent);
+    },
+    // The nest the owner approved, by the same check the route meets. The tool has compared its plan with the card's before it calls this.
+    nest(id, parent) {
+      nestableRow(id);
+      return CHANGES.nest(id, parent);
+    },
+    // Takes a session out from under its parent when the live list shows it under one, and answers where it shows now. One it does not show under a parent writes nothing.
+    unnest(id) {
+      nestableRow(id);
+      const from = buildIndex().rows.get(id).parent;
+      if (!from) return { nested: false };
+      CHANGES.nest(id, null);
+      const all = buildIndex({ archived: true });
+      return { nested: true, from, place: placeOf(this, all, all.rows.get(id)) };
+    },
+    // Whether taking `id` out from under its parent would change its account or its project, or the account of the sessions relinked with it. One that cannot be worked
+    // out counts as a change, so the owner is asked.
+    unnestChange(id) {
+      try {
+        const live = buildIndex();
+        const row = live.rows.get(id);
+        if (!row?.parent) return { changes: false };
+        const all = buildIndex({ archived: true });
+        const here = all.rows.get(id);
+        const project = placeOf(this, all, here).project !== placeOf(this, all, { ...here, parent: null }).project;
+        const d = accountData();
+        if (!d.anyPin) return { changes: project, project };
+        const facts = d.facts(id);
+        if (!facts) return { changes: true };
+        const below = Object.keys(keepFamily(id, live)).length;
+        const account = accountChange(accountFor({ id, ...facts }, d), accountFor({ id, ...facts, group: row.group, parent: null }, d), below);
+        return { ...account, changes: account.changes || project, account: account.changes, project, below };
       } catch {
         return { changes: true };
       }
@@ -773,11 +832,13 @@ function chipAccountPick(known, body, landing) {
 
 // The sessions a section's chat reaches: those the sidebar lists in it, with the sessions nested under each, so the cap on a list and the
 // families are the sidebar's, and the archived ones, which no list holds.
-function sectionMembers(section) {
-  const { rows, archivedSection } = buildIndex({ archived: true });
-  const live = withKids(sectionSessions(buildIndex(), section.id));
-  return { name: section.name, section, members: [...live, ...[...rows.values()].filter(r => archivedSection.get(r.id) === section.id)] };
+function sectionMembers(section, live = buildIndex(), all = buildIndex({ archived: true })) {
+  const listed = withKids(sectionSessions(live, section.id));
+  return { name: section.name, section, members: [...listed, ...[...all.rows.values()].filter(r => all.archivedSection.get(r.id) === section.id)] };
 }
+
+// The sessions a group's chat reaches, archived ones included.
+const inGroup = (rows, groupId) => [...rows.values()].filter(r => r.group === groupId);
 
 // What a group's chat, or a built-in section's, reaches its sessions through. Each call looks the group up again, so a group deleted by hand
 // takes its tools with it. A section is always there, and its `section` tells the tools where a session it starts goes, if it can start one.
@@ -791,8 +852,7 @@ function groupCtx(groupId) {
       if (section) return sectionMembers(section);
       const group = layout.read().groups.find(g => g.id === groupId);
       if (!group) return null;
-      const { rows } = buildIndex({ archived: true });
-      return { name: group.name, members: [...rows.values()].filter(r => r.group === groupId) };
+      return { name: group.name, members: inGroup(buildIndex({ archived: true }).rows, groupId) };
     },
     pending: pendingOf,
     links: urls => pulls.lookup(urls),
@@ -1310,6 +1370,7 @@ const CHANGES = {
   move: (id, group) => layout.move(id, group ?? null, leaving(id)),
   rename: (id, title) => layout.rename(id, title),
   archived: setArchived,
+  nest,
 };
 
 // The session a new one nests under, and the root of its family: a family is one level deep, so a child stands for its parent. Throws the first refusal.
@@ -1323,6 +1384,117 @@ function familyRoot(parent, { rows, groupSessions } = buildIndex()) {
   return { target, root: target.parent ?? target.id };
 }
 
+// The live session a tool may nest or take out. A group's or section's chat stays with it, and an archived session is unarchived first.
+function nestableRow(id) {
+  const row = editableRow(id);
+  if (row.archived) throw refuse(400, 'That session is archived. Unarchive it first.');
+  return row;
+}
+
+// Where a row shows, as ids: its group, whether it is pinned, the section when it is in no group, and its project, none for Home. `all` is the index the row is in.
+const placeOf = (subs, all, row, groups = layout.read().groups) => ({ group: row.group ?? null, pinned: !!row.pinned, section: sectionOf(row, all.rows) ?? null, project: projectOf(subs, groups, [...all.rows.values()], row) ?? null });
+
+// Every access a nest can move, read off the layout as it stands now or is supposed to stand, by the rules the tools and the chats use themselves: the sessions each
+// session reads, what each group's and section's chat reads, and the sends a chip's session makes to the sessions around its maker with no card.
+function accessOf(subs, id, { uncapped = false } = {}) {
+  const live = buildIndex({ uncapped });
+  const all = buildIndex({ archived: true });
+  const groups = layout.read().groups;
+  // An archived session acts again once the owner unarchives it, so readers, senders and targets are worked out as if none were archived.
+  const rows = shapedRows(all).map(r => ({ ...r, archived: false }));
+  const byId = new Map(rows.map(r => [r.id, r]));
+  const asks = from => ({ lookup: () => ({ self: byId.get(from) ?? null, rows }), chipOf: subs.chipOf, routineProject: subs.routineProject });
+  const readers = new Set(rows.flatMap(r => [r.parent, r.startedBy]).filter(r => byId.get(r)));
+  const reads = new Map([...readers].map(r => { const { below, beside } = reachOf(rows, byId.get(r)); return [r, new Set([...below, ...beside].map(m => m.id))]; }));
+  const chats = new Map([
+    ...groups.map(g => [`group:${g.id}`, new Set(inGroup(all.rows, g.id).map(r => r.id))]),
+    ...SECTIONS.map(section => [`section:${section.id}`, new Set(sectionMembers(section, live, all).members.map(r => r.id))]),
+  ]);
+  const senders = [...new Set(chips.list().filter(c => c.status === 'started' && c.startedId).map(c => c.startedId))].filter(from => byId.get(from) && !byId.get(from).routine);
+  const free = (from, to) => inOwnTree(asks(from), to) || inChipFamily(asks(from), groups, to);
+  const project = row => projectOf(subs, groups, rows, row) ?? null;
+  const account = (() => {
+    try {
+      const d = accountData();
+      const facts = d.anyPin && d.facts(id);
+      return { anyPin: d.anyPin, got: facts ? accountFor({ id, ...facts }, d) : null };
+    } catch {
+      return null;
+    }
+  })();
+  return { live, all, byId, reads, chats, senders, free, account, place: row => placeOf(subs, live, row, groups), project, parentOf: from => byId.get(from)?.parent ?? null };
+}
+
+// See nestPlan in subCtx. The nest is applied to the layout in memory, the real index and the real access rules are worked out before and after, and each difference is
+// on the plan. A session archived or linked through an archived one, a chip's session, a section's capped list: none of it is handled by case, so none can be missed.
+function nestPlanOf(subs, callerId, id, parent) {
+  nestableRow(id);
+  const live = buildIndex();
+  const { root, already } = nestCheck(id, parent, live);
+  if (already) return { root, already: true };
+  const relink = keepFamily(id, live);
+  const was = accessOf(subs, id);
+  const now = supposing({ kind: 'nest', id, parent: root, relink }, () => accessOf(subs, id, { uncapped: true }));
+  const parentIn = (state, sid) => state.all.rows.get(sid)?.parent ?? null;
+  const ids = [...was.all.rows.keys()];
+  const under = ids.filter(sid => sid !== id && parentIn(now, sid) === root && parentIn(was, sid) !== root).sort();
+  const family = ids.filter(sid => parentIn(was, sid) === root);
+  // Only the moved session and those under it may change place. Anything else changing means the nest does more than the card can say.
+  const moves = new Set([id, ...under]);
+  const joined = new Set([root, ...family, ...moves]);
+  const shifts = (a, b) => a.parent !== b.parent || a.group !== b.group || a.pinned !== b.pinned;
+  if (ids.some(sid => !moves.has(sid) && (shifts(was.all.rows.get(sid), now.all.rows.get(sid)) || shifts(was.live.rows.get(sid), now.live.rows.get(sid))))) throw new Error('That nest could not be worked out.');
+  const before = was.place(was.live.rows.get(id));
+  const after = now.place(now.live.rows.get(id));
+  // A family shows in its root's place, so each session under it joins the project of the root, which is the moved session's.
+  const shifted = under.filter(sid => was.project(was.all.rows.get(sid)) !== now.project(now.all.rows.get(sid)));
+  if (shifted.some(sid => now.project(now.all.rows.get(sid)) !== after.project)) throw new Error('That nest could not be worked out.');
+  const gained = (a, b) => [...(b ?? [])].filter(sid => !a?.has(sid)).sort();
+  const byKey = (a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+  const reads = [...now.reads].map(([reader, got]) => [reader, gained(was.reads.get(reader), got)]).filter(([, got]) => got.length).sort(byKey);
+  const lost = gained(now.reads.get(id), was.reads.get(id));
+  // A chat gains what it could list after the nest whatever its cap, less what it reads now, for the family joined.
+  // A session outside it sliding up a capped list because the moved one left is what any list change does.
+  const chats = [...now.chats].map(([key, got]) => [key, gained(was.chats.get(key), got).filter(sid => joined.has(sid))]).filter(([, got]) => got.length).sort(byKey);
+  const sends = [];
+  for (const from of now.senders) {
+    const chip = subs.chipOf(from);
+    for (const to of new Set([chip?.maker, chip?.nestUnder, was.parentOf(chip?.maker), now.parentOf(chip?.maker)])) {
+      if (!to || to === from || !now.byId.get(to) || (joined.has(from) && joined.has(to))) continue;
+      if (now.free(from, to) && !was.free(from, to)) sends.push([from, to]);
+    }
+  }
+  sends.sort((a, b) => byKey(a, b) || byKey([a[1]], [b[1]]));
+  let openProject = false;
+  if (before.project !== after.project || shifted.length) {
+    try { openProject = subs.reach?.() === 'project'; } catch { openProject = true; }
+  }
+  let account;
+  const below = under.filter(sid => !was.all.rows.get(sid).archived).length + Object.keys(relink).length;
+  try {
+    const [a, b] = [was.account, now.account];
+    account = !a || !b ? { changes: true } : !a.anyPin ? { changes: false } : !a.got || !b.got ? { changes: true } : { ...accountChange(a.got, b.got, below), below };
+  } catch {
+    account = { changes: true };
+  }
+  const { self, rows: listed } = subs.lookup({ archived: true });
+  const readsRoot = !!self && (descendantsOf(listed, callerId).some(r => r.id === root) || listed.find(r => r.id === root)?.startedBy === callerId);
+  const caller = callerId === id ? 'moved' : under.includes(callerId) ? 'under' : callerId === root ? 'root' : family.includes(callerId) ? 'family' : readsRoot ? 'reads' : null;
+  return {
+    moved: id, given: parent, root, redirected: parent !== root, parent: live.rows.get(id).parent ?? null,
+    before, after, account, under, lost, reads, chats, sends, shifted, openProject,
+    family: [root, ...family].sort(), caller, callerChat: self?.groupSession ?? null,
+  };
+}
+
+// Every refusal a nest meets, and whether it is nested there already. It reads and writes nothing, so the route, the tools and the card's plan share it.
+function nestCheck(id, parent, index) {
+  const { target, root } = familyRoot(parent, index);
+  // The links lead through archived sessions too, which a family does not show, so they are followed all the way up.
+  if ([target, ...chainOf(index.rows, linksNow(), target)].some(r => r.id === id)) throw refuse(400, 'A session cannot nest under itself or its own child.');
+  return { target, root, already: index.rows.get(id).parent === root };
+}
+
 // Nests a session under another, or takes it out when `parent` is null. A family is one level deep, so a drop on a child nests under that
 // child's parent. The answer carries the parent the list now shows.
 function nest(id, parent) {
@@ -1334,11 +1506,9 @@ function nest(id, parent) {
     if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, index) });
     return { parent: null };
   }
-  const { target, root } = familyRoot(parent, index);
-  // The links lead through archived sessions too, which a family does not show, so they are followed all the way up.
-  if ([target, ...chainOf(rows, linksNow(), target)].some(r => r.id === id)) throw refuse(400, 'A session cannot nest under itself or its own child.');
+  const { root, already } = nestCheck(id, parent, index);
   // A session that shows under that parent already keeps its own group and its link.
-  if (rows.get(id).parent === root) return { parent: root };
+  if (already) return { parent: root };
   layout.nest(id, root, { relink: keepFamily(id, index) });
   return { parent: buildIndex().rows.get(id).parent };
 }
@@ -2287,7 +2457,7 @@ async function api(req, res, u) {
   if (req.method === 'POST' && u.pathname === '/api/models') return askLists(req, res, 'models', listModels);
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => CHANGES.move(id, body.group));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
-  if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
+  if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => CHANGES.nest(id, body.parent));
   if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: CHANGES.rename(id, body.title) }));
   if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => CHANGES.archived(id, body.archived, body.stop));
   if (req.method === 'POST' && u.pathname === '/api/layout/account') return pinAccount(req, res);
