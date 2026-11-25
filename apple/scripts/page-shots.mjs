@@ -258,6 +258,7 @@ const SCREENS = {
     ['chat-empty', async (page, ctx) => { await ctx.go('#/s/empty'); await sleep(800); }],
     ['chat-streaming', chatScreen('stream', 'Go on, I am ready', () => sleep(4000))],
     ['approval-edit', chatScreen('ask-edit', 'I need your go-ahead')],
+    ['approval-nest', chatScreen('ask-nest', 'Claude wants to nest a session under another')],
     // The Mac composer flow's last state: a picture and a file attached, then a two-line draft.
     ['composer-draft', chatScreen('composer', 'I renamed it in 4 files', async page => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gs-page-composer-'));
