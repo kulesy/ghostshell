@@ -1347,6 +1347,11 @@ async function accountsFlow(bundle, appearance) {
       }
       if (pathname.endsWith('/context')) return send(res, context(JSON.parse(Buffer.concat(chunks).toString() || '{}').detail));
       if (pathname.endsWith('/plan')) return send(res, { limits });
+      // The same mode, model and effort as the page's shot of this chat, so the row under the box is laid against it with its real words.
+      if (pathname.endsWith('/events')) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+        return void res.write(`event: status\ndata: ${JSON.stringify({ state: 'idle', running: true, model: 'claude-sonnet-5-5', effort: 'high', mode: 'default', live: '' })}\n\n`);
+      }
       return send(res, { ungrouped: rows, features: { sendReach: true, accountPins: true } });
     });
   });

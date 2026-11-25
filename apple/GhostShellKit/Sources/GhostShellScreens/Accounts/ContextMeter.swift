@@ -116,19 +116,21 @@ private enum Ink {
 
 /// The arc starts at 12 o'clock and runs clockwise. A ring with nothing in it draws no arc, because a round cap would still leave a dot.
 private struct Ring: View {
+    // The page draws a radius of 7 and a 2.25 line in a 20 unit box at 16px.
+    private static let line: CGFloat = macOr(1.8, 2.25)
     let fill: Double
     let warning: Bool
 
     var body: some View {
         ZStack {
-            Circle().stroke(Ink.track, lineWidth: 2.25)
+            Circle().stroke(Ink.track, lineWidth: Self.line)
             if fill > 0 {
                 Circle().trim(from: 0, to: fill / 100)
-                    .stroke(warning ? Color.orange : Ink.quiet, style: StrokeStyle(lineWidth: 2.25, lineCap: .round))
+                    .stroke(warning ? Color.orange : Ink.quiet, style: StrokeStyle(lineWidth: Self.line, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
         }
-        .padding(1.5)
+        .padding(macOr(2.4, 1.5))
         .frame(width: 16, height: 16)
     }
 }
