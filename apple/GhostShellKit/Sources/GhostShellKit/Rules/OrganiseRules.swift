@@ -312,6 +312,63 @@ public enum OrganiseRules {
         return [AccountChoice(id: "", label: follows.isEmpty ? "Active account" : "Active account (\(follows))", account: nil, checked: pin == nil, picks: pin != nil)] + listed + (removed.map { [$0] } ?? [])
     }
 
+    /// The choices under "If <pin> runs out": each other account, then staying on the pin. Ported from accountItems in public/ui/account-rules.js. Change them together.
+    public struct AccountSpill: Hashable, Sendable {
+        public var title: String
+        public var choices: [AccountChoice]
+    }
+
+    /// Nil unless something is pinned to an account that is still listed and there is another account to spill to. `overflow` is the account it spills to now.
+    public static func accountSpill(_ accounts: [Account], pin: String?, overflow: String?) -> AccountSpill? {
+        let pinName = accountName(accounts, pin)
+        guard let pin, !pinName.isEmpty, accounts.count > 1 else { return nil }
+        let others = accounts.filter { $0.id != pin }.map { a -> AccountChoice in
+            let note = a.signedOut ? " (signed out)" : !chromeOnName(accounts, a).isEmpty ? " (no Chrome)" : ""
+            return AccountChoice(id: "overflow:\(a.id)", label: a.name + note, account: a.id, checked: a.id == overflow, picks: a.id != overflow && !a.signedOut)
+        }
+        let stay = AccountChoice(id: "overflow:", label: "Stay on \(pinName)", account: nil, checked: overflow == nil, picks: overflow != nil)
+        return AccountSpill(title: "If \(pinName) runs out", choices: others + [stay])
+    }
+
+    /// The account a new session will run on, as `api/new` works it out: its own pick, then the pin of the group it joins, then that group's project, then the active account.
+    /// A Mac draft has no parent to nest under. Ported from draftAccount in public/ui/account-rules.js. Change them together.
+    public static func draftAccount(_ index: SessionIndex, _ accounts: [Account]?, group: String?, pick: String?) -> String? {
+        if let pick { return pick }
+        let pinsGroup = GroupRules.sections.first { $0.id == group }?.pins == true
+        if index.features?.accountPins == true, !pinsGroup, let held = index.groups.first(where: { $0.id == group }) {
+            if let account = held.account { return account }
+            if let account = index.projects.first(where: { $0.id == held.project })?.account { return account }
+        }
+        return accounts?.first { $0.active }?.id
+    }
+
+    /// What the composer shows for a chat: whether it offers the pick, the chat's own pin and where it spills to, the account it runs on, and whom "Active account" follows.
+    public struct ChatAccount: Hashable, Sendable {
+        public var offered: Bool
+        public var pin: String?
+        public var overflow: String?
+        public var shown: String?
+        public var follows: String
+    }
+
+    /// An existing chat. A group's own chat has an account to show but no pick of its own. Ported from chatAccount in public/ui/account-rules.js. Change them together.
+    public static func chatAccount(_ index: SessionIndex, _ accounts: [Account]?, id: String) -> ChatAccount {
+        let row = find(index, id)
+        let pin = row?.accountPin
+        let shown = row ?? index.groups.compactMap(\.session).first { $0.id == id }
+        return ChatAccount(offered: row != nil && offersAccountPick(index.features, accounts, pin: pin), pin: pin, overflow: pin != nil ? row?.accountOverflow : nil,
+                           shown: shown?.account, follows: row.map { accountFollows(accounts ?? [], $0) } ?? "")
+    }
+
+    /// A session that has not started: `picked` is its own pick and `group` the group it will start in.
+    public static func chatAccount(_ index: SessionIndex, _ accounts: [Account]?, group: String?, picked: String?) -> ChatAccount {
+        ChatAccount(offered: offersAccountPick(index.features, accounts, pin: picked), pin: picked, overflow: nil, shown: draftAccount(index, accounts, group: group, pick: picked),
+                    follows: accountName(accounts ?? [], draftAccount(index, accounts, group: group, pick: nil)))
+    }
+
+    /// The small label before the model: the account's name, shown only when more than one is listed. Ported from accountLabel in public/ui/account-rules.js. Change them together.
+    public static func accountLabel(_ accounts: [Account]?, _ id: String?) -> String { (accounts?.count ?? 0) > 1 ? accountName(accounts ?? [], id) : "" }
+
     /// The line under the pick: definite when the survey found Chrome on another account, else the static limit.
     public static func accountChromeNote(_ accounts: [Account]) -> String {
         let name = accounts.map { chromeOnName(accounts, $0) }.first { !$0.isEmpty }

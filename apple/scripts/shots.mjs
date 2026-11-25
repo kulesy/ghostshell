@@ -357,8 +357,8 @@ class App {
   toggleNotifications() { return this.pick(['Account', 'account'], 'Notifications'); }
   // The account menu's item names in order. The shots are a self-render of the window, which does not draw a native menu, so the order is read from the tree.
   accountMenuItems() {
-    const button = this.find(node => node.role === 'AXMenuButton' && [node.title, node.desc].some(name => ['Account', 'account'].includes(name)));
-    if (!button || !this.act(button)) return [];
+    const button = this.openMenuButton(['Account', 'account']);
+    if (!button) return [];
     const menu = this.waitFor(node => node.role === 'AXMenu' && node.path.length === button.path.length + 1 && node.path.slice(0, -1).join() === button.path.join());
     const items = menu ? this.menuItemsOf(menu).map(item => item.title) : [];
     this.closeMenu();
@@ -504,11 +504,24 @@ class App {
     return !!field && this.set(field, 'AXFocused', true) && this.set(field, 'AXValue', text);
   }
   menu(bar, item) { return this.run('menu', bar, item).ok === true; }
+  // Presses a menu or pop-up button, trying for up to 5 seconds, because right after a resize the runner can refuse the first press.
+  openMenuButton(name) {
+    const names = [].concat(name);
+    let button;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      button = this.find(node => ['AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.title, node.help].some(text => names.includes(text)));
+      const pressed = button && this.run('act', JSON.stringify(button.path), 'AXPress');
+      // An error can still leave the menu open, and a second press would close it.
+      if (pressed && (pressed.ok === true || this.find(node => node.role === 'AXMenu' && node.path.slice(0, -1).join() === button.path.join()))) return button;
+      if (attempt === 9) console.log(`     no press on ${names[0]}: ${pressed ? JSON.stringify(pressed) : `the menu buttons are ${this.findAll(node => node.role === 'AXMenuButton').map(node => node.desc || node.title || node.help || '-').join(', ') || 'none'}`}`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+    }
+    return undefined;
+  }
   // Opens a menu or pop-up button by its name, then presses one of its items.
   // `name` can be a list, because an icon-only menu button is named by its label or by its icon's name, whichever the system reports.
   pick(name, item) {
-    const button = this.find(node => ['AXMenuButton', 'AXPopUpButton'].includes(node.role) && [node.desc, node.title, node.help].some(text => [].concat(name).includes(text)));
-    if (!button || !this.act(button)) return false;
+    if (!this.openMenuButton(name)) return false;
     const entry = this.waitFor(node => node.role === 'AXMenuItem' && node.title === item);
     return !!entry && this.act(entry);
   }
@@ -1278,7 +1291,7 @@ async function accountsFlow(bundle, appearance) {
   const now = Date.now();
   const day = 86_400_000;
   const rows = ['Fix the flaky upload test', 'Write the release notes', 'Tidy the sidebar']
-    .map((title, i) => ({ id: `acct-${i}`, title, dot: i === 0 ? 'running' : undefined, state: 'idle', sortAt: now - i * 60_000 }));
+    .map((title, i) => ({ id: `acct-${i}`, title, dot: i === 0 ? 'running' : undefined, state: 'idle', sortAt: now - i * 60_000, ...(i === 0 && { account: 'work' }) }));
   const work = { id: 'work', name: 'Work' };
   const personal = { id: 'personal', name: 'Personal' };
   const chrome = { state: 'elsewhere', to: personal, on: work, email: 'me@example.com' };
@@ -1334,7 +1347,12 @@ async function accountsFlow(bundle, appearance) {
       }
       if (pathname.endsWith('/context')) return send(res, context(JSON.parse(Buffer.concat(chunks).toString() || '{}').detail));
       if (pathname.endsWith('/plan')) return send(res, { limits });
-      return send(res, { ungrouped: rows, features: { sendReach: true } });
+      // The same mode, model and effort as the page's shot of this chat, so the row under the box is laid against it with its real words.
+      if (pathname.endsWith('/events')) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+        return void res.write(`event: status\ndata: ${JSON.stringify({ state: 'idle', running: true, model: 'claude-sonnet-5-5', effort: 'high', mode: 'manual', live: '' })}\n\n`);
+      }
+      return send(res, { ungrouped: rows, features: { sendReach: true, accountPins: true } });
     });
   });
   const app = await appOn(stub, bundle, appearance, '6');
@@ -1390,10 +1408,29 @@ async function accountsFlow(bundle, appearance) {
     check(await until('meter', () => app.hasButton('Context: 84,000 of 200,000 tokens, 42% used'), 15), 'choosing a session shows the context meter');
     await app.both('meter');
 
+    // Under the box the row reads the account, the model, the effort and then the ring, which sits below the message box.
+    const row = () => {
+      const [label, model, effort, ring, box] = [app.find(node => node.desc === 'Account: Work'), app.buttonsLike('Model: ')[0], app.buttonsLike('Effort: ')[0], app.buttonsLike('Context:')[0], app.composerBox()];
+      return { label, model, effort, ring, box };
+    };
+    const centre = node => node.pos[1] + node.size[1] / 2;
+    const checkRow = name => {
+      const { label, model, effort, ring, box } = row();
+      check(!!label && !!model && label.size[0] > 0 && label.pos[0] + label.size[0] <= model.pos[0] + 1 && Math.abs(centre(label) - centre(model)) < 10, `the account label shows beside the model, before it, at the ${name} size`);
+      check(!!effort && !!ring && !!box && ring.pos[0] >= effort.pos[0] + effort.size[0] - 1 && ring.pos[1] >= box.pos[1] + box.size[1], `the ring sits right of the effort button and below the message box at the ${name} size`);
+    };
+    app.resize(DEFAULT_SIZE);
+    await sleep(700);
+    checkRow('default');
+    check(app.buttonMenuItems('Model: ').includes('Account'), 'the model menu has an Account item');
+    app.closeMenu();
+    await sleep(400);
+
     // A popover can close when the window is resized, so each size opens its own.
     for (const [name, size] of [['default', DEFAULT_SIZE], ['min', MIN_SIZE]]) {
       app.resize(size);
       await sleep(700);
+      checkRow(name);
       check(app.press('Context:', { prefix: true }), `the meter opens its popover at the ${name} size`);
       const shown = () => sees('Plan usage') && sees('Messages');
       // On macOS 27.2 the first press at the default size leaves the popover shut, for a reason not yet found, so it is pressed once more.

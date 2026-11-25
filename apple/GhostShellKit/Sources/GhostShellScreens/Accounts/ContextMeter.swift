@@ -1,7 +1,8 @@
 import GhostShellKit
 import SwiftUI
 
-/// The ring in the toolbar that shows how full the chat's context window is, with the breakdown and the plan usage in a popover.
+/// The ring that shows how full the chat's context window is, with the breakdown and the plan usage in a popover. It sits in the toolbar on the iPhone
+/// and at the right end of the composer's row on the Mac, as on the page.
 public struct ContextMeter: View {
     let sessionID: String
 
@@ -17,6 +18,14 @@ private struct MeterBody: View {
     let sessionID: String
     @State private var state = ContextState()
     @State private var open = false
+
+    #if os(macOS)
+    /// The page's icon-sm button, 2rem square, and a popover that opens above the box.
+    private static let side = 2 * GhostMetrics.current.rem
+    private static let edge = Edge.top
+    #else
+    private static let edge = Edge.bottom
+    #endif
 
     /// What the chosen chat's row says, which is when its figure may have moved.
     private struct Trigger: Hashable {
@@ -44,14 +53,19 @@ private struct MeterBody: View {
         Group {
             if hasFigure(state.figure), let figure = state.figure {
                 let r = readout(figure)
-                Button { open.toggle() } label: { face(r) }
+                Button { open.toggle() } label: { boxed(face(r)) }
                     .buttonStyle(.plain)
                     .help(r.tip)
                     .accessibilityLabel(r.label)
-                    .popover(isPresented: $open, arrowEdge: .bottom) { ContextPopover(figure: figure, readout: r, state: state) }
+                    .popover(isPresented: $open, arrowEdge: Self.edge) { ContextPopover(figure: figure, readout: r, state: state) }
             } else {
+                #if os(macOS)
+                // The tasks below hang on this view, so it stays in the row and takes no room.
+                Color.clear.frame(width: 0, height: 0).accessibilityHidden(true)
+                #else
                 // NOTE: [8 Nov 2026] EK - An empty toolbar item may not come back once its figure loads, so the slot keeps its size.
                 Color.clear.frame(width: 16, height: 16).accessibilityHidden(true)
+                #endif
             }
         }
         .task(id: trigger) {
@@ -74,26 +88,49 @@ private struct MeterBody: View {
         if let fill = r.fill {
             Ring(fill: fill, warning: r.warning)
         } else if let text = r.text {
-            Text(text).font(.caption).monospacedDigit().foregroundStyle(r.warning ? Color.orange : Color.secondary)
+            Text(text).font(.caption).monospacedDigit().foregroundStyle(r.warning ? Color.orange : Ink.quiet)
         }
     }
+
+    @ViewBuilder private func boxed(_ face: some View) -> some View {
+        #if os(macOS)
+        face.frame(minWidth: Self.side, minHeight: Self.side)
+            .background(open ? Color.ghost.accent : .clear, in: GhostShape(GhostRadius.md))
+            .contentShape(Rectangle())
+        #else
+        face
+        #endif
+    }
+}
+
+/// The ink of the ring and the text beside it: the page's muted foreground on the Mac, the system's secondary on the iPhone.
+private enum Ink {
+    #if os(macOS)
+    static let quiet = Color.ghost.mutedForeground
+    static let track = AnyShapeStyle(Color.ghost.mutedForeground.opacity(0.25))
+    #else
+    static let quiet = Color.secondary
+    static let track = AnyShapeStyle(.quaternary)
+    #endif
 }
 
 /// The arc starts at 12 o'clock and runs clockwise. A ring with nothing in it draws no arc, because a round cap would still leave a dot.
 private struct Ring: View {
+    // The page draws a radius of 7 and a 2.25 line in a 20 unit box at 16px.
+    private static let line: CGFloat = macOr(1.8, 2.25)
     let fill: Double
     let warning: Bool
 
     var body: some View {
         ZStack {
-            Circle().stroke(.quaternary, lineWidth: 2.25)
+            Circle().stroke(Ink.track, lineWidth: Self.line)
             if fill > 0 {
                 Circle().trim(from: 0, to: fill / 100)
-                    .stroke(warning ? Color.orange : Color.secondary, style: StrokeStyle(lineWidth: 2.25, lineCap: .round))
+                    .stroke(warning ? Color.orange : Ink.quiet, style: StrokeStyle(lineWidth: Self.line, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
         }
-        .padding(1.5)
+        .padding(macOr(2.4, 1.5))
         .frame(width: 16, height: 16)
     }
 }

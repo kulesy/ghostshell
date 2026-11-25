@@ -57,15 +57,18 @@ public struct RootView: View {
         #if os(macOS)
         .toolbar(removing: .sidebarToggle)
         #endif
+        #if os(iOS)
         .toolbar {
-            if let id = model.navigator.selectedSessionID {
-                #if os(macOS)
-                BareToolbarItems { ToolbarItem { ContextMeter(sessionID: id) } }
-                #else
-                ToolbarItem { ContextMeter(sessionID: id) }
-                #endif
+            if let id = model.navigator.selectedSessionID { ToolbarItem { ContextMeter(sessionID: id) } }
+        }
+        #else
+        // NOTE: [25 Nov 2026] EK - A title bar with no items is 20pt shorter, so a chat would jump each time a file or a page put one there.
+        .toolbar {
+            if model.navigator.selectedSessionID != nil {
+                BareToolbarItems { ToolbarItem { Color.clear.frame(width: 16, height: 16).accessibilityHidden(true) } }
             }
         }
+        #endif
         .modifier(CompactColumnFollowsNavigator(column: $compactColumn))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         #if DEBUG && os(macOS)

@@ -98,6 +98,19 @@ final class LayoutClientTests: XCTestCase {
         ])
     }
 
+    func testTheOverflowOfAPinIsLeftOutSetOrCleared() async throws {
+        LayoutStub.reset { _ in (200, #"{"kind":"session","id":"s1","account":"work"}"#) }
+        let client = await client()
+        try await client.pinAccount(id: "s1", account: "work", overflow: "home")
+        try await client.pinAccount(id: "s1", account: "work", overflow: .some(nil))
+        try await client.pinAccount(.group, id: "g1", account: "work", overflow: nil)
+        XCTAssertEqual(try lines(), [
+            #"POST /api/layout/account {"account":"work","id":"s1","kind":"session","overflow":"home"}"#,
+            #"POST /api/layout/account {"account":"work","id":"s1","kind":"session","overflow":null}"#,
+            #"POST /api/layout/account {"account":"work","id":"g1","kind":"group"}"#,
+        ])
+    }
+
     func testSeveralSessionsAtOnce() async throws {
         LayoutStub.reset { _ in (200, #"{"undo":"u-1","count":2}"#) }
         let client = await client()

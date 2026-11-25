@@ -39,8 +39,6 @@ final class OrganiseModel {
     var naming: Naming?
     var namingProblem: String?
     private(set) var saving = false
-    /// The accounts the Account menu lists, read with the same call as the Accounts screen. Nil until the first read, or when it failed.
-    private(set) var accounts: [Account]?
 
     private weak var app: AppModel?
     private weak var state: SidebarState?
@@ -50,11 +48,10 @@ final class OrganiseModel {
     var index: SessionIndex { app?.index ?? SessionIndex() }
     var features: SessionFeatures { index.features ?? SessionFeatures() }
     var view: String? { SidebarOutline.view(state?.project, in: index) }
+    /// The accounts the Account menu lists, which the app holds for the composer too.
+    var accounts: [Account]? { app?.accounts }
 
-    func loadAccounts() async {
-        guard features.accountPins, let client = app?.client else { return }
-        accounts = try? await client.accounts().accounts
-    }
+    func loadAccounts() async { await app?.loadAccounts() }
 
     // MARK: Sending
 

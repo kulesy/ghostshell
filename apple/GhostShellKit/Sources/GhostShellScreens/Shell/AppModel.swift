@@ -11,6 +11,8 @@ public final class AppModel {
     /// The whole index the feed last reported, for screens that need more than the rows.
     public private(set) var index: SessionIndex?
     public var rows: [SessionRow] { index?.rows ?? [] }
+    /// The accounts the Account menus and the composer's label name. Nil until the first read, and a failed read keeps the last list.
+    public private(set) var accounts: [Account]?
     public private(set) var connection = FeedConnection.connecting
     /// False until the first list arrives, which is when the sidebar shows its skeleton.
     public private(set) var hasLoaded = false
@@ -104,6 +106,13 @@ public final class AppModel {
         if client === old { leave() }
     }
 
+    /// Reads the accounts when the server pins to them. Both the sidebar's menus and the composer read the result, and the sidebar's poll keeps it fresh.
+    public func loadAccounts() async {
+        guard index?.features?.accountPins == true, let asked = client else { return }
+        guard let list = try? await asked.accounts().accounts, client === asked else { return }
+        accounts = list
+    }
+
     /// Looks at the server's list now. A screen calls it after a change so the list does not wait for the next look.
     public func refreshIndex() async { await feed?.refresh() }
 
@@ -135,6 +144,7 @@ public final class AppModel {
         client = fresh
         address = fresh.address
         index = nil
+        accounts = nil
         hasLoaded = false
         connection = .connecting
         let list = fresh.indexFeed()
@@ -164,6 +174,7 @@ public final class AppModel {
         client = nil
         address = nil
         index = nil
+        accounts = nil
         hasLoaded = false
         navigator.clear()
         phase = .signedOut

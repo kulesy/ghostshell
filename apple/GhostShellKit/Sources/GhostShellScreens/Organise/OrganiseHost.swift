@@ -1,6 +1,12 @@
 import GhostShellKit
 import SwiftUI
 
+/// What the account list's poll depends on, so it starts the moment the first index says the server pins accounts.
+private struct AccountPoll: Hashable {
+    var visible: Bool
+    var pins: Bool
+}
+
 /// Gives the sidebar its organising state and shows what that state asks: a failure, a question, or a name to type.
 struct OrganiseHost: ViewModifier {
     @Environment(AppModel.self) private var model
@@ -12,7 +18,7 @@ struct OrganiseHost: ViewModifier {
         content
             .environment(organise)
             .onAppear { organise.bind(model, state) }
-            .task(id: model.visible) {
+            .task(id: AccountPoll(visible: model.visible, pins: model.index?.features?.accountPins == true)) {
                 while model.visible, !Task.isCancelled {
                     await organise.loadAccounts()
                     try? await Task.sleep(for: .seconds(10))

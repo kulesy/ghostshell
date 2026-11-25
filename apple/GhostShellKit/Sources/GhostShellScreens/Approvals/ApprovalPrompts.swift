@@ -6,6 +6,15 @@ struct ApprovalPrompts: View {
     let chat: ChatContext
     @Environment(\.chatHeight) private var chatHeight
 
+    #if os(macOS)
+    // The page's 0.5rem over the cards and, with the composer's own 0.5rem, its 0.75rem under them.
+    private static let topPadding = 0.5 * GhostMetrics.current.rem
+    private static let bottomPadding = 0.25 * GhostMetrics.current.rem
+    #else
+    private static let topPadding: CGFloat = 10
+    private static let bottomPadding: CGFloat = 10
+    #endif
+
     var body: some View {
         let model = chat.store(ApprovalsModel.self) { ApprovalsModel() }
         let pending = chat.status?.pending ?? []
@@ -21,7 +30,7 @@ struct ApprovalPrompts: View {
                     }
                     .frame(maxWidth: ChatStyle.column)
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .padding(.horizontal, 16).padding(.top, Self.topPadding).padding(.bottom, Self.bottomPadding)
                     // The title, the buttons and the padding take ChatStyle.cardChrome, so the rest is the body's. CardFrame takes an error line off it.
                     .environment(\.approvalBodyCap, max(cap - ChatStyle.cardChrome, 60))
                 }

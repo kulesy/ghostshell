@@ -148,4 +148,76 @@ final class OrganiseRulesTests: XCTestCase {
         XCTAssertEqual(OrganiseRules.accountFollows(list, SessionRow(id: "s", account: "home", accountPin: "work")), "")
         XCTAssertEqual(OrganiseRules.accountChromeNote(list), "Chrome is on Home, so work on another account can't reach it.")
     }
+
+    private func accountList(_ json: String) throws -> [Account] { try JSONDecoder().decode(AccountList.self, from: Data(json.utf8)).accounts }
+
+    func testTheLabelNamesTheAccountOnlyWhenThereIsAChoice() throws {
+        let two = try accountList(#"{"accounts":[{"id":"work","name":"Work"},{"id":"home","name":"Home"}]}"#)
+        XCTAssertEqual(OrganiseRules.accountLabel(two, "home"), "Home")
+        XCTAssertEqual(OrganiseRules.accountLabel(Array(two.prefix(1)), "work"), "")
+        XCTAssertEqual(OrganiseRules.accountLabel(nil, "work"), "")
+        XCTAssertEqual(OrganiseRules.accountLabel(two, nil), "")
+        XCTAssertEqual(OrganiseRules.accountLabel(two, "gone"), "")
+    }
+
+    func testADraftRunsOnItsPickThenItsGroupsPinThenItsProjectThenTheActiveAccount() throws {
+        let list = try accountList(#"{"accounts":[{"id":"work","name":"Work"},{"id":"home","name":"Home","active":true},{"id":"lab","name":"Lab"}]}"#)
+        let on = SessionFeatures(accountPins: true)
+        let ix = SessionIndex(projects: [SessionProject(id: "p1", name: "Website", account: "lab")],
+                              groups: [SessionGroup(id: "g1", name: "Release", account: "work"), SessionGroup(id: "g2", name: "Site", project: "p1"), SessionGroup(id: "g3", name: "Plain")],
+                              features: on)
+        XCTAssertEqual(OrganiseRules.draftAccount(ix, list, group: "g1", pick: "lab"), "lab", "its own pick wins")
+        XCTAssertEqual(OrganiseRules.draftAccount(ix, list, group: "g1", pick: nil), "work", "the group's pin")
+        XCTAssertEqual(OrganiseRules.draftAccount(ix, list, group: "g2", pick: nil), "lab", "the group's project")
+        XCTAssertEqual(OrganiseRules.draftAccount(ix, list, group: "g3", pick: nil), "home", "nothing pinned, so the active account")
+        XCTAssertEqual(OrganiseRules.draftAccount(ix, list, group: nil, pick: nil), "home")
+        XCTAssertEqual(OrganiseRules.draftAccount(ix, list, group: "pinned", pick: nil), "home", "Pinned is a section, and its pin is set after the start")
+        var off = ix
+        off.features = nil
+        XCTAssertEqual(OrganiseRules.draftAccount(off, list, group: "g1", pick: nil), "home", "a server that does not pin ignores the group's pin")
+        XCTAssertNil(OrganiseRules.draftAccount(ix, nil, group: nil, pick: nil))
+    }
+
+    func testWhatTheComposerShowsForAChat() throws {
+        let list = try accountList(#"{"accounts":[{"id":"work","name":"Work"},{"id":"home","name":"Home","active":true}]}"#)
+        let on = SessionFeatures(accountPins: true)
+        let own = SessionRow(id: "own", account: "work", accountPin: "work", accountOverflow: "home")
+        let free = SessionRow(id: "free", account: "home")
+        let chat = SessionRow(id: "chat", account: "work")
+        let ix = SessionIndex(groups: [SessionGroup(id: "g1", name: "Release", sessions: [own, free], session: chat, account: "work")], features: on)
+
+        let pinned = OrganiseRules.chatAccount(ix, list, id: "own")
+        XCTAssertEqual(pinned, OrganiseRules.ChatAccount(offered: true, pin: "work", overflow: "home", shown: "work", follows: ""))
+        let loose = OrganiseRules.chatAccount(ix, list, id: "free")
+        XCTAssertEqual(loose, OrganiseRules.ChatAccount(offered: true, pin: nil, overflow: nil, shown: "home", follows: "Home"))
+        let groupChat = OrganiseRules.chatAccount(ix, list, id: "chat")
+        XCTAssertEqual(groupChat, OrganiseRules.ChatAccount(offered: false, pin: nil, overflow: nil, shown: "work", follows: ""), "a group's own chat shows its account and offers no pick")
+        XCTAssertFalse(OrganiseRules.chatAccount(ix, nil, id: "own").offered, "accounts not read yet")
+        XCTAssertFalse(OrganiseRules.chatAccount(ix, list, id: "missing").offered)
+
+        let draft = OrganiseRules.chatAccount(ix, list, group: "g1", picked: nil)
+        XCTAssertEqual(draft, OrganiseRules.ChatAccount(offered: true, pin: nil, overflow: nil, shown: "work", follows: "Work"))
+        let picked = OrganiseRules.chatAccount(ix, list, group: "g1", picked: "home")
+        XCTAssertEqual(picked, OrganiseRules.ChatAccount(offered: true, pin: "home", overflow: nil, shown: "home", follows: "Work"))
+        let single = Array(list.prefix(1))
+        XCTAssertFalse(OrganiseRules.chatAccount(ix, single, group: nil, picked: nil).offered, "one account is no choice")
+    }
+
+    func testTheSpillChoicesFollowThePagesRules() throws {
+        let list = try accountList(#"{"accounts":[{"id":"work","name":"Work"},{"id":"home","name":"Home","chromeOn":"work"},{"id":"old","name":"Old","signedOut":true}]}"#)
+        let none = try XCTUnwrap(OrganiseRules.accountSpill(list, pin: "work", overflow: nil))
+        XCTAssertEqual(none.title, "If Work runs out")
+        XCTAssertEqual(none.choices.map(\.label), ["Home (no Chrome)", "Old (signed out)", "Stay on Work"], "the pin is not its own overflow")
+        XCTAssertEqual(none.choices.map(\.checked), [false, false, true])
+        XCTAssertEqual(none.choices.map(\.picks), [true, false, false], "a signed out account cannot be picked, and staying is already chosen")
+        XCTAssertEqual(none.choices.map(\.account), ["home", "old", nil])
+
+        let spilling = try XCTUnwrap(OrganiseRules.accountSpill(list, pin: "work", overflow: "home"))
+        XCTAssertEqual(spilling.choices.map(\.checked), [true, false, false])
+        XCTAssertEqual(spilling.choices.map(\.picks), [false, false, true], "the chosen overflow runs nothing, and staying clears it")
+
+        XCTAssertNil(OrganiseRules.accountSpill(list, pin: nil, overflow: nil))
+        XCTAssertNil(OrganiseRules.accountSpill(list, pin: "gone", overflow: nil), "a pin to an account no longer listed has no name to spill from")
+        XCTAssertNil(OrganiseRules.accountSpill(Array(list.prefix(1)), pin: "work", overflow: nil), "one account has nowhere to spill to")
+    }
 }

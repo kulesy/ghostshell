@@ -202,6 +202,14 @@ final class ComposerEndpointTests: XCTestCase {
         XCTAssertEqual(body.keys.sorted(), ["cwd", "group", "text"])
     }
 
+    func testNewSessionSendsItsAccountOnlyWhenThereIsOne() async throws {
+        ComposerStub.reset { _ in (200, #"{"id":"new-1"}"#) }
+        _ = try await client().startSession(NewSessionRequest(cwd: "/work", message: OutgoingMessage(text: "go"), account: "work"))
+        let body = try json(ComposerStub.last()?.body)
+        XCTAssertEqual(body["account"] as? String, "work")
+        XCTAssertEqual(body.keys.sorted(), ["account", "cwd", "text"])
+    }
+
     func testFoldersAndDefaults() async throws {
         ComposerStub.reset { _ in (200, #"{"folders":["/home","/work"]}"#) }
         let folders = try await client().folders()

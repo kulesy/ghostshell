@@ -74,16 +74,37 @@ private struct AccountMenu: View {
     let row: SessionRow
 
     var body: some View {
-        let pin = row.accountPin
         Menu("Account", systemImage: "person.crop.circle") {
-            ForEach(OrganiseRules.accountChoices(accounts, pin: pin, follows: OrganiseRules.accountFollows(accounts, row))) { choice in
-                Toggle(choice.label, isOn: Binding(get: { choice.checked }, set: { _ in organise.pinAccount(row, to: choice.account) }))
-                    .disabled(!choice.picks)
-            }
-            Divider()
-            Text(OrganiseRules.pickNote)
-            Text(OrganiseRules.accountChromeNote(accounts))
+            AccountChoices(accounts: accounts, pin: row.accountPin, follows: OrganiseRules.accountFollows(accounts, row), pick: { organise.pinAccount(row, to: $0) })
         }
+    }
+}
+
+/// The inside of an Account menu, which the row menu and the composer share: the choices, the spill group under a pin when `pickOverflow` is given, and the notes.
+struct AccountChoices: View {
+    let accounts: [Account]
+    let pin: String?
+    let follows: String
+    var overflow: String?
+    let pick: (String?) -> Void
+    var pickOverflow: ((String?) -> Void)?
+
+    var body: some View {
+        ForEach(OrganiseRules.accountChoices(accounts, pin: pin, follows: follows)) { choice in
+            Toggle(choice.label, isOn: Binding(get: { choice.checked }, set: { _ in pick(choice.account) }))
+                .disabled(!choice.picks)
+        }
+        if let pickOverflow, let spill = OrganiseRules.accountSpill(accounts, pin: pin, overflow: overflow) {
+            Section(spill.title) {
+                ForEach(spill.choices) { choice in
+                    Toggle(choice.label, isOn: Binding(get: { choice.checked }, set: { _ in pickOverflow(choice.account) }))
+                        .disabled(!choice.picks)
+                }
+            }
+        }
+        Divider()
+        Text(OrganiseRules.pickNote)
+        Text(OrganiseRules.accountChromeNote(accounts))
     }
 }
 

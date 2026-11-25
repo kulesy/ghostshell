@@ -12,6 +12,8 @@
   {"mac": "6-settings", "page": "10b-settings"},
   {"mac": "6-banners", "page": "6-banners"},
   {"mac": "6-force-question", "page": "6-force-question"},
+  {"mac": "6-meter", "page": "6-meter"},
+  {"mac": "6-meter-popover", "page": "6-meter-popover"},
   {"mac": "6-chat-empty", "page": "chat-empty"},
   {"mac": "6-chat-streaming", "page": "chat-streaming"},
   {"mac": "6-chat-rich", "page": "03-chat-rich"},
