@@ -1093,6 +1093,45 @@ test('a session past the newest 60 of a section that is nested under a listed on
   assert.ok(lines.some(l => /^The chat of the section .*\[started\].* can then read it\.$/.test(l)), lines.join(' | '));
 });
 
+// A section's chat reads what the sidebar lists, capped at the newest 60, and activity moves that list. The card names what the chat could list after the nest.
+const FILLERS = Array.from({ length: 62 }, (_, i) => ({ id: `f${i}`, title: `Filler ${i}`, source: 'capcom', ago: 10 + i }));
+const STARTED_CHAT = /^The chat of the section .*\[started\].* can then read (.*)\.$/;
+async function startedChat(s, token) {
+  const chat = (await post(s, token, '/api/groups/started/session')).body().id;
+  return async id => !textOf(await callTool(s, token, chat, 'read_group_session', { session_id: id })).startsWith('That session');
+}
+
+test('a root past the newest 60 with a family, nested under from a group, puts the root and its family on the Started chat line, and the chat reads them once the family is active', async () => {
+  const { s, token } = await access([{ id: 'root', title: 'Root', source: 'capcom', ago: 5000 }, { id: 'rkid', title: 'Root kid', source: 'capcom', parent: 'root', ago: 5001 }, { id: 'x', title: 'X', source: 'capcom', group: 'cg-home', ago: 5 }, ...FILLERS], { layout: { parents: { rkid: 'root' } } });
+  const reads = await startedChat(s, token);
+  assert.equal(await reads('root'), false, 'the root is past the cap now');
+  const lines = await nestAs(s, token, { session_id: 'x', parent: 'root' });
+  assert.equal(lines.find(l => STARTED_CHAT.test(l))?.match(STARTED_CHAT)[1], 'it, "Root" [root] and the 1 other session in that family', lines.join(' | '));
+  await sendTo(s, token, 'x', 'call send_session ' + JSON.stringify({ session_id: 'root', message: 'hi' }));
+  await until(() => reads('root'));
+  assert.deepEqual([await reads('x'), await reads('root'), await reads('rkid')], [true, true, true]);
+});
+
+test('a moved session that is already listed, with its new family past the newest 60, puts the root and its family on the Started chat line', async () => {
+  const { s, token } = await access([{ id: 'root', title: 'Root', source: 'capcom', ago: 5000 }, { id: 'rkid', title: 'Root kid', source: 'capcom', parent: 'root', ago: 5001 }, { id: 'x', title: 'X', source: 'capcom', ago: 5 }, ...FILLERS], { layout: { parents: { rkid: 'root' } } });
+  const lines = await nestAs(s, token, { session_id: 'x', parent: 'root' });
+  assert.equal(lines.find(l => STARTED_CHAT.test(l))?.match(STARTED_CHAT)[1], '"Root" [root] and the 1 other session in that family', lines.join(' | '));
+});
+
+test('a session of the family joined that is archived is counted on the card, and can send to the moved session with no card once it is back from the archive', async () => {
+  const { s, token } = await access([{ id: 'root', title: 'Root', ago: 6 }, { id: 'back', title: 'Back', parent: 'root', archived: true, ago: 7 }, { id: 'x', title: 'X', ago: 5 }]);
+  const lines = await nestAs(s, token, { session_id: 'x', parent: 'root' });
+  assert.ok(lines.some(l => /can then message, rename, move and take out one another with no card/.test(l) && l.includes('the 1 other session in that family')), lines.join(' | '));
+  assert.equal((await post(s, token, '/api/layout/archive', { id: 'back', archived: false })).status, 200);
+  assert.equal(await askSend(s, token, 'back', 'x'), 'free');
+});
+
+test('a session a chip started that is archived is on the card, since it can send to the parent with no card once it is back from the archive', async () => {
+  const { s, token } = await access([...CHIPPED_UNDER.filter(r => r.id !== 'v'), { id: 'v', title: 'V', group: 'cg-home', archived: true, ago: 3 }, { id: 'u', title: 'U', parent: 'x', ago: 4 }], { rest: { chips: [chipOf('u', 'v')] }, layout: { parents: { v: null } } });
+  const lines = await nestAs(s, token, { session_id: 'x', parent: 'root' });
+  assert.ok(lines.includes(CHIP_SEND), lines.join(' | '));
+});
+
 // Seeded worlds with links (some through archived sessions), archives, groups, mixed sources, chips made by any session, and a random nest the server allows. Reality is read the way a chat reads it:
 // the sub session list of each session, the sidebar's lists, and whether a send from each chip's session goes with no card. Every real gain of the moved session or those under it has to be on the card.
 const rng = seed => () => {
@@ -1124,17 +1163,23 @@ function worldOf(seed, kind) {
   const chips = [];
   for (let n = kind === 'chip' ? 3 : 0; n; n--) {
     const maker = pick(ids);
-    const started = pick(ids.filter(id => id !== maker && !gone(id) && !chips.some(c => c.startedId === id)));
+    const started = pick(ids.filter(id => id !== maker && (kind === 'chip' || !gone(id)) && !chips.some(c => c.startedId === id)));
     if (started) chips.push(chipOf(maker, started));
     if (started && next() < 0.6) parents[started] = null;
   }
   return { ids, sessions: [...sessions, ...fillers], parents, archivedNow, chips, reach: kind === 'chip' && next() < 0.5 ? 'project' : 'family', pick, next };
 }
 
-// What a chat reads, from the sidebar's lists. Asking sessions things makes them active and so changes a capped list, so these are taken on a server nobody else asks anything of.
+// What a chat reads, from the sidebar's lists, and the project each listed session is in. Asking sessions things makes them active and so changes a capped list,
+// so these are taken on a server nobody else asks anything of.
 async function chatsOf(s, token) {
   const index = (await get(s, token, '/api/sessions')).body();
-  return Object.fromEntries([...index.groups.map(g => [g.id, g.sessions]), ...['started', 'ungrouped', 'other'].map(k => [k, index[k]])].map(([k, list]) => [k, new Set((list ?? []).flatMap(r => [r.id, ...(r.children ?? []).map(c => c.id)]))]));
+  const idsOf = list => (list ?? []).flatMap(r => [r.id, ...(r.children ?? []).map(c => c.id)]);
+  const places = [...index.groups.map(g => [g.id, g.sessions]), ...['started', 'ungrouped', 'other'].map(k => [k, index[k]])];
+  // A chat also reads the archived sessions the sidebar's archive lists under it.
+  const chats = Object.fromEntries(await Promise.all(places.map(async ([k, list]) => [k, new Set([...idsOf(list), ...(await get(s, token, `/api/archived?group=${k}`)).body().archived.map(r => r.id)])])));
+  const project = Object.fromEntries(index.groups.flatMap(g => idsOf(g.sessions).map(id => [id, g.project])));
+  return { chats, project };
 }
 
 async function accessOf(s, token, world, alive) {
@@ -1145,8 +1190,10 @@ async function accessOf(s, token, world, alive) {
   return { reads, sends };
 }
 
-const worldServer = async (world, kind) => {
-  const made = await access(world.sessions, { rest: { chips: world.chips }, layout: { parents: world.parents, archived: world.archivedNow } });
+// `plain` is the same world with every session unarchived, which is what the card has to bound: an archived session acts again once the owner brings it back.
+const worldServer = async (world, { plain = false } = {}) => {
+  const sessions = plain ? world.sessions.filter(r => world.ids.includes(r.id)).map(r => ({ ...r, archived: false })) : world.sessions;
+  const made = await access(sessions, { rest: { chips: world.chips }, layout: { parents: world.parents, archived: plain ? {} : world.archivedNow } });
   if (world.reach !== 'family') await setReach(made.s, made.token, world.reach);
   return made;
 };
@@ -1159,58 +1206,96 @@ async function nestOnServer({ s, token }, input, useId) {
   } };
 }
 
+// What a card line says a chat gains, in the card's own words, read back as the set it names.
+function claimOf(rest, root) {
+  const part = noun => { const m = rest.match(new RegExp(`(?:(\\d+) of )?the (\\d+) ${noun}`)); return m ? +(m[1] ?? m[2]) : 0; };
+  return { it: /(^|, | and )it(,| and|$)/.test(rest), root: rest.includes(`[${root}]`), under: part('sessions? under it'), others: part('other sessions? in that family') };
+}
+
+// Every gain of a chat, over the family joined, is on that chat's own line of the card.
+function checkChat(snapshot, before, card, kinds, where) {
+  for (const [name, now] of Object.entries(snapshot.chats)) {
+    const gained = [...now].filter(id => !before.chats[name]?.has(id));
+    const mine = { it: gained.includes(kinds.moved), root: gained.includes(kinds.root), under: gained.filter(id => kinds.under.has(id)).length, others: gained.filter(id => kinds.others.has(id)).length };
+    if (!mine.it && !mine.root && !mine.under && !mine.others) continue;
+    const line = card.split('\n').find(l => l.startsWith('The chat of the') && l.includes(`[${name}] can then read `));
+    assert.ok(line, where(`the ${name} chat gained ${JSON.stringify(mine)} and has no line`));
+    const said = claimOf(line.slice(line.indexOf(' can then read ') + 15, -1), kinds.root);
+    assert.ok((!mine.it || said.it) && (!mine.root || said.root) && mine.under <= said.under && mine.others <= said.others, where(`the ${name} chat gained ${JSON.stringify(mine)} and its line says ${JSON.stringify(said)}`));
+  }
+}
+
 async function checkSeed(seed, kind) {
   const world = worldOf(seed, kind);
   const alive = world.sessions.filter(r => world.ids.includes(r.id) && !r.archived && !(r.id in world.archivedNow)).map(r => r.id);
-  const chat = await worldServer(world, kind);
+  const everyone = world.ids;
+  const chat = await worldServer(world);
   let input = null;
-  let card = null;
-  let done = null;
-  for (let n = 0; n < 40 && !card; n++) {
+  let asked = null;
+  for (let n = 0; n < 40 && !asked; n++) {
     input = { session_id: world.pick(alive), parent: world.pick(world.ids) };
-    card = (await nestOnServer(chat, input, `try-${n}`)).card;
-    if (card) done = { useId: `try-${n}`, text: card.summary };
+    const got = await nestOnServer(chat, input, `try-${n}`);
+    if (got.card) asked = { ...got, useId: `try-${n}` };
   }
-  if (!card) return null;
-  const chatsBefore = await chatsOf(chat.s, chat.token);
-  await decide(chat.s, chat.token, 'top', done.useId, 'allow');
-  const said = textOf(await callAs(chat.s, chat.token, 'top', done.useId, 'nest_session', input));
-  assert.match(said, /^Nested /, `${kind} seed ${seed}: ${said}`);
-  const chatsAfter = await chatsOf(chat.s, chat.token);
-  const root = onDisk(chat.s).parents[input.session_id];
-  const where = text => `${kind} seed ${seed}: ${JSON.stringify(input)}\n${text}`;
-
-  const real = await worldServer(world, kind);
-  const before = await accessOf(real.s, real.token, world, alive);
-  const asked = await nestOnServer(real, input, 'real-1');
-  assert.ok(asked.card, where('the nest asked on one server and not the other'));
+  assert.ok(asked, `${kind} seed ${seed}: no nest was allowed to ask`);
   const text = asked.card.summary;
-  assert.match(await asked.allow(), /^Nested /);
-  const after = await accessOf(real.s, real.token, world, alive);
-  // The family line already says its members send to one another with no card.
-  const family = new Set([root, ...(after.reads[root] ?? [])]);
-  const mine = new Set([input.session_id, ...[...(after.reads[root] ?? [])].filter(id => !before.reads[root]?.has(id))]);
-  for (const id of alive.filter(r => r !== root)) {
-    for (const got of [...(after.reads[id] ?? [])].filter(r => !before.reads[id]?.has(r))) {
-      assert.ok(text.includes(`[${got}]`) || new RegExp(`\\[${id}\\][^\\n]*can then read`).test(text), where(`${id} gained a read of ${got} and the card lacks it.\n${text}`));
-    }
+  const where = more => `${kind} seed ${seed}: ${JSON.stringify(input)}\n${more}\n${text}`;
+  const first = await chatsOf(chat.s, chat.token);
+  assert.match(await asked.allow(), /^Nested /, where('the nest did not go through'));
+  const root = onDisk(chat.s).parents[input.session_id];
+  const snapshots = [await chatsOf(chat.s, chat.token)];
+  // A later lift: the moved session sends to the root, which takes a turn, and the root's family rises in a capped list.
+  await callTool(chat.s, chat.token, input.session_id, 'send_session', { session_id: root, message: 'hello' });
+  await new Promise(r => setTimeout(r, 800));
+  snapshots.push(await chatsOf(chat.s, chat.token));
+  for (const id of everyone.filter(id => !alive.includes(id))) await post(chat.s, chat.token, '/api/layout/archive', { id, archived: false });
+  snapshots.push(await chatsOf(chat.s, chat.token));
+
+  // Reads and sends are taken before the nest with every session unarchived, and after it in the same world with them brought back, since an archived session acts again then.
+  const plain = await worldServer(world, { plain: true });
+  const before = await accessOf(plain.s, plain.token, world, everyone);
+  const real = await worldServer(world);
+  const done = await nestOnServer(real, input, 'real-1');
+  assert.match(await done.allow(), /^Nested /, where('the nest did not go through on the second server'));
+  for (const id of everyone.filter(id => !alive.includes(id))) await post(real.s, real.token, '/api/layout/archive', { id, archived: false });
+  const after = await accessOf(real.s, real.token, world, everyone);
+  const index = await chatsOf(real.s, real.token);
+  // Those under the moved session are whatever else the root now reads, since the nest can relink sessions to sit beside it.
+  const under = new Set([...after.reads[root]].filter(id => id !== input.session_id && !before.reads[root].has(id)));
+  const others = new Set(before.reads[root]);
+  const kinds = { moved: input.session_id, root, under, others };
+  const members = new Set([root, input.session_id, ...under, ...others]);
+  // Snapshots: right after the nest, after a later lift, and with the archived sessions back.
+  snapshots.forEach((shot, i) => checkChat(shot, first, text, kinds, more => where(`snapshot ${i}: ${more}`)));
+
+  const lines = text.split('\n');
+  for (const id of everyone) {
+    const got = [...(after.reads[id] ?? [])].filter(r => !before.reads[id]?.has(r)).sort();
+    if (!got.length) continue;
+    const line = lines.find(l => l.startsWith(`"${id.toUpperCase()}" [${id}] can then read `));
+    assert.ok(line, where(`${id} gained a read of ${got} and has no line`));
+    if (id === root) assert.ok(got.length === 1 + under.size && line.includes(got.length === 1 ? 'it.' : `it and the ${got.length - 1} session`), where(`the root gained ${got} and its line differs`));
+    else assert.ok(got.length > 3 ? line.includes(`can then read ${got.length} sessions`) : got.every(r => line.includes(`[${r}]`)), where(`${id} gained a read of ${got} and its line differs`));
   }
-  for (const pair of after.sends.filter(p => !before.sends.includes(p))) {
-    const [from, to] = pair.split('>');
-    const said = new RegExp(`\\[${from}\\][^\\n]*can then send to[^\\n]*\\[${to}\\]|sessions that chips started can then send to[^\\n]*\\[${to}\\]`).test(text);
-    assert.ok(said || (family.has(from) && family.has(to)) || (world.reach === 'project' && text.includes('Your send setting then lets')), where(`a send ${from} to ${to} is free now and the card lacks it.\n${text}`));
-  }
-  for (const [name, now] of Object.entries(chatsAfter)) {
-    for (const got of [...now].filter(r => !chatsBefore[name]?.has(r) && mine.has(r))) {
-      assert.ok(new RegExp(`\\[${name}\\][^\\n]*can then read|This (group|section)'s chat can then read`).test(done.text), where(`the ${name} chat reads ${got} now and the card lacks it.\n${done.text}`));
-    }
+  const movers = new Set([input.session_id, ...under]);
+  const open = world.reach === 'project' && text.includes('Your send setting then lets');
+  const project = id => index.project[id] ?? null;
+  const covers = id => movers.has(id) || project(id) === project(input.session_id);
+  const gained = after.sends.filter(p => !before.sends.includes(p)).map(p => p.split('>')).filter(([from, to]) => !(members.has(from) && members.has(to)) && !(open && ((movers.has(from) && covers(to)) || (movers.has(to) && covers(from)))));
+  for (const to of new Set(gained.map(([, t]) => t))) {
+    const senders = gained.filter(([, t]) => t === to).map(([f]) => f);
+    const line = lines.find(l => l.includes(' can then send to ') && l.endsWith(`[${to}] with no card.`));
+    assert.ok(line, where(`${senders} can send to ${to} now and there is no line`));
+    const who = line.slice(0, line.indexOf(' can then send to '));
+    assert.ok(senders.length > 3 ? Number.parseInt(who) >= senders.length : senders.every(f => who.includes(`[${f}]`)), where(`${senders} can send to ${to} now and the line says ${who}`));
   }
   return input;
 }
 
-// Seeds picked because the old plan fails them: the chip worlds on chip sends, the section worlds on what the sidebar's section chats list.
-const SEEDS = { chip: [3, 8], section: [27, 76, 83] };
+// Seeds picked because the previous plan fails them: section 11 and 18 on a chat the later lift of a capped list gives the root's family (a root past the newest 60),
+// section 8 and 22 on a chat the nest itself lifts them in (a moved session recent, the root's family past it), chip 17 and 39 on reads through archived links.
+const SEEDS = { section: [8, 11, 18, 22], chip: [17, 39] };
 test('for seeded worlds, everything the real nest lets the moved session and those under it be read, sent to or listed by is on the card', async () => {
   const done = await Promise.all(Object.entries(SEEDS).flatMap(([kind, list]) => list.map(seed => checkSeed(seed, kind))));
-  assert.ok(done.filter(Boolean).length >= done.length - 1, 'most seeds found a nest to check');
+  assert.deepEqual(done.map(Boolean), done.map(() => true), 'every seed found a nest to compare');
 });

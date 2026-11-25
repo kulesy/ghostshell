@@ -938,6 +938,17 @@ test('a chat that gains only some of the nest says exactly which, and a section 
   assert.match(said([['section:started', ['kid']], ['group:cg-d', ['under1']]], ['under1', 'under2']).join('\n'), /^The chat of the section .*\[started\].* can then read it\.\nThe chat of the group "Reviewing" \[cg-d\] can then read 1 of the 2 sessions under it\.$/);
 });
 
+test('a chat that gains the root or the rest of its family names the root and counts the others', () => {
+  const said = (ids, family = ['boss', 'mate', 'third']) => nestLines({ ...PLAN, family, chats: [['group:cg-a', ids]] }, nestSubs(), GROUPS).filter(l => /chat of/.test(l));
+  const chat = 'The chat of the group "Needs Review" [cg-a] can then read';
+  assert.deepEqual(said(['boss']), [`${chat} "Boss" [boss].`]);
+  assert.deepEqual(said(['kid', 'boss']), [`${chat} it and "Boss" [boss].`]);
+  assert.deepEqual(said(['mate']), [`${chat} 1 of the 2 other sessions in that family.`]);
+  assert.deepEqual(said(['mate', 'third']), [`${chat} the 2 other sessions in that family.`]);
+  assert.deepEqual(said(['kid', 'boss', 'mate', 'third']), [`${chat} it, "Boss" [boss] and the 2 other sessions in that family.`]);
+  assert.deepEqual(said(['mate'], ['boss', 'mate']), [`${chat} the 1 other session in that family.`]);
+});
+
 test('a reader other than the parent gets a line of its own, and a session that was read before but not now is named apart from those under it', () => {
   const lines = nestLines({ ...PLAN, under: ['under1'], reads: [['chipped', ['kid', 'under1']], ['mate', ['kid']]], lost: ['under1', 'top'] }, nestSubs(), GROUPS);
   assert.ok(lines.includes('"From a chip" [chipped] can then read "Kid" [kid] and "Below one" [under1].'));

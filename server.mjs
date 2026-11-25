@@ -298,7 +298,8 @@ function accountRows(index) {
   }
 }
 
-function buildIndex({ archived = false } = {}) {
+// `uncapped` lifts the cap on each list, which the nest card uses to name every session a chat could list once activity moves.
+function buildIndex({ archived = false, uncapped = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
   const own = layout.read();
   const files = indexTranscripts(cfg.projectsDir);
@@ -427,12 +428,12 @@ function buildIndex({ archived = false } = {}) {
   const routines = new Map();
   for (const r of top.filter(r => r.routine && !r.group && !r.pinned).sort(comparator(DEFAULT_SORT))) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, ...(routineTitles.has(r.routine) && { title: routineTitles.get(r.routine) }), ...(routineHeadings.has(r.routine) && { heading: routineHeadings.get(r.routine) }), latest: r, earlier: [] });
-    else if (routines.get(r.routine).earlier.length < 12 || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
+    else if (routines.get(r.routine).earlier.length < 12 || uncapped || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
   }
   const loose = sortRows(top.filter(r => !r.group && !r.routine && !r.pinned), sorts.sessions);
   // A list stops at its newest 60 but keeps every session brought back from the archive, so an old one is not lost between the two.
   // A family counts as one and stays whole when any of its members was brought back.
-  const newest = list => list.filter((r, i) => i < 60 || [r, ...(r.children ?? [])].some(m => unarchived.has(m.id)));
+  const newest = list => list.filter((r, i) => uncapped || i < 60 || [r, ...(r.children ?? [])].some(m => unarchived.has(m.id)));
   return {
     station: cfg.station,
     problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
@@ -1395,21 +1396,21 @@ const placeOf = (subs, all, row, groups = layout.read().groups) => ({ group: row
 
 // Every access a nest can move, read off the layout as it stands now or is supposed to stand, by the rules the tools and the chats use themselves: the sessions each
 // session reads, what each group's and section's chat reads, and the sends a chip's session makes to the sessions around its maker with no card.
-function accessOf(subs, id) {
-  const live = buildIndex();
+function accessOf(subs, id, { uncapped = false } = {}) {
+  const live = buildIndex({ uncapped });
   const all = buildIndex({ archived: true });
   const groups = layout.read().groups;
-  const rows = shapedRows(all);
+  // An archived session acts again once the owner unarchives it, so readers, senders and targets are worked out as if none were archived.
+  const rows = shapedRows(all).map(r => ({ ...r, archived: false }));
   const byId = new Map(rows.map(r => [r.id, r]));
   const asks = from => ({ lookup: () => ({ self: byId.get(from) ?? null, rows }), chipOf: subs.chipOf, routineProject: subs.routineProject });
-  // An archived session cannot run until the owner unarchives it, so it reads nothing.
-  const readers = new Set(rows.flatMap(r => [r.parent, r.startedBy]).filter(r => byId.get(r) && !byId.get(r).archived));
+  const readers = new Set(rows.flatMap(r => [r.parent, r.startedBy]).filter(r => byId.get(r)));
   const reads = new Map([...readers].map(r => { const { below, beside } = reachOf(rows, byId.get(r)); return [r, new Set([...below, ...beside].map(m => m.id))]; }));
   const chats = new Map([
     ...groups.map(g => [`group:${g.id}`, new Set(inGroup(all.rows, g.id).map(r => r.id))]),
     ...SECTIONS.map(section => [`section:${section.id}`, new Set(sectionMembers(section, live, all).members.map(r => r.id))]),
   ]);
-  const senders = [...new Set(chips.list().filter(c => c.status === 'started' && c.startedId).map(c => c.startedId))].filter(from => byId.get(from) && !byId.get(from).archived && !byId.get(from).routine);
+  const senders = [...new Set(chips.list().filter(c => c.status === 'started' && c.startedId).map(c => c.startedId))].filter(from => byId.get(from) && !byId.get(from).routine);
   const free = (from, to) => inOwnTree(asks(from), to) || inChipFamily(asks(from), groups, to);
   const project = row => projectOf(subs, groups, rows, row) ?? null;
   const account = (() => {
@@ -1433,13 +1434,14 @@ function nestPlanOf(subs, callerId, id, parent) {
   if (already) return { root, already: true };
   const relink = keepFamily(id, live);
   const was = accessOf(subs, id);
-  const now = supposing({ kind: 'nest', id, parent: root, relink }, () => accessOf(subs, id));
+  const now = supposing({ kind: 'nest', id, parent: root, relink }, () => accessOf(subs, id, { uncapped: true }));
   const parentIn = (state, sid) => state.all.rows.get(sid)?.parent ?? null;
   const ids = [...was.all.rows.keys()];
   const under = ids.filter(sid => sid !== id && parentIn(now, sid) === root && parentIn(was, sid) !== root).sort();
   const family = ids.filter(sid => parentIn(was, sid) === root);
   // Only the moved session and those under it may change place. Anything else changing means the nest does more than the card can say.
   const moves = new Set([id, ...under]);
+  const joined = new Set([root, ...family, ...moves]);
   const shifts = (a, b) => a.parent !== b.parent || a.group !== b.group || a.pinned !== b.pinned;
   if (ids.some(sid => !moves.has(sid) && (shifts(was.all.rows.get(sid), now.all.rows.get(sid)) || shifts(was.live.rows.get(sid), now.live.rows.get(sid))))) throw new Error('That nest could not be worked out.');
   const before = was.place(was.live.rows.get(id));
@@ -1451,14 +1453,14 @@ function nestPlanOf(subs, callerId, id, parent) {
   const byKey = (a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
   const reads = [...now.reads].map(([reader, got]) => [reader, gained(was.reads.get(reader), got)]).filter(([, got]) => got.length).sort(byKey);
   const lost = gained(now.reads.get(id), was.reads.get(id));
-  // A chat's line is for the moved session and those under it. A session let into a capped list because the moved one left it is what any change to the list does.
-  const chats = [...now.chats].map(([key, got]) => [key, gained(was.chats.get(key), got).filter(sid => moves.has(sid))]).filter(([, got]) => got.length).sort(byKey);
-  const joined = new Set([root, ...family, ...moves]);
+  // A chat gains what it could list after the nest whatever its cap, less what it reads now, for the family joined.
+  // A session outside it sliding up a capped list because the moved one left is what any list change does.
+  const chats = [...now.chats].map(([key, got]) => [key, gained(was.chats.get(key), got).filter(sid => joined.has(sid))]).filter(([, got]) => got.length).sort(byKey);
   const sends = [];
   for (const from of now.senders) {
     const chip = subs.chipOf(from);
     for (const to of new Set([chip?.maker, chip?.nestUnder, was.parentOf(chip?.maker), now.parentOf(chip?.maker)])) {
-      if (!to || to === from || !now.byId.get(to) || now.byId.get(to).archived || (joined.has(from) && joined.has(to))) continue;
+      if (!to || to === from || !now.byId.get(to) || (joined.has(from) && joined.has(to))) continue;
       if (now.free(from, to) && !was.free(from, to)) sends.push([from, to]);
     }
   }
