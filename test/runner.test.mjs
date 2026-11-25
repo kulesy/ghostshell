@@ -1970,7 +1970,7 @@ test('under any a rename, a move, an archive and an unarchive outside the tree s
 // A nest as the server answers it: the plan, the rows the card names, and what was nested.
 const nestOf = (t, { plan, fail, already = false, ...options } = {}) => {
   const nested = [];
-  const base = { moved: 'kid', given: 'boss', root: 'boss', redirected: false, parent: null, before: { group: null, pinned: false, section: null, project: null }, after: { group: null, pinned: false, section: null, project: null }, account: { changes: false }, under: [], lost: [], family: ['boss'], chips: [], caller: null, callerChat: null, already };
+  const base = { moved: 'kid', given: 'boss', root: 'boss', redirected: false, parent: null, before: { group: null, pinned: false, section: null, project: null }, after: { group: null, pinned: false, section: null, project: null }, account: { changes: false }, under: [], lost: [], reads: [], chats: [], sends: [], shifted: [], openProject: false, family: ['boss'], caller: null, callerChat: null, already };
   const rows = [{ id: 'kid', title: 'Kid', parent: 'me' }, { id: 'boss', title: 'Boss', parent: null }, { id: 'loose', title: 'Loose', parent: null }];
   const subs = () => ({
     lookup: () => ({ self: { id: 'me', title: 'Me' }, rows }),

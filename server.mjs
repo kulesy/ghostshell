@@ -19,7 +19,7 @@ import { makeGroupUpdates, makeUpdateStore, pullsOf, scaled } from './lib/group-
 import { chipRefusal, ensureGroupDir, groupDir, guideFor, rankRules, refusal, workFolder } from './lib/groups.mjs';
 import { MAX_TITLE, makeLayout, nameOf } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
-import { pendingLines, projectOf } from './lib/subs.mjs';
+import { inChipFamily, inOwnTree, pendingLines, projectOf, reachOf } from './lib/subs.mjs';
 import { makeSummaries } from './lib/summaries.mjs';
 import { makePulls } from './lib/pulls.mjs';
 import { archivedText, makeCommentWatch, scaled as scaledComments } from './lib/pr-comments.mjs';
@@ -153,6 +153,16 @@ const accountStates = () => ({ list: accounts.list(), signedOut: a => accountLog
 // A restart with an unreadable layout has none, and uses what it reads.
 let lastReadable = null;
 const pinsOf = own => (own.problem ? lastReadable ?? own : (lastReadable = own));
+
+// Works `fn` out on the layout as a step of layout.many would leave it, without writing. A supposed layout is no stand-in for an unreadable one, so `lastReadable` is kept as it was.
+function supposing(step, fn) {
+  const kept = lastReadable;
+  try {
+    return layout.suppose(step, fn);
+  } finally {
+    lastReadable = kept;
+  }
+}
 
 // A session GhostShell started (`mine`, its entry in started.json) has its routine there alone, since its first message is text anyone can word as a
 // routine's. Any other has what `read` finds.
@@ -550,18 +560,22 @@ function sendToSession(row, text) {
   return was;
 }
 
+// The rows a chat's tools see for an index, each with the session that made its chip and the batch it was archived with.
+function shapedRows({ rows, groupSessions }) {
+  const { archivedWith, parents } = layout.read();
+  const startedBy = chips.startedBy();
+  // The owner placing a session elsewhere ends its link to the maker.
+  const makerOf = id => (Object.hasOwn(parents, id) ? undefined : startedBy.get(id));
+  return [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id], startedBy: makerOf(r.id) })), ...[...groupSessions.values()].filter(r => !r.retired)];
+}
+
 // What a chat reaches the sessions under it through, and what every chat sends to, archives, unarchives, renames and moves any session with. Each call looks the index up again, so a session archived or nested since is seen
 // as it is now. Every row is in the index whether archived or not, and `parent` skips the archived ones unless they are asked for. The sessions of groups and sections
 // are listed too, so one can send and be sent to, and none is ever below another. A deleted group's chat is left out, as nothing would answer its tools.
 function subCtx(sessionId) {
   return {
     lookup({ archived }) {
-      const { rows, groupSessions } = buildIndex({ archived });
-      const { archivedWith, parents } = layout.read();
-      const startedBy = chips.startedBy();
-      // The owner placing a session elsewhere ends its link to the maker.
-      const makerOf = id => (Object.hasOwn(parents, id) ? undefined : startedBy.get(id));
-      const listed = [...[...rows.values()].map(r => ({ ...r, archivedWith: archivedWith[r.id], startedBy: makerOf(r.id) })), ...[...groupSessions.values()].filter(r => !r.retired)];
+      const listed = shapedRows(buildIndex({ archived }));
       return { self: listed.find(r => r.id === sessionId) ?? null, rows: listed.filter(r => archived || !r.archived) };
     },
     pending: pendingOf,
@@ -817,11 +831,13 @@ function chipAccountPick(known, body, landing) {
 
 // The sessions a section's chat reaches: those the sidebar lists in it, with the sessions nested under each, so the cap on a list and the
 // families are the sidebar's, and the archived ones, which no list holds.
-function sectionMembers(section) {
-  const { rows, archivedSection } = buildIndex({ archived: true });
-  const live = withKids(sectionSessions(buildIndex(), section.id));
-  return { name: section.name, section, members: [...live, ...[...rows.values()].filter(r => archivedSection.get(r.id) === section.id)] };
+function sectionMembers(section, live = buildIndex(), all = buildIndex({ archived: true })) {
+  const listed = withKids(sectionSessions(live, section.id));
+  return { name: section.name, section, members: [...listed, ...[...all.rows.values()].filter(r => all.archivedSection.get(r.id) === section.id)] };
 }
+
+// The sessions a group's chat reaches, archived ones included.
+const inGroup = (rows, groupId) => [...rows.values()].filter(r => r.group === groupId);
 
 // What a group's chat, or a built-in section's, reaches its sessions through. Each call looks the group up again, so a group deleted by hand
 // takes its tools with it. A section is always there, and its `section` tells the tools where a session it starts goes, if it can start one.
@@ -835,8 +851,7 @@ function groupCtx(groupId) {
       if (section) return sectionMembers(section);
       const group = layout.read().groups.find(g => g.id === groupId);
       if (!group) return null;
-      const { rows } = buildIndex({ archived: true });
-      return { name: group.name, members: [...rows.values()].filter(r => r.group === groupId) };
+      return { name: group.name, members: inGroup(buildIndex({ archived: true }).rows, groupId) };
     },
     pending: pendingOf,
     links: urls => pulls.lookup(urls),
@@ -1375,51 +1390,98 @@ function nestableRow(id) {
   return row;
 }
 
-// Where a row shows, as ids: its group, whether it is pinned, the section when it is in no group, and its project, none for Home. `all` is the index with archived rows.
-const placeOf = (subs, all, row) => ({ group: row.group ?? null, pinned: !!row.pinned, section: sectionOf(row, all.rows) ?? null, project: projectOf(subs, layout.read().groups, [...all.rows.values()], row) ?? null });
+// Where a row shows, as ids: its group, whether it is pinned, the section when it is in no group, and its project, none for Home. `all` is the index the row is in.
+const placeOf = (subs, all, row, groups = layout.read().groups) => ({ group: row.group ?? null, pinned: !!row.pinned, section: sectionOf(row, all.rows) ?? null, project: projectOf(subs, groups, [...all.rows.values()], row) ?? null });
 
-// See nestPlan in subCtx. What changes comes from the links as they would stand after the nest, so the sessions that follow the moved one are found
-// whether or not they are archived: those under a head, and the archived ones linked through a nested session, whose live ones stay with its parent.
+// Every access a nest can move, read off the layout as it stands now or is supposed to stand, by the rules the tools and the chats use themselves: the sessions each
+// session reads, what each group's and section's chat reads, and the sends a chip's session makes to the sessions around its maker with no card.
+function accessOf(subs, id) {
+  const live = buildIndex();
+  const all = buildIndex({ archived: true });
+  const groups = layout.read().groups;
+  const rows = shapedRows(all);
+  const byId = new Map(rows.map(r => [r.id, r]));
+  const asks = from => ({ lookup: () => ({ self: byId.get(from) ?? null, rows }), chipOf: subs.chipOf, routineProject: subs.routineProject });
+  // An archived session cannot run until the owner unarchives it, so it reads nothing.
+  const readers = new Set(rows.flatMap(r => [r.parent, r.startedBy]).filter(r => byId.get(r) && !byId.get(r).archived));
+  const reads = new Map([...readers].map(r => { const { below, beside } = reachOf(rows, byId.get(r)); return [r, new Set([...below, ...beside].map(m => m.id))]; }));
+  const chats = new Map([
+    ...groups.map(g => [`group:${g.id}`, new Set(inGroup(all.rows, g.id).map(r => r.id))]),
+    ...SECTIONS.map(section => [`section:${section.id}`, new Set(sectionMembers(section, live, all).members.map(r => r.id))]),
+  ]);
+  const senders = [...new Set(chips.list().filter(c => c.status === 'started' && c.startedId).map(c => c.startedId))].filter(from => byId.get(from) && !byId.get(from).archived && !byId.get(from).routine);
+  const free = (from, to) => inOwnTree(asks(from), to) || inChipFamily(asks(from), groups, to);
+  const project = row => projectOf(subs, groups, rows, row) ?? null;
+  const account = (() => {
+    try {
+      const d = accountData();
+      const facts = d.anyPin && d.facts(id);
+      return { anyPin: d.anyPin, got: facts ? accountFor({ id, ...facts }, d) : null };
+    } catch {
+      return null;
+    }
+  })();
+  return { live, all, byId, reads, chats, senders, free, account, place: row => placeOf(subs, live, row, groups), project, parentOf: from => byId.get(from)?.parent ?? null };
+}
+
+// See nestPlan in subCtx. The nest is applied to the layout in memory, the real index and the real access rules are worked out before and after, and each difference is
+// on the plan. A session archived or linked through an archived one, a chip's session, a section's capped list: none of it is handled by case, so none can be missed.
 function nestPlanOf(subs, callerId, id, parent) {
   nestableRow(id);
   const live = buildIndex();
   const { root, already } = nestCheck(id, parent, live);
   if (already) return { root, already: true };
-  const all = buildIndex({ archived: true });
-  const links = linksNow();
   const relink = keepFamily(id, live);
-  const linksAfter = sid => (sid === id ? root : Object.hasOwn(relink, sid) ? relink[sid] : links(sid));
-  const familyOf = linkOf => new Set([...familiesOf(all.rows, linkOf, { archived: true })].filter(([, f]) => f.parent === root).map(([sid]) => sid));
-  const family = familyOf(links);
-  const under = [...familyOf(linksAfter)].filter(sid => sid !== id && !family.has(sid)).sort();
-  const here = all.rows.get(id);
-  const rootRow = all.rows.get(root);
-  const after = placeOf(subs, all, { ...here, group: rootRow.group, pinned: rootRow.pinned, parent: root });
+  const was = accessOf(subs, id);
+  const now = supposing({ kind: 'nest', id, parent: root, relink }, () => accessOf(subs, id));
+  const parentIn = (state, sid) => state.all.rows.get(sid)?.parent ?? null;
+  const ids = [...was.all.rows.keys()];
+  const under = ids.filter(sid => sid !== id && parentIn(now, sid) === root && parentIn(was, sid) !== root).sort();
+  const family = ids.filter(sid => parentIn(was, sid) === root);
+  // Only the moved session and those under it may change place. Anything else changing means the nest does more than the card can say.
+  const moves = new Set([id, ...under]);
+  const shifts = (a, b) => a.parent !== b.parent || a.group !== b.group || a.pinned !== b.pinned;
+  if (ids.some(sid => !moves.has(sid) && (shifts(was.all.rows.get(sid), now.all.rows.get(sid)) || shifts(was.live.rows.get(sid), now.live.rows.get(sid))))) throw new Error('That nest could not be worked out.');
+  const before = was.place(was.live.rows.get(id));
+  const after = now.place(now.live.rows.get(id));
+  // A family shows in its root's place, so each session under it joins the project of the root, which is the moved session's.
+  const shifted = under.filter(sid => was.project(was.all.rows.get(sid)) !== now.project(now.all.rows.get(sid)));
+  if (shifted.some(sid => now.project(now.all.rows.get(sid)) !== after.project)) throw new Error('That nest could not be worked out.');
+  const gained = (a, b) => [...(b ?? [])].filter(sid => !a?.has(sid)).sort();
+  const byKey = (a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+  const reads = [...now.reads].map(([reader, got]) => [reader, gained(was.reads.get(reader), got)]).filter(([, got]) => got.length).sort(byKey);
+  const lost = gained(now.reads.get(id), was.reads.get(id));
+  // A chat's line is for the moved session and those under it. A session let into a capped list because the moved one left it is what any change to the list does.
+  const chats = [...now.chats].map(([key, got]) => [key, gained(was.chats.get(key), got).filter(sid => moves.has(sid))]).filter(([, got]) => got.length).sort(byKey);
+  const joined = new Set([root, ...family, ...moves]);
+  const sends = [];
+  for (const from of now.senders) {
+    const chip = subs.chipOf(from);
+    for (const to of new Set([chip?.maker, chip?.nestUnder, was.parentOf(chip?.maker), now.parentOf(chip?.maker)])) {
+      if (!to || to === from || !now.byId.get(to) || now.byId.get(to).archived || (joined.has(from) && joined.has(to))) continue;
+      if (now.free(from, to) && !was.free(from, to)) sends.push([from, to]);
+    }
+  }
+  sends.sort((a, b) => byKey(a, b) || byKey([a[1]], [b[1]]));
+  let openProject = false;
+  if (before.project !== after.project || shifted.length) {
+    try { openProject = subs.reach?.() === 'project'; } catch { openProject = true; }
+  }
   let account;
+  const below = under.filter(sid => !was.all.rows.get(sid).archived).length + Object.keys(relink).length;
   try {
-    const d = accountData();
-    const facts = d.anyPin && d.facts(id);
-    const below = under.filter(sid => !all.rows.get(sid).archived).length + Object.keys(relink).length;
-    account = !d.anyPin ? { changes: false } : facts ? { ...accountChange(accountFor({ id, ...facts }, d), accountFor({ id, ...facts, group: undefined, parent: root }, d), below), below } : { changes: true };
+    const [a, b] = [was.account, now.account];
+    account = !a || !b ? { changes: true } : !a.anyPin ? { changes: false } : !a.got || !b.got ? { changes: true } : { ...accountChange(a.got, b.got, below), below };
   } catch {
     account = { changes: true };
   }
   const { self, rows: listed } = subs.lookup({ archived: true });
-  const reads = !!self && (descendantsOf(listed, callerId).some(r => r.id === root) || listed.find(r => r.id === root)?.startedBy === callerId);
-  const caller = callerId === id ? 'moved' : under.includes(callerId) ? 'under' : callerId === root ? 'root' : family.has(callerId) ? 'family' : reads ? 'reads' : null;
-  // The sessions this one's chips started can send to the family root with no card once it is that session's parent, if they are in its project.
-  const rows = [...all.rows.values()];
-  const groups = layout.read().groups;
-  const chipped = [...new Set(chips.list().filter(c => c.status === 'started' && c.sessionId === id && c.startedId).map(c => c.startedId))].filter(sid => {
-    const r = all.rows.get(sid);
-    const chip = subs.chipOf(sid);
-    return r && !r.archived && !r.routine && chip?.maker === id && chip.nestUnder !== root && (projectOf(subs, groups, rows, r) ?? null) === after.project;
-  }).sort();
+  const readsRoot = !!self && (descendantsOf(listed, callerId).some(r => r.id === root) || listed.find(r => r.id === root)?.startedBy === callerId);
+  const caller = callerId === id ? 'moved' : under.includes(callerId) ? 'under' : callerId === root ? 'root' : family.includes(callerId) ? 'family' : readsRoot ? 'reads' : null;
   return {
     moved: id, given: parent, root, redirected: parent !== root, parent: live.rows.get(id).parent ?? null,
-    before: placeOf(subs, all, here), after, account, under,
-    lost: descendantsOf(rows, id).map(r => r.id).sort(),
-    family: [root, ...family].sort(), chips: chipped, caller, callerChat: self?.groupSession ?? null,
+    before, after, account, under, lost, reads, chats, sends, shifted, openProject,
+    family: [root, ...family].sort(), caller, callerChat: self?.groupSession ?? null,
   };
 }
 

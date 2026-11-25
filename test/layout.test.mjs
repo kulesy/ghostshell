@@ -166,6 +166,32 @@ test('nesting a session under another writes the link, takes the session out of 
   assert.deepEqual(f.onDisk().parents, { s1: 's3' }, 'nesting it again moves it');
 });
 
+test('a supposed nest answers every read as the nest would leave the layout, writes nothing, and puts the real layout back after it returns or throws', () => {
+  const f = folder({ ...OLD, parents: { s3: 's4' } });
+  backdate(f);
+  const was = f.layout.read();
+  const seen = f.layout.suppose({ kind: 'nest', id: 's1', parent: 's2', relink: {} }, () => f.layout.read());
+  assert.equal(seen.parents.s1, 's2');
+  assert.equal(seen.assignments.s1, undefined, 'the nest takes it out of its group');
+  assert.deepEqual(f.layout.read(), was, 'read is back to the file');
+  assert.equal(rewritten(f), false, 'the file was not written');
+  assert.throws(() => f.layout.suppose({ kind: 'nest', id: 's1', parent: 's2', relink: {} }, () => { throw new Error('inside'); }), /inside/);
+  assert.deepEqual(f.layout.read(), was, 'read is back after a throw');
+  assert.throws(() => f.layout.suppose({ kind: 'nest', id: 's1', parent: 's1', relink: {} }, () => 1), { status: 400 });
+  assert.deepEqual(f.layout.read(), was, 'read is back after a refused step');
+});
+
+test('while a layout is supposed no write goes through and no second suppose starts, and both leave the file as it was', () => {
+  const f = folder(OLD);
+  backdate(f);
+  const step = { kind: 'nest', id: 's1', parent: 's2', relink: {} };
+  assert.throws(() => f.layout.suppose(step, () => f.layout.nest('s2', 's3')), /only supposed/);
+  assert.throws(() => f.layout.suppose(step, () => f.layout.suppose(step, () => 1)), /already supposed/);
+  assert.equal(rewritten(f), false);
+  f.layout.nest('s2', 's3');
+  assert.deepEqual(f.onDisk().parents, { s2: 's3' }, 'a write after a supposing works again');
+});
+
 test('nesting under nothing, or under the session itself, is refused with a 400 and writes nothing', () => {
   const f = folder(WITH_PROJECTS);
   const before = fs.readFileSync(f.file, 'utf8');

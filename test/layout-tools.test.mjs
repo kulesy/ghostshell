@@ -868,10 +868,10 @@ const PLAN = {
   moved: 'kid', given: 'boss', root: 'boss', redirected: false, parent: null,
   before: { group: 'cg-b', pinned: false, section: null, project: null },
   after: { group: 'cg-a', pinned: false, section: null, project: null },
-  account: { changes: false }, under: [], lost: [], family: ['boss', 'mate'], chips: [], caller: null, callerChat: null,
+  account: { changes: false }, under: [], lost: [], reads: [], chats: [['group:cg-a', ['kid']]], sends: [], shifted: [], openProject: false, family: ['boss', 'mate'], caller: null, callerChat: null,
 };
 const FULL = {
-  ...PLAN, given: 'mate', redirected: true, parent: 'top', under: ['under1', 'under2'], lost: ['under1'], chips: ['chipped'], caller: 'family', callerChat: 'cg-a',
+  ...PLAN, given: 'mate', redirected: true, parent: 'top', under: ['under1', 'under2'], lost: ['under1'], chats: [['group:cg-a', ['kid', 'under1', 'under2']]], sends: [['chipped', 'boss']], caller: 'family', callerChat: 'cg-a',
   before: { group: 'cg-b', pinned: true, section: 'pinned', project: 'cp-h' },
   after: { group: 'cg-a', pinned: false, section: null, project: 'cp-w' },
   account: { changes: true, to: 'Work', active: false, below: 2 },
@@ -913,19 +913,53 @@ test('the card says every consequence a nest has: the redirect, who reads what, 
   assert.equal(lines[0], 'nest "Kid" [kid] under "Boss" [boss], since "Mate" [mate] is itself nested under it');
   assert.equal(lines[1], '"Boss" [boss] can then read it and the 2 sessions under it.');
   assert.match(lines[2], /^It, the 2 sessions under it, "Boss" \[boss\] and the 1 other session in that family can then message, rename, move and take out one another with no card\.$/);
-  assert.equal(lines[3], 'The 1 session under it then shows beside it, and it can no longer read it.');
+  assert.equal(lines[3], 'The 2 sessions under it then show beside it and it can no longer read 1 of them.');
   assert.match(lines[4], /^It leaves Pinned, the group "Backlog" \[cg-b\] and "Session top" \[top\] and shows under "Boss" \[boss\] in the group "Needs Review" \[cg-a\]\. Its project changes from the project "Home lab" \[cp-h\] to the project "Work" \[cp-w\]\. The 2 sessions under it move with it\.$/);
   assert.equal(lines[5], 'This group\'s chat can then read it and the 2 sessions under it.');
   assert.equal(lines[6], 'It then runs on Work, and the 2 sessions under it or linked with it can change account too.');
-  assert.equal(lines[7], 'The 1 session started from its chips can then send to "Boss" [boss] with no card.');
+  assert.equal(lines[7], '"From a chip" [chipped] can then send to "Boss" [boss] with no card.');
   assert.equal(lines[8], 'This chat is in the family it joins.');
   assert.equal(lines[9], 'Archiving "Boss" [boss] archives it and the 2 sessions under it.');
   assert.equal(lines.length, 10);
-  assert.equal(nestLines({ ...PLAN, lost: ['under1', 'under2'] }, nestSubs(), GROUPS)[3], 'The 2 sessions under it then show beside it, and it can no longer read them.');
+  assert.equal(nestLines({ ...FULL, lost: ['under1', 'under2'] }, nestSubs(), GROUPS)[3], 'The 2 sessions under it then show beside it, and it can no longer read them.');
   const unknown = nestLines({ ...PLAN, account: { changes: true } }, nestSubs(), GROUPS);
   assert.ok(unknown.includes('It may change the account it runs on.'));
-  const other = nestLines({ ...PLAN, before: { ...PLAN.before, group: null }, after: { ...PLAN.after, group: 'cg-d' }, callerChat: 'cg-a' }, nestSubs(), GROUPS);
+  const other = nestLines({ ...PLAN, after: { ...PLAN.after, group: 'cg-d' }, chats: [['group:cg-d', ['kid']]], callerChat: 'cg-a' }, nestSubs(), GROUPS);
   assert.ok(other.includes('The chat of the group "Reviewing" [cg-d] can then read it.'), 'a group that is not the caller\'s is named');
+});
+
+test('a chat that gains only some of the nest says exactly which, and a section is named by its id', () => {
+  const said = (chats, under = ['under1', 'under2', 'chipped']) => nestLines({ ...PLAN, under, chats }, nestSubs(), GROUPS).filter(l => /chat of/.test(l));
+  assert.deepEqual(said([['group:cg-a', ['kid']]]), ['The chat of the group "Needs Review" [cg-a] can then read it.']);
+  assert.deepEqual(said([['group:cg-a', ['kid', 'under1']]]), ['The chat of the group "Needs Review" [cg-a] can then read it and 1 of the 3 sessions under it.']);
+  assert.deepEqual(said([['group:cg-a', ['under1', 'chipped']]]), ['The chat of the group "Needs Review" [cg-a] can then read 2 of the 3 sessions under it.']);
+  assert.deepEqual(said([['group:cg-a', ['kid', 'under1', 'under2', 'chipped']]]), ['The chat of the group "Needs Review" [cg-a] can then read it and the 3 sessions under it.']);
+  assert.deepEqual(said([['group:cg-a', ['under1', 'under2', 'chipped']]]), ['The chat of the group "Needs Review" [cg-a] can then read the 3 sessions under it.']);
+  assert.match(said([['section:started', ['kid']], ['group:cg-d', ['under1']]], ['under1', 'under2']).join('\n'), /^The chat of the section .*\[started\].* can then read it\.\nThe chat of the group "Reviewing" \[cg-d\] can then read 1 of the 2 sessions under it\.$/);
+});
+
+test('a reader other than the parent gets a line of its own, and a session that was read before but not now is named apart from those under it', () => {
+  const lines = nestLines({ ...PLAN, under: ['under1'], reads: [['chipped', ['kid', 'under1']], ['mate', ['kid']]], lost: ['under1', 'top'] }, nestSubs(), GROUPS);
+  assert.ok(lines.includes('"From a chip" [chipped] can then read "Kid" [kid] and "Below one" [under1].'));
+  assert.ok(lines.includes('"Mate" [mate] can then read "Kid" [kid].'));
+  assert.ok(lines.includes('The 1 session under it then shows beside it, and it can no longer read it.'));
+  assert.ok(lines.includes('It can then no longer read "Session top" [top], which stays where it was.'));
+  assert.ok(nestLines({ ...PLAN, reads: [['chipped', ['a', 'b', 'c', 'd']]] }, nestSubs(), GROUPS).includes('"From a chip" [chipped] can then read 4 sessions.'));
+  assert.equal(nestLines(PLAN, nestSubs(), GROUPS).some(l => /no longer/.test(l)), false);
+});
+
+test('a send a chip session gains has a line for each target naming up to three senders, and a project that opens the send setting says so for the sessions under it too', () => {
+  const lines = nestLines({ ...PLAN, sends: [['chipped', 'boss'], ['mate', 'boss'], ['under1', 'kid']] }, nestSubs(), GROUPS);
+  assert.ok(lines.includes('"From a chip" [chipped] and "Mate" [mate] can then send to "Boss" [boss] with no card.'));
+  assert.ok(lines.includes('"Below one" [under1] can then send to "Kid" [kid] with no card.'));
+  assert.ok(nestLines({ ...PLAN, sends: ['a', 'b', 'c', 'd'].map(f => [f, 'boss']) }, nestSubs(), GROUPS).includes('4 sessions that chips started can then send to "Boss" [boss] with no card.'));
+  const moved = { ...PLAN, before: { ...PLAN.before, project: 'cp-h' }, after: { ...PLAN.after, project: 'cp-w' } };
+  const place = plan => nestLines(plan, nestSubs(), GROUPS).find(l => l.startsWith('It leaves'));
+  assert.match(place({ ...moved, openProject: true }), /Its project changes from the project "Home lab" \[cp-h\] to the project "Work" \[cp-w\]\. Your send setting then lets it and the sessions in the project "Work" \[cp-w\], group chats included, send to each other with no card\.$/);
+  assert.doesNotMatch(place(moved), /send setting/);
+  assert.match(place({ ...moved, under: ['under1', 'under2'], openProject: true }), /lets it, the 2 sessions under it and the sessions in the project "Work"/);
+  const shifted = place({ ...PLAN, under: ['under1', 'under2'], shifted: ['under1'], after: { ...PLAN.after, project: 'cp-w' } });
+  assert.match(shifted, /1 of the 2 sessions under it also changes project, to the project "Work" \[cp-w\]\./);
 });
 
 test('a caller who is the moved session, below it, the parent or already reads the parent is told so in one line naming this chat', () => {
